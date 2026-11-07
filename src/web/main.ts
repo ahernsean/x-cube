@@ -80,7 +80,6 @@ export const VIEWS: Record<string, Quat> = {
   top: axisQuat(1, 0, 0, HALF),
   bottom: axisQuat(1, 0, 0, -HALF),
 };
-const VIEW_KEY = "xcube-lab-view";
 let tween: { from: any; to: any; start: number; ms: number } | null = null;
 
 function goToView(q: Quat) {
@@ -90,31 +89,6 @@ function goToView(q: Quat) {
 function reduceMotionView() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
-function currentViewCode(): string {
-  const q = pivot.quaternion;
-  return `view:${[q.x, q.y, q.z, q.w].map((v: number) => v.toFixed(3)).join(",")}`;
-}
-function readSavedView(): Quat | null {
-  try {
-    const v = JSON.parse(localStorage.getItem(VIEW_KEY) || "null");
-    return Array.isArray(v) && v.length === 4 ? (v as Quat) : null;
-  } catch {
-    return null;
-  }
-}
-function saveView() {
-  const q = pivot.quaternion;
-  try {
-    localStorage.setItem(VIEW_KEY, JSON.stringify([q.x, q.y, q.z, q.w]));
-  } catch {
-    /* storage unavailable */
-  }
-  // Also share it, so Claude can read the view you like and make it a preset.
-  db?.doc("settings/view")
-    .set({ q: [q.x, q.y, q.z, q.w], savedAt: Date.now() })
-    .catch(() => {});
-}
-
 function initScene(canvas: HTMLCanvasElement) {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -273,7 +247,9 @@ interface Anim {
 let anim: Anim | null = null;
 const queue: { turn: Turn; forward: boolean }[] = [];
 const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-let speedMs = 200;
+// Speed slider 0..100 maps logarithmically from 800 ms (slowest) to 30 ms (fastest) per quarter turn.
+const speedFromSlider = (v: number) => 800 * Math.pow(30 / 800, v / 100);
+let speedMs = speedFromSlider(42);
 
 function enqueue(turn: Turn, forward: boolean) {
   queue.push({ turn, forward });
@@ -570,8 +546,8 @@ function render() {
     const def = MOVE_BY_NAME.get(b.dataset.move!)!;
     const blocked = blockedReason(st, { def, amount: 1 });
     b.classList.toggle("blocked", !!blocked);
-    const suffix = app.modifier === 1 ? "" : app.modifier === 2 ? "2" : "'";
-    b.textContent = b.dataset.move! + suffix;
+    const held = b.classList.contains("inverted");
+    b.textContent = b.dataset.move! + suffixFor(held ? invertAmount(app.modifier) : app.modifier);
   }
 
   // effect vs base
@@ -603,7 +579,6 @@ function render() {
         .join("")
     : `<li class="hint">No saved states yet. Save the current position to come back to it later.</li>`;
   ($("code-out") as HTMLTextAreaElement).value = encodeState(st);
-  $("view-mine").hidden = !readSavedView();
 }
 
 const NET_COLOR: Record<string, string> = { W: "#f3f3ee", Y: "#f5d00f", G: "#17a34a", B: "#1d5fd6", R: "#c8202b", O: "#f47a12", "#": "var(--unstickered)" };
@@ -621,7 +596,7 @@ function renderNet(st: State) {
   let html = "";
   for (const [name, col, row] of faces) {
     const g = faceView(st, order.indexOf(name));
-    html += `<div class="netface" style="grid-column:${col + 1};grid-row:${row + 1}"><span class="netlabel">${name}</span>`;
+    html += `<div class="netface" style="grid-column:${col + 1};grid-row:${row + 1}"><span class="netlabel" aria-hidden="true">${name}</span>`;
     for (const line of g)
       for (const ch of line) html += ch === "." ? `<i class="empty"></i>` : `<i style="background:${NET_COLOR[ch]}"></i>`;
     html += `</div>`;
@@ -629,16 +604,75 @@ function renderNet(st: State) {
   $("net").innerHTML = html;
 }
 
+const suffixFor = (a: 1 | 2 | 3) => (a === 1 ? "" : a === 2 ? "2" : "'");
+const invertAmount = (a: 1 | 2 | 3) => (4 - a) as 1 | 2 | 3;
+
+function pressMove(name: string, inverted: boolean) {
+  const amount = inverted ? invertAmount(app.modifier) : app.modifier;
+  doTurn({ def: MOVE_BY_NAME.get(name)!, amount });
+  if (app.modifier !== 1 && !($("sticky-mod") as HTMLInputElement).checked) app.modifier = 1;
+  render();
+}
+
+/**
+ * Turn buttons: a tap does the shown turn. Hold for about half a second and the
+ * button flips to the opposite direction (U becomes U'); releasing does that turn.
+ * Sliding off the button before releasing does nothing.
+ */
+const LONG_PRESS_MS = 450;
+function bindMoveButtons() {
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-move]")) {
+    const name = b.dataset.move!;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let active: number | null = null;
+    let long = false;
+    const show = (inverted: boolean) => {
+      const amount = inverted ? invertAmount(app.modifier) : app.modifier;
+      b.textContent = name + suffixFor(amount);
+      b.classList.toggle("inverted", inverted);
+    };
+    const reset = () => {
+      clearTimeout(timer);
+      active = null;
+      long = false;
+      show(false);
+    };
+    b.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      // Touch pointers are captured by default; release so sliding off is noticed.
+      if (b.hasPointerCapture(e.pointerId)) b.releasePointerCapture(e.pointerId);
+      active = e.pointerId;
+      long = false;
+      timer = setTimeout(() => {
+        long = true;
+        show(true);
+      }, LONG_PRESS_MS);
+    });
+    b.addEventListener("pointerup", (e) => {
+      if (e.pointerId !== active) return;
+      const over = document.elementFromPoint(e.clientX, e.clientY)?.closest("button") === b;
+      const inverted = long;
+      reset();
+      if (over) pressMove(name, inverted);
+    });
+    b.addEventListener("pointerleave", (e) => {
+      if (e.pointerId === active) reset();
+    });
+    b.addEventListener("pointercancel", reset);
+    b.addEventListener("contextmenu", (e) => e.preventDefault());
+    // Keyboard activation (Enter / Space) arrives as a click with detail 0.
+    b.addEventListener("click", (e) => {
+      if (e.detail === 0) pressMove(name, false);
+    });
+  }
+}
+
 function bindUI() {
   document.addEventListener("click", async (e) => {
     const t = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null;
     if (!t) return;
     const ds = t.dataset;
-    if (ds.move) {
-      doTurn({ def: MOVE_BY_NAME.get(ds.move)!, amount: app.modifier });
-      if (app.modifier !== 1 && !($("sticky-mod") as HTMLInputElement).checked) app.modifier = 1;
-      render();
-    } else if (ds.mod) {
+    if (ds.mod) {
       app.modifier = Number(ds.mod) as 1 | 2 | 3;
       render();
     } else if (ds.jump) jump(Number(ds.jump));
@@ -694,16 +728,11 @@ function bindUI() {
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-view]"))
     b.addEventListener("click", () => {
       const name = b.dataset.view!;
-      const q = name === "mine" ? readSavedView() : VIEWS[name];
+      const q = VIEWS[name];
       if (q) goToView(q);
     });
-  $("save-view").addEventListener("click", () => {
-    saveView();
-    ($("view-code") as HTMLInputElement).value = currentViewCode();
-    setMessage("Saved as your view (★). The code below describes it, if you want to send it to Claude.", "ok");
-    render();
-  });
-  $("speed").addEventListener("input", (e) => (speedMs = 450 - Number((e.target as HTMLInputElement).value)));
+  $("speed").addEventListener("input", (e) => (speedMs = speedFromSlider(Number((e.target as HTMLInputElement).value))));
+  bindMoveButtons();
   $("save").addEventListener("click", () => {
     const n = $("save-name") as HTMLInputElement;
     saveCurrent(n.value.trim(), "");
