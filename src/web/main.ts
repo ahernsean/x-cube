@@ -54,8 +54,63 @@ const STICKER: Record<Color, number> = {
 
 let renderer: any, scene: any, camera: any, pivot: any;
 const meshes: any[] = []; // indexed by cubelet id
-let view = { theta: 0.62, phi: 0.95, radius: 15 };
-const DEFAULT_VIEW = { ...view };
+// The camera stays put; turning the view rotates the puzzle (pivot) instead.
+// Preset views are orientations of the pivot. "Home" is the three-quarter view.
+type Quat = [number, number, number, number]; // x, y, z, w
+const axisQuat = (ax: number, ay: number, az: number, angle: number): Quat => {
+  const s = Math.sin(angle / 2);
+  return [ax * s, ay * s, az * s, Math.cos(angle / 2)];
+};
+const qmul = (a: Quat, b: Quat): Quat => [
+  a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+  a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+  a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+  a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+];
+const HALF = Math.PI / 2;
+export const VIEWS: Record<string, Quat> = {
+  home: qmul(axisQuat(1, 0, 0, 0.5), axisQuat(0, 1, 0, -0.62)),
+  front: [0, 0, 0, 1],
+  back: axisQuat(0, 1, 0, Math.PI),
+  left: axisQuat(0, 1, 0, HALF),
+  right: axisQuat(0, 1, 0, -HALF),
+  top: axisQuat(1, 0, 0, HALF),
+  bottom: axisQuat(1, 0, 0, -HALF),
+};
+const VIEW_KEY = "xcube-lab-view";
+let tween: { from: any; to: any; start: number; ms: number } | null = null;
+
+function goToView(q: Quat) {
+  const to = new THREE.Quaternion(q[0], q[1], q[2], q[3]);
+  tween = { from: pivot.quaternion.clone(), to, start: performance.now(), ms: reduceMotionView() ? 0 : 350 };
+}
+function reduceMotionView() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+function currentViewCode(): string {
+  const q = pivot.quaternion;
+  return `view:${[q.x, q.y, q.z, q.w].map((v: number) => v.toFixed(3)).join(",")}`;
+}
+function readSavedView(): Quat | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(VIEW_KEY) || "null");
+    return Array.isArray(v) && v.length === 4 ? (v as Quat) : null;
+  } catch {
+    return null;
+  }
+}
+function saveView() {
+  const q = pivot.quaternion;
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify([q.x, q.y, q.z, q.w]));
+  } catch {
+    /* storage unavailable */
+  }
+  // Also share it, so Claude can read the view you like and make it a preset.
+  db?.doc("settings/view")
+    .set({ q: [q.x, q.y, q.z, q.w], savedAt: Date.now() })
+    .catch(() => {});
+}
 
 function initScene(canvas: HTMLCanvasElement) {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -70,11 +125,16 @@ function initScene(canvas: HTMLCanvasElement) {
   fill.position.set(-6, -4, -5);
   scene.add(fill);
   pivot = new THREE.Group();
+  const h = VIEWS.home;
+  pivot.quaternion.set(h[0], h[1], h[2], h[3]);
   scene.add(pivot);
+  camera.position.set(0, 0, 13.5);
+  camera.lookAt(0, 0, 0);
 
-  const body = new THREE.BoxGeometry(0.96, 0.96, 0.96);
+  // Cubelets nearly touch, as on the real puzzle: a hairline gap between them.
+  const body = new THREE.BoxGeometry(0.985, 0.985, 0.985);
   const bodyMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
-  const plane = new THREE.PlaneGeometry(0.8, 0.8);
+  const plane = new THREE.PlaneGeometry(0.84, 0.84);
   const mats = new Map<Color, any>();
   const matFor = (c: Color) => {
     if (!mats.has(c)) mats.set(c, new THREE.MeshLambertMaterial({ color: STICKER[c] }));
@@ -83,12 +143,12 @@ function initScene(canvas: HTMLCanvasElement) {
   // local face d -> plane placement
   const faceXform: [number, number, number, number, number][] = [
     // [px, py, pz, rotX, rotY]
-    [0.485, 0, 0, 0, Math.PI / 2],
-    [-0.485, 0, 0, 0, -Math.PI / 2],
-    [0, 0.485, 0, -Math.PI / 2, 0],
-    [0, -0.485, 0, Math.PI / 2, 0],
-    [0, 0, 0.485, 0, 0],
-    [0, 0, -0.485, 0, Math.PI],
+    [0.4945, 0, 0, 0, Math.PI / 2],
+    [-0.4945, 0, 0, 0, -Math.PI / 2],
+    [0, 0.4945, 0, -Math.PI / 2, 0],
+    [0, -0.4945, 0, Math.PI / 2, 0],
+    [0, 0, 0.4945, 0, 0],
+    [0, 0, -0.4945, 0, Math.PI],
   ];
   for (const c of CUBELETS) {
     const g = new THREE.Group();
@@ -136,50 +196,59 @@ function resize() {
 }
 
 function frame() {
-  const { theta, phi, radius } = view;
-  camera.position.set(radius * Math.sin(phi) * Math.sin(theta), radius * Math.cos(phi), radius * Math.sin(phi) * Math.cos(theta));
-  camera.lookAt(0, 0, 0);
+  if (tween) {
+    const t = tween.ms ? Math.min(1, (performance.now() - tween.start) / tween.ms) : 1;
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    pivot.quaternion.copy(tween.from).slerp(tween.to, e);
+    if (t >= 1) tween = null;
+  }
   tickAnimation();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
+// One finger (or mouse) drags to tumble the puzzle; two fingers twist it
+// around the axis pointing out of the screen.
 function bindOrbit(el: HTMLElement) {
   const pts = new Map<number, { x: number; y: number }>();
-  let pinch = 0;
+  let twist: number | null = null;
+  const spin = (q: Quat) => {
+    tween = null;
+    const t = new THREE.Quaternion(q[0], q[1], q[2], q[3]);
+    pivot.quaternion.premultiply(t).normalize();
+  };
+  const angleOf = () => {
+    const [a, b] = [...pts.values()];
+    return Math.atan2(b.y - a.y, b.x - a.x);
+  };
   el.addEventListener("pointerdown", (e) => {
     el.setPointerCapture(e.pointerId);
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    twist = pts.size === 2 ? angleOf() : null;
   });
   el.addEventListener("pointermove", (e) => {
     const prev = pts.get(e.pointerId);
     if (!prev) return;
-    if (pts.size === 1) {
-      view.theta -= (e.clientX - prev.x) * 0.01;
-      view.phi = Math.min(Math.PI - 0.15, Math.max(0.15, view.phi - (e.clientY - prev.y) * 0.01));
-    }
+    const dx = e.clientX - prev.x;
+    const dy = e.clientY - prev.y;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pts.size === 2) {
-      const [a, b] = [...pts.values()];
-      const d = Math.hypot(a.x - b.x, a.y - b.y);
-      if (pinch) view.radius = Math.min(30, Math.max(8, view.radius * (pinch / d)));
-      pinch = d;
+    if (pts.size === 1) {
+      spin(qmul(axisQuat(0, 1, 0, dx * 0.01), axisQuat(1, 0, 0, dy * 0.01)));
+    } else if (pts.size === 2 && twist !== null) {
+      const a = angleOf();
+      let d = a - twist;
+      if (d > Math.PI) d -= 2 * Math.PI;
+      if (d < -Math.PI) d += 2 * Math.PI;
+      twist = a;
+      spin(axisQuat(0, 0, 1, -d));
     }
   });
   const up = (e: PointerEvent) => {
     pts.delete(e.pointerId);
-    if (pts.size < 2) pinch = 0;
+    twist = pts.size === 2 ? angleOf() : null;
   };
   el.addEventListener("pointerup", up);
   el.addEventListener("pointercancel", up);
-  el.addEventListener(
-    "wheel",
-    (e) => {
-      e.preventDefault();
-      view.radius = Math.min(30, Math.max(8, view.radius * (1 + e.deltaY * 0.001)));
-    },
-    { passive: false },
-  );
 }
 
 // ------------------------------------------------------------------ turn animation
@@ -527,6 +596,7 @@ function render() {
         .join("")
     : `<li class="hint">No saved states yet. Save the current position to come back to it later.</li>`;
   ($("code-out") as HTMLTextAreaElement).value = encodeState(st);
+  $("view-mine").hidden = !readSavedView();
 }
 
 const NET_COLOR: Record<string, string> = { W: "#f3f3ee", Y: "#f5d00f", G: "#17a34a", B: "#1d5fd6", R: "#c8202b", O: "#f47a12", "#": "var(--unstickered)" };
@@ -614,7 +684,18 @@ function bindUI() {
     setMessage("This position is now the start", "ok");
     render();
   });
-  $("view-reset").addEventListener("click", () => (view = { ...DEFAULT_VIEW }));
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-view]"))
+    b.addEventListener("click", () => {
+      const name = b.dataset.view!;
+      const q = name === "mine" ? readSavedView() : VIEWS[name];
+      if (q) goToView(q);
+    });
+  $("save-view").addEventListener("click", () => {
+    saveView();
+    ($("view-code") as HTMLInputElement).value = currentViewCode();
+    setMessage("Saved as your view (★). The code below describes it, if you want to send it to Claude.", "ok");
+    render();
+  });
   $("speed").addEventListener("input", (e) => (speedMs = 450 - Number((e.target as HTMLInputElement).value)));
   $("save").addEventListener("click", () => {
     const n = $("save-name") as HTMLInputElement;

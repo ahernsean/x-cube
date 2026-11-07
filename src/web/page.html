@@ -56,7 +56,9 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .stack { display: grid; gap: 14px; min-width: 0; }
 .stage { position: relative; background: var(--stage); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; }
 #scene { display: block; width: 100%; height: min(58vh, 520px); touch-action: none; cursor: grab; }
-.stage-tools { position: absolute; right: 8px; top: 8px; display: flex; gap: 6px; }
+.views { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.view-code { margin-top: 6px; font-size: 11px !important; padding: 5px 8px !important; color: var(--muted) !important; }
+.mv.rot { background: var(--panel); }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }
 .chip { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--off-bg); color: var(--muted); white-space: nowrap; }
@@ -122,15 +124,26 @@ details[open] summary { margin-bottom: 8px; }
 
 <header>
   <h1>X-Cube Lab</h1>
-  <span class="sub">White up, green front. Drag to turn the view, pinch to zoom.</span>
+  <span class="sub">White up, green front. Drag to tumble the view; twist two fingers to spin it.</span>
 </header>
 
 <div class="wrap">
   <div class="stage-col">
     <div class="stage">
       <canvas id="scene" aria-label="3D view of the X-Cube"></canvas>
-      <div class="stage-tools"><button class="btn small" id="view-reset">Front view</button></div>
     </div>
+    <div class="views" role="group" aria-label="Views">
+      <button class="btn small" data-view="home">Home</button>
+      <button class="btn small" data-view="front">Front</button>
+      <button class="btn small" data-view="back">Back</button>
+      <button class="btn small" data-view="left">Left</button>
+      <button class="btn small" data-view="right">Right</button>
+      <button class="btn small" data-view="top">Top</button>
+      <button class="btn small" data-view="bottom">Bottom</button>
+      <button class="btn small" data-view="mine" id="view-mine" hidden>★ Mine</button>
+      <button class="btn small ghost" id="save-view">Save this view</button>
+    </div>
+    <input type="text" id="view-code" class="view-code" readonly aria-label="Code for the saved view" placeholder="Save a view to get its code">
     <div class="status" id="status" aria-live="polite"></div>
     <p class="message" id="message" hidden></p>
   </div>
@@ -174,11 +187,13 @@ details[open] summary { margin-bottom: 8px; }
         </div></div>
         <div class="pad-group"><span class="pad-label">Slices</span><div class="pad-keys">
           <button class="mv" data-move="H">H</button><button class="mv" data-move="M">M</button><button class="mv" data-move="S">S</button>
-          <button class="mv" data-move="x">x</button><button class="mv" data-move="y">y</button><button class="mv" data-move="z">z</button>
+        </div></div>
+        <div class="pad-group"><span class="pad-label">Rotate</span><div class="pad-keys">
+          <button class="mv rot" data-move="x">x</button><button class="mv rot" data-move="y">y</button><button class="mv rot" data-move="z">z</button>
         </div></div>
       </div>
       <div class="row" style="margin-top:10px"><button class="btn small" id="undo">Undo last turn</button></div>
-      <p class="legend">Outer turns are dashed and fade when that extension is incomplete. <code>H</code> turns the middle layer like <code>U</code>. <code>M</code> turns like <code>L</code>, <code>S</code> like <code>F</code>. <code>x y z</code> turn the whole puzzle.</p>
+      <p class="legend">Outer turns are dashed and fade when that extension is incomplete. <code>H</code> turns the middle layer like <code>U</code>. <code>M</code> turns like <code>L</code>, <code>S</code> like <code>F</code>. Rotate turns the whole puzzle: <code>x</code> like <code>R</code>, <code>y</code> like <code>U</code>, <code>z</code> like <code>F</code>.</p>
     </section>
 
     <section class="panel effect">
