@@ -1,0 +1,215 @@
+<title>X-Cube Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one working column on phones (cube, then controls); cube beside controls on wide screens. */
+:root {
+  --bg: #eef0ef;
+  --panel: #ffffff;
+  --ink: #1b1f1e;
+  --muted: #5d6764;
+  --line: #d3d9d6;
+  --accent: #1d5fd6;
+  --accent-ink: #ffffff;
+  --good: #17803d;
+  --good-bg: #dcf1e2;
+  --warn: #9a5b00;
+  --warn-bg: #fbecd3;
+  --bad: #b3202a;
+  --bad-bg: #f8dcdd;
+  --off-bg: #e4e8e6;
+  --tile-edge: rgba(0, 0, 0, 0.22);
+  --unstickered: #2b2f2e;
+  --stage: radial-gradient(circle at 50% 40%, #fbfcfb 0%, #dfe4e2 100%);
+  --f-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --f-body: "Atkinson Hyperlegible", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121615; --panel: #1b201f; --ink: #e8ecea; --muted: #9aa5a1; --line: #2e3633;
+    --accent: #5c8ff0; --accent-ink: #0d1220; --good: #6fd38f; --good-bg: #183223; --warn: #f0b45a; --warn-bg: #3a2a10;
+    --bad: #f07a80; --bad-bg: #3b1a1c; --off-bg: #262d2b; --tile-edge: rgba(255, 255, 255, 0.28); --unstickered: #050606; --stage: radial-gradient(circle at 50% 40%, #2a3230 0%, #141817 100%);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121615; --panel: #1b201f; --ink: #e8ecea; --muted: #9aa5a1; --line: #2e3633;
+  --accent: #5c8ff0; --accent-ink: #0d1220; --good: #6fd38f; --good-bg: #183223; --warn: #f0b45a; --warn-bg: #3a2a10;
+  --bad: #f07a80; --bad-bg: #3b1a1c; --off-bg: #262d2b; --tile-edge: rgba(255, 255, 255, 0.28); --unstickered: #050606; --stage: radial-gradient(circle at 50% 40%, #2a3230 0%, #141817 100%);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px 40px;
+}
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: 28px; letter-spacing: 0.02em; margin: 0; text-transform: uppercase; }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 8px; color: var(--muted); }
+.sub { color: var(--muted); font-size: 13px; }
+.wrap { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
+@media (min-width: 900px) { .wrap { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; } .stage-col { position: sticky; top: env(safe-area-inset-top, 0px); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
+.stack { display: grid; gap: 14px; min-width: 0; }
+.stage { position: relative; background: var(--stage); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; }
+#scene { display: block; width: 100%; height: min(58vh, 520px); touch-action: none; cursor: grab; }
+.stage-tools { position: absolute; right: 8px; top: 8px; display: flex; gap: 6px; }
+.status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }
+.chip { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--off-bg); color: var(--muted); white-space: nowrap; }
+.chip.good { background: var(--good-bg); color: var(--good); font-family: var(--f-body); font-weight: 700; }
+.chip.warn { background: var(--warn-bg); color: var(--warn); font-family: var(--f-body); font-weight: 700; }
+.chip.on { background: var(--good-bg); color: var(--good); font-weight: 600; }
+.chip.off { text-decoration: line-through; text-decoration-thickness: 1px; }
+.message { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; font-size: 14px; }
+.message.error { background: var(--bad-bg); color: var(--bad); }
+.message.ok { background: var(--good-bg); color: var(--good); }
+.message.info { background: var(--off-bg); color: var(--ink); }
+.btn { font: 600 14px var(--f-body); border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 8px 12px; cursor: pointer; min-height: 40px; }
+.btn:hover { border-color: var(--muted); }
+.btn:focus-visible, .mv:focus-visible, .tok:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.small { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.btn.ghost { background: transparent; }
+.btn.danger { background: var(--bad); border-color: var(--bad); color: var(--panel); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.alg-row { display: flex; gap: 8px; }
+.alg-row input { flex: 1; min-width: 0; }
+input[type="text"], textarea { font: 15px var(--f-mono); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; width: 100%; }
+textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: break-all; }
+.mods { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.mods button { font: 600 15px var(--f-mono); padding: 6px 14px; border: 0; background: var(--panel); color: var(--ink); cursor: pointer; min-height: 38px; }
+.mods button.sel { background: var(--ink); color: var(--panel); }
+.pad { display: grid; gap: 10px; margin-top: 10px; }
+.pad-group { display: grid; grid-template-columns: 74px 1fr; gap: 8px; align-items: center; }
+.pad-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); }
+.pad-keys { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.mv { font: 600 16px var(--f-mono); min-height: 42px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; padding: 0; }
+.mv:active { transform: translateY(1px); }
+.mv.outer { border-style: dashed; }
+.mv.blocked { opacity: 0.38; }
+.history { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
+.tok { font: 13px var(--f-mono); border: 0; background: var(--off-bg); color: var(--muted); border-radius: 5px; padding: 3px 6px; cursor: pointer; }
+.tok.done { background: var(--good-bg); color: var(--good); }
+.tok.cur { outline: 2px solid var(--good); }
+.transport { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.counter { font: 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
+.hint { color: var(--muted); font-size: 13px; }
+.effect p { margin: 0; }
+.cycles { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
+.cycles code { font-family: var(--f-mono); word-break: break-word; }
+.net { display: grid; grid-template-columns: repeat(4, minmax(0, 72px)); grid-template-rows: repeat(3, auto); gap: 8px; justify-content: start; }
+.netface { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; aspect-ratio: 1; max-width: 100%; }
+.netface i { display: block; border-radius: 2px; aspect-ratio: 1; box-shadow: inset 0 0 0 1px var(--tile-edge); }
+.netface i.empty { background: transparent; box-shadow: none; }
+.netlabel { position: absolute; left: -2px; top: -15px; font: 600 11px var(--f-display); color: var(--muted); letter-spacing: 0.05em; }
+.saved { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+.saved li { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
+.saved-main { display: grid; min-width: 0; }
+.saved-name { font-weight: 700; overflow-wrap: anywhere; }
+.saved-note { font: 11px var(--f-mono); color: var(--muted); overflow-wrap: anywhere; }
+.saved-actions { display: flex; gap: 4px; flex-shrink: 0; }
+details summary { cursor: pointer; font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-size: 15px; }
+details[open] summary { margin-bottom: 8px; }
+.legend { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+.legend code { font-family: var(--f-mono); color: var(--ink); }
+.speed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .mv:active { transform: none; } }
+</style>
+
+<header>
+  <h1>X-Cube Lab</h1>
+  <span class="sub">White up, green front. Drag to turn the view, pinch to zoom.</span>
+</header>
+
+<div class="wrap">
+  <div class="stage-col">
+    <div class="stage">
+      <canvas id="scene" aria-label="3D view of the X-Cube"></canvas>
+      <div class="stage-tools"><button class="btn small" id="view-reset">Front view</button></div>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+    <p class="message" id="message" hidden></p>
+  </div>
+
+  <div class="stack">
+    <section class="panel">
+      <h2>Run an algorithm</h2>
+      <div class="alg-row">
+        <input type="text" id="alg" placeholder="(R U2)5   or   [R' S' R, b]" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="btn primary" id="run">Run</button>
+        <button class="btn" id="load" title="Load without animating">Load</button>
+      </div>
+      <div class="history" id="history"></div>
+      <div class="transport">
+        <button class="btn small" id="first" aria-label="Back to start">⏮</button>
+        <button class="btn small" id="back" aria-label="Step back">◀</button>
+        <button class="btn small" id="fwd" aria-label="Step forward">▶</button>
+        <button class="btn small" id="last" aria-label="Play to end">⏭</button>
+        <label class="speed" for="speed">Speed <input type="range" id="speed" min="50" max="420" value="250"></label>
+        <span class="counter" id="counter">0 / 0</span>
+      </div>
+      <p class="hint" style="margin:8px 0 0">Start: <strong id="base-label">Solved</strong>.
+        Runs start from the current step. <button class="btn small ghost" id="rebase">Make current position the start</button>
+        <button class="btn small ghost" id="reset">Reset to solved</button></p>
+    </section>
+
+    <section class="panel">
+      <div class="row" style="justify-content:space-between">
+        <h2 style="margin:0">Turn</h2>
+        <div class="mods" role="group" aria-label="Turn amount">
+          <button data-mod="1" aria-label="Clockwise">↻</button><button data-mod="3" aria-label="Counterclockwise">′</button><button data-mod="2" aria-label="Half turn">2</button>
+        </div>
+      </div>
+      <label class="hint" style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="sticky-mod"> Keep ′ or 2 selected after a turn</label>
+      <div class="pad">
+        <div class="pad-group"><span class="pad-label">Inner</span><div class="pad-keys">
+          <button class="mv" data-move="U">U</button><button class="mv" data-move="D">D</button><button class="mv" data-move="F">F</button><button class="mv" data-move="B">B</button><button class="mv" data-move="L">L</button><button class="mv" data-move="R">R</button>
+        </div></div>
+        <div class="pad-group"><span class="pad-label">Outer</span><div class="pad-keys">
+          <button class="mv outer" data-move="f">f</button><button class="mv outer" data-move="b">b</button><button class="mv outer" data-move="l">l</button><button class="mv outer" data-move="r">r</button><button class="mv outer" data-move="u">u</button><button class="mv outer" data-move="d">d</button>
+        </div></div>
+        <div class="pad-group"><span class="pad-label">Slices</span><div class="pad-keys">
+          <button class="mv" data-move="H">H</button><button class="mv" data-move="M">M</button><button class="mv" data-move="S">S</button>
+          <button class="mv" data-move="x">x</button><button class="mv" data-move="y">y</button><button class="mv" data-move="z">z</button>
+        </div></div>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn small" id="undo">Undo last turn</button></div>
+      <p class="legend">Outer turns are dashed and fade when that extension is incomplete. <code>H</code> turns the middle layer like <code>U</code>. <code>M</code> turns like <code>L</code>, <code>S</code> like <code>F</code>. <code>x y z</code> turn the whole puzzle.</p>
+    </section>
+
+    <section class="panel effect">
+      <h2>What changed since the start</h2>
+      <div id="effect"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Flat view</h2>
+      <div class="net" id="net"></div>
+      <p class="legend">The first face you'd see looking straight at each side. Dark squares are cubelet faces with no sticker.</p>
+    </section>
+
+    <section class="panel">
+      <div class="row" style="justify-content:space-between"><h2 style="margin:0">Saved states</h2><span class="chip" id="store-kind">Loading</span></div>
+      <div class="alg-row" style="margin-top:8px">
+        <input type="text" id="save-name" placeholder="Name this position" autocomplete="off">
+        <button class="btn primary" id="save">Save</button>
+      </div>
+      <ul class="saved" id="saved-list"></ul>
+      <details style="margin-top:12px">
+        <summary>State code</summary>
+        <p class="hint" style="margin:0 0 6px">A text copy of the current position. Paste it into a chat with Claude, or import one here.</p>
+        <textarea id="code-out" readonly aria-label="Current state code"></textarea>
+        <div class="row" style="margin:6px 0 10px"><button class="btn small" id="copy-code">Copy</button></div>
+        <textarea id="code-in" placeholder="Paste a state code (starts with X1:)" aria-label="State code to import"></textarea>
+        <div class="row" style="margin-top:6px"><button class="btn small" id="import">Import as start</button></div>
+      </details>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>/*__APP__*/</script>
