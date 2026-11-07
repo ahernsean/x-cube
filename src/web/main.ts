@@ -68,12 +68,15 @@ const qmul = (a: Quat, b: Quat): Quat => [
   a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
 ];
 const HALF = Math.PI / 2;
+// Side views tip the top toward you by 16.6 degrees (from the owner's saved "Front" view).
+const SIDE_TILT = 0.29;
+const tilted = (yaw: number): Quat => qmul(axisQuat(1, 0, 0, SIDE_TILT), axisQuat(0, 1, 0, yaw));
 export const VIEWS: Record<string, Quat> = {
   home: qmul(axisQuat(1, 0, 0, 0.5), axisQuat(0, 1, 0, -0.62)),
-  front: [0, 0, 0, 1],
-  back: axisQuat(0, 1, 0, Math.PI),
-  left: axisQuat(0, 1, 0, HALF),
-  right: axisQuat(0, 1, 0, -HALF),
+  front: tilted(0),
+  back: tilted(Math.PI),
+  left: tilted(HALF),
+  right: tilted(-HALF),
   top: axisQuat(1, 0, 0, HALF),
   bottom: axisQuat(1, 0, 0, -HALF),
 };
@@ -207,8 +210,9 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-// One finger (or mouse) drags to tumble the puzzle; two fingers twist it
-// around the axis pointing out of the screen.
+// One finger (or mouse): sliding sideways spins the puzzle around its own
+// vertical (U-D) axis, like a turntable; sliding up and down tips it toward or
+// away from you. Two fingers twist it around the axis pointing out of the screen.
 function bindOrbit(el: HTMLElement) {
   const pts = new Map<number, { x: number; y: number }>();
   let twist: number | null = null;
@@ -233,7 +237,10 @@ function bindOrbit(el: HTMLElement) {
     const dy = e.clientY - prev.y;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pts.size === 1) {
-      spin(qmul(axisQuat(0, 1, 0, dx * 0.01), axisQuat(1, 0, 0, dy * 0.01)));
+      tween = null;
+      const yaw = axisQuat(0, 1, 0, dx * 0.01);
+      pivot.quaternion.multiply(new THREE.Quaternion(yaw[0], yaw[1], yaw[2], yaw[3]));
+      spin(axisQuat(1, 0, 0, dy * 0.01));
     } else if (pts.size === 2 && twist !== null) {
       const a = angleOf();
       let d = a - twist;
