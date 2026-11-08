@@ -2,7 +2,7 @@
 // three.js r128 is loaded as a global from cdnjs by the page.
 
 import { isHomeX, isSolved, isXShape, isExposed, outerAvailability, effect } from "../core/analyze.ts";
-import { DIRS, ROT_DIR, ROTATIONS } from "../core/geometry.ts";
+import { DIRS, ROT_DIR, ROTATIONS, matVec, type Vec3 } from "../core/geometry.ts";
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
   CUBELETS,
@@ -14,6 +14,7 @@ import {
   State,
   applyTurn,
   blockedReason,
+  slotAt,
   turnName,
   type Color,
   type Turn,
@@ -129,12 +130,12 @@ function initScene(canvas: HTMLCanvasElement) {
   const netOccluderMat = new THREE.MeshBasicMaterial({ colorWrite: false });
   const netMats = new Map<Color, any>();
   const netMatFor = (c: Color) => {
-    if (!netMats.has(c)) netMats.set(c, new THREE.MeshBasicMaterial({ color: STICKER[c] }));
+    if (!netMats.has(c)) netMats.set(c, new THREE.MeshBasicMaterial({ color: STICKER[c], vertexColors: true }));
     return netMats.get(c);
   };
-  const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark) });
+  const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark), vertexColors: true });
   const matFor = (c: Color) => {
-    if (!mats.has(c)) mats.set(c, new THREE.MeshLambertMaterial({ color: STICKER[c] }));
+    if (!mats.has(c)) mats.set(c, new THREE.MeshLambertMaterial({ color: STICKER[c], vertexColors: true }));
     return mats.get(c);
   };
   // local face d -> plane placement
@@ -150,13 +151,16 @@ function initScene(canvas: HTMLCanvasElement) {
   for (const c of CUBELETS) {
     const g = new THREE.Group();
     g.add(new THREE.Mesh(body, bodyMat));
+    const aoList: AoFace[] = [];
+    aoFaces[c.id] = aoList;
     c.stickers.forEach((col, d) => {
       if (!col) return;
-      const m = new THREE.Mesh(plane, matFor(col));
+      const m = new THREE.Mesh(withAoColors(plane), matFor(col));
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px, py, pz);
       m.rotation.set(rx, ry, 0);
       g.add(m);
+      aoList.push(aoFace(m, d, "3d"));
     });
     // Flat-view faces: unlit, one per face, seen only by the flat view's cameras (layer 2).
     // An invisible occluder (depth only, drawn first) keeps deeper cubelets from
@@ -167,12 +171,13 @@ function initScene(canvas: HTMLCanvasElement) {
     g.add(occluder);
     for (let d = 0; d < 6; d++) {
       const col = c.stickers[d];
-      const m = new THREE.Mesh(netPlane, col ? netMatFor(col) : netDarkMat);
+      const m = new THREE.Mesh(withAoColors(netPlane), col ? netMatFor(col) : netDarkMat);
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px / 0.4945 * 0.5, py / 0.4945 * 0.5, pz / 0.4945 * 0.5);
       m.rotation.set(rx, ry, 0);
       m.layers.set(NET_LAYER);
       g.add(m);
+      aoList.push(aoFace(m, d, "flat"));
     }
     // Edge glow: for every pair of adjacent faces (a, b), a soft band lying in face a's
     // plane, starting at the shared edge and fading outward, in face b's color. It is
@@ -228,6 +233,102 @@ function syncMeshes(st: State) {
     for (const gl of glows[id] ?? []) {
       gl.mesh.visible = isExposed(st, s, ROT_DIR[o * 6 + gl.a]) && isExposed(st, s, ROT_DIR[o * 6 + gl.b]);
     }
+    for (const f of aoFaces[id] ?? []) shadeFace(st, s, o, f);
+  }
+}
+
+// ------------------------------------------------------------------ corner shading (ambient occlusion)
+//
+// Grid-based ambient occlusion, as in block-building games. For each corner of a
+// visible face, look at the three grid spots in front of the face around that corner
+// (two along the edges, one diagonal). Filled spots darken the corner; both edge
+// spots filled makes it darkest. Corners blend smoothly across the face. Cubelets
+// flush with the face (same plane) don't count, so flat surfaces get no lines.
+
+interface AoFace {
+  mesh: any;
+  d: number; // face direction in the cubelet's own frame
+  ux: Vec3; // the plane's local x axis, in the cubelet's own frame
+  uy: Vec3;
+  view: "3d" | "flat";
+}
+const aoFaces: AoFace[][] = [];
+const AO_LEVELS = [0.5, 0.67, 0.83, 1];
+// PlaneGeometry(w, h, 1, 1) vertex order: (-x,+y), (+x,+y), (-x,-y), (+x,-y)
+const CORNER_SIGNS: [number, number][] = [
+  [-1, 1],
+  [1, 1],
+  [-1, -1],
+  [1, -1],
+];
+const AO_KEY = "xcube-lab-shading";
+const aoOn = (() => {
+  try {
+    return { "3d": true, flat: true, ...JSON.parse(localStorage.getItem(AO_KEY) || "{}") } as { "3d": boolean; flat: boolean };
+  } catch {
+    return { "3d": true, flat: true };
+  }
+})();
+
+function withAoColors(geo: any) {
+  const g = geo.clone();
+  g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(12).fill(1), 3));
+  return g;
+}
+
+function aoFace(mesh: any, d: number, view: "3d" | "flat"): AoFace {
+  const round = (v: any): Vec3 => [Math.round(v.x), Math.round(v.y), Math.round(v.z)];
+  return {
+    mesh,
+    d,
+    ux: round(new THREE.Vector3(1, 0, 0).applyEuler(mesh.rotation)),
+    uy: round(new THREE.Vector3(0, 1, 0).applyEuler(mesh.rotation)),
+    view,
+  };
+}
+
+function filledAt(st: State, p: Vec3): boolean {
+  if (p[0] === 0 && p[1] === 0 && p[2] === 0) return true; // the solid center
+  const s = slotAt(p);
+  return s >= 0 && st.occ[s] >= 0;
+}
+
+function shadeFace(st: State, slot: number, ori: number, f: AoFace) {
+  const col = f.mesh.geometry.attributes.color;
+  const arr = col.array as Float32Array;
+  if (!aoOn[f.view]) {
+    if (arr[0] !== 1 || arr[3] !== 1 || arr[6] !== 1 || arr[9] !== 1) {
+      arr.fill(1);
+      col.needsUpdate = true;
+    }
+    return;
+  }
+  const R = ROTATIONS[ori];
+  const p = SLOT_POS[slot];
+  const n = matVec(R, DIRS[f.d]);
+  const ux = matVec(R, f.ux);
+  const uy = matVec(R, f.uy);
+  const front: Vec3 = [p[0] + n[0], p[1] + n[1], p[2] + n[2]];
+  for (let k = 0; k < 4; k++) {
+    const [sx, sy] = CORNER_SIGNS[k];
+    const a: Vec3 = [front[0] + sx * ux[0], front[1] + sx * ux[1], front[2] + sx * ux[2]];
+    const b: Vec3 = [front[0] + sy * uy[0], front[1] + sy * uy[1], front[2] + sy * uy[2]];
+    const c: Vec3 = [a[0] + sy * uy[0], a[1] + sy * uy[1], a[2] + sy * uy[2]];
+    const s1 = filledAt(st, a) ? 1 : 0;
+    const s2 = filledAt(st, b) ? 1 : 0;
+    const level = s1 && s2 ? 0 : 3 - (s1 + s2 + (filledAt(st, c) ? 1 : 0));
+    const v = AO_LEVELS[level];
+    arr[k * 3] = arr[k * 3 + 1] = arr[k * 3 + 2] = v;
+  }
+  col.needsUpdate = true;
+}
+
+function applyShadingSettings() {
+  syncMeshes(app.current);
+  try {
+    localStorage.setItem(AO_KEY, JSON.stringify(aoOn));
+  } catch {
+    /* storage unavailable */
   }
 }
 
@@ -995,6 +1096,14 @@ function bindUI() {
     });
   $("speed").addEventListener("input", (e) => (speedMs = speedFromSlider(Number((e.target as HTMLInputElement).value))));
   bindMoveButtons();
+  for (const [id, key] of [["shade-3d", "3d"], ["shade-flat", "flat"]] as const) {
+    const box = $(id) as HTMLInputElement;
+    box.checked = aoOn[key];
+    box.addEventListener("change", () => {
+      aoOn[key] = box.checked;
+      if (!anim) applyShadingSettings();
+    });
+  }
   for (const [id, key] of [["glow-3d", "3d"], ["glow-flat", "flat"]] as const) {
     const box = $(id) as HTMLInputElement;
     box.checked = glowOn[key];
