@@ -1096,22 +1096,19 @@ function bindUI() {
     });
   $("speed").addEventListener("input", (e) => (speedMs = speedFromSlider(Number((e.target as HTMLInputElement).value))));
   bindMoveButtons();
-  for (const [id, key] of [["shade-3d", "3d"], ["shade-flat", "flat"]] as const) {
-    const box = $(id) as HTMLInputElement;
-    box.checked = aoOn[key];
-    box.addEventListener("change", () => {
-      aoOn[key] = box.checked;
-      if (!anim) applyShadingSettings();
-    });
-  }
-  for (const [id, key] of [["glow-3d", "3d"], ["glow-flat", "flat"]] as const) {
-    const box = $(id) as HTMLInputElement;
-    box.checked = glowOn[key];
-    box.addEventListener("change", () => {
-      glowOn[key] = box.checked;
-      applyGlowSettings();
-    });
-  }
+  // One switch each for glow and shading; each applies to both the 3D and flat views.
+  const shade = $("shade") as HTMLInputElement;
+  shade.checked = aoOn["3d"] && aoOn.flat;
+  shade.addEventListener("change", () => {
+    aoOn["3d"] = aoOn.flat = shade.checked;
+    if (!anim) applyShadingSettings();
+  });
+  const glow = $("glow") as HTMLInputElement;
+  glow.checked = glowOn["3d"] && glowOn.flat;
+  glow.addEventListener("change", () => {
+    glowOn["3d"] = glowOn.flat = glow.checked;
+    applyGlowSettings();
+  });
   $("save").addEventListener("click", () => {
     const n = $("save-name") as HTMLInputElement;
     saveCurrent(n.value.trim(), "");
