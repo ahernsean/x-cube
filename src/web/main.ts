@@ -732,6 +732,99 @@ function resize() {
   const vHalf = (camera.fov * Math.PI) / 360;
   const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
   camera.position.set(0, 0, Math.max(12.5, 3.35 / Math.sin(Math.min(vHalf, hHalf))));
+  if (composer) {
+    aoCam.copy(camera);
+    aoCam.layers.set(0);
+    composer.setSize(w, h);
+  }
+}
+
+// ------------------------------------------------------------------ SAO trial
+//
+// Screen-space ambient obscurance (McGuire et al. 2012) via three.js r128's SAOPass, for the
+// 3D view only. The scene (with glow) is rendered normally, then SAOPass renders depth and
+// normals from a camera that sees only the cubelets (layer 0) so the glow casts no
+// shadow, and multiplies the obscurance onto the image. While it's on, the grid shading
+// is off in the 3D view (the flat view keeps it).
+
+let composer: any = null;
+let saoPass: any = null;
+let aoCam: any = null;
+let saoOn = false;
+const SAO_KEY = "xcube-lab-sao";
+
+function initSao(): boolean {
+  if (composer) return true;
+  if (!THREE.EffectComposer || !THREE.SAOPass || !THREE.RenderPass) return false;
+  composer = new THREE.EffectComposer(renderer);
+  composer.addPass(new THREE.RenderPass(scene, camera));
+  aoCam = camera.clone();
+  aoCam.layers.set(0);
+  saoPass = new THREE.SAOPass(scene, aoCam, true, true);
+  // r128 bug: with depth textures on, the constructor hands the shaders its boolean
+  // argument instead of the depth texture it created. Point them at the real one.
+  const depthTex = saoPass.beautyRenderTarget.depthTexture;
+  if (depthTex) for (const m of [saoPass.saoMaterial, saoPass.vBlurMaterial, saoPass.hBlurMaterial]) m.uniforms.tDepth.value = depthTex;
+  Object.assign(saoPass.params, SAO_PARAMS);
+  composer.addPass(saoPass);
+  resize();
+  return true;
+}
+
+// Tuned by comparing renders of the occlusion term alone (output: 2) with the result.
+const SAO_PARAMS = {
+  saoBias: 0.5,
+  saoIntensity: 0.14,
+  saoScale: 2,
+  saoKernelRadius: 24,
+  saoMinResolution: 0,
+  saoBlur: true,
+  saoBlurRadius: 8,
+  saoBlurStdDev: 4,
+  saoBlurDepthCutoff: 0.002,
+};
+
+/** For tuning: read or change SAO parameters (e.g. { output: 2 } shows only the occlusion). */
+(window as any).__xcubeSao = (params?: Record<string, number | boolean>) => {
+  if (!saoPass) return null;
+  if (params) Object.assign(saoPass.params, params);
+  return { ...saoPass.params };
+};
+
+function setSao(on: boolean) {
+  if (on && !initSao()) {
+    setMessage("The SAO effect couldn't load in this browser.", "error");
+    render();
+    return;
+  }
+  saoOn = on;
+  try {
+    localStorage.setItem(SAO_KEY, on ? "1" : "0");
+  } catch {
+    /* storage unavailable */
+  }
+  // Grid shading in the 3D view is off while SAO is on; the flat view keeps its setting.
+  aoOn["3d"] = !on && aoOn.flat;
+  syncMeshes(app.current);
+}
+
+// Frames per second, smoothed, for judging the cost on a device.
+let fpsLast = 0;
+let fpsAvg = 60;
+let fpsShown = "";
+function tickFps() {
+  const now = performance.now();
+  if (fpsLast) {
+    const dt = now - fpsLast;
+    if (dt > 0 && dt < 1000) fpsAvg = fpsAvg * 0.95 + (1000 / dt) * 0.05;
+  }
+  fpsLast = now;
+  const text = `${Math.round(fpsAvg)} fps`;
+  if (text !== fpsShown) {
+    fpsShown = text;
+    const el = document.getElementById("fps");
+    if (el) el.textContent = text;
+  }
 }
 
 // Edge labels: which face of the puzzle points up, down, left, right and at you.
@@ -779,7 +872,9 @@ function frame() {
   tickSettle();
   updateCompass();
   renderNetAnimation();
-  renderer.render(scene, camera);
+  if (saoOn && composer) composer.render();
+  else renderer.render(scene, camera);
+  tickFps();
   requestAnimationFrame(frame);
 }
 
@@ -1734,6 +1829,21 @@ function bindUI() {
   shade.addEventListener("change", () => {
     aoOn["3d"] = aoOn.flat = shade.checked;
     if (!anim) applyShadingSettings();
+    if (saoOn) setSao(true); // keep grid shading off in 3D while SAO is on
+  });
+  const sao = $("sao") as HTMLInputElement;
+  let saoWanted = false;
+  try {
+    saoWanted = localStorage.getItem(SAO_KEY) === "1";
+  } catch {
+    /* storage unavailable */
+  }
+  sao.checked = saoWanted;
+  if (saoWanted) setTimeout(() => setSao(true), 0);
+  sao.addEventListener("change", () => {
+    flushAnimations();
+    setSao(sao.checked);
+    sao.checked = saoOn;
   });
   const glow = $("glow") as HTMLInputElement;
   glow.checked = glowOn["3d"] && glowOn.flat;
