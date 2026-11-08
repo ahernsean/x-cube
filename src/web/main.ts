@@ -114,10 +114,10 @@ function initScene(canvas: HTMLCanvasElement) {
   // Cubelets nearly touch, as on the real puzzle: a hairline gap between them.
   // Rounded like a real cube's plastic. Dark gray, not black, so that inside faces
   // facing different ways can be told apart by their shading.
-  const body = roundedBox(0.985, 0.1, 3);
+  const body = roundedBox(0.985, BODY_RADIUS, 3);
   const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3a3e41 });
   // Stickers sit on the flat part of each face, with rounded corners.
-  const plane = roundedSquare(0.76, 0.1);
+  const plane = roundedSquare(0.82, 0.07);
   const mats = new Map<Color, any>();
   const dark = getComputedStyle(document.documentElement).getPropertyValue("--unstickered").trim() || "#2b2f2e";
   const netPlane = new THREE.PlaneGeometry(0.92, 0.92);
@@ -200,7 +200,7 @@ function initScene(canvas: HTMLCanvasElement) {
         const B = new THREE.Vector3(...DIRS[b]);
         const X = new THREE.Vector3().crossVectors(B, A);
         m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, B, A));
-        m.position.copy(A.clone().multiplyScalar(0.499)).add(B.clone().multiplyScalar(GLOW_START + GLOW_WIDTH / 2));
+        m.position.copy(A.clone().multiplyScalar(GLOW_DEPTH)).add(B.clone().multiplyScalar(GLOW_START + GLOW_WIDTH / 2));
         m.layers.set(GLOW3D_LAYER);
         m.layers.enable(GLOWNET_LAYER);
         m.renderOrder = 2;
@@ -411,8 +411,14 @@ function applyShadingSettings() {
 
 const GLOW3D_LAYER = 3;
 const GLOWNET_LAYER = 4;
-const GLOW_START = 0.46; // starts just under the sticker edge, so it reads as attached
-const GLOW_WIDTH = 0.44;
+const BODY_RADIUS = 0.05; // rounding of cubelet edges
+// The glow band lies just below the face's surface (GLOW_DEPTH) and starts under the
+// cubelet (GLOW_START), so the cubelet hides its inner part and the glow appears to
+// come from right under the cubelet's edge from any viewing angle, with no gap.
+const GLOW_DEPTH = 0.47;
+const GLOW_START = 0.36;
+const GLOW_WIDTH = 0.56;
+const GLOW_SOLID = (0.495 - GLOW_START) / GLOW_WIDTH; // fraction kept at full strength (to just past the edge)
 const glows: { mesh: any; a: number; b: number }[][] = [];
 const GLOW_KEY = "xcube-lab-glow";
 const glowOn = (() => {
@@ -478,7 +484,8 @@ function makeGlowTexture() {
       const u = x / (W - 1);
       const v = 1 - y / (H - 1); // 0 at the edge (bottom of the image)
       const ends = smooth(Math.min(u, 1 - u) / 0.22);
-      const a = Math.pow(1 - v, 1.8) * ends;
+      const fade = v <= GLOW_SOLID ? 1 : Math.pow(1 - (v - GLOW_SOLID) / (1 - GLOW_SOLID), 1.8);
+      const a = fade * ends;
       const i = (y * W + x) * 4;
       img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
       img.data[i + 3] = Math.round(a * 235);
@@ -533,6 +540,8 @@ function updateCompass() {
     const el = document.getElementById(`compass-${where}`);
     if (!el) continue;
     const c = faceCenterColor(app.current, d);
+    el.dataset.face = String(d);
+    el.setAttribute("aria-label", `Look at the ${COMPASS_FACES[d]} face`);
     el.innerHTML = `<i style="background:${c ? NET_COLOR[c] : "transparent"}"></i>${where === "toward" ? "Facing you: " : ""}${COMPASS_FACES[d]}`;
   }
 }
@@ -1483,6 +1492,13 @@ function bindUI() {
       const name = b.dataset.view!;
       const q = VIEWS[name];
       if (q) goToView(q);
+    });
+  // Tapping an edge label turns the view to look straight at that face.
+  const FACE_VIEW = ["right", "left", "top", "bottom", "front", "back"];
+  for (const el of document.querySelectorAll<HTMLElement>(".cmp"))
+    el.addEventListener("click", () => {
+      const d = Number(el.dataset.face);
+      if (Number.isInteger(d)) goToView(VIEWS[FACE_VIEW[d]]);
     });
   $("speed").addEventListener("input", (e) => (speedMs = speedFromSlider(Number((e.target as HTMLInputElement).value))));
   bindMoveButtons();

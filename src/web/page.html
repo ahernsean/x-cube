@@ -64,7 +64,9 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .view-toggles-row { display: flex; justify-content: flex-end; margin-top: 6px; }
 /* Orientation labels around the 3D view: the face pointing each way. */
 .compass { position: absolute; inset: 0; pointer-events: none; font: 700 13px var(--f-display); letter-spacing: 0.05em; color: var(--muted); }
-.cmp { position: absolute; display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 999px; background: color-mix(in srgb, var(--panel) 75%, transparent); }
+.cmp { position: absolute; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 0; border-radius: 999px; font: inherit; color: inherit; letter-spacing: inherit; background: color-mix(in srgb, var(--panel) 75%, transparent); pointer-events: auto; cursor: pointer; }
+.cmp:hover { color: var(--ink); }
+.cmp:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .cmp i { width: 9px; height: 9px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--tile-edge); }
 .cmp.up { top: 6px; left: 50%; transform: translateX(-50%); }
 .cmp.down { bottom: 6px; left: 50%; transform: translateX(-50%); }
@@ -169,12 +171,12 @@ details[open] summary { margin-bottom: 8px; }
   <div class="stage-col">
     <div class="stage">
       <canvas id="scene" aria-label="3D view of the X-Cube"></canvas>
-      <div class="compass" aria-hidden="true">
-        <span class="cmp up" id="compass-up"></span>
-        <span class="cmp down" id="compass-down"></span>
-        <span class="cmp left" id="compass-left"></span>
-        <span class="cmp right" id="compass-right"></span>
-        <span class="cmp toward" id="compass-toward"></span>
+      <div class="compass" role="group" aria-label="Look at a face">
+        <button class="cmp up" id="compass-up"></button>
+        <button class="cmp down" id="compass-down"></button>
+        <button class="cmp left" id="compass-left"></button>
+        <button class="cmp right" id="compass-right"></button>
+        <button class="cmp toward" id="compass-toward"></button>
       </div>
     </div>
     <div class="views" role="group" aria-label="Views">
