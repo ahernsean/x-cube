@@ -115,7 +115,9 @@ function initScene(canvas: HTMLCanvasElement) {
   // Rounded like a real cube's plastic. Dark gray, not black, so that inside faces
   // facing different ways can be told apart by their shading.
   const body = roundedBox(0.985, BODY_RADIUS, 3);
-  const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3a3e41 });
+  // Glossy plastic: small, tight highlights that slide along the rounded edges and
+  // corners as the cube tumbles (the lights stay put while the puzzle turns).
+  const bodyMat = new THREE.MeshPhongMaterial({ color: 0x3a3e41, specular: 0x5a5e62, shininess: 70 });
   // Stickers sit on the flat part of each face, with rounded corners.
   const plane = roundedSquare(0.82, 0.07);
   const mats = new Map<Color, any>();
@@ -140,7 +142,7 @@ function initScene(canvas: HTMLCanvasElement) {
   };
   const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark), vertexColors: true });
   const matFor = (c: Color) => {
-    if (!mats.has(c)) mats.set(c, new THREE.MeshLambertMaterial({ color: STICKER[c], vertexColors: true }));
+    if (!mats.has(c)) mats.set(c, new THREE.MeshPhongMaterial({ color: STICKER[c], vertexColors: true, specular: 0x1c1c1c, shininess: 22 }));
     return mats.get(c);
   };
   // local face d -> plane placement
