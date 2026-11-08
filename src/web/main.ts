@@ -95,11 +95,13 @@ function initScene(canvas: HTMLCanvasElement) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
-  scene.add(new THREE.AmbientLight(0xffffff, 0.72));
-  const key = new THREE.DirectionalLight(0xffffff, 0.55);
+  // Ambient + key light sum to 1.0 at most, so no face saturates: a fully lit
+  // yellow must stay clearly yellow next to white.
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const key = new THREE.DirectionalLight(0xffffff, 0.4);
   key.position.set(4, 9, 7);
   scene.add(key);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.25);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.22);
   fill.position.set(-6, -4, -5);
   scene.add(fill);
   pivot = new THREE.Group();
