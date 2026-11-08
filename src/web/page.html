@@ -59,6 +59,8 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .views { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
 .gesture-hint { margin: 8px 0 0; }
 .stage.tumbling { box-shadow: 0 0 0 2px var(--accent); }
+/* Long presses on the 3D view are gestures: no text selection, magnifier or callout. */
+.stage-col, .stage, #scene { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .view-toggles { margin-left: auto; display: flex; gap: 12px; }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }

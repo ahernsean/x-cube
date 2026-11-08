@@ -650,6 +650,11 @@ function cancelLiveTurn() {
 
 function bindOrbit(el: HTMLElement) {
   const stage = el.parentElement!;
+  // iOS starts text selection / the callout on a long press unless the touch's default
+  // action is cancelled. Pointer events still arrive after this.
+  el.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+  el.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+  for (const t of ["contextmenu", "selectstart", "dragstart"]) el.addEventListener(t, (e) => e.preventDefault());
   const pts = new Map<number, { x: number; y: number }>();
   let twist: number | null = null;
   // A finger that went down on the cube and hasn't yet become a turn or a tumble.
