@@ -57,7 +57,6 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .stage { position: relative; background: var(--stage); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; }
 #scene { display: block; width: 100%; height: min(58vh, 520px); touch-action: none; cursor: grab; }
 .views { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.mv.rot { background: var(--panel); }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }
 .chip { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--off-bg); color: var(--muted); white-space: nowrap; }
@@ -94,6 +93,14 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .mv.blocked { opacity: 0.38; }
 .mv { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
 .mv.inverted { background: var(--ink); color: var(--panel); border-color: var(--ink); opacity: 1; }
+.turn-head { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.turn-head h2 { margin: 0; align-self: center; }
+.turn-head #undo { margin-right: auto; }
+.mod-col { display: grid; justify-items: end; gap: 4px; }
+.keep { display: flex; gap: 6px; align-items: center; }
+.tp { min-width: 44px; font-size: 15px; }
+.tp sub { font-size: 9px; margin-left: 1px; }
+.tp.stop { background: var(--ink); color: var(--panel); border-color: var(--ink); }
 .history { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
 .tok { font: 13px var(--f-mono); border: 0; background: var(--off-bg); color: var(--muted); border-radius: 5px; padding: 3px 6px; cursor: pointer; }
 .tok.done { background: var(--good-bg); color: var(--good); }
@@ -104,12 +111,20 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .effect p { margin: 0; }
 .cycles { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
 .cycles code { font-family: var(--f-mono); word-break: break-word; }
-.net { display: grid; grid-template-columns: repeat(4, minmax(0, 72px)); grid-template-rows: repeat(3, auto); gap: 8px; justify-content: start; }
-.netface { position: relative; display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; aspect-ratio: 1; max-width: 100%; }
-.netface i { display: block; border-radius: 2px; aspect-ratio: 1; box-shadow: inset 0 0 0 1px var(--tile-edge); }
-.netface i.empty { background: transparent; box-shadow: none; }
-/* Each face's top-left corner cell can never hold a cubelet, so the label sits there. */
-.netlabel { position: absolute; left: 0; top: 0; width: 20%; aspect-ratio: 1; display: grid; place-items: center; font: 700 12px var(--f-display); color: var(--muted); letter-spacing: 0.04em; }
+.net { display: grid; grid-template-columns: repeat(4, minmax(0, 100px)); grid-template-rows: repeat(3, auto); gap: 6px; justify-content: start; }
+.netface { position: relative; display: grid; grid-template-columns: 0.55fr repeat(5, 1fr) 0.55fr; grid-template-rows: 0.55fr repeat(5, 1fr) 0.55fr; gap: 1px; aspect-ratio: 1; max-width: 100%; }
+.netface i { display: block; position: relative; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--tile-edge); }
+.netface i.e { background: transparent; box-shadow: none; }
+/* Rim bars: the side color of the neighboring cubelet, drawn against the edge it faces. */
+.netface b { position: absolute; border-radius: 1.5px; box-shadow: inset 0 0 0 1px var(--tile-edge); }
+.netface b.bt { top: 0; left: 10%; right: 10%; height: 38%; }
+.netface b.bb { bottom: 0; left: 10%; right: 10%; height: 38%; }
+.netface b.bl { left: 0; top: 10%; bottom: 10%; width: 38%; }
+.netface b.br { right: 0; top: 10%; bottom: 10%; width: 38%; }
+.netface i.ring b.bt, .netface i.ring b.bb { height: 75%; }
+.netface i.ring b.bl, .netface i.ring b.br { width: 75%; }
+/* The label sits in the top-left corner of the ring, which never shows a cubelet or a rim bar. */
+.netlabel { position: absolute; left: 0; top: -2px; font: 700 12px var(--f-display); color: var(--muted); letter-spacing: 0.04em; pointer-events: none; }
 .saved { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .saved li { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
 .saved-main { display: grid; min-width: 0; }
@@ -126,7 +141,6 @@ details[open] summary { margin-bottom: 8px; }
 
 <header>
   <h1>X-Cube Lab</h1>
-  <span class="sub">White up, green front. Drag to tumble the view; twist two fingers to spin it.</span>
 </header>
 
 <div class="wrap">
@@ -157,10 +171,10 @@ details[open] summary { margin-bottom: 8px; }
       </div>
       <div class="history" id="history"></div>
       <div class="transport">
-        <button class="btn small" id="first" aria-label="Back to start">⏮</button>
-        <button class="btn small" id="back" aria-label="Step back">◀</button>
-        <button class="btn small" id="fwd" aria-label="Step forward">▶</button>
-        <button class="btn small" id="last" aria-label="Play to end">⏭</button>
+        <button class="btn small tp" id="first" aria-label="Back to the start" title="Back to the start">⏮</button>
+        <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
+        <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
+        <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
         <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="42"></label>
         <span class="counter" id="counter">0 / 0</span>
       </div>
@@ -170,13 +184,16 @@ details[open] summary { margin-bottom: 8px; }
     </section>
 
     <section class="panel">
-      <div class="row" style="justify-content:space-between">
-        <h2 style="margin:0">Turn</h2>
-        <div class="mods" role="group" aria-label="Turn amount">
-          <button data-mod="1" aria-label="Clockwise">↻</button><button data-mod="3" aria-label="Counterclockwise">′</button><button data-mod="2" aria-label="Half turn">2</button>
+      <div class="turn-head">
+        <h2>Turn</h2>
+        <button class="btn small" id="undo">Undo last turn</button>
+        <div class="mod-col">
+          <div class="mods" role="group" aria-label="Turn amount">
+            <button data-mod="1" aria-label="Clockwise">↻</button><button data-mod="3" aria-label="Counterclockwise">′</button><button data-mod="2" aria-label="Half turn">2</button>
+          </div>
+          <label class="hint keep" for="sticky-mod"><input type="checkbox" id="sticky-mod"> Keep ′ or 2 selected</label>
         </div>
       </div>
-      <label class="hint" style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="sticky-mod"> Keep ′ or 2 selected after a turn</label>
       <div class="pad">
         <div class="pad-group"><span class="pad-label">Inner</span><div class="pad-keys">
           <button class="mv" data-move="U">U</button><button class="mv" data-move="D">D</button><button class="mv" data-move="F">F</button><button class="mv" data-move="B">B</button><button class="mv" data-move="L">L</button><button class="mv" data-move="R">R</button>
@@ -188,10 +205,9 @@ details[open] summary { margin-bottom: 8px; }
           <button class="mv" data-move="H">H</button><button class="mv" data-move="M">M</button><button class="mv" data-move="S">S</button>
         </div></div>
         <div class="pad-group"><span class="pad-label">Rotate</span><div class="pad-keys">
-          <button class="mv rot" data-move="x">x</button><button class="mv rot" data-move="y">y</button><button class="mv rot" data-move="z">z</button>
+          <button class="mv" data-move="x">x</button><button class="mv" data-move="y">y</button><button class="mv" data-move="z">z</button>
         </div></div>
       </div>
-      <div class="row" style="margin-top:10px"><button class="btn small" id="undo">Undo last turn</button></div>
       <p class="legend">Tap a turn to do it; hold it until it flips (U becomes U′) and release to turn the other way. Slide off to cancel. Outer turns are dashed and fade when that extension is incomplete. <code>H</code> turns the middle layer like <code>U</code>. <code>M</code> turns like <code>L</code>, <code>S</code> like <code>F</code>. Rotate turns the whole puzzle: <code>x</code> like <code>R</code>, <code>y</code> like <code>U</code>, <code>z</code> like <code>F</code>.</p>
     </section>
 

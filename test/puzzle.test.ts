@@ -214,3 +214,21 @@ test("x/y/z rotations keep the puzzle looking solved", () => {
     assert.ok(isSolved(st), a);
   }
 });
+
+test("flat view rim: the U face shows each neighbor's color, including the 90-degree sides in the notches", async () => {
+  const { faceRimView } = await import("../src/core/analyze.ts");
+  const g = faceRimView(State.solved(), 2); // U, back at the top of the page
+  // ring above the back extension shows blue (the back extension's back faces)
+  assert.deepEqual([2, 3, 4].map((C) => g[0][C].bottom), ["B", "B", "B"]);
+  // notch at the back-left corner: back extension's left side is orange, left extension's back side is blue
+  assert.equal(g[1][1].face, null);
+  assert.equal(g[1][1].right, "O");
+  assert.equal(g[1][1].bottom, "B");
+  // ring left of the left extension shows orange; ring below the front extension shows green
+  assert.deepEqual([2, 3, 4].map((R) => g[R][0].right), ["O", "O", "O"]);
+  assert.deepEqual([2, 3, 4].map((C) => g[6][C].top), ["G", "G", "G"]);
+  // F face (5 wide, 3 tall): the ring above shows white, the empty top row of the 5x5 too
+  const f = faceRimView(State.solved(), 4);
+  assert.deepEqual([1, 2, 3, 4, 5].map((C) => f[1][C].bottom), ["W", "W", "W", "W", "W"]);
+  assert.equal(f[3][0].right, "O"); // left end of the wide face: the left extension's left side
+});

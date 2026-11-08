@@ -1,7 +1,7 @@
 // X-Cube Lab: browser viewer. Uses the same engine as the CLI.
 // three.js r128 is loaded as a global from cdnjs by the page.
 
-import { isHomeX, isSolved, isXShape, outerAvailability, faceView, effect } from "../core/analyze.ts";
+import { isHomeX, isSolved, isXShape, outerAvailability, faceRimView, effect, type RimColor } from "../core/analyze.ts";
 import { ROTATIONS } from "../core/geometry.ts";
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
@@ -250,6 +250,8 @@ const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").mat
 // Speed slider 0..100 maps logarithmically from 800 ms (slowest) to 30 ms (fastest) per quarter turn.
 const speedFromSlider = (v: number) => 800 * Math.pow(30 / 800, v / 100);
 let speedMs = speedFromSlider(42);
+/** True while "play" is running through the remaining turns. */
+let playing = false;
 
 function enqueue(turn: Turn, forward: boolean) {
   queue.push({ turn, forward });
@@ -295,11 +297,18 @@ function tickAnimation() {
   const t = anim.duration ? Math.min(1, (performance.now() - anim.start) / anim.duration) : 1;
   const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   anim.group.quaternion.setFromAxisAngle(anim.axis, anim.angle * e);
-  if (t >= 1) finishAnim();
+  if (t >= 1) {
+    finishAnim();
+    if (playing && !queue.length) {
+      playing = false;
+      render();
+    }
+  }
 }
 
 function flushAnimations() {
   queue.length = 0;
+  playing = false;
   if (anim) finishAnim();
   syncMeshes(app.current);
 }
@@ -359,6 +368,7 @@ function runAlg(src: string, play: boolean) {
   if (why) setMessage(`Stops at turn ${ok + 1} of ${turns.length} (${turnName(turns[ok])}): ${why.replace(/^\w+ blocked: /, "")}`, "error");
   else setMessage(`${turns.length} turns loaded`, "ok");
   if (play) for (let i = startCursor; i < app.history.length; i++) enqueue(app.history[i], true);
+  playing = play && queue.length > 0;
   render();
 }
 
@@ -379,6 +389,15 @@ function jump(to: number) {
 function playToEnd() {
   flushAnimations();
   for (let i = app.cursor; i < app.history.length; i++) enqueue(app.history[i], true);
+  playing = queue.length > 0;
+  render();
+}
+
+/** Stop playing: the turn in progress finishes, the rest wait. */
+function stopPlaying() {
+  queue.length = 0;
+  playing = false;
+  render();
 }
 
 function setBase(st: State, label: string) {
@@ -537,6 +556,10 @@ function render() {
     .join("");
   $("history").innerHTML = hist || `<span class="hint">Turns you make or run appear here. Tap one to jump to it.</span>`;
   $("counter").textContent = `${app.cursor} / ${app.history.length}`;
+  const play = $("last");
+  play.textContent = playing ? "■" : "▶";
+  play.setAttribute("aria-label", playing ? "Stop" : "Play to the end");
+  play.classList.toggle("stop", playing);
   $("base-label").textContent = app.baseLabel;
 
   // modifier buttons
@@ -583,6 +606,11 @@ function render() {
 
 const NET_COLOR: Record<string, string> = { W: "#f3f3ee", Y: "#f5d00f", G: "#17a34a", B: "#1d5fd6", R: "#c8202b", O: "#f47a12", "#": "var(--unstickered)" };
 
+/**
+ * Flat view: each face is a 7x7 grid, the 5x5 view plus a thin ring. Empty cells
+ * next to a cubelet show a bar in the color of that cubelet's side, so you can see
+ * how each face connects to its neighbors.
+ */
 function renderNet(st: State) {
   const faces: [string, number, number][] = [
     ["U", 1, 0],
@@ -593,12 +621,18 @@ function renderNet(st: State) {
     ["D", 1, 2],
   ];
   const order = ["R", "L", "U", "D", "F", "B"];
+  const bar = (cls: string, c: RimColor | undefined) => (c ? `<b class="${cls}" style="background:${NET_COLOR[c]}"></b>` : "");
   let html = "";
   for (const [name, col, row] of faces) {
-    const g = faceView(st, order.indexOf(name));
+    const g = faceRimView(st, order.indexOf(name));
     html += `<div class="netface" style="grid-column:${col + 1};grid-row:${row + 1}"><span class="netlabel" aria-hidden="true">${name}</span>`;
-    for (const line of g)
-      for (const ch of line) html += ch === "." ? `<i class="empty"></i>` : `<i style="background:${NET_COLOR[ch]}"></i>`;
+    g.forEach((line, R) =>
+      line.forEach((cell, C) => {
+        const ring = R === 0 || R === 6 || C === 0 || C === 6 ? " ring" : "";
+        if (cell.face) html += `<i style="background:${NET_COLOR[cell.face]}"></i>`;
+        else html += `<i class="e${ring}">${bar("bt", cell.top)}${bar("bb", cell.bottom)}${bar("bl", cell.left)}${bar("br", cell.right)}</i>`;
+      }),
+    );
     html += `</div>`;
   }
   $("net").innerHTML = html;
@@ -704,7 +738,7 @@ function bindUI() {
   $("back").addEventListener("click", () => step(-1));
   $("fwd").addEventListener("click", () => step(1));
   $("first").addEventListener("click", () => jump(0));
-  $("last").addEventListener("click", () => playToEnd());
+  $("last").addEventListener("click", () => (playing ? stopPlaying() : playToEnd()));
   $("undo").addEventListener("click", () => {
     if (app.cursor > 0) {
       flushAnimations();

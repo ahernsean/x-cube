@@ -154,22 +154,22 @@ export function effect(a: State, b: State): Effect {
  * Rows run top-to-bottom and columns left-to-right as you'd see them looking at that face,
  * with the D view seen from below with F at the top.
  */
-export function faceView(st: State, face: number): string[] {
-  // For each face: [rowAxisVector(down the page), colAxisVector(right), viewDir(toward viewer)]
-  const frames: Record<string, [Vec3, Vec3, Vec3]> = {
-    U: [[0, 0, 1], [1, 0, 0], [0, 1, 0]],
-    D: [[0, 0, -1], [1, 0, 0], [0, -1, 0]],
-    F: [[0, -1, 0], [1, 0, 0], [0, 0, 1]],
-    B: [[0, -1, 0], [-1, 0, 0], [0, 0, -1]],
-    R: [[0, -1, 0], [0, 0, -1], [1, 0, 0]],
-    L: [[0, -1, 0], [0, 0, 1], [-1, 0, 0]],
-  };
-  const [rowV, colV, view] = frames[FACE_NAMES[face]];
-  const rows: string[] = [];
-  for (let r = -2; r <= 2; r++) {
-    let line = "";
-    for (let c = -2; c <= 2; c++) {
-      let ch = ".";
+const VIEW_FRAMES: Record<string, [Vec3, Vec3, Vec3]> = {
+  // [row axis (down the page), column axis (to the right), view direction (toward the viewer)]
+  U: [[0, 0, 1], [1, 0, 0], [0, 1, 0]],
+  D: [[0, 0, -1], [1, 0, 0], [0, -1, 0]],
+  F: [[0, -1, 0], [1, 0, 0], [0, 0, 1]],
+  B: [[0, -1, 0], [-1, 0, 0], [0, 0, -1]],
+  R: [[0, -1, 0], [0, 0, -1], [1, 0, 0]],
+  L: [[0, -1, 0], [0, 0, 1], [-1, 0, 0]],
+};
+
+/** Slot of the first cubelet seen along each line of sight (5x5, row-major), or -1. */
+function frontSlots(st: State, face: number): Int16Array {
+  const [rowV, colV, view] = VIEW_FRAMES[FACE_NAMES[face]];
+  const out = new Int16Array(25).fill(-1);
+  for (let r = -2; r <= 2; r++)
+    for (let c = -2; c <= 2; c++)
       for (let depth = 2; depth >= -2; depth--) {
         const p: Vec3 = [
           rowV[0] * r + colV[0] * c + view[0] * depth,
@@ -178,15 +178,88 @@ export function faceView(st: State, face: number): string[] {
         ];
         const s = slotAt(p);
         if (s >= 0 && st.occ[s] >= 0) {
-          ch = st.colorAt(s, face) ?? "#";
+          out[(r + 2) * 5 + (c + 2)] = s;
           break;
         }
       }
-      line += ch;
+  return out;
+}
+
+/**
+ * A view of the puzzle from one face direction, as a 5x5 grid of characters.
+ * For each line of sight, shows the color of the first face you'd see:
+ *   W Y G B R O = sticker color, # = black (unstickered) face, . = nothing there.
+ * Rows run top-to-bottom and columns left-to-right as you'd see them looking at that face,
+ * with the D view seen from below with F at the top.
+ */
+export function faceView(st: State, face: number): string[] {
+  const slots = frontSlots(st, face);
+  const rows: string[] = [];
+  for (let r = 0; r < 5; r++) {
+    let line = "";
+    for (let c = 0; c < 5; c++) {
+      const s = slots[r * 5 + c];
+      line += s < 0 ? "." : (st.colorAt(s, face) ?? "#");
     }
     rows.push(line);
   }
   return rows;
+}
+
+/** Color of a side face shown in the rim: a sticker color, or "#" for black. */
+export type RimColor = Color | "#";
+
+export interface RimCell {
+  /** Sticker color seen straight on, "#" for an unstickered face, or null if nothing is there. */
+  face: RimColor | null;
+  /**
+   * For empty cells: side faces of neighboring cubelets that face into this cell.
+   * `top` is the side of the cubelet just above this cell (its face pointing down the page), etc.
+   */
+  top?: RimColor;
+  bottom?: RimColor;
+  left?: RimColor;
+  right?: RimColor;
+}
+
+/**
+ * The face view with a rim: a 7x7 grid (the 5x5 view plus a ring around it).
+ * Wherever a seen cubelet borders an empty cell, that empty cell records the color
+ * on the cubelet's side facing it, so you can tell how this face connects to its neighbors.
+ * The side faces shown are always exposed: the empty cell's whole line of sight is empty.
+ */
+export function faceRimView(st: State, face: number): RimCell[][] {
+  const [rowV, colV] = VIEW_FRAMES[FACE_NAMES[face]];
+  const slots = frontSlots(st, face);
+  const at = (r: number, c: number) => (r < 0 || r > 4 || c < 0 || c > 4 ? -1 : slots[r * 5 + c]);
+  const side = (s: number, v: Vec3): RimColor => st.colorAt(s, dirIndexOf(v)) ?? "#";
+  const neg = (v: Vec3): Vec3 => [-v[0], -v[1], -v[2]];
+  const grid: RimCell[][] = [];
+  for (let R = 0; R < 7; R++) {
+    const row: RimCell[] = [];
+    for (let C = 0; C < 7; C++) {
+      const r = R - 1, c = C - 1;
+      const s = at(r, c);
+      if (s >= 0) {
+        row.push({ face: st.colorAt(s, face) ?? "#" });
+        continue;
+      }
+      const cell: RimCell = { face: null };
+      const up = at(r - 1, c), down = at(r + 1, c), left = at(r, c - 1), right = at(r, c + 1);
+      if (up >= 0) cell.top = side(up, rowV); // the cubelet above, its face pointing down the page
+      if (down >= 0) cell.bottom = side(down, neg(rowV));
+      if (left >= 0) cell.left = side(left, colV);
+      if (right >= 0) cell.right = side(right, neg(colV));
+      row.push(cell);
+    }
+    grid.push(row);
+  }
+  return grid;
+}
+
+function dirIndexOf(v: Vec3): number {
+  for (let d = 0; d < 6; d++) if (DIRS[d][0] === v[0] && DIRS[d][1] === v[1] && DIRS[d][2] === v[2]) return d;
+  throw new Error("not an axis direction");
 }
 
 /** All six face views laid out as a net:
