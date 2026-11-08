@@ -112,9 +112,12 @@ function initScene(canvas: HTMLCanvasElement) {
   camera.lookAt(0, 0, 0);
 
   // Cubelets nearly touch, as on the real puzzle: a hairline gap between them.
-  const body = new THREE.BoxGeometry(0.985, 0.985, 0.985);
-  const bodyMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
-  const plane = new THREE.PlaneGeometry(0.84, 0.84);
+  // Rounded like a real cube's plastic. Dark gray, not black, so that inside faces
+  // facing different ways can be told apart by their shading.
+  const body = roundedBox(0.985, 0.1, 3);
+  const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3a3e41 });
+  // Stickers sit on the flat part of each face, with rounded corners.
+  const plane = roundedSquare(0.76, 0.1);
   const mats = new Map<Color, any>();
   const dark = getComputedStyle(document.documentElement).getPropertyValue("--unstickered").trim() || "#2b2f2e";
   const netPlane = new THREE.PlaneGeometry(0.92, 0.92);
@@ -252,12 +255,13 @@ interface AoFace {
   d: number; // face direction in the cubelet's own frame
   ux: Vec3; // the plane's local x axis, in the cubelet's own frame
   uy: Vec3;
+  extent: number; // the face's full width, for blending corner values across it
   view: "3d" | "flat";
 }
 const aoFaces: AoFace[][] = [];
 // Brightness by number of open spots around a corner (0 = boxed in, 3 = open).
 const AO_LEVELS = [0.39, 0.575, 0.765, 1];
-// PlaneGeometry(w, h, 1, 1) vertex order: (-x,+y), (+x,+y), (-x,-y), (+x,-y)
+// The four corners of a face, as (x, y) signs in the plane's own coordinates.
 const CORNER_SIGNS: [number, number][] = [
   [-1, 1],
   [1, 1],
@@ -275,8 +279,65 @@ const aoOn = (() => {
 
 function withAoColors(geo: any) {
   const g = geo.clone();
-  g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(12).fill(1), 3));
+  const n = g.attributes.position.count;
+  g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3));
   return g;
+}
+
+/**
+ * A cube of side `size` with edges and corners rounded to `radius`, built from a
+ * subdivided box whose grid is packed near the edges and then pushed onto the
+ * rounded surface. `arc` = segments across each rounded edge.
+ */
+function roundedBox(size: number, radius: number, arc: number) {
+  const h = size / 2;
+  const inner = h - radius;
+  const N = 2 * arc + 1; // segments per side: arc + 1 flat + arc
+  const geo = new THREE.BoxGeometry(size, size, size, N, N, N);
+  const pos = geo.attributes.position;
+  const nor = geo.attributes.normal;
+  // Remap a grid coordinate so that `arc` segments lie within each rounded band.
+  const remap = (c: number) => {
+    const i = Math.round(((c + h) / size) * N); // 0..N
+    if (i <= arc) return -h + (radius * i) / arc;
+    if (i >= N - arc) return inner + (radius * (i - (N - arc))) / arc;
+    return -inner + ((2 * inner) * (i - arc)) / (N - 2 * arc);
+  };
+  const v = new THREE.Vector3();
+  for (let k = 0; k < pos.count; k++) {
+    v.set(remap(pos.getX(k)), remap(pos.getY(k)), remap(pos.getZ(k)));
+    const core = new THREE.Vector3(
+      Math.max(-inner, Math.min(inner, v.x)),
+      Math.max(-inner, Math.min(inner, v.y)),
+      Math.max(-inner, Math.min(inner, v.z)),
+    );
+    const out = v.clone().sub(core);
+    if (out.lengthSq() > 1e-12) {
+      out.normalize();
+      v.copy(core).addScaledVector(out, radius);
+      nor.setXYZ(k, out.x, out.y, out.z);
+    }
+    pos.setXYZ(k, v.x, v.y, v.z);
+  }
+  pos.needsUpdate = true;
+  nor.needsUpdate = true;
+  return geo;
+}
+
+/** A square of side `size` with rounded corners, in the XY plane facing +Z. */
+function roundedSquare(size: number, radius: number) {
+  const h = size / 2;
+  const s = new THREE.Shape();
+  s.moveTo(-h + radius, -h);
+  s.lineTo(h - radius, -h);
+  s.quadraticCurveTo(h, -h, h, -h + radius);
+  s.lineTo(h, h - radius);
+  s.quadraticCurveTo(h, h, h - radius, h);
+  s.lineTo(-h + radius, h);
+  s.quadraticCurveTo(-h, h, -h, h - radius);
+  s.lineTo(-h, -h + radius);
+  s.quadraticCurveTo(-h, -h, -h + radius, -h);
+  return new THREE.ShapeGeometry(s, 4);
 }
 
 function aoFace(mesh: any, d: number, view: "3d" | "flat"): AoFace {
@@ -286,6 +347,7 @@ function aoFace(mesh: any, d: number, view: "3d" | "flat"): AoFace {
     d,
     ux: round(new THREE.Vector3(1, 0, 0).applyEuler(mesh.rotation)),
     uy: round(new THREE.Vector3(0, 1, 0).applyEuler(mesh.rotation)),
+    extent: view === "3d" ? 0.985 : 0.92,
     view,
   };
 }
@@ -300,7 +362,7 @@ function shadeFace(st: State, slot: number, ori: number, f: AoFace) {
   const col = f.mesh.geometry.attributes.color;
   const arr = col.array as Float32Array;
   if (!aoOn[f.view]) {
-    if (arr[0] !== 1 || arr[3] !== 1 || arr[6] !== 1 || arr[9] !== 1) {
+    if (arr[0] !== 1 || arr[arr.length - 1] !== 1) {
       arr.fill(1);
       col.needsUpdate = true;
     }
@@ -312,6 +374,7 @@ function shadeFace(st: State, slot: number, ori: number, f: AoFace) {
   const ux = matVec(R, f.ux);
   const uy = matVec(R, f.uy);
   const front: Vec3 = [p[0] + n[0], p[1] + n[1], p[2] + n[2]];
+  const corner = [1, 1, 1, 1];
   for (let k = 0; k < 4; k++) {
     const [sx, sy] = CORNER_SIGNS[k];
     const a: Vec3 = [front[0] + sx * ux[0], front[1] + sx * ux[1], front[2] + sx * ux[2]];
@@ -320,8 +383,17 @@ function shadeFace(st: State, slot: number, ori: number, f: AoFace) {
     const s1 = filledAt(st, a) ? 1 : 0;
     const s2 = filledAt(st, b) ? 1 : 0;
     const level = s1 && s2 ? 0 : 3 - (s1 + s2 + (filledAt(st, c) ? 1 : 0));
-    const v = AO_LEVELS[level];
-    arr[k * 3] = arr[k * 3 + 1] = arr[k * 3 + 2] = v;
+    corner[k] = AO_LEVELS[level];
+  }
+  // Blend the four corner values across the face (any vertex layout).
+  const pos = f.mesh.geometry.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const u = Math.max(0, Math.min(1, pos.getX(i) / f.extent + 0.5)); // 0 at -x, 1 at +x
+    const w = Math.max(0, Math.min(1, pos.getY(i) / f.extent + 0.5)); // 0 at -y, 1 at +y
+    const top = corner[0] * (1 - u) + corner[1] * u;
+    const bottom = corner[2] * (1 - u) + corner[3] * u;
+    const v = bottom * (1 - w) + top * w;
+    arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = v;
   }
   col.needsUpdate = true;
 }
@@ -442,6 +514,38 @@ function resize() {
   camera.position.set(0, 0, Math.max(12.5, 3.35 / Math.sin(Math.min(vHalf, hHalf))));
 }
 
+// Edge labels: which face of the puzzle points up, down, left, right and at you.
+const COMPASS_FACES = ["R", "L", "U", "D", "F", "B"];
+let compassKey = "";
+function updateCompass() {
+  const q = pivot.quaternion;
+  const world = DIRS.map((d) => new THREE.Vector3(d[0], d[1], d[2]).applyQuaternion(q));
+  const pick = (f: (v: any) => number) => {
+    let best = 0;
+    for (let i = 1; i < 6; i++) if (f(world[i]) > f(world[best])) best = i;
+    return best;
+  };
+  const slots = { up: pick((v) => v.y), down: pick((v) => -v.y), left: pick((v) => -v.x), right: pick((v) => v.x), toward: pick((v) => v.z) };
+  const key = JSON.stringify(slots) + app.cursor + app.baseLabel;
+  if (key === compassKey) return;
+  compassKey = key;
+  for (const [where, d] of Object.entries(slots)) {
+    const el = document.getElementById(`compass-${where}`);
+    if (!el) continue;
+    const c = faceCenterColor(app.current, d);
+    el.innerHTML = `<i style="background:${c ? NET_COLOR[c] : "transparent"}"></i>${where === "toward" ? "Facing you: " : ""}${COMPASS_FACES[d]}`;
+  }
+}
+
+/** Color of the center sticker currently showing on puzzle face d (outermost center along that axis). */
+function faceCenterColor(st: State, d: number): Color | null {
+  for (const k of [2, 1]) {
+    const s = slotAt([DIRS[d][0] * k, DIRS[d][1] * k, DIRS[d][2] * k]);
+    if (s >= 0 && st.occ[s] >= 0) return st.colorAt(s, d);
+  }
+  return null;
+}
+
 function frame() {
   if (tween) {
     const t = tween.ms ? Math.min(1, (performance.now() - tween.start) / tween.ms) : 1;
@@ -451,6 +555,7 @@ function frame() {
   }
   tickAnimation();
   tickSettle();
+  updateCompass();
   renderNetAnimation();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -490,8 +595,11 @@ function pickCube(el: HTMLElement, clientX: number, clientY: number): CubeHit | 
     while (o.parent && o.parent !== pivot) o = o.parent;
     if (!meshes.includes(o)) continue;
     const n = h.face.normal.clone().transformDirection(h.object.matrixWorld).applyQuaternion(inv);
-    const normal: Vec3 = [Math.round(n.x), Math.round(n.y), Math.round(n.z)];
-    if (Math.abs(normal[0]) + Math.abs(normal[1]) + Math.abs(normal[2]) !== 1) continue;
+    // Snap to the nearest face direction (rounded edges give in-between normals).
+    const ax = [Math.abs(n.x), Math.abs(n.y), Math.abs(n.z)];
+    const k = ax.indexOf(Math.max(...ax));
+    const sgn = Math.sign([n.x, n.y, n.z][k]);
+    const normal: Vec3 = [k === 0 ? sgn : 0, k === 1 ? sgn : 0, k === 2 ? sgn : 0];
     return {
       point: pivot.worldToLocal(h.point.clone()),
       normal,
