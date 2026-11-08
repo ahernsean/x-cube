@@ -118,9 +118,9 @@ function initScene(canvas: HTMLCanvasElement) {
   const glowPlane = new THREE.PlaneGeometry(1.0, GLOW_WIDTH);
   const glowTex = makeGlowTexture();
   const glowMats = new Map<string, any>();
-  const glowMatFor = (c: Color | "#") => {
+  const glowMatFor = (c: Color) => {
     if (!glowMats.has(c)) {
-      const color = c === "#" ? new THREE.Color(dark) : new THREE.Color(STICKER[c]);
+      const color = new THREE.Color(STICKER[c]);
       glowMats.set(c, makeGlowMaterial(glowTex, color));
     }
     return glowMats.get(c);
@@ -182,8 +182,10 @@ function initScene(canvas: HTMLCanvasElement) {
     for (let a = 0; a < 6; a++)
       for (let b = 0; b < 6; b++) {
         if (a >> 1 === b >> 1) continue;
+        // No glow for unstickered side faces: no glow at an edge means the face is black.
         const col = c.stickers[b];
-        const m = new THREE.Mesh(glowPlane, glowMatFor(col ?? "#"));
+        if (!col) continue;
+        const m = new THREE.Mesh(glowPlane, glowMatFor(col));
         const A = new THREE.Vector3(...DIRS[a]);
         const B = new THREE.Vector3(...DIRS[b]);
         const X = new THREE.Vector3().crossVectors(B, A);
