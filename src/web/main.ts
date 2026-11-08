@@ -91,8 +91,15 @@ function goToView(q: Quat) {
 function reduceMotionView() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
+/** three.js r155+ changed color and light handling; keep the look tuned under r128. */
+function matchR128Look(r: any) {
+  r.outputColorSpace = THREE.LinearSRGBColorSpace;
+  if ("useLegacyLights" in r) r.useLegacyLights = true;
+}
+
 function initScene(canvas: HTMLCanvasElement) {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  matchR128Look(renderer);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
@@ -1197,6 +1204,7 @@ const netCams: { cam: any; face: string; view: number[]; up: number[] }[] = [];
 function initNetAnimation() {
   const canvas = $("net-canvas") as HTMLCanvasElement;
   netRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  matchR128Look(netRenderer);
   netRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   netRenderer.setScissorTest(true);
   netRenderer.setClearColor(0x000000, 0);
