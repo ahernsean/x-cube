@@ -56,7 +56,8 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .stack { display: grid; gap: 14px; min-width: 0; }
 .stage { position: relative; background: var(--stage); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; }
 #scene { display: block; width: 100%; height: min(58vh, 520px); touch-action: none; cursor: grab; }
-.views { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.views { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.glow-3d { margin-left: auto; }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }
 .chip { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--off-bg); color: var(--muted); white-space: nowrap; }
@@ -112,9 +113,8 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .cycles { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
 .cycles code { font-family: var(--f-mono); word-break: break-word; }
 .net { display: grid; grid-template-columns: repeat(4, minmax(0, 100px)); grid-template-rows: repeat(3, auto); gap: 6px; justify-content: start; }
-.net-wrap { position: relative; }
+.net-wrap { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 .net-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.net.animating .netface > i { visibility: hidden; }
 .netface { position: relative; display: grid; grid-template-columns: 0.55fr repeat(5, 1fr) 0.55fr; grid-template-rows: 0.55fr repeat(5, 1fr) 0.55fr; gap: 1px; aspect-ratio: 1; max-width: 100%; }
 .netface i { display: block; position: relative; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--tile-edge); }
 .netface i.e { background: transparent; box-shadow: none; }
@@ -159,6 +159,7 @@ details[open] summary { margin-bottom: 8px; }
       <button class="btn small" data-view="right">Right</button>
       <button class="btn small" data-view="top">Top</button>
       <button class="btn small" data-view="bottom">Bottom</button>
+      <label class="hint keep glow-3d" for="glow-3d"><input type="checkbox" id="glow-3d"> Edge glow</label>
     </div>
     <div class="status" id="status" aria-live="polite"></div>
     <p class="message" id="message" hidden></p>
@@ -221,8 +222,9 @@ details[open] summary { margin-bottom: 8px; }
 
     <section class="panel">
       <h2>Flat view</h2>
-      <div class="net-wrap"><div class="net" id="net"></div><canvas id="net-canvas" class="net-canvas" hidden aria-hidden="true"></canvas></div>
-      <p class="legend">The first face you'd see looking straight at each side. Dark squares are cubelet faces with no sticker.</p>
+      <div class="net-wrap"><div class="net" id="net"></div><canvas id="net-canvas" class="net-canvas" aria-hidden="true"></canvas></div>
+      <p class="legend">The first face you'd see looking straight at each side. Dark squares are cubelet faces with no sticker. A glow along an edge shows the color around the corner, where the surface drops away.</p>
+      <label class="hint keep" for="glow-flat"><input type="checkbox" id="glow-flat"> Edge glow in the flat view</label>
     </section>
 
     <section class="panel">

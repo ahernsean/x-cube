@@ -1,8 +1,8 @@
 // X-Cube Lab: browser viewer. Uses the same engine as the CLI.
 // three.js r128 is loaded as a global from cdnjs by the page.
 
-import { isHomeX, isSolved, isXShape, outerAvailability, faceRimView, effect, type RimColor } from "../core/analyze.ts";
-import { ROTATIONS } from "../core/geometry.ts";
+import { isHomeX, isSolved, isXShape, isExposed, outerAvailability, effect } from "../core/analyze.ts";
+import { DIRS, ROT_DIR, ROTATIONS } from "../core/geometry.ts";
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
   CUBELETS,
@@ -113,7 +113,18 @@ function initScene(canvas: HTMLCanvasElement) {
   const bodyMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
   const plane = new THREE.PlaneGeometry(0.84, 0.84);
   const mats = new Map<Color, any>();
+  const dark = getComputedStyle(document.documentElement).getPropertyValue("--unstickered").trim() || "#2b2f2e";
   const netPlane = new THREE.PlaneGeometry(0.92, 0.92);
+  const glowPlane = new THREE.PlaneGeometry(1.0, GLOW_WIDTH);
+  const glowTex = makeGlowTexture();
+  const glowMats = new Map<string, any>();
+  const glowMatFor = (c: Color | "#") => {
+    if (!glowMats.has(c)) {
+      const color = c === "#" ? new THREE.Color(dark) : new THREE.Color(STICKER[c]);
+      glowMats.set(c, new THREE.MeshBasicMaterial({ map: glowTex, color, transparent: true, depthWrite: false }));
+    }
+    return glowMats.get(c);
+  };
   const netBody = new THREE.BoxGeometry(0.92, 0.92, 0.92);
   const netOccluderMat = new THREE.MeshBasicMaterial({ colorWrite: false });
   const netMats = new Map<Color, any>();
@@ -121,7 +132,6 @@ function initScene(canvas: HTMLCanvasElement) {
     if (!netMats.has(c)) netMats.set(c, new THREE.MeshBasicMaterial({ color: STICKER[c] }));
     return netMats.get(c);
   };
-  const dark = getComputedStyle(document.documentElement).getPropertyValue("--unstickered").trim() || "#2b2f2e";
   const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark) });
   const matFor = (c: Color) => {
     if (!mats.has(c)) mats.set(c, new THREE.MeshLambertMaterial({ color: STICKER[c] }));
@@ -164,9 +174,33 @@ function initScene(canvas: HTMLCanvasElement) {
       m.layers.set(NET_LAYER);
       g.add(m);
     }
+    // Edge glow: for every pair of adjacent faces (a, b), a soft band lying in face a's
+    // plane, starting at the shared edge and fading outward, in face b's color. It is
+    // shown only when both faces are exposed, i.e. where face a steps down to something
+    // deeper or to empty space. Seen by the 3D view (layer 3) and the flat view (layer 4).
+    const list: { mesh: any; a: number; b: number }[] = [];
+    for (let a = 0; a < 6; a++)
+      for (let b = 0; b < 6; b++) {
+        if (a >> 1 === b >> 1) continue;
+        const col = c.stickers[b];
+        const m = new THREE.Mesh(glowPlane, glowMatFor(col ?? "#"));
+        const A = new THREE.Vector3(...DIRS[a]);
+        const B = new THREE.Vector3(...DIRS[b]);
+        const X = new THREE.Vector3().crossVectors(B, A);
+        m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, B, A));
+        m.position.copy(A.clone().multiplyScalar(0.499)).add(B.clone().multiplyScalar(GLOW_START + GLOW_WIDTH / 2));
+        m.layers.set(GLOW3D_LAYER);
+        m.layers.enable(GLOWNET_LAYER);
+        m.renderOrder = 2;
+        m.visible = false;
+        g.add(m);
+        list.push({ mesh: m, a, b });
+      }
+    glows[c.id] = list;
     pivot.add(g);
     meshes[c.id] = g;
   }
+  applyGlowSettings();
   initNetAnimation();
   bindOrbit(canvas);
   resize();
@@ -186,7 +220,65 @@ function placeMesh(g: any, slot: number, ori: number) {
 function syncMeshes(st: State) {
   for (let s = 0; s < NUM_SLOTS; s++) {
     const id = st.occ[s];
-    if (id >= 0) placeMesh(meshes[id], s, st.ori[s]);
+    if (id < 0) continue;
+    placeMesh(meshes[id], s, st.ori[s]);
+    const o = st.ori[s];
+    for (const gl of glows[id] ?? []) {
+      gl.mesh.visible = isExposed(st, s, ROT_DIR[o * 6 + gl.a]) && isExposed(st, s, ROT_DIR[o * 6 + gl.b]);
+    }
+  }
+}
+
+// ------------------------------------------------------------------ edge glow
+
+const GLOW3D_LAYER = 3;
+const GLOWNET_LAYER = 4;
+const GLOW_START = 0.46; // starts just under the sticker edge, so it reads as attached
+const GLOW_WIDTH = 0.44;
+const glows: { mesh: any; a: number; b: number }[][] = [];
+const GLOW_KEY = "xcube-lab-glow";
+const glowOn = (() => {
+  try {
+    return { "3d": true, flat: true, ...JSON.parse(localStorage.getItem(GLOW_KEY) || "{}") } as { "3d": boolean; flat: boolean };
+  } catch {
+    return { "3d": true, flat: true };
+  }
+})();
+
+/** White band, opaque at the edge (bottom) fading upward, tapered at both ends. */
+function makeGlowTexture() {
+  const W = 64, H = 32;
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext("2d")!;
+  const img = ctx.createImageData(W, H);
+  const smooth = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      const u = x / (W - 1);
+      const v = 1 - y / (H - 1); // 0 at the edge (bottom of the image)
+      const ends = smooth(Math.min(u, 1 - u) / 0.22);
+      const a = Math.pow(1 - v, 1.8) * ends;
+      const i = (y * W + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(a * 235);
+    }
+  ctx.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(c);
+}
+
+function applyGlowSettings() {
+  camera.layers.set(0);
+  if (glowOn["3d"]) camera.layers.enable(GLOW3D_LAYER);
+  for (const nc of netCams) {
+    nc.cam.layers.set(NET_LAYER);
+    if (glowOn.flat) nc.cam.layers.enable(GLOWNET_LAYER);
+  }
+  try {
+    localStorage.setItem(GLOW_KEY, JSON.stringify(glowOn));
+  } catch {
+    /* storage unavailable */
   }
 }
 
@@ -197,6 +289,10 @@ function resize() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  // Back the camera off far enough that the puzzle (plus glow) fits the narrower dimension.
+  const vHalf = (camera.fov * Math.PI) / 360;
+  const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
+  camera.position.set(0, 0, Math.max(12.5, 3.35 / Math.sin(Math.min(vHalf, hHalf))));
 }
 
 function frame() {
@@ -207,6 +303,7 @@ function frame() {
     if (t >= 1) tween = null;
   }
   tickAnimation();
+  renderNetAnimation();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
@@ -322,9 +419,9 @@ function finishAnim() {
 
 // ------------------------------------------------------------------ flat view animation
 //
-// While a turn animates, the flat view is drawn by six orthographic cameras looking at
-// the same scene, one per face, laid over the flat-view grid. They see only the unlit
-// face planes (layer 2). When turning stops, the grid (with its rim) comes back.
+// The flat view is drawn by six orthographic cameras looking at the same scene, one per
+// face, laid over the flat-view boxes. They see the unlit face planes (layer 2) and,
+// when enabled, the edge glow (layer 4). Because it is the same scene, it animates.
 
 const NET_LAYER = 2;
 let netRenderer: any = null;
@@ -350,12 +447,11 @@ function initNetAnimation() {
     cam.layers.set(NET_LAYER);
     netCams.push({ cam, face, view, up });
   }
+  applyGlowSettings();
 }
 
-function showNetAnimation(on: boolean) {
-  const canvas = $("net-canvas");
-  canvas.hidden = !on;
-  $("net").classList.toggle("animating", on);
+function showNetAnimation(_on: boolean) {
+  /* the flat view is always drawn by the cameras now */
 }
 
 function renderNetAnimation() {
@@ -375,9 +471,7 @@ function renderNetAnimation() {
     const nc = netCams.find((c) => c.face === name);
     if (!nc) continue;
     const fw = el.offsetWidth;
-    // The face square holds a 0.55 + 5 + 0.55 unit grid with 1px gaps; match its scale.
-    const unit = (fw - 6) / 6.1;
-    const half = (fw / 2) / unit; // world units from center to the edge of the square
+    const half = 3.15; // world units from the center to the edge of each face box (room for the glow)
     const cam = nc.cam;
     cam.left = -half;
     cam.right = half;
@@ -401,7 +495,6 @@ function tickAnimation() {
   const t = anim.duration ? Math.min(1, (performance.now() - anim.start) / anim.duration) : 1;
   const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   anim.group.quaternion.setFromAxisAngle(anim.axis, anim.angle * e);
-  renderNetAnimation();
   if (t >= 1) {
     finishAnim();
     if (playing && !queue.length) {
@@ -712,12 +805,11 @@ function render() {
 
 const NET_COLOR: Record<string, string> = { W: "#f3f3ee", Y: "#f5d00f", G: "#17a34a", B: "#1d5fd6", R: "#c8202b", O: "#f47a12", "#": "var(--unstickered)" };
 
-/**
- * Flat view: each face is a 7x7 grid, the 5x5 view plus a thin ring. Empty cells
- * next to a cubelet show a bar in the color of that cubelet's side, so you can see
- * how each face connects to its neighbors.
- */
-function renderNet(st: State) {
+/** Flat view layout: one labeled box per face; the cameras draw into these boxes. */
+let netBuilt = false;
+function renderNet(_st: State) {
+  if (netBuilt) return;
+  netBuilt = true;
   const faces: [string, number, number][] = [
     ["U", 1, 0],
     ["L", 0, 1],
@@ -726,22 +818,9 @@ function renderNet(st: State) {
     ["B", 3, 1],
     ["D", 1, 2],
   ];
-  const order = ["R", "L", "U", "D", "F", "B"];
-  const bar = (cls: string, c: RimColor | undefined) => (c ? `<b class="${cls}" style="background:${NET_COLOR[c]}"></b>` : "");
-  let html = "";
-  for (const [name, col, row] of faces) {
-    const g = faceRimView(st, order.indexOf(name));
-    html += `<div class="netface" style="grid-column:${col + 1};grid-row:${row + 1}"><span class="netlabel" aria-hidden="true">${name}</span>`;
-    g.forEach((line, R) =>
-      line.forEach((cell, C) => {
-        const ring = R === 0 || R === 6 || C === 0 || C === 6 ? " ring" : "";
-        if (cell.face) html += `<i style="background:${NET_COLOR[cell.face]}"></i>`;
-        else html += `<i class="e${ring}">${bar("bt", cell.top)}${bar("bb", cell.bottom)}${bar("bl", cell.left)}${bar("br", cell.right)}</i>`;
-      }),
-    );
-    html += `</div>`;
-  }
-  $("net").innerHTML = html;
+  $("net").innerHTML = faces
+    .map(([name, col, row]) => `<div class="netface" style="grid-column:${col + 1};grid-row:${row + 1}"><span class="netlabel" aria-hidden="true">${name}</span></div>`)
+    .join("");
 }
 
 const suffixFor = (a: 1 | 2 | 3) => (a === 1 ? "" : a === 2 ? "2" : "'");
@@ -873,6 +952,14 @@ function bindUI() {
     });
   $("speed").addEventListener("input", (e) => (speedMs = speedFromSlider(Number((e.target as HTMLInputElement).value))));
   bindMoveButtons();
+  for (const [id, key] of [["glow-3d", "3d"], ["glow-flat", "flat"]] as const) {
+    const box = $(id) as HTMLInputElement;
+    box.checked = glowOn[key];
+    box.addEventListener("change", () => {
+      glowOn[key] = box.checked;
+      applyGlowSettings();
+    });
+  }
   $("save").addEventListener("click", () => {
     const n = $("save-name") as HTMLInputElement;
     saveCurrent(n.value.trim(), "");
