@@ -121,7 +121,7 @@ function initScene(canvas: HTMLCanvasElement) {
   const glowMatFor = (c: Color | "#") => {
     if (!glowMats.has(c)) {
       const color = c === "#" ? new THREE.Color(dark) : new THREE.Color(STICKER[c]);
-      glowMats.set(c, new THREE.MeshBasicMaterial({ map: glowTex, color, transparent: true, depthWrite: false }));
+      glowMats.set(c, makeGlowMaterial(glowTex, color));
     }
     return glowMats.get(c);
   };
@@ -244,6 +244,47 @@ const glowOn = (() => {
     return { "3d": true, flat: true };
   }
 })();
+
+/**
+ * Glow material. The band lies in face A's plane and its local +Y axis points along
+ * face B (the side face around the edge). The edge is a depth discontinuity only when
+ * face B points away from the viewer or is edge-on; if you can see face B, the surface
+ * just bends there and there is nothing to mark. So the glow fades out as face B turns
+ * toward the camera. For the flat view's orthographic cameras, face B is exactly
+ * edge-on, so the glow shows fully.
+ */
+function makeGlowMaterial(map: any, color: any) {
+  return new THREE.ShaderMaterial({
+    uniforms: { map: { value: map }, color: { value: color } },
+    transparent: true,
+    depthWrite: false,
+    vertexShader: `
+      varying vec2 vUv;
+      varying float vFade;
+      void main() {
+        vUv = uv;
+        vec4 world = modelMatrix * vec4(position, 1.0);
+        vec3 sideDir = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
+        // Direction toward the viewer: constant for orthographic cameras.
+        vec3 toViewer = projectionMatrix[3][3] == 1.0
+          ? normalize(vec3(viewMatrix[0][2], viewMatrix[1][2], viewMatrix[2][2]))
+          : normalize(cameraPosition - world.xyz);
+        float facing = dot(sideDir, toViewer); // > 0: the side face is visible
+        vFade = 1.0 - smoothstep(0.0, 0.2, facing);
+        gl_Position = projectionMatrix * viewMatrix * world;
+      }`,
+    fragmentShader: `
+      uniform sampler2D map;
+      uniform vec3 color;
+      varying vec2 vUv;
+      varying float vFade;
+      void main() {
+        float a = texture2D(map, vUv).a * vFade;
+        if (a < 0.003) discard;
+        gl_FragColor = vec4(color, a);
+      }`,
+  });
+}
 
 /** White band, opaque at the edge (bottom) fading upward, tapered at both ends. */
 function makeGlowTexture() {
