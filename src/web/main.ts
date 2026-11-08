@@ -455,12 +455,96 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
-// One finger (or mouse): sliding sideways spins the puzzle around its own
-// vertical (U-D) axis, like a turntable; sliding up and down tips it toward or
-// away from you. Two fingers twist it around the axis pointing out of the screen.
+// Pointer input on the 3D view.
+// - Swipe that starts on the cube: turns the layer under your finger (see swipeTurn).
+// - Drag that starts on the background: sliding sideways spins the puzzle around its
+//   own vertical (U-D) axis like a turntable; sliding up and down tips it toward or away.
+// - Two fingers: twist around the axis pointing out of the screen.
+const SWIPE_PX = 10;
+const LAYER_MOVE: Record<number, Record<number, string>> = {
+  0: { 2: "r", 1: "R", 0: "M", [-1]: "L", [-2]: "l" },
+  1: { 2: "u", 1: "U", 0: "H", [-1]: "D", [-2]: "d" },
+  2: { 2: "f", 1: "F", 0: "S", [-1]: "B", [-2]: "b" },
+};
+
+interface CubeHit {
+  point: any; // hit point, puzzle frame
+  normal: Vec3; // face normal, puzzle frame (unit axis vector)
+  cell: Vec3; // the touched cubelet's grid position, puzzle frame
+}
+
+function pickCube(el: HTMLElement, clientX: number, clientY: number): CubeHit | null {
+  const rect = el.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+  const ray = new THREE.Raycaster();
+  ray.layers.set(0); // cubelet bodies and stickers only, not glow
+  ray.setFromCamera(ndc, camera);
+  const inv = pivot.quaternion.clone().invert();
+  for (const h of ray.intersectObjects(pivot.children, true)) {
+    if (!h.face) continue;
+    let o = h.object;
+    while (o.parent && o.parent !== pivot) o = o.parent;
+    if (!meshes.includes(o)) continue;
+    const n = h.face.normal.clone().transformDirection(h.object.matrixWorld).applyQuaternion(inv);
+    const normal: Vec3 = [Math.round(n.x), Math.round(n.y), Math.round(n.z)];
+    if (Math.abs(normal[0]) + Math.abs(normal[1]) + Math.abs(normal[2]) !== 1) continue;
+    return {
+      point: pivot.worldToLocal(h.point.clone()),
+      normal,
+      cell: [Math.round(o.position.x), Math.round(o.position.y), Math.round(o.position.z)],
+    };
+  }
+  return null;
+}
+
+/** Screen position (CSS pixels within the canvas) of a point given in the puzzle frame. */
+function toScreen(el: HTMLElement, p: any): [number, number] {
+  const v = pivot.localToWorld(p.clone()).project(camera);
+  return [((v.x + 1) / 2) * el.clientWidth, ((1 - v.y) / 2) * el.clientHeight];
+}
+
+/**
+ * Turn the layer under a swipe. Of the two directions you can slide along the touched
+ * face, take the one whose on-screen direction best matches the swipe. Moving the face
+ * (normal n) toward direction m is a rotation about n x m; the touched cubelet's
+ * position along that axis picks the layer: 1 = inner turn, 2 = outer (extension)
+ * turn, 0 = middle slice.
+ */
+function swipeTurn(el: HTMLElement, hit: CubeHit, dx: number, dy: number) {
+  const len = Math.hypot(dx, dy);
+  const [sx, sy] = toScreen(el, hit.point);
+  let best: { m: Vec3; score: number } | null = null;
+  for (let axis = 0; axis < 3; axis++) {
+    if (hit.normal[axis] !== 0) continue;
+    const a: Vec3 = [axis === 0 ? 1 : 0, axis === 1 ? 1 : 0, axis === 2 ? 1 : 0];
+    const [ex, ey] = toScreen(el, hit.point.clone().add(new THREE.Vector3(a[0] * 0.4, a[1] * 0.4, a[2] * 0.4)));
+    const vx = ex - sx, vy = ey - sy;
+    const vl = Math.hypot(vx, vy) || 1;
+    const score = (dx * vx + dy * vy) / (len * vl);
+    if (!best || Math.abs(score) > Math.abs(best.score)) best = { m: score >= 0 ? a : [-a[0], -a[1], -a[2]], score };
+  }
+  if (!best) return;
+  const n = hit.normal, m = best.m;
+  const r: Vec3 = [n[1] * m[2] - n[2] * m[1], n[2] * m[0] - n[0] * m[2], n[0] * m[1] - n[1] * m[0]];
+  const axis = r.findIndex((v) => v !== 0);
+  const quarter = r[axis]; // +1: counterclockwise about +axis
+  const name = LAYER_MOVE[axis][hit.cell[axis]];
+  const def = MOVE_BY_NAME.get(name)!;
+  doTurn({ def, amount: MOVE_DEFS[def].ccw === quarter ? 1 : 3 });
+  render();
+}
+
+// Test hook (harmless): lets automated checks ask what a screen point would hit.
+(window as any).__xcubePick = (x: number, y: number) => {
+  const h = pickCube(renderer.domElement, x, y);
+  return h && { normal: h.normal, cell: h.cell, point: [h.point.x, h.point.y, h.point.z] };
+};
+
 function bindOrbit(el: HTMLElement) {
   const pts = new Map<number, { x: number; y: number }>();
   let twist: number | null = null;
+  // A swipe that began on the cube: where it started, and whether it already turned.
+  let swipe: { id: number; x: number; y: number; hit: CubeHit; done: boolean } | null = null;
   const spin = (q: Quat) => {
     tween = null;
     const t = new THREE.Quaternion(q[0], q[1], q[2], q[3]);
@@ -473,7 +557,13 @@ function bindOrbit(el: HTMLElement) {
   el.addEventListener("pointerdown", (e) => {
     el.setPointerCapture(e.pointerId);
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    twist = pts.size === 2 ? angleOf() : null;
+    if (pts.size === 1) {
+      const hit = anim || queue.length ? null : pickCube(el, e.clientX, e.clientY);
+      swipe = hit ? { id: e.pointerId, x: e.clientX, y: e.clientY, hit, done: false } : null;
+    } else if (swipe && !swipe.done) {
+      swipe = null; // a second finger before the swipe turned anything: it's a twist
+    }
+    twist = pts.size === 2 && !swipe ? angleOf() : null;
   });
   el.addEventListener("pointermove", (e) => {
     const prev = pts.get(e.pointerId);
@@ -481,6 +571,16 @@ function bindOrbit(el: HTMLElement) {
     const dx = e.clientX - prev.x;
     const dy = e.clientY - prev.y;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (swipe) {
+      if (!swipe.done && e.pointerId === swipe.id) {
+        const tx = e.clientX - swipe.x, ty = e.clientY - swipe.y;
+        if (Math.hypot(tx, ty) >= SWIPE_PX) {
+          swipe.done = true;
+          swipeTurn(el, swipe.hit, tx, ty);
+        }
+      }
+      return;
+    }
     if (pts.size === 1) {
       tween = null;
       const yaw = axisQuat(0, 1, 0, dx * 0.01);
@@ -497,7 +597,8 @@ function bindOrbit(el: HTMLElement) {
   });
   const up = (e: PointerEvent) => {
     pts.delete(e.pointerId);
-    twist = pts.size === 2 ? angleOf() : null;
+    if (pts.size === 0) swipe = null;
+    twist = pts.size === 2 && !swipe ? angleOf() : null;
   };
   el.addEventListener("pointerup", up);
   el.addEventListener("pointercancel", up);

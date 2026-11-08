@@ -57,6 +57,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .stage { position: relative; background: var(--stage); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; }
 #scene { display: block; width: 100%; height: min(58vh, 520px); touch-action: none; cursor: grab; }
 .views { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+.gesture-hint { margin: 8px 0 0; }
 .view-toggles { margin-left: auto; display: flex; gap: 12px; }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }
@@ -163,6 +164,7 @@ details[open] summary { margin-bottom: 8px; }
       <span class="view-toggles" title="Applies to the 3D view and the flat view"><label class="hint keep" for="glow"><input type="checkbox" id="glow"> Edge glow</label>
       <label class="hint keep" for="shade"><input type="checkbox" id="shade"> Shading</label></span>
     </div>
+    <p class="hint gesture-hint">Swipe on the cube to turn the layer under your finger. Drag the background to tumble the view; twist two fingers to spin it.</p>
     <div class="status" id="status" aria-live="polite"></div>
     <p class="message" id="message" hidden></p>
   </div>
