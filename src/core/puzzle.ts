@@ -52,6 +52,12 @@ export function slotAt(p: Vec3): number {
   return SLOT_AT[posKey(p[0], p[1], p[2])];
 }
 
+/** Slot index at integer coordinates, or -1 (no allocation; for hot loops). */
+export function slotAtXYZ(x: number, y: number, z: number): number {
+  if (x < -2 || x > 2 || y < -2 || y > 2 || z < -2 || z > 2) return -1;
+  return SLOT_AT[posKey(x, y, z)];
+}
+
 /** SLOT_NEIGHBOR[s * 6 + d] = slot adjacent to s in direction d, -1 if outside the lattice, -2 for the solid center. */
 export const SLOT_NEIGHBOR: Int16Array = (() => {
   const t = new Int16Array(NUM_SLOTS * 6);

@@ -15,6 +15,7 @@ import {
   applyTurn,
   blockedReason,
   slotAt,
+  slotAtXYZ,
   turnName,
   type Color,
   type Turn,
@@ -211,6 +212,7 @@ function initScene(canvas: HTMLCanvasElement) {
         list.push({ mesh: m, a, b });
       }
     glows[c.id] = list;
+    aoList.sort((a, b) => a.d - b.d); // same-direction faces (3D sticker, flat tile) share one computation
     pivot.add(g);
     meshes[c.id] = g;
   }
@@ -259,6 +261,7 @@ interface AoFace {
   uy: Vec3;
   extent: number; // the face's full width, for blending corner values across it
   view: "3d" | "flat";
+  cur?: number[]; // corner values currently shown
 }
 const aoFaces: AoFace[][] = [];
 // Brightness by number of open spots around a corner (0 = boxed in, 3 = open).
@@ -387,7 +390,14 @@ function shadeFace(st: State, slot: number, ori: number, f: AoFace) {
     const level = s1 && s2 ? 0 : 3 - (s1 + s2 + (filledAt(st, c) ? 1 : 0));
     corner[k] = AO_LEVELS[level];
   }
-  // Blend the four corner values across the face (any vertex layout).
+  applyCorners(f, corner);
+}
+
+/** Write four corner brightness values onto a face, blended across it (any vertex layout). */
+function applyCorners(f: AoFace, corner: number[]) {
+  f.cur = corner.slice();
+  const col = f.mesh.geometry.attributes.color;
+  const arr = col.array as Float32Array;
   const pos = f.mesh.geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const u = Math.max(0, Math.min(1, pos.getX(i) / f.extent + 0.5)); // 0 at -x, 1 at +x
@@ -399,6 +409,207 @@ function shadeFace(st: State, slot: number, ori: number, f: AoFace) {
   }
   col.needsUpdate = true;
 }
+
+// ------------------------------------------------------------------ shading while a layer turns
+//
+// "live" (real occlusion, recomputed every frame): the same three-spots-per-corner rule,
+// but each spot's "filled" amount is continuous: it depends on how far the spot is from
+// the nearest cubelet's center, measured in that cubelet's own (possibly tilted) frame.
+// At rest every cubelet sits on the grid and this matches the grid shading exactly.
+// "blend" (fallback): fade each face from its shading before the turn to after it.
+// The page starts with "live" and switches to "blend" if "live" proves too slow here.
+
+const SHADE_MODE_KEY = "xcube-lab-shade-mode";
+let shadeMode: "live" | "blend" = (() => {
+  try {
+    return localStorage.getItem(SHADE_MODE_KEY) === "blend" ? "blend" : "live";
+  } catch {
+    return "live";
+  }
+})();
+const LIVE_BUDGET_MS = 4; // average cost per frame above which we fall back
+let liveCostTotal = 0;
+let liveCostFrames = 0;
+
+/** How "filled" a spot is, from its distance d to a cubelet center (cube-shaped distance). */
+const fillAt = (d: number) => {
+  if (d <= 0.35) return 1;
+  if (d >= 0.75) return 0;
+  const t = (0.75 - d) / 0.4;
+  return t * t * (3 - 2 * t);
+};
+
+function levelBrightness(level: number) {
+  const l = Math.max(0, Math.min(3, level));
+  const i = Math.min(2, Math.floor(l));
+  return AO_LEVELS[i] + (AO_LEVELS[i + 1] - AO_LEVELS[i]) * (l - i);
+}
+
+interface TurnPose {
+  def: number;
+  angle: number; // counterclockwise about the +axis of the move
+  before: State; // the position before the turn
+}
+
+/** Rotate v about axis (0 x, 1 y, 2 z) by angle (radians, CCW). */
+function rotAxis(axis: number, c: number, s: number, v: number[]): number[] {
+  const [x, y, z] = v;
+  if (axis === 0) return [x, c * y - s * z, s * y + c * z];
+  if (axis === 1) return [c * x + s * z, y, -s * x + c * z];
+  return [c * x - s * y, s * x + c * y, z];
+}
+
+/** Recompute shading for the faces near a turning layer, from where cubelets actually are. */
+function shadeDuringTurn(pose: TurnPose) {
+  if (!aoOn["3d"] && !aoOn.flat) return;
+  const t0 = performance.now();
+  const d = MOVE_DEFS[pose.def];
+  const axis = d.axis;
+  const c = Math.cos(pose.angle), sn = Math.sin(pose.angle);
+  const st = pose.before;
+  // Which cubelets turn, and where their centers are right now.
+  const isMovingId = new Uint8Array(CUBELETS.length);
+  const mx: number[] = [], my: number[] = [], mz: number[] = [];
+  let lo = 9, hi = -9;
+  for (const sl of d.slots) {
+    const pp = SLOT_POS[sl];
+    lo = Math.min(lo, pp[axis] - 1);
+    hi = Math.max(hi, pp[axis] + 1);
+    const id = st.occ[sl];
+    if (id < 0) continue;
+    isMovingId[id] = 1;
+    const r = rotAxis(axis, c, sn, [pp[0], pp[1], pp[2]]);
+    mx.push(r[0]);
+    my.push(r[1]);
+    mz.push(r[2]);
+  }
+  const nm = mx.length;
+  const REACH2 = 0.75 * 0.75 * 3; // beyond this squared distance a cubelet can't fill the spot
+  const staticAt = (x: number, y: number, z: number) => {
+    if (x === 0 && y === 0 && z === 0) return true;
+    const slot = slotAtXYZ(x, y, z);
+    return slot >= 0 && st.occ[slot] >= 0 && !isMovingId[st.occ[slot]];
+  };
+  const filled = (qx: number, qy: number, qz: number) => {
+    let best = 0;
+    const x0 = Math.floor(qx + 1e-9), y0 = Math.floor(qy + 1e-9), z0 = Math.floor(qz + 1e-9);
+    const x1 = Math.abs(qx - Math.round(qx)) < 1e-6 ? x0 : x0 + 1;
+    const y1 = Math.abs(qy - Math.round(qy)) < 1e-6 ? y0 : y0 + 1;
+    const z1 = Math.abs(qz - Math.round(qz)) < 1e-6 ? z0 : z0 + 1;
+    for (let x = x0; x <= x1; x++)
+      for (let y = y0; y <= y1; y++)
+        for (let z = z0; z <= z1; z++)
+          if (staticAt(x, y, z)) {
+            const f = fillAt(Math.max(Math.abs(qx - x), Math.abs(qy - y), Math.abs(qz - z)));
+            if (f > best) best = f;
+          }
+    if (best >= 1) return 1;
+    for (let i = 0; i < nm; i++) {
+      const dx = qx - mx[i], dy = qy - my[i], dz = qz - mz[i];
+      if (dx * dx + dy * dy + dz * dz > REACH2) continue;
+      // Distance measured in the turning frame (undo the turn's rotation).
+      let ex = dx, ey = dy, ez = dz;
+      if (axis === 0) { ey = c * dy + sn * dz; ez = -sn * dy + c * dz; }
+      else if (axis === 1) { ex = c * dx - sn * dz; ez = sn * dx + c * dz; }
+      else { ex = c * dx + sn * dy; ey = -sn * dx + c * dy; }
+      const f = fillAt(Math.max(Math.abs(ex), Math.abs(ey), Math.abs(ez)));
+      if (f > best) { best = f; if (best >= 1) return 1; }
+    }
+    return best;
+  };
+  const corner = [1, 1, 1, 1];
+  for (let slot = 0; slot < NUM_SLOTS; slot++) {
+    const id = st.occ[slot];
+    if (id < 0) continue;
+    const p = SLOT_POS[slot];
+    if (p[axis] < lo || p[axis] > hi) continue;
+    const moving = isMovingId[id] === 1;
+    const R = ROTATIONS[st.ori[slot]];
+    const center = moving ? rotAxis(axis, c, sn, [p[0], p[1], p[2]]) : [p[0], p[1], p[2]];
+    const tf = (v: Vec3) => {
+      const g = matVec(R, v);
+      return moving ? rotAxis(axis, c, sn, [g[0], g[1], g[2]]) : [g[0], g[1], g[2]];
+    };
+    let lastD = -1;
+    for (const f of aoFaces[id] ?? []) {
+      if (!aoOn[f.view]) continue;
+      if (f.d !== lastD) {
+        lastD = f.d;
+        const n = tf(DIRS[f.d]), ux = tf(f.ux), uy = tf(f.uy);
+        const fx = center[0] + n[0], fy = center[1] + n[1], fz = center[2] + n[2];
+        // A face covered by a cubelet that isn't moving can't be seen: leave it.
+        if (!moving && staticAt(fx, fy, fz)) { corner[0] = -1; continue; }
+        for (let k = 0; k < 4; k++) {
+          const sx = CORNER_SIGNS[k][0], sy = CORNER_SIGNS[k][1];
+          const ax = fx + sx * ux[0], ay = fy + sx * ux[1], az = fz + sx * ux[2];
+          const s1 = filled(ax, ay, az);
+          const s2 = filled(fx + sy * uy[0], fy + sy * uy[1], fz + sy * uy[2]);
+          const s3 = filled(ax + sy * uy[0], ay + sy * uy[1], az + sy * uy[2]);
+          corner[k] = levelBrightness((1 - s1 * s2) * (3 - (s1 + s2 + s3)));
+        }
+      }
+      if (corner[0] >= 0) applyCorners(f, corner);
+    }
+  }
+  // Watch the cost; fall back to blending if this device can't keep up.
+  liveCostTotal += performance.now() - t0;
+  liveCostFrames++;
+  if (liveCostFrames >= 20 && liveCostTotal / liveCostFrames > LIVE_BUDGET_MS) {
+    shadeMode = "blend";
+    try {
+      localStorage.setItem(SHADE_MODE_KEY, "blend");
+    } catch {
+      /* storage unavailable */
+    }
+    setMessage(`Shading during turns switched to a lighter method on this device (${(liveCostTotal / liveCostFrames).toFixed(1)} ms per frame was too slow).`, "info");
+    render();
+  }
+}
+
+/** Fallback: fade from shading before the turn to after it. */
+let blendPlan: { face: AoFace; from: number[]; to: number[] }[] | null = null;
+function planBlend(after: State) {
+  const before: Map<AoFace, number[]> = new Map();
+  for (const list of aoFaces) for (const f of list ?? []) if (f.cur) before.set(f, f.cur.slice());
+  syncMeshes(after); // computes the "after" shading (and positions; the animation overrides them)
+  blendPlan = [];
+  for (const [f, from] of before) {
+    const to = f.cur!;
+    if (from.some((v, i) => Math.abs(v - to[i]) > 1e-3)) {
+      blendPlan.push({ face: f, from, to: to.slice() });
+      applyCorners(f, from);
+    }
+  }
+}
+function blendStep(t: number) {
+  if (!blendPlan) return;
+  for (const b of blendPlan) applyCorners(b.face, b.from.map((v, i) => v + (b.to[i] - v) * t));
+}
+
+/** Called each animation frame with the turning layer's current pose. */
+function shadeTurnFrame(pose: TurnPose, progress: number) {
+  if (shadeMode === "live") shadeDuringTurn(pose);
+  else blendStep(progress);
+}
+
+/** For automated checks: largest change live shading makes at rest (should be ~0). */
+(window as any).__xcubeShadeRestCheck = () => {
+  let worst = 0;
+  for (let def = 0; def < MOVE_DEFS.length; def++) {
+    if (MOVE_DEFS[def].kind === "rotation") continue;
+    const before = new Map<AoFace, number[]>();
+    for (const list of aoFaces) for (const f of list ?? []) if (f.cur) before.set(f, f.cur.slice());
+    const saveCost = [liveCostTotal, liveCostFrames];
+    shadeDuringTurn({ def, angle: 0, before: app.current });
+    [liveCostTotal, liveCostFrames] = saveCost;
+    for (const [f, v] of before) for (let i = 0; i < 4; i++) worst = Math.max(worst, Math.abs(v[i] - f.cur![i]));
+    syncMeshes(app.current);
+  }
+  return worst;
+};
+
+/** For automated checks: average cost of live shading per frame so far. */
+(window as any).__xcubeShadeCost = () => ({ mode: shadeMode, frames: liveCostFrames, avgMs: liveCostFrames ? liveCostTotal / liveCostFrames : 0 });
 
 function applyShadingSettings() {
   syncMeshes(app.current);
@@ -706,6 +917,7 @@ function updateLiveTurn(l: Live, x: number, y: number) {
   const along = (x - l.x0) * l.dirX + (y - l.y0) * l.dirY; // pixels along the swipe direction
   l.theta = (l.sign * (along / l.pxPerUnit)) / l.radius;
   l.group.quaternion.setFromAxisAngle(l.axisVec, l.theta);
+  if (shadeMode === "live") shadeDuringTurn({ def: l.def, angle: l.theta, before: app.current });
 }
 
 /** Finger lifted: settle to the nearest quarter turn (27 degrees is enough; a quick flick counts). */
@@ -725,6 +937,7 @@ function tickSettle() {
   const t = ms ? Math.min(1, (performance.now() - start) / ms) : 1;
   const e = 1 - Math.pow(1 - t, 3);
   l.group.quaternion.setFromAxisAngle(l.axisVec, from + (to - from) * e);
+  if (shadeMode === "live") shadeDuringTurn({ def: l.def, angle: from + (to - from) * e, before: app.current });
   if (t < 1) return;
   settle = null;
   finishLiveTurn(l, Math.round(to / (Math.PI / 2)));
@@ -903,6 +1116,7 @@ function bindOrbit(el: HTMLElement) {
 // ------------------------------------------------------------------ turn animation
 
 interface Anim {
+  before: State;
   turn: Turn;
   forward: boolean;
   start: number;
@@ -948,7 +1162,16 @@ function startNext() {
   const axis = new THREE.Vector3(d.axis === 0 ? 1 : 0, d.axis === 1 ? 1 : 0, d.axis === 2 ? 1 : 0);
   const q = ((d.ccw * amount) % 4 + 4) % 4;
   const angle = (q === 3 ? -1 : q) * (Math.PI / 2);
-  anim = { turn, forward, start: performance.now(), duration, group, axis, angle, after };
+  anim = { turn, forward, start: performance.now(), duration, group, axis, angle, after, before };
+  if (shadeMode === "blend") {
+    // planBlend moves meshes to the "after" layout; put the turning ones back for the animation.
+    planBlend(after);
+    syncMeshes(before);
+    for (const s of d.slots) {
+      const id = before.occ[s];
+      if (id >= 0) group.attach(meshes[id]);
+    }
+  }
   render();
 }
 
@@ -1039,6 +1262,7 @@ function tickAnimation() {
   const t = anim.duration ? Math.min(1, (performance.now() - anim.start) / anim.duration) : 1;
   const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   anim.group.quaternion.setFromAxisAngle(anim.axis, anim.angle * e);
+  shadeTurnFrame({ def: anim.turn.def, angle: anim.angle * e, before: anim.before }, e);
   if (t >= 1) {
     finishAnim();
     if (playing && !queue.length) {
