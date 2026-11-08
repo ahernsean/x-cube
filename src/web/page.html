@@ -77,7 +77,8 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .stage.tumbling { box-shadow: 0 0 0 2px var(--accent); }
 /* Long presses on the 3D view are gestures: no text selection, magnifier or callout. */
 .stage-col, .stage, #scene { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-.view-toggles { display: flex; gap: 12px; }
+.view-toggles { display: flex; gap: 12px; flex-wrap: wrap; justify-content: flex-end; align-items: center; }
+.fps { font-family: var(--f-mono); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 4.5em; text-align: right; }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }
 .chip { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--off-bg); color: var(--muted); white-space: nowrap; }
@@ -190,7 +191,9 @@ details[open] summary { margin-bottom: 8px; }
     </div>
     <div class="view-toggles-row">
       <span class="view-toggles" title="Applies to the 3D view and the flat view"><label class="hint keep" for="glow"><input type="checkbox" id="glow"> Edge glow</label>
-      <label class="hint keep" for="shade"><input type="checkbox" id="shade"> Shading</label></span>
+      <label class="hint keep" for="shade"><input type="checkbox" id="shade"> Shading</label>
+      <label class="hint keep" for="gtao" title="Trial: ground-truth ambient occlusion in the 3D view instead of grid shading"><input type="checkbox" id="gtao"> GTAO (trial)</label>
+      <span class="hint fps" id="fps"></span></span>
     </div>
     <p class="hint gesture-hint">Swipe on the cube to turn the layer under your finger. To tumble the view, drag the background, or long press on the cube and then drag. Use two fingers to spin it.</p>
     <div class="status" id="status" aria-live="polite"></div>

@@ -739,6 +739,88 @@ function resize() {
   const vHalf = (camera.fov * Math.PI) / 360;
   const hHalf = Math.atan(Math.tan(vHalf) * camera.aspect);
   camera.position.set(0, 0, Math.max(12.5, 3.35 / Math.sin(Math.min(vHalf, hHalf))));
+  if (composer) {
+    aoCam.copy(camera);
+    aoCam.layers.set(0);
+    composer.setSize(w, h);
+  }
+}
+
+// ------------------------------------------------------------------ GTAO trial
+//
+// Ground-truth ambient occlusion (Jimenez et al. 2016) via three.js r160's GTAOPass,
+// for the 3D view only. The scene (with glow) renders normally; GTAOPass renders its
+// depth/normal buffers from a camera that sees only the cubelets (layer 0), so the
+// glow casts no shadow, then denoises and multiplies the occlusion onto the image.
+// While it's on, the grid shading is off in the 3D view (the flat view keeps it).
+
+let composer: any = null;
+let gtaoPass: any = null;
+let aoCam: any = null;
+let gtaoOn = false;
+const GTAO_KEY = "xcube-lab-gtao";
+// Tuned by comparing the occlusion buffer (output 4/5) and the result against the grid shading.
+const GTAO_PARAMS = { radius: 1.2, distanceExponent: 1, thickness: 1, distanceFallOff: 1, scale: 1.5, samples: 16 };
+const GTAO_DENOISE = { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, radiusExponent: 1, rings: 2, samples: 16 };
+
+function initGtao(): boolean {
+  if (composer) return true;
+  if (!THREE.EffectComposer || !THREE.GTAOPass || !THREE.RenderPass) return false;
+  composer = new THREE.EffectComposer(renderer);
+  composer.addPass(new THREE.RenderPass(scene, camera));
+  aoCam = camera.clone();
+  aoCam.layers.set(0);
+  const el = renderer.domElement as HTMLCanvasElement;
+  gtaoPass = new THREE.GTAOPass(scene, aoCam, el.clientWidth || 300, el.clientHeight || 300);
+  gtaoPass.updateGtaoMaterial(GTAO_PARAMS);
+  gtaoPass.updatePdMaterial(GTAO_DENOISE);
+  composer.addPass(gtaoPass);
+  resize();
+  return true;
+}
+
+/** For tuning: change GTAO settings; { output: 2 } etc. shows intermediate buffers. */
+(window as any).__xcubeGtao = (ao?: Record<string, number>, pd?: Record<string, number>, extra?: Record<string, number>) => {
+  if (!gtaoPass) return null;
+  if (ao) gtaoPass.updateGtaoMaterial(ao);
+  if (pd) gtaoPass.updatePdMaterial(pd);
+  if (extra) Object.assign(gtaoPass, extra);
+  return true;
+};
+
+function setGtao(on: boolean) {
+  if (on && !initGtao()) {
+    setMessage("The GTAO effect couldn't load in this browser.", "error");
+    render();
+    return;
+  }
+  gtaoOn = on;
+  try {
+    localStorage.setItem(GTAO_KEY, on ? "1" : "0");
+  } catch {
+    /* storage unavailable */
+  }
+  aoOn["3d"] = !on && aoOn.flat; // grid shading off in 3D while GTAO is on
+  syncMeshes(app.current);
+}
+
+// Frames per second, smoothed, for judging the cost on a device.
+let fpsLast = 0;
+let fpsAvg = 60;
+let fpsShown = "";
+function tickFps() {
+  const now = performance.now();
+  if (fpsLast) {
+    const dt = now - fpsLast;
+    if (dt > 0 && dt < 1000) fpsAvg = fpsAvg * 0.95 + (1000 / dt) * 0.05;
+  }
+  fpsLast = now;
+  const text = `${Math.round(fpsAvg)} fps`;
+  if (text !== fpsShown) {
+    fpsShown = text;
+    const el = document.getElementById("fps");
+    if (el) el.textContent = text;
+  }
 }
 
 // Edge labels: which face of the puzzle points up, down, left, right and at you.
@@ -786,7 +868,9 @@ function frame() {
   tickSettle();
   updateCompass();
   renderNetAnimation();
-  renderer.render(scene, camera);
+  if (gtaoOn && composer) composer.render();
+  else renderer.render(scene, camera);
+  tickFps();
   requestAnimationFrame(frame);
 }
 
@@ -1742,6 +1826,21 @@ function bindUI() {
   shade.addEventListener("change", () => {
     aoOn["3d"] = aoOn.flat = shade.checked;
     if (!anim) applyShadingSettings();
+    if (gtaoOn) setGtao(true); // keep grid shading off in 3D while GTAO is on
+  });
+  const gtao = $("gtao") as HTMLInputElement;
+  let gtaoWanted = false;
+  try {
+    gtaoWanted = localStorage.getItem(GTAO_KEY) === "1";
+  } catch {
+    /* storage unavailable */
+  }
+  gtao.checked = gtaoWanted;
+  if (gtaoWanted) setTimeout(() => setGtao(true), 0);
+  gtao.addEventListener("change", () => {
+    flushAnimations();
+    setGtao(gtao.checked);
+    gtao.checked = gtaoOn;
   });
   const glow = $("glow") as HTMLInputElement;
   glow.checked = glowOn["3d"] && glowOn.flat;
