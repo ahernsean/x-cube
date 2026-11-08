@@ -450,17 +450,21 @@ function frame() {
     if (t >= 1) tween = null;
   }
   tickAnimation();
+  tickSettle();
   renderNetAnimation();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
 // Pointer input on the 3D view.
-// - Swipe that starts on the cube: turns the layer under your finger (see swipeTurn).
-// - Drag that starts on the background: sliding sideways spins the puzzle around its
-//   own vertical (U-D) axis like a turntable; sliding up and down tips it toward or away.
+// - Swipe that starts on the cube: the layer under your finger turns and follows the
+//   finger live; on release it settles to the nearest quarter turn (see beginLiveTurn).
+// - Hold still on the cube for a moment, then drag: tumbles the view instead.
+// - Drag that starts on the background: tumbles the view. Sliding sideways spins the
+//   puzzle around its own vertical (U-D) axis like a turntable; up and down tips it.
 // - Two fingers: twist around the axis pointing out of the screen.
 const SWIPE_PX = 10;
+const HOLD_TO_TUMBLE_MS = 350;
 const LAYER_MOVE: Record<number, Record<number, string>> = {
   0: { 2: "r", 1: "R", 0: "M", [-1]: "L", [-2]: "l" },
   1: { 2: "u", 1: "U", 0: "H", [-1]: "D", [-2]: "d" },
@@ -503,17 +507,35 @@ function toScreen(el: HTMLElement, p: any): [number, number] {
   return [((v.x + 1) / 2) * el.clientWidth, ((1 - v.y) / 2) * el.clientHeight];
 }
 
+/** A layer being turned by a finger. */
+interface Live {
+  group: any; // holds the turning cubelets
+  axisVec: any; // +axis unit vector, puzzle frame
+  def: number; // the move whose layer is turning
+  sign: number; // +1 if moving the finger along the swipe direction turns CCW about +axis
+  dirX: number; // on-screen unit direction of the swipe
+  dirY: number;
+  pxPerUnit: number; // screen pixels per world unit along that direction
+  radius: number; // distance of the touched point from the turning axis
+  x0: number;
+  y0: number;
+  t0: number;
+  theta: number; // current angle, CCW about +axis
+}
+let live: Live | null = null;
+let settle: { live: Live; from: number; to: number; start: number; ms: number } | null = null;
+
 /**
- * Turn the layer under a swipe. Of the two directions you can slide along the touched
- * face, take the one whose on-screen direction best matches the swipe. Moving the face
- * (normal n) toward direction m is a rotation about n x m; the touched cubelet's
- * position along that axis picks the layer: 1 = inner turn, 2 = outer (extension)
- * turn, 0 = middle slice.
+ * Start turning the layer under a swipe. Of the two directions you can slide along
+ * the touched face, take the one whose on-screen direction best matches the swipe.
+ * Moving the face (normal n) toward direction m is a rotation about n x m; the touched
+ * cubelet's position along that axis picks the layer: 1 = inner turn, 2 = outer
+ * (extension) turn, 0 = middle slice.
  */
-function swipeTurn(el: HTMLElement, hit: CubeHit, dx: number, dy: number) {
+function beginLiveTurn(el: HTMLElement, hit: CubeHit, x0: number, y0: number, dx: number, dy: number): Live | null {
   const len = Math.hypot(dx, dy);
   const [sx, sy] = toScreen(el, hit.point);
-  let best: { m: Vec3; score: number } | null = null;
+  let best: { m: Vec3; score: number; vx: number; vy: number; vl: number } | null = null;
   for (let axis = 0; axis < 3; axis++) {
     if (hit.normal[axis] !== 0) continue;
     const a: Vec3 = [axis === 0 ? 1 : 0, axis === 1 ? 1 : 0, axis === 2 ? 1 : 0];
@@ -521,17 +543,103 @@ function swipeTurn(el: HTMLElement, hit: CubeHit, dx: number, dy: number) {
     const vx = ex - sx, vy = ey - sy;
     const vl = Math.hypot(vx, vy) || 1;
     const score = (dx * vx + dy * vy) / (len * vl);
-    if (!best || Math.abs(score) > Math.abs(best.score)) best = { m: score >= 0 ? a : [-a[0], -a[1], -a[2]], score };
+    if (!best || Math.abs(score) > Math.abs(best.score)) {
+      const sg = score >= 0 ? 1 : -1;
+      best = { m: [a[0] * sg, a[1] * sg, a[2] * sg], score, vx: vx * sg, vy: vy * sg, vl };
+    }
   }
-  if (!best) return;
+  if (!best) return null;
   const n = hit.normal, m = best.m;
   const r: Vec3 = [n[1] * m[2] - n[2] * m[1], n[2] * m[0] - n[0] * m[2], n[0] * m[1] - n[1] * m[0]];
   const axis = r.findIndex((v) => v !== 0);
-  const quarter = r[axis]; // +1: counterclockwise about +axis
-  const name = LAYER_MOVE[axis][hit.cell[axis]];
-  const def = MOVE_BY_NAME.get(name)!;
-  doTurn({ def, amount: MOVE_DEFS[def].ccw === quarter ? 1 : 3 });
+  const def = MOVE_BY_NAME.get(LAYER_MOVE[axis][hit.cell[axis]])!;
+  const why = blockedReason(app.current, { def, amount: 1 });
+  if (why) {
+    setMessage(`${MOVE_DEFS[def].name} refused: ${why.replace(/^\w+ blocked: /, "")}`, "error");
+    render();
+    return null;
+  }
+  const group = new THREE.Group();
+  pivot.add(group);
+  for (const s of MOVE_DEFS[def].slots) {
+    const id = app.current.occ[s];
+    if (id >= 0) group.attach(meshes[id]);
+  }
+  const p = [hit.point.x, hit.point.y, hit.point.z];
+  const radius = Math.max(0.8, Math.hypot(...p.filter((_, i) => i !== axis)));
+  return {
+    group,
+    axisVec: new THREE.Vector3(axis === 0 ? 1 : 0, axis === 1 ? 1 : 0, axis === 2 ? 1 : 0),
+    def,
+    sign: r[axis],
+    dirX: best.vx / best.vl,
+    dirY: best.vy / best.vl,
+    pxPerUnit: best.vl / 0.4,
+    radius,
+    x0,
+    y0,
+    t0: performance.now(),
+    theta: 0,
+  };
+}
+
+function updateLiveTurn(l: Live, x: number, y: number) {
+  const along = (x - l.x0) * l.dirX + (y - l.y0) * l.dirY; // pixels along the swipe direction
+  l.theta = (l.sign * (along / l.pxPerUnit)) / l.radius;
+  l.group.quaternion.setFromAxisAngle(l.axisVec, l.theta);
+}
+
+/** Finger lifted: settle to the nearest quarter turn (27 degrees is enough; a quick flick counts). */
+function releaseLiveTurn(l: Live) {
+  const quarter = Math.PI / 2;
+  const turns = l.theta / quarter;
+  let q = Math.sign(turns) * Math.floor(Math.abs(turns) + 0.7);
+  const quick = performance.now() - l.t0 < 250;
+  if (q === 0 && quick && Math.abs(turns) > 0.08) q = Math.sign(turns);
+  const ms = reduceMotion ? 0 : Math.min(220, 60 + Math.abs(q * quarter - l.theta) * 160);
+  settle = { live: l, from: l.theta, to: q * quarter, start: performance.now(), ms };
+}
+
+function tickSettle() {
+  if (!settle) return;
+  const { live: l, from, to, start, ms } = settle;
+  const t = ms ? Math.min(1, (performance.now() - start) / ms) : 1;
+  const e = 1 - Math.pow(1 - t, 3);
+  l.group.quaternion.setFromAxisAngle(l.axisVec, from + (to - from) * e);
+  if (t < 1) return;
+  settle = null;
+  finishLiveTurn(l, Math.round(to / (Math.PI / 2)));
+}
+
+/** Put the turned cubelets back and record the turn (q = counterclockwise quarters about +axis). */
+function finishLiveTurn(l: Live, q: number) {
+  for (const child of [...l.group.children]) pivot.attach(child);
+  pivot.remove(l.group);
+  if (live === l) live = null;
+  const amount = ((((q * MOVE_DEFS[l.def].ccw) % 4) + 4) % 4) as 0 | 1 | 2 | 3;
+  if (amount) {
+    app.history = app.history.slice(0, app.cursor);
+    app.history.push({ def: l.def, amount });
+    app.cursor++;
+    recompute();
+    setMessage("");
+  }
+  syncMeshes(app.current);
   render();
+}
+
+/** Drop a turn in progress without recording it. */
+function cancelLiveTurn() {
+  if (settle) {
+    const l = settle.live;
+    settle = null;
+    finishLiveTurn(l, Math.round(l.theta / (Math.PI / 2)));
+  }
+  if (live) {
+    const l = live;
+    live = null;
+    finishLiveTurn(l, 0);
+  }
 }
 
 // Test hook (harmless): lets automated checks ask what a screen point would hit.
@@ -541,10 +649,13 @@ function swipeTurn(el: HTMLElement, hit: CubeHit, dx: number, dy: number) {
 };
 
 function bindOrbit(el: HTMLElement) {
+  const stage = el.parentElement!;
   const pts = new Map<number, { x: number; y: number }>();
   let twist: number | null = null;
-  // A swipe that began on the cube: where it started, and whether it already turned.
-  let swipe: { id: number; x: number; y: number; hit: CubeHit; done: boolean } | null = null;
+  // A finger that went down on the cube and hasn't yet become a turn or a tumble.
+  let pending: { id: number; x: number; y: number; hit: CubeHit; timer: ReturnType<typeof setTimeout> } | null = null;
+  let liveId: number | null = null;
+  let ignore = false; // the gesture was used up (e.g. a refused turn)
   const spin = (q: Quat) => {
     tween = null;
     const t = new THREE.Quaternion(q[0], q[1], q[2], q[3]);
@@ -554,16 +665,46 @@ function bindOrbit(el: HTMLElement) {
     const [a, b] = [...pts.values()];
     return Math.atan2(b.y - a.y, b.x - a.x);
   };
+  const clearPending = () => {
+    if (pending) clearTimeout(pending.timer);
+    pending = null;
+  };
   el.addEventListener("pointerdown", (e) => {
-    el.setPointerCapture(e.pointerId);
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* not capturable (e.g. a synthetic event); tracking still works */
+    }
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pts.size === 1) {
-      const hit = anim || queue.length ? null : pickCube(el, e.clientX, e.clientY);
-      swipe = hit ? { id: e.pointerId, x: e.clientX, y: e.clientY, hit, done: false } : null;
-    } else if (swipe && !swipe.done) {
-      swipe = null; // a second finger before the swipe turned anything: it's a twist
+      ignore = false;
+      const busy = anim || queue.length || settle;
+      const hit = busy ? null : pickCube(el, e.clientX, e.clientY);
+      if (hit) {
+        const id = e.pointerId;
+        pending = {
+          id,
+          x: e.clientX,
+          y: e.clientY,
+          hit,
+          timer: setTimeout(() => {
+            // Held still: this drag tumbles the view.
+            if (pending && pending.id === id) {
+              pending = null;
+              stage.classList.add("tumbling");
+            }
+          }, HOLD_TO_TUMBLE_MS),
+        };
+      }
+    } else {
+      // A second finger: twist. Abandon anything a single finger started.
+      clearPending();
+      if (live) {
+        cancelLiveTurn();
+        liveId = null;
+      }
     }
-    twist = pts.size === 2 && !swipe ? angleOf() : null;
+    twist = pts.size === 2 ? angleOf() : null;
   });
   el.addEventListener("pointermove", (e) => {
     const prev = pts.get(e.pointerId);
@@ -571,16 +712,23 @@ function bindOrbit(el: HTMLElement) {
     const dx = e.clientX - prev.x;
     const dy = e.clientY - prev.y;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (swipe) {
-      if (!swipe.done && e.pointerId === swipe.id) {
-        const tx = e.clientX - swipe.x, ty = e.clientY - swipe.y;
-        if (Math.hypot(tx, ty) >= SWIPE_PX) {
-          swipe.done = true;
-          swipeTurn(el, swipe.hit, tx, ty);
-        }
-      }
+    if (pending && e.pointerId === pending.id) {
+      const tx = e.clientX - pending.x, ty = e.clientY - pending.y;
+      if (Math.hypot(tx, ty) < SWIPE_PX) return;
+      const p0 = pending;
+      clearPending();
+      flushAnimations();
+      live = beginLiveTurn(el, p0.hit, p0.x, p0.y, tx, ty);
+      liveId = live ? e.pointerId : null;
+      if (!live) ignore = true;
+      else updateLiveTurn(live, e.clientX, e.clientY);
       return;
     }
+    if (live && e.pointerId === liveId) {
+      updateLiveTurn(live, e.clientX, e.clientY);
+      return;
+    }
+    if (ignore || live) return;
     if (pts.size === 1) {
       tween = null;
       const yaw = axisQuat(0, 1, 0, dx * 0.01);
@@ -597,8 +745,32 @@ function bindOrbit(el: HTMLElement) {
   });
   const up = (e: PointerEvent) => {
     pts.delete(e.pointerId);
-    if (pts.size === 0) swipe = null;
-    twist = pts.size === 2 && !swipe ? angleOf() : null;
+    if (pending && pending.id === e.pointerId) {
+      // Lifted before any move crossed the threshold. If the finger did travel (a fast
+      // flick whose moves the browser batched), treat it as a flick; otherwise a tap.
+      const p0 = pending;
+      clearPending();
+      const tx = e.clientX - p0.x, ty = e.clientY - p0.y;
+      if (Math.hypot(tx, ty) >= SWIPE_PX) {
+        flushAnimations();
+        const l = beginLiveTurn(el, p0.hit, p0.x, p0.y, tx, ty);
+        if (l) {
+          updateLiveTurn(l, e.clientX, e.clientY);
+          releaseLiveTurn(l);
+        }
+      }
+    }
+    if (live && liveId === e.pointerId) {
+      const l = live;
+      live = null;
+      liveId = null;
+      releaseLiveTurn(l);
+    }
+    if (pts.size === 0) {
+      stage.classList.remove("tumbling");
+      ignore = false;
+    }
+    twist = pts.size === 2 ? angleOf() : null;
   };
   el.addEventListener("pointerup", up);
   el.addEventListener("pointercancel", up);
@@ -753,6 +925,7 @@ function tickAnimation() {
 }
 
 function flushAnimations() {
+  cancelLiveTurn();
   queue.length = 0;
   playing = false;
   showNetAnimation(false);
