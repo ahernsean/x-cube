@@ -113,6 +113,16 @@ function initScene(canvas: HTMLCanvasElement) {
   const bodyMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
   const plane = new THREE.PlaneGeometry(0.84, 0.84);
   const mats = new Map<Color, any>();
+  const netPlane = new THREE.PlaneGeometry(0.92, 0.92);
+  const netBody = new THREE.BoxGeometry(0.92, 0.92, 0.92);
+  const netOccluderMat = new THREE.MeshBasicMaterial({ colorWrite: false });
+  const netMats = new Map<Color, any>();
+  const netMatFor = (c: Color) => {
+    if (!netMats.has(c)) netMats.set(c, new THREE.MeshBasicMaterial({ color: STICKER[c] }));
+    return netMats.get(c);
+  };
+  const dark = getComputedStyle(document.documentElement).getPropertyValue("--unstickered").trim() || "#2b2f2e";
+  const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark) });
   const matFor = (c: Color) => {
     if (!mats.has(c)) mats.set(c, new THREE.MeshLambertMaterial({ color: STICKER[c] }));
     return mats.get(c);
@@ -138,9 +148,26 @@ function initScene(canvas: HTMLCanvasElement) {
       m.rotation.set(rx, ry, 0);
       g.add(m);
     });
+    // Flat-view faces: unlit, one per face, seen only by the flat view's cameras (layer 2).
+    // An invisible occluder (depth only, drawn first) keeps deeper cubelets from
+    // showing through the gaps, so the gaps look like the resting grid's.
+    const occluder = new THREE.Mesh(netBody, netOccluderMat);
+    occluder.layers.set(NET_LAYER);
+    occluder.renderOrder = -1;
+    g.add(occluder);
+    for (let d = 0; d < 6; d++) {
+      const col = c.stickers[d];
+      const m = new THREE.Mesh(netPlane, col ? netMatFor(col) : netDarkMat);
+      const [px, py, pz, rx, ry] = faceXform[d];
+      m.position.set(px / 0.4945 * 0.5, py / 0.4945 * 0.5, pz / 0.4945 * 0.5);
+      m.rotation.set(rx, ry, 0);
+      m.layers.set(NET_LAYER);
+      g.add(m);
+    }
     pivot.add(g);
     meshes[c.id] = g;
   }
+  initNetAnimation();
   bindOrbit(canvas);
   resize();
   window.addEventListener("resize", resize);
@@ -260,6 +287,7 @@ function enqueue(turn: Turn, forward: boolean) {
 function startNext() {
   const job = queue.shift();
   if (!job) return;
+  showNetAnimation(true);
   const { turn, forward } = job;
   const before = app.current;
   // Move the cursor and compute the end state first.
@@ -289,6 +317,82 @@ function finishAnim() {
   pivot.remove(anim.group);
   syncMeshes(anim.after);
   anim = null;
+  if (!queue.length) showNetAnimation(false);
+}
+
+// ------------------------------------------------------------------ flat view animation
+//
+// While a turn animates, the flat view is drawn by six orthographic cameras looking at
+// the same scene, one per face, laid over the flat-view grid. They see only the unlit
+// face planes (layer 2). When turning stops, the grid (with its rim) comes back.
+
+const NET_LAYER = 2;
+let netRenderer: any = null;
+const netCams: { cam: any; face: string; view: number[]; up: number[] }[] = [];
+
+function initNetAnimation() {
+  const canvas = $("net-canvas") as HTMLCanvasElement;
+  netRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  netRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  netRenderer.setScissorTest(true);
+  netRenderer.setClearColor(0x000000, 0);
+  // [face, direction toward the viewer, screen-up direction] in the puzzle's own frame
+  const faces: [string, number[], number[]][] = [
+    ["U", [0, 1, 0], [0, 0, -1]],
+    ["D", [0, -1, 0], [0, 0, 1]],
+    ["F", [0, 0, 1], [0, 1, 0]],
+    ["B", [0, 0, -1], [0, 1, 0]],
+    ["R", [1, 0, 0], [0, 1, 0]],
+    ["L", [-1, 0, 0], [0, 1, 0]],
+  ];
+  for (const [face, view, up] of faces) {
+    const cam = new THREE.OrthographicCamera(-3, 3, 3, -3, 0.1, 40);
+    cam.layers.set(NET_LAYER);
+    netCams.push({ cam, face, view, up });
+  }
+}
+
+function showNetAnimation(on: boolean) {
+  const canvas = $("net-canvas");
+  canvas.hidden = !on;
+  $("net").classList.toggle("animating", on);
+}
+
+function renderNetAnimation() {
+  if (!netRenderer) return;
+  const net = $("net");
+  const canvas = $("net-canvas");
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h) return;
+  const size = netRenderer.getSize(new THREE.Vector2());
+  if (size.x !== w || size.y !== h) netRenderer.setSize(w, h, false);
+  netRenderer.setScissor(0, 0, w, h);
+  netRenderer.setViewport(0, 0, w, h);
+  netRenderer.clear();
+  const q = pivot.quaternion;
+  for (const el of net.querySelectorAll<HTMLElement>(".netface")) {
+    const name = el.querySelector(".netlabel")?.textContent ?? "";
+    const nc = netCams.find((c) => c.face === name);
+    if (!nc) continue;
+    const fw = el.offsetWidth;
+    // The face square holds a 0.55 + 5 + 0.55 unit grid with 1px gaps; match its scale.
+    const unit = (fw - 6) / 6.1;
+    const half = (fw / 2) / unit; // world units from center to the edge of the square
+    const cam = nc.cam;
+    cam.left = -half;
+    cam.right = half;
+    cam.top = half;
+    cam.bottom = -half;
+    cam.updateProjectionMatrix();
+    const pos = new THREE.Vector3(nc.view[0], nc.view[1], nc.view[2]).multiplyScalar(10).applyQuaternion(q);
+    cam.position.copy(pos);
+    cam.up.set(nc.up[0], nc.up[1], nc.up[2]).applyQuaternion(q);
+    cam.lookAt(0, 0, 0);
+    const x = el.offsetLeft, y = h - el.offsetTop - el.offsetHeight;
+    netRenderer.setViewport(x, y, fw, el.offsetHeight);
+    netRenderer.setScissor(x, y, fw, el.offsetHeight);
+    netRenderer.render(scene, cam);
+  }
 }
 
 function tickAnimation() {
@@ -297,6 +401,7 @@ function tickAnimation() {
   const t = anim.duration ? Math.min(1, (performance.now() - anim.start) / anim.duration) : 1;
   const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   anim.group.quaternion.setFromAxisAngle(anim.axis, anim.angle * e);
+  renderNetAnimation();
   if (t >= 1) {
     finishAnim();
     if (playing && !queue.length) {
@@ -309,6 +414,7 @@ function tickAnimation() {
 function flushAnimations() {
   queue.length = 0;
   playing = false;
+  showNetAnimation(false);
   if (anim) finishAnim();
   syncMeshes(app.current);
 }
