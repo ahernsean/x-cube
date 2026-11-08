@@ -253,7 +253,8 @@ interface AoFace {
   view: "3d" | "flat";
 }
 const aoFaces: AoFace[][] = [];
-const AO_LEVELS = [0.5, 0.67, 0.83, 1];
+// Brightness by number of open spots around a corner (0 = boxed in, 3 = open).
+const AO_LEVELS = [0.28, 0.48, 0.7, 1];
 // PlaneGeometry(w, h, 1, 1) vertex order: (-x,+y), (+x,+y), (-x,-y), (+x,-y)
 const CORNER_SIGNS: [number, number][] = [
   [-1, 1],
