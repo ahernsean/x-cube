@@ -119,8 +119,11 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
 - `src/core/search.ts`, `src/core/goals.ts`: iterative-deepening search with goal masks
   based on appearance (look-alike twins compare equal).
 - `src/cli/xc.ts`: command-line driver (see `README.md`).
-- `src/web/`: **X-Cube Lab**, the browser viewer, built into `dist/x-cube-lab.html` by
-  `scripts/build-web.ts` and published as a claude.ai artifact.
+- `src/web/`: **X-Cube Lab**, the browser viewer, built by `scripts/build-web.ts` into
+  `dist/x-cube-lab.html` (published as a claude.ai artifact, which supplies the document
+  skeleton) and `dist/index.html` (a complete page, published to GitHub Pages at
+  https://ahernsean.github.io/x-cube/ by `.github/workflows/pages.yml` on every change to
+  `main`).
 
 ## X-Cube Lab vocabulary
 
