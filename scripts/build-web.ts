@@ -3,6 +3,8 @@
 //   document skeleton (doctype, charset, viewport) when it is published;
 // - dist/index.html: the same page as a complete document, for any other web server
 //   (GitHub Pages). Without the viewport tag a phone would lay it out 980 px wide.
+// With --sourcemap the script carries an inline source map, so browser test coverage can
+// be reported against the TypeScript sources; the published pages are built without it.
 import { build } from "esbuild";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
@@ -12,6 +14,7 @@ const out = await build({
   format: "iife",
   target: "es2020",
   minify: true,
+  sourcemap: process.argv.includes("--sourcemap") ? "inline" : false,
   write: false,
 });
 const js = out.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");

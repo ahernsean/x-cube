@@ -2,7 +2,7 @@
 // three.js r128 is loaded as a global from cdnjs by the page.
 
 import { isHomeX, isSolved, isXShape, isExposed, outerAvailability, effect } from "../core/analyze.ts";
-import { DIRS, ROT_DIR, ROTATIONS, matVec, type Vec3 } from "../core/geometry.ts";
+import { DIRS, ROT_DIR, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
   CUBELETS,
@@ -16,6 +16,7 @@ import {
   blockedReason,
   slotAt,
   slotAtXYZ,
+  slotName,
   turnName,
   type Color,
   type Turn,
@@ -231,11 +232,6 @@ function varyFilm(geo: any, key: number) {
   return geo;
 }
 
-(window as any).__xcubeLight = (v: Partial<typeof LIGHT>) => {
-  Object.assign(LIGHT, v);
-  return LIGHT;
-};
-
 /** three.js r155+ changed color and light handling; keep the look tuned under r128. */
 function matchR128Look(r: any) {
   r.outputColorSpace = THREE.LinearSRGBColorSpace;
@@ -349,6 +345,7 @@ function initScene(canvas: HTMLCanvasElement) {
     return netMats.get(c);
   };
   const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark), vertexColors: true });
+  probeUnstickered = netDarkMat.color.getHex();
   const matFor = (c: Color) => {
     if (!mats.has(c)) {
       const m = new THREE.MeshPhysicalMaterial({ color: STICKER[c], vertexColors: true, roughness: LIGHT.stickerRough, metalness: 0, specularIntensity: LIGHT.stickerSpec });
@@ -379,12 +376,14 @@ function initScene(canvas: HTMLCanvasElement) {
     bodyMesh.receiveShadow = true;
     g.add(bodyMesh);
     registerBody(c.id, bodyMesh, 0.985);
+    probeInfo.set(bodyMesh, { id: c.id, d: 6 });
     const aoList: AoFace[] = [];
     aoFaces[c.id] = aoList;
     c.stickers.forEach((col, d) => {
       if (!col) return;
       const m = new THREE.Mesh(varyFilm(withAoColors(plane), c.id * 6 + d), matFor(col));
       m.receiveShadow = true;
+      probeInfo.set(m, { id: c.id, d });
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px, py, pz);
       m.rotation.set(rx, ry, 0);
@@ -394,12 +393,14 @@ function initScene(canvas: HTMLCanvasElement) {
     // Flat-view faces: unlit, one per face, seen only by the flat view's cameras (layer 2),
     // in front of the cubelet's dark backing, which also hides deeper cubelets.
     const occluder = new THREE.Mesh(netBody, netOccluderMat);
+    probeInfo.set(occluder, { id: c.id, d: 6 });
     occluder.layers.set(NET_LAYER);
     occluder.renderOrder = -1;
     g.add(occluder);
     for (let d = 0; d < 6; d++) {
       const col = c.stickers[d];
       const m = new THREE.Mesh(withAoColors(netPlane), col ? netMatFor(col) : netDarkMat);
+      probeInfo.set(m, { id: c.id, d });
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px / 0.4945 * 0.5, py / 0.4945 * 0.5, pz / 0.4945 * 0.5);
       m.rotation.set(rx, ry, 0);
@@ -709,24 +710,10 @@ function applyCorners(f: AoFace, corner: number[]) {
 
 // ------------------------------------------------------------------ shading while a layer turns
 //
-// "live" (real occlusion, recomputed every frame): the same three-spots-per-corner rule,
-// but each spot's "filled" amount is continuous: it depends on how far the spot is from
-// the nearest cubelet's center, measured in that cubelet's own (possibly tilted) frame.
+// Real occlusion, recomputed every frame: the same three-spots-per-corner rule, but each
+// spot's "filled" amount is continuous: it depends on how far the spot is from the
+// nearest cubelet's center, measured in that cubelet's own (possibly tilted) frame.
 // At rest every cubelet sits on the grid and this matches the grid shading exactly.
-// "blend" (fallback): fade each face from its shading before the turn to after it.
-// The page starts with "live" and switches to "blend" if "live" proves too slow here.
-
-const SHADE_MODE_KEY = "xcube-lab-shade-mode";
-let shadeMode: "live" | "blend" = (() => {
-  try {
-    return localStorage.getItem(SHADE_MODE_KEY) === "blend" ? "blend" : "live";
-  } catch {
-    return "live";
-  }
-})();
-const LIVE_BUDGET_MS = 4; // average cost per frame above which we fall back
-let liveCostTotal = 0;
-let liveCostFrames = 0;
 
 /** How "filled" a spot is, from its distance d to a cubelet center (cube-shaped distance). */
 const fillAt = (d: number) => {
@@ -759,7 +746,6 @@ function rotAxis(axis: number, c: number, s: number, v: number[]): number[] {
 /** Recompute shading for the faces near a turning layer, from where cubelets actually are. */
 function shadeDuringTurn(pose: TurnPose) {
   if (!aoOn["3d"] && !aoOn.flat) return;
-  const t0 = performance.now();
   const d = MOVE_DEFS[pose.def];
   const axis = d.axis;
   const c = Math.cos(pose.angle), sn = Math.sin(pose.angle);
@@ -851,65 +837,21 @@ function shadeDuringTurn(pose: TurnPose) {
     }
     applyToCubelet(id, per);
   }
-  // Watch the cost; fall back to blending if this device can't keep up.
-  liveCostTotal += performance.now() - t0;
-  liveCostFrames++;
-  if (liveCostFrames >= 20 && liveCostTotal / liveCostFrames > LIVE_BUDGET_MS) {
-    shadeMode = "blend";
-    try {
-      localStorage.setItem(SHADE_MODE_KEY, "blend");
-    } catch {
-      /* storage unavailable */
-    }
-    setMessage(`Shading during turns switched to a lighter method on this device (${(liveCostTotal / liveCostFrames).toFixed(1)} ms per frame was too slow).`, "info");
-    render();
-  }
 }
 
-/** Fallback: fade from shading before the turn to after it. */
-let blendPlan: { face: AoFace; from: number[]; to: number[] }[] | null = null;
-function planBlend(after: State) {
-  const before: Map<AoFace, number[]> = new Map();
-  for (const list of aoFaces) for (const f of list ?? []) if (f.cur) before.set(f, f.cur.slice());
-  syncMeshes(after); // computes the "after" shading (and positions; the animation overrides them)
-  blendPlan = [];
-  for (const [f, from] of before) {
-    const to = f.cur!;
-    if (from.some((v, i) => Math.abs(v - to[i]) > 1e-3)) {
-      blendPlan.push({ face: f, from, to: to.slice() });
-      applyCorners(f, from);
-    }
-  }
-}
-function blendStep(t: number) {
-  if (!blendPlan) return;
-  for (const b of blendPlan) applyCorners(b.face, b.from.map((v, i) => v + (b.to[i] - v) * t));
-}
-
-/** Called each animation frame with the turning layer's current pose. */
-function shadeTurnFrame(pose: TurnPose, progress: number) {
-  if (shadeMode === "live") shadeDuringTurn(pose);
-  else blendStep(progress);
-}
-
-/** For automated checks: largest change live shading makes at rest (should be ~0). */
-(window as any).__xcubeShadeRestCheck = () => {
+/** Largest change live shading makes to a puzzle at rest, over every turnable layer (should be ~0). */
+function shadeRestError() {
   let worst = 0;
   for (let def = 0; def < MOVE_DEFS.length; def++) {
     if (MOVE_DEFS[def].kind === "rotation") continue;
     const before = new Map<AoFace, number[]>();
     for (const list of aoFaces) for (const f of list ?? []) if (f.cur) before.set(f, f.cur.slice());
-    const saveCost = [liveCostTotal, liveCostFrames];
     shadeDuringTurn({ def, angle: 0, before: app.current });
-    [liveCostTotal, liveCostFrames] = saveCost;
     for (const [f, v] of before) for (let i = 0; i < 4; i++) worst = Math.max(worst, Math.abs(v[i] - f.cur![i]));
     syncMeshes(app.current);
   }
   return worst;
-};
-
-/** For automated checks: average cost of live shading per frame so far. */
-(window as any).__xcubeShadeCost = () => ({ mode: shadeMode, frames: liveCostFrames, avgMs: liveCostFrames ? liveCostTotal / liveCostFrames : 0 });
+}
 
 function applyShadingSettings() {
   syncMeshes(app.current);
@@ -1267,7 +1209,7 @@ function updateLiveTurn(l: Live, x: number, y: number) {
   const along = (x - l.x0) * l.dirX + (y - l.y0) * l.dirY; // pixels along the swipe direction
   l.theta = (l.sign * (along / l.pxPerUnit)) / l.radius;
   l.group.quaternion.setFromAxisAngle(l.axisVec, l.theta);
-  if (shadeMode === "live") shadeDuringTurn({ def: l.def, angle: l.theta, before: app.current });
+  shadeDuringTurn({ def: l.def, angle: l.theta, before: app.current });
 }
 
 /** Finger lifted: settle to the nearest quarter turn (27 degrees is enough; a quick flick counts). */
@@ -1287,7 +1229,7 @@ function tickSettle() {
   const t = ms ? Math.min(1, (performance.now() - start) / ms) : 1;
   const e = 1 - Math.pow(1 - t, 3);
   l.group.quaternion.setFromAxisAngle(l.axisVec, from + (to - from) * e);
-  if (shadeMode === "live") shadeDuringTurn({ def: l.def, angle: from + (to - from) * e, before: app.current });
+  shadeDuringTurn({ def: l.def, angle: from + (to - from) * e, before: app.current });
   if (t < 1) return;
   settle = null;
   finishLiveTurn(l, Math.round(to / (Math.PI / 2)));
@@ -1323,12 +1265,6 @@ function cancelLiveTurn() {
     finishLiveTurn(l, 0);
   }
 }
-
-// Test hook (harmless): lets automated checks ask what a screen point would hit.
-(window as any).__xcubePick = (x: number, y: number) => {
-  const h = pickCube(renderer.domElement, x, y);
-  return h && { normal: h.normal, cell: h.cell, point: [h.point.x, h.point.y, h.point.z] };
-};
 
 // ------------------------------------------------------------------ shuffle
 
@@ -1410,7 +1346,9 @@ function bindOrbit(el: HTMLElement) {
   const pts = new Map<number, { x: number; y: number }>();
   let twist: number | null = null;
   // A finger that went down on the cube and hasn't yet become a turn or a tumble.
-  let pending: { id: number; x: number; y: number; hit: CubeHit; timer: ReturnType<typeof setTimeout> } | null = null;
+  // Taps and holds are timed by each event's own timestamp (when the finger moved), not by
+  // when its handler runs, so a slow frame cannot turn a quick swipe into a hold.
+  let pending: { id: number; x: number; y: number; t0: number; hit: CubeHit; timer: ReturnType<typeof setTimeout> } | null = null;
   let liveId: number | null = null;
   let ignore = false; // the gesture was used up (e.g. a refused turn)
   const spin = (q: Quat) => {
@@ -1433,7 +1371,7 @@ function bindOrbit(el: HTMLElement) {
       /* not capturable (e.g. a synthetic event); tracking still works */
     }
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pts.size === 1) tap = { x: e.clientX, y: e.clientY, t: performance.now(), ok: true };
+    if (pts.size === 1) tap = { x: e.clientX, y: e.clientY, t: e.timeStamp, ok: true };
     else if (tap) tap.ok = false; // two fingers: not a tap
     if (pts.size === 1) {
       ignore = false;
@@ -1445,14 +1383,10 @@ function bindOrbit(el: HTMLElement) {
           id,
           x: e.clientX,
           y: e.clientY,
+          t0: e.timeStamp,
           hit,
-          timer: setTimeout(() => {
-            // Held still: this drag tumbles the view.
-            if (pending && pending.id === id) {
-              pending = null;
-              stage.classList.add("tumbling");
-            }
-          }, HOLD_TO_TUMBLE_MS),
+          // Shows that the hold registered; the first move decides (by its timestamp).
+          timer: setTimeout(() => stage.classList.add("tumbling"), HOLD_TO_TUMBLE_MS),
         };
       }
     } else {
@@ -1474,15 +1408,22 @@ function bindOrbit(el: HTMLElement) {
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pending && e.pointerId === pending.id) {
       const tx = e.clientX - pending.x, ty = e.clientY - pending.y;
-      if (Math.hypot(tx, ty) < SWIPE_PX) return;
+      const held = e.timeStamp - pending.t0 >= HOLD_TO_TUMBLE_MS;
+      if (!held && Math.hypot(tx, ty) < SWIPE_PX) return;
       const p0 = pending;
       clearPending();
-      flushAnimations();
-      live = beginLiveTurn(el, p0.hit, p0.x, p0.y, tx, ty);
-      liveId = live ? e.pointerId : null;
-      if (!live) ignore = true;
-      else updateLiveTurn(live, e.clientX, e.clientY);
-      return;
+      if (held) {
+        // Held still before moving: this drag tumbles the view (below).
+        stage.classList.add("tumbling");
+      } else {
+        stage.classList.remove("tumbling");
+        flushAnimations();
+        live = beginLiveTurn(el, p0.hit, p0.x, p0.y, tx, ty);
+        liveId = live ? e.pointerId : null;
+        if (!live) ignore = true;
+        else updateLiveTurn(live, e.clientX, e.clientY);
+        return;
+      }
     }
     if (live && e.pointerId === liveId) {
       updateLiveTurn(live, e.clientX, e.clientY);
@@ -1511,7 +1452,7 @@ function bindOrbit(el: HTMLElement) {
       const p0 = pending;
       clearPending();
       const tx = e.clientX - p0.x, ty = e.clientY - p0.y;
-      if (Math.hypot(tx, ty) >= SWIPE_PX) {
+      if (Math.hypot(tx, ty) >= SWIPE_PX && e.timeStamp - p0.t0 < HOLD_TO_TUMBLE_MS) {
         flushAnimations();
         const l = beginLiveTurn(el, p0.hit, p0.x, p0.y, tx, ty);
         if (l) {
@@ -1529,7 +1470,7 @@ function bindOrbit(el: HTMLElement) {
     if (pts.size === 0) {
       stage.classList.remove("tumbling");
       ignore = false;
-      const now = performance.now();
+      const now = e.timeStamp;
       const isTap =
         tap && tap.ok && e.type === "pointerup" && now - tap.t < TAP_MS && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < SWIPE_PX;
       if (isTap) {
@@ -1603,15 +1544,6 @@ function startNext() {
   const q = ((d.ccw * amount) % 4 + 4) % 4;
   const angle = (q === 3 ? -1 : q) * (Math.PI / 2);
   anim = { turn, forward, start: performance.now(), duration, group, axis, angle, after, before };
-  if (shadeMode === "blend") {
-    // planBlend moves meshes to the "after" layout; put the turning ones back for the animation.
-    planBlend(after);
-    syncMeshes(before);
-    for (const s of d.slots) {
-      const id = before.occ[s];
-      if (id >= 0) group.attach(meshes[id]);
-    }
-  }
   render();
 }
 
@@ -1662,6 +1594,22 @@ function showNetAnimation(_on: boolean) {
   /* the flat view is always drawn by the cameras now */
 }
 
+const NET_HALF = 3.15; // world units from the center to the edge of each face box (room for the glow)
+
+/** Points a flat-view camera straight at its face, for the puzzle's current orientation q. */
+function aimNetCam(nc: (typeof netCams)[number], q: any) {
+  const cam = nc.cam;
+  cam.left = -NET_HALF;
+  cam.right = NET_HALF;
+  cam.top = NET_HALF;
+  cam.bottom = -NET_HALF;
+  cam.updateProjectionMatrix();
+  cam.position.copy(new THREE.Vector3(nc.view[0], nc.view[1], nc.view[2]).multiplyScalar(10).applyQuaternion(q));
+  cam.up.set(nc.up[0], nc.up[1], nc.up[2]).applyQuaternion(q);
+  cam.lookAt(0, 0, 0);
+  return cam;
+}
+
 function renderNetAnimation() {
   if (!netRenderer) return;
   const net = $("net");
@@ -1679,17 +1627,7 @@ function renderNetAnimation() {
     const nc = netCams.find((c) => c.face === name);
     if (!nc) continue;
     const fw = el.offsetWidth;
-    const half = 3.15; // world units from the center to the edge of each face box (room for the glow)
-    const cam = nc.cam;
-    cam.left = -half;
-    cam.right = half;
-    cam.top = half;
-    cam.bottom = -half;
-    cam.updateProjectionMatrix();
-    const pos = new THREE.Vector3(nc.view[0], nc.view[1], nc.view[2]).multiplyScalar(10).applyQuaternion(q);
-    cam.position.copy(pos);
-    cam.up.set(nc.up[0], nc.up[1], nc.up[2]).applyQuaternion(q);
-    cam.lookAt(0, 0, 0);
+    const cam = aimNetCam(nc, q);
     const x = el.offsetLeft, y = h - el.offsetTop - el.offsetHeight;
     netRenderer.setViewport(x, y, fw, el.offsetHeight);
     netRenderer.setScissor(x, y, fw, el.offsetHeight);
@@ -1703,7 +1641,7 @@ function tickAnimation() {
   const t = anim.duration ? Math.min(1, (performance.now() - anim.start) / anim.duration) : 1;
   const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   anim.group.quaternion.setFromAxisAngle(anim.axis, anim.angle * e);
-  shadeTurnFrame({ def: anim.turn.def, angle: anim.angle * e, before: anim.before }, e);
+  shadeDuringTurn({ def: anim.turn.def, angle: anim.angle * e, before: anim.before });
   if (t >= 1) {
     finishAnim();
     if (playing && !queue.length) {
@@ -2065,6 +2003,7 @@ function bindMoveButtons() {
     const name = b.dataset.move!;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let active: number | null = null;
+    let downAt = 0; // event timestamp of the press
     let long = false;
     const show = (inverted: boolean) => {
       const amount = inverted ? invertAmount(app.modifier) : app.modifier;
@@ -2082,6 +2021,7 @@ function bindMoveButtons() {
       // Touch pointers are captured by default; release so sliding off is noticed.
       if (b.hasPointerCapture(e.pointerId)) b.releasePointerCapture(e.pointerId);
       active = e.pointerId;
+      downAt = e.timeStamp;
       long = false;
       timer = setTimeout(() => {
         long = true;
@@ -2091,7 +2031,8 @@ function bindMoveButtons() {
     b.addEventListener("pointerup", (e) => {
       if (e.pointerId !== active) return;
       const over = document.elementFromPoint(e.clientX, e.clientY)?.closest("button") === b;
-      const inverted = long;
+      // Timed by the events, so a press held long enough counts even if the timer ran late.
+      const inverted = long || e.timeStamp - downAt >= LONG_PRESS_MS;
       reset();
       if (over) pressMove(name, inverted);
     });
@@ -2282,6 +2223,213 @@ function bindUI() {
   });
 }
 
+// ------------------------------------------------------------------ probe for browser tests
+
+// window.xcubeProbe answers "what is drawn where" for scripts/browser-tests.mjs. Apart
+// from the fault methods (which the tests use to check that a misdrawn cubelet is caught),
+// it only reads: it draws into its own offscreen buffer, so the visible views don't change.
+// - model(slot, face): the color the puzzle model says is there.
+// - sticker(slot, face): where the center of the sticker in that slot, facing that way,
+//   appears on screen (client coordinates), to aim gestures at.
+// - at3d(x, y), scan3d() and flatFace(face): what is drawn there. One offscreen pass draws
+//   each sticker in a color that encodes its cubelet and face (an ID buffer); the slot
+//   and direction it is drawn at come from that cubelet's mesh transform (not from the
+//   model), along with the cubelet the model has in that slot; a second pass draws each sticker in the plain
+//   color of the material it is drawn with (no lighting, shading, shadows, glow or
+//   gloss), which gives the color.
+// Answers are meaningful only while nothing is moving (idle()).
+
+const probeInfo = new Map<any, { id: number; d: number }>();
+const PROBE_PLASTIC = 0x404040;
+let probeUnstickered = 0x808080; // set to the flat view's unstickered tile color
+const probeMats = new Map<string, any>();
+let probeTarget: any = null;
+
+/** The stand-in material for a mesh: its ID code, or the color of the material it is drawn with. */
+function probeMaterial(info: { id: number; d: number } | undefined, mode: "id" | "color", drawn: any) {
+  let hex: number;
+  if (mode === "id") {
+    const code = info ? info.id * 7 + info.d + 1 : 0; // d 0-5: a sticker or tile; 6: the plastic
+    hex = ((code & 255) << 16) | ((code >> 8) << 8);
+  } else hex = info && info.d < 6 && drawn?.color ? drawn.color.getHex() : PROBE_PLASTIC;
+  const key = mode + hex;
+  if (!probeMats.has(key)) {
+    const c = new THREE.Color();
+    c.setRGB(((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255, THREE.LinearSRGBColorSpace);
+    probeMats.set(key, new THREE.MeshBasicMaterial({ color: c, toneMapped: false }));
+  }
+  return probeMats.get(key);
+}
+
+/** The scene drawn by cam into a w x h offscreen buffer, as RGBA rows from the bottom. */
+function probeImage(cam: any, layer: number, w: number, h: number, mode: "id" | "color"): Uint8Array {
+  probeTarget ??= new THREE.WebGLRenderTarget(1, 1);
+  if (probeTarget.width !== w || probeTarget.height !== h) probeTarget.setSize(w, h);
+  const swapped: [any, any][] = [];
+  pivot.traverse((o: any) => {
+    if (!o.isMesh) return;
+    swapped.push([o, o.material]);
+    o.material = probeMaterial(probeInfo.get(o), mode, o.material);
+  });
+  const mask = cam.layers.mask;
+  cam.layers.set(layer);
+  const clear = renderer.getClearColor(new THREE.Color());
+  const alpha = renderer.getClearAlpha();
+  const out = new Uint8Array(w * h * 4);
+  try {
+    renderer.setRenderTarget(probeTarget);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+    renderer.render(scene, cam);
+    renderer.readRenderTargetPixels(probeTarget, 0, 0, w, h, out);
+  } finally {
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(clear, alpha);
+    cam.layers.mask = mask;
+    for (const [o, m] of swapped) o.material = m;
+  }
+  return out;
+}
+
+type ProbeHit = { slot: string; face: string; color: string; cubelet: number; modelCubelet: number } | { plastic: true; slot: string; cubelet: number } | null;
+
+
+/** What the two passes show at pixel (px, py) from the top left. */
+function probeDecode(ids: Uint8Array, colors: Uint8Array, w: number, h: number, px: number, py: number): ProbeHit {
+  const i = ((h - 1 - Math.floor(py)) * w + Math.floor(px)) * 4;
+  if (ids[i + 3] === 0) return null; // background
+  const code = ids[i] + ids[i + 1] * 256;
+  const cubelet = Math.floor((code - 1) / 7), d = (code - 1) % 7;
+  // Where it was drawn: from the mesh's own transform in the puzzle frame, not from the
+  // model, so a cubelet drawn in the wrong place or turned the wrong way shows up.
+  const g = meshes[cubelet];
+  const slot = slotAtXYZ(Math.round(g.position.x), Math.round(g.position.y), Math.round(g.position.z));
+  if (d === 6) return { plastic: true, slot: slot < 0 ? "?" : slotName(slot), cubelet };
+  const n = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(g.quaternion);
+  const dir = dirIndex([Math.round(n.x), Math.round(n.y), Math.round(n.z)]);
+  const face = dir < 0 ? "?" : COMPASS_FACES[dir];
+  let color = "?", best = Infinity;
+  const named: [string, number][] = [...(Object.entries(STICKER) as [string, number][]), ["unstickered", probeUnstickered], ["plastic", PROBE_PLASTIC]];
+  for (const [name, hex] of named) {
+    const dist = Math.abs(colors[i] - ((hex >> 16) & 255)) + Math.abs(colors[i + 1] - ((hex >> 8) & 255)) + Math.abs(colors[i + 2] - (hex & 255));
+    if (dist < best) [best, color] = [dist, name];
+  }
+  if (best > 12) color = "?";
+  return { slot: slot < 0 ? "?" : slotName(slot), face, color, cubelet, modelCubelet: slot < 0 ? -1 : app.current.occ[slot] };
+}
+
+/** Both passes of the 3D view, with a lookup by client coordinates. */
+function probe3d() {
+  const r = (renderer.domElement as HTMLCanvasElement).getBoundingClientRect();
+  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  const ids = probeImage(camera, 0, size.x, size.y, "id");
+  const colors = probeImage(camera, 0, size.x, size.y, "color");
+  return { r, at: (x: number, y: number) => probeDecode(ids, colors, size.x, size.y, ((x - r.left) / r.width) * size.x, ((y - r.top) / r.height) * size.y) };
+}
+
+function installProbe() {
+  const canvas = () => renderer.domElement as HTMLCanvasElement;
+  const slotByName = (name: string) => {
+    for (let s = 0; s < NUM_SLOTS; s++) if (slotName(s) === name) return s;
+    throw new Error(`no slot named ${name}`);
+  };
+  (window as any).xcubeProbe = {
+    idle: () => !anim && !queue.length && !settle && !live && !tween,
+    state: () => encodeState(app.current),
+    turns: () => formatAlg(app.history.slice(0, app.cursor)),
+    view: () => pivot.quaternion.toArray(),
+    // Deliberate faults, for testing the tests: draw two cubelets in each other's places,
+    // or turn one cubelet's mesh a quarter turn about a face's axis. resync() redraws
+    // every cubelet where the model puts it.
+    faultSwap(a: string, b: string) {
+      const ga = meshes[app.current.occ[slotByName(a)]], gb = meshes[app.current.occ[slotByName(b)]];
+      const [pa, qa] = [ga.position.clone(), ga.quaternion.clone()];
+      ga.position.copy(gb.position);
+      ga.quaternion.copy(gb.quaternion);
+      gb.position.copy(pa);
+      gb.quaternion.copy(qa);
+    },
+    faultTwist(slot: string, face: string) {
+      const g = meshes[app.current.occ[slotByName(slot)]];
+      const a = DIRS[COMPASS_FACES.indexOf(face)];
+      g.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(a[0], a[1], a[2]), HALF));
+    },
+    resync: () => syncMeshes(app.current),
+    shadeRestError,
+    /** What the effect switches currently control: glow layers, the key light's shadows, grid shading. */
+    effects: () => ({ glow3d: camera.layers.isEnabled(GLOW3D_LAYER), glowFlat: netCams.every((c) => c.cam.layers.isEnabled(GLOWNET_LAYER)), shadows: !!keyLight?.castShadow, shading: aoOn["3d"] && aoOn.flat }),
+    /** The color the model says the sticker in slot shows toward face (null: none). */
+    model(slot: string, face: string) {
+      const s = slotByName(slot);
+      return app.current.occ[s] < 0 ? null : app.current.colorAt(s, COMPASS_FACES.indexOf(face));
+    },
+    sticker(slot: string, face: string) {
+      const s = slotByName(slot);
+      const id = app.current.occ[s];
+      const dir = COMPASS_FACES.indexOf(face);
+      if (id < 0 || dir < 0) return null;
+      const o = app.current.ori[s];
+      const d = [0, 1, 2, 3, 4, 5].find((k) => ROT_DIR[o * 6 + k] === dir)!;
+      if (!CUBELETS[id].stickers[d]) return null;
+      const p = meshes[id].localToWorld(new THREE.Vector3(DIRS[d][0] * 0.4945, DIRS[d][1] * 0.4945, DIRS[d][2] * 0.4945)).project(camera);
+      const r = canvas().getBoundingClientRect();
+      return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };
+    },
+    at3d: (x: number, y: number) => probe3d().at(x, y),
+    /** Every distinct (slot, face, color) drawn in the 3D view, sampled every step CSS pixels. */
+    scan3d(step = 6) {
+      const { r, at } = probe3d();
+      const seen = new Map<string, ProbeHit>();
+      for (let y = r.top + step / 2; y < r.bottom; y += step)
+        for (let x = r.left + step / 2; x < r.right; x += step) {
+          const h = at(x, y);
+          if (h && !("plastic" in h)) seen.set(`${h.slot}/${h.face}/${h.color}`, h);
+        }
+      return [...seen.values()];
+    },
+    /**
+     * Stickers the model says face the 3D view's camera that are not drawn: at the center
+     * of each, the drawing shows that slot's cubelet without that sticker, or nothing.
+     * (Where another cubelet is drawn in front, the sticker is hidden, not missing.)
+     */
+    missing3d() {
+      const { r, at } = probe3d();
+      const st = app.current;
+      const out: string[] = [];
+      for (let s = 0; s < NUM_SLOTS; s++) {
+        const id = st.occ[s];
+        if (id < 0) continue;
+        for (let dir = 0; dir < 6; dir++) {
+          if (!st.colorAt(s, dir) || !isExposed(st, s, dir)) continue;
+          const local = new THREE.Vector3(...SLOT_POS[s]).add(new THREE.Vector3(...DIRS[dir]).multiplyScalar(0.4945));
+          const world = pivot.localToWorld(local.clone());
+          const normal = new THREE.Vector3(...DIRS[dir]).applyQuaternion(pivot.quaternion);
+          if (normal.dot(camera.position.clone().sub(world)) <= 0) continue; // faces away
+          const p = world.project(camera);
+          const h = at(r.left + ((p.x + 1) / 2) * r.width, r.top + ((1 - p.y) / 2) * r.height);
+          const name = `${slotName(s)}/${COMPASS_FACES[dir]}`;
+          if (!h) out.push(`${name}: nothing drawn`);
+          else if (h.slot !== slotName(s)) continue; // hidden behind another cubelet
+          else if ("plastic" in h) out.push(`${name}: cubelet ${h.cubelet} drawn without it`);
+          else if (h.face !== COMPASS_FACES[dir] || h.cubelet !== id) out.push(`${name}: ${h.slot}/${h.face} of cubelet ${h.cubelet} drawn there`);
+        }
+      }
+      return out;
+    },
+    /** One face of the flat view as 5 rows of 5 cells, top row first, as that face is seen. */
+    flatFace(face: string) {
+      const nc = netCams.find((c) => c.face === face);
+      if (!nc) return null;
+      const cam = aimNetCam(nc, pivot.quaternion);
+      const n = 210;
+      const ids = probeImage(cam, NET_LAYER, n, n, "id");
+      const colors = probeImage(cam, NET_LAYER, n, n, "color");
+      const toPx = (u: number) => ((u + NET_HALF) / (2 * NET_HALF)) * n;
+      return [0, 1, 2, 3, 4].map((row) => [0, 1, 2, 3, 4].map((col) => probeDecode(ids, colors, n, n, toPx(col - 2), toPx(row - 2))));
+    },
+  };
+}
+
 function hotBoot() {
   const hot = (window as any).claude?.hot;
   const start = (data: any) => {
@@ -2298,6 +2446,7 @@ function hotBoot() {
     recompute();
     bindUI();
     initScene($("scene") as HTMLCanvasElement);
+    installProbe();
     render();
     initStore();
   };
