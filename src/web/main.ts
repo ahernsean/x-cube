@@ -1410,7 +1410,9 @@ function bindOrbit(el: HTMLElement) {
   const pts = new Map<number, { x: number; y: number }>();
   let twist: number | null = null;
   // A finger that went down on the cube and hasn't yet become a turn or a tumble.
-  let pending: { id: number; x: number; y: number; hit: CubeHit; timer: ReturnType<typeof setTimeout> } | null = null;
+  // Taps and holds are timed by each event's own timestamp (when the finger moved), not by
+  // when its handler runs, so a slow frame cannot turn a quick swipe into a hold.
+  let pending: { id: number; x: number; y: number; t0: number; hit: CubeHit; timer: ReturnType<typeof setTimeout> } | null = null;
   let liveId: number | null = null;
   let ignore = false; // the gesture was used up (e.g. a refused turn)
   const spin = (q: Quat) => {
@@ -1433,7 +1435,7 @@ function bindOrbit(el: HTMLElement) {
       /* not capturable (e.g. a synthetic event); tracking still works */
     }
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pts.size === 1) tap = { x: e.clientX, y: e.clientY, t: performance.now(), ok: true };
+    if (pts.size === 1) tap = { x: e.clientX, y: e.clientY, t: e.timeStamp, ok: true };
     else if (tap) tap.ok = false; // two fingers: not a tap
     if (pts.size === 1) {
       ignore = false;
@@ -1445,14 +1447,10 @@ function bindOrbit(el: HTMLElement) {
           id,
           x: e.clientX,
           y: e.clientY,
+          t0: e.timeStamp,
           hit,
-          timer: setTimeout(() => {
-            // Held still: this drag tumbles the view.
-            if (pending && pending.id === id) {
-              pending = null;
-              stage.classList.add("tumbling");
-            }
-          }, HOLD_TO_TUMBLE_MS),
+          // Shows that the hold registered; the first move decides (by its timestamp).
+          timer: setTimeout(() => stage.classList.add("tumbling"), HOLD_TO_TUMBLE_MS),
         };
       }
     } else {
@@ -1474,15 +1472,22 @@ function bindOrbit(el: HTMLElement) {
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pending && e.pointerId === pending.id) {
       const tx = e.clientX - pending.x, ty = e.clientY - pending.y;
-      if (Math.hypot(tx, ty) < SWIPE_PX) return;
+      const held = e.timeStamp - pending.t0 >= HOLD_TO_TUMBLE_MS;
+      if (!held && Math.hypot(tx, ty) < SWIPE_PX) return;
       const p0 = pending;
       clearPending();
-      flushAnimations();
-      live = beginLiveTurn(el, p0.hit, p0.x, p0.y, tx, ty);
-      liveId = live ? e.pointerId : null;
-      if (!live) ignore = true;
-      else updateLiveTurn(live, e.clientX, e.clientY);
-      return;
+      if (held) {
+        // Held still before moving: this drag tumbles the view (below).
+        stage.classList.add("tumbling");
+      } else {
+        stage.classList.remove("tumbling");
+        flushAnimations();
+        live = beginLiveTurn(el, p0.hit, p0.x, p0.y, tx, ty);
+        liveId = live ? e.pointerId : null;
+        if (!live) ignore = true;
+        else updateLiveTurn(live, e.clientX, e.clientY);
+        return;
+      }
     }
     if (live && e.pointerId === liveId) {
       updateLiveTurn(live, e.clientX, e.clientY);
@@ -1511,7 +1516,7 @@ function bindOrbit(el: HTMLElement) {
       const p0 = pending;
       clearPending();
       const tx = e.clientX - p0.x, ty = e.clientY - p0.y;
-      if (Math.hypot(tx, ty) >= SWIPE_PX) {
+      if (Math.hypot(tx, ty) >= SWIPE_PX && e.timeStamp - p0.t0 < HOLD_TO_TUMBLE_MS) {
         flushAnimations();
         const l = beginLiveTurn(el, p0.hit, p0.x, p0.y, tx, ty);
         if (l) {
@@ -1529,7 +1534,7 @@ function bindOrbit(el: HTMLElement) {
     if (pts.size === 0) {
       stage.classList.remove("tumbling");
       ignore = false;
-      const now = performance.now();
+      const now = e.timeStamp;
       const isTap =
         tap && tap.ok && e.type === "pointerup" && now - tap.t < TAP_MS && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < SWIPE_PX;
       if (isTap) {
@@ -2065,6 +2070,7 @@ function bindMoveButtons() {
     const name = b.dataset.move!;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let active: number | null = null;
+    let downAt = 0; // event timestamp of the press
     let long = false;
     const show = (inverted: boolean) => {
       const amount = inverted ? invertAmount(app.modifier) : app.modifier;
@@ -2082,6 +2088,7 @@ function bindMoveButtons() {
       // Touch pointers are captured by default; release so sliding off is noticed.
       if (b.hasPointerCapture(e.pointerId)) b.releasePointerCapture(e.pointerId);
       active = e.pointerId;
+      downAt = e.timeStamp;
       long = false;
       timer = setTimeout(() => {
         long = true;
@@ -2091,7 +2098,8 @@ function bindMoveButtons() {
     b.addEventListener("pointerup", (e) => {
       if (e.pointerId !== active) return;
       const over = document.elementFromPoint(e.clientX, e.clientY)?.closest("button") === b;
-      const inverted = long;
+      // Timed by the events, so a press held long enough counts even if the timer ran late.
+      const inverted = long || e.timeStamp - downAt >= LONG_PRESS_MS;
       reset();
       if (over) pressMove(name, inverted);
     });
