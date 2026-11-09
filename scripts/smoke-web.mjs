@@ -1,10 +1,14 @@
 // Browser smoke test for the built X-Cube Lab (dist/x-cube-lab.html).
-// Opens it in headless Chromium and checks that it loads without errors and that the
+// Opens it in a headless browser and checks that it loads without errors and that the
 // core interactions work. Run after `node scripts/build-web.ts`.
 //
-//   node scripts/smoke-web.mjs
+//   node scripts/smoke-web.mjs            # Chromium
+//   node scripts/smoke-web.mjs webkit     # WebKit, the engine of Safari on iPhone and iPad
 //
-// Needs the `playwright` package and a Chromium for it (CI installs both).
+// Needs the `playwright` package and the browser for it (CI installs both). WebKit runs
+// with iPhone-like settings (touch, device pixel ratio 3) because the Lab is used mostly on
+// an iPhone and iPad. It is not given `isMobile`: the built page has no viewport meta tag
+// (claude.ai adds one when it publishes the artifact), so a mobile layout would be 980 px wide.
 
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -12,7 +16,13 @@ import { resolve, dirname } from "node:path";
 
 // require() also finds a globally installed Playwright (as in some dev containers);
 // in CI it is installed into node_modules.
-const { chromium } = createRequire(import.meta.url)("playwright");
+const playwright = createRequire(import.meta.url)("playwright");
+
+const engine = process.argv[2] ?? "chromium";
+if (!["chromium", "webkit"].includes(engine)) {
+  console.error(`unknown browser "${engine}" (use chromium or webkit)`);
+  process.exit(2);
+}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const pageUrl = pathToFileURL(resolve(here, "../dist/x-cube-lab.html")).href;
@@ -23,9 +33,14 @@ const check = (ok, what) => {
   if (!ok) failures.push(what);
 };
 
-const browser = await chromium.launch();
+const browser = await playwright[engine].launch();
 try {
-  const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
+  const context =
+    engine === "webkit"
+      ? await browser.newContext({ viewport: { width: 390, height: 900 }, deviceScaleFactor: 3, hasTouch: true })
+      : await browser.newContext({ viewport: { width: 390, height: 900 } });
+  const page = await context.newPage();
+  console.log(`${engine} ${browser.version()}`);
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (m) => {
@@ -37,6 +52,29 @@ try {
   await page.waitForFunction(() => window.THREE && window.THREE.REVISION, null, { timeout: 30000 });
   await page.waitForTimeout(1000);
   check(true, `three.js r${await page.evaluate(() => window.THREE.REVISION)} loaded`);
+
+  // The 3D view really draws: sample the canvas right after a frame renders (the
+  // drawing buffer is not preserved, so it must be read in the same frame).
+  const drawn = await page.evaluate(
+    () =>
+      new Promise((done) =>
+        requestAnimationFrame(() => {
+          const src = document.querySelector("canvas");
+          const c = document.createElement("canvas");
+          c.width = c.height = 64;
+          const g = c.getContext("2d");
+          g.drawImage(src, 0, 0, 64, 64);
+          const d = g.getImageData(0, 0, 64, 64).data;
+          const colors = new Set();
+          for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 0) colors.add(`${d[i] >> 4},${d[i + 1] >> 4},${d[i + 2] >> 4}`);
+          done(colors.size);
+        }),
+      ),
+  );
+  check(drawn >= 20, `3D view draws the cube (${drawn} distinct colors sampled)`);
+
+  const [scrollW, clientW] = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
+  check(scrollW <= clientW, `no sideways scrolling at 390 px (page ${scrollW} px wide)`);
 
   const status = () => page.$eval("#status", (s) => s.textContent ?? "");
   check((await status()).includes("Solved"), "starts solved and in X shape");
