@@ -19,53 +19,55 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Typecheck, unit tests, build (Node ${{ matrix.node }})
+  # The unit tests and the typecheck are separate jobs because neither implies the other:
+  # Node runs the TypeScript by stripping the types without checking them, so tests can
+  # pass with type errors. As separate jobs, both always run and each reports on its own.
+  # (The build runs in the browser jobs.)
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+
+  # WebKit is the engine of Safari, and of every browser on iPhone and iPad.
+  browser:
+    name: Browser tests (${{ matrix.label }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # The tests run TypeScript directly, which needs Node 22.18+ (type stripping).
-        node: [22, 24]
+        include:
+          - browser: chromium
+            label: Chromium
+          - browser: webkit
+            label: WebKit / Safari
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: ${{ matrix.node }}
-          cache: npm
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npm test
-      - run: node scripts/build-web.ts
-
-  chromium:
-    name: Browser smoke test (Chromium)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: node scripts/build-web.ts
       # Playwright is installed only in the browser jobs, not as a project dependency.
-      - run: npm install --no-save playwright@1.64.1
-      - run: npx playwright install --with-deps chromium
-      - run: node scripts/smoke-web.mjs chromium
-
-  # WebKit is the engine of Safari, and of every browser on iPhone and iPad.
-  webkit:
-    name: Browser smoke test (WebKit / Safari)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: node scripts/build-web.ts
       - run: npm install --no-save playwright@1.64.1
 
       # WebKit's system libraries are a large set of Ubuntu packages, and the runner's
@@ -74,14 +76,17 @@ jobs:
       # index, so a stale cache costs time, not correctness. The key follows the runner
       # image and the Playwright version, which together set the package list.
       - name: Find the runner image
+        if: matrix.browser == 'webkit'
         id: image
         run: echo "name=$ImageOS" >> "$GITHUB_OUTPUT"
       - name: Restore WebKit's system packages
+        if: matrix.browser == 'webkit'
         uses: actions/cache@v6
         with:
           path: ~/webkit-packages
           key: webkit-packages-${{ steps.image.outputs.name }}-playwright-1.64.1
       - name: Seed apt with the restored packages
+        if: matrix.browser == 'webkit'
         run: |
           echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-downloaded-packages
           mkdir -p ~/webkit-packages
@@ -89,15 +94,16 @@ jobs:
           packages=(~/webkit-packages/*.deb)
           echo "Restored ${#packages[@]} packages"
           if (( ${#packages[@]} )); then sudo cp "${packages[@]}" /var/cache/apt/archives/; fi
-      - run: npx playwright install --with-deps webkit
+      - run: npx playwright install --with-deps ${{ matrix.browser }}
       - name: Keep WebKit's system packages for the cache
+        if: matrix.browser == 'webkit'
         run: |
           shopt -s nullglob
           packages=(/var/cache/apt/archives/*.deb)
           echo "Keeping ${#packages[@]} packages"
           if (( ${#packages[@]} )); then cp "${packages[@]}" ~/webkit-packages/; fi
 
-      - run: node scripts/smoke-web.mjs webkit
+      - run: node scripts/browser-tests.mjs ${{ matrix.browser }}
 
   # The single check for a branch rule on main to require. It passes only when every job
   # above passed, so the pull request cannot be merged while any of them is running or
@@ -105,12 +111,12 @@ jobs:
   all-checks:
     name: all checks
     if: always()
-    needs: [test, chromium, webkit]
+    needs: [unit-tests, typecheck, browser]
     runs-on: ubuntu-latest
     steps:
       - name: Require every job to pass
         env:
-          TEST_RESULT: ${{ needs.test.result }}
-          CHROMIUM_RESULT: ${{ needs.chromium.result }}
-          WEBKIT_RESULT: ${{ needs.webkit.result }}
-        run: test "$TEST_RESULT $CHROMIUM_RESULT $WEBKIT_RESULT" = "success success success"
+          UNIT_TESTS_RESULT: ${{ needs.unit-tests.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: test "$UNIT_TESTS_RESULT $TYPECHECK_RESULT $BROWSER_RESULT" = "success success success"

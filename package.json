@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "xc": "node src/cli/xc.ts",
     "build:web": "node scripts/build-web.ts",
-    "smoke:web": "node scripts/smoke-web.mjs"
+    "test:browser": "node scripts/browser-tests.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -19,6 +19,6 @@
     "typescript": "^5.7.0"
   },
   "engines": {
-    "node": ">=22.18"
+    "node": ">=24"
   }
 }

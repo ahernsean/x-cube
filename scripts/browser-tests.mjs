@@ -1,9 +1,9 @@
-// Browser smoke test for the built X-Cube Lab (dist/x-cube-lab.html).
+// Browser tests for the built X-Cube Lab (dist/x-cube-lab.html).
 // Opens it in a headless browser and checks that it loads without errors and that the
 // core interactions work. Run after `node scripts/build-web.ts`.
 //
-//   node scripts/smoke-web.mjs            # Chromium
-//   node scripts/smoke-web.mjs webkit     # WebKit, the engine of Safari on iPhone and iPad
+//   node scripts/browser-tests.mjs          # Chromium
+//   node scripts/browser-tests.mjs webkit   # WebKit, the engine of Safari on iPhone and iPad
 //
 // Needs the `playwright` package and the browser for it (CI installs both). WebKit runs
 // with iPhone-like settings (touch, device pixel ratio 3) because the Lab is used mostly on
@@ -175,18 +175,18 @@ try {
     await p.goto(pageUrl);
     await p.waitForFunction(() => document.getElementById("store-kind")?.textContent === "This device only", null, { timeout: 30000 });
     await p.evaluate(() => document.querySelector("[data-sec=saved]")?.classList.remove("collapsed"));
-    await p.fill("#save-name", "Smoke save");
+    await p.fill("#save-name", "Test save");
     await p.click("#save");
     await p.waitForFunction(() => !document.getElementById("message")?.hidden, null, { timeout: 10000 });
     const result = {
       message: await p.$eval("#message", (m) => m.textContent ?? ""),
-      listed: await p.$eval("#saved-list", (l) => (l.textContent ?? "").includes("Smoke save")),
+      listed: await p.$eval("#saved-list", (l) => (l.textContent ?? "").includes("Test save")),
     };
     await ctx.close();
     return result;
   };
   const good = await savePage(false);
-  check(good.listed && good.message.startsWith('Saved "Smoke save"'), `a device save is listed and confirmed ("${good.message}")`);
+  check(good.listed && good.message.startsWith('Saved "Test save"'), `a device save is listed and confirmed ("${good.message}")`);
   const full = await savePage(true);
   check(!full.listed && full.message.startsWith("Could not save"), `a failed device save is reported, not listed ("${full.message}")`);
 } finally {
