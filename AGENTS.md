@@ -128,7 +128,7 @@ rotations). `src/core/serialize.ts`.
   screen, meets the edge of the 3D view; tapping one turns the view to that face.
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
-  two fingers spin it.
+  two fingers spin it; double tap (cube or background) undoes the last turn.
 - **Turn buttons:** tap for the shown turn; long press flips it to the inverse (U to U');
   slide off to cancel.
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by

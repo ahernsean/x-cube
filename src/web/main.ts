@@ -1196,7 +1196,29 @@ function cancelLiveTurn() {
   return h && { normal: h.normal, cell: h.cell, point: [h.point.x, h.point.y, h.point.z] };
 };
 
+/** Undo the last turn (Undo button, or a double tap on the 3D view). */
+function undoLast() {
+  if (app.cursor <= 0) {
+    setMessage("Nothing to undo", "info");
+    render();
+    return;
+  }
+  flushAnimations();
+  const last = app.history[app.cursor - 1];
+  app.history = app.history.slice(0, app.cursor - 1);
+  enqueue(last, false);
+  setMessage(`Undid ${turnName(last)}`, "info");
+  render();
+}
+
+// A tap is a quick touch that barely moves; two taps close together undo the last turn.
+const TAP_MS = 250;
+const DOUBLE_TAP_MS = 330;
+const DOUBLE_TAP_PX = 40;
+
 function bindOrbit(el: HTMLElement) {
+  let tap: { x: number; y: number; t: number; ok: boolean } | null = null;
+  let lastTap: { x: number; y: number; t: number } | null = null;
   const stage = el.parentElement!;
   // iOS starts text selection / the callout on a long press unless the touch's default
   // action is cancelled. Pointer events still arrive after this.
@@ -1229,6 +1251,8 @@ function bindOrbit(el: HTMLElement) {
       /* not capturable (e.g. a synthetic event); tracking still works */
     }
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 1) tap = { x: e.clientX, y: e.clientY, t: performance.now(), ok: true };
+    else if (tap) tap.ok = false; // two fingers: not a tap
     if (pts.size === 1) {
       ignore = false;
       const busy = anim || queue.length || settle;
@@ -1262,6 +1286,7 @@ function bindOrbit(el: HTMLElement) {
   el.addEventListener("pointermove", (e) => {
     const prev = pts.get(e.pointerId);
     if (!prev) return;
+    if (tap && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) >= SWIPE_PX) tap.ok = false;
     const dx = e.clientX - prev.x;
     const dy = e.clientY - prev.y;
     pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1322,6 +1347,16 @@ function bindOrbit(el: HTMLElement) {
     if (pts.size === 0) {
       stage.classList.remove("tumbling");
       ignore = false;
+      const now = performance.now();
+      const isTap =
+        tap && tap.ok && e.type === "pointerup" && now - tap.t < TAP_MS && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < SWIPE_PX;
+      if (isTap) {
+        if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DOUBLE_TAP_PX) {
+          lastTap = null;
+          undoLast();
+        } else lastTap = { x: e.clientX, y: e.clientY, t: now };
+      } else lastTap = null;
+      tap = null;
     }
     twist = pts.size === 2 ? angleOf() : null;
   };
@@ -1957,16 +1992,7 @@ function bindUI() {
   $("fwd").addEventListener("click", () => step(1));
   $("first").addEventListener("click", () => jump(0));
   $("last").addEventListener("click", () => (playing ? stopPlaying() : playToEnd()));
-  $("undo").addEventListener("click", () => {
-    if (app.cursor > 0) {
-      flushAnimations();
-      const last = app.history[app.cursor - 1];
-      app.history = app.history.slice(0, app.cursor - 1);
-      enqueue(last, false);
-      setMessage("");
-      render();
-    }
-  });
+  $("undo").addEventListener("click", () => undoLast());
   $("reset").addEventListener("click", () => {
     setBase(State.solved(), "Solved");
     setMessage("Reset to solved", "ok");
