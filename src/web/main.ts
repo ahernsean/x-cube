@@ -92,7 +92,7 @@ function reduceMotionView() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 /** Light levels (tuned by comparing renders; yellow must stay distinct from white). */
-const LIGHT = { env: 0.3, hemi: 0.34, key: 0.34, fill: 0.24, plasticRough: 0.3, stickerRough: 0.55 };
+const LIGHT = { env: 0.45, key: 0.45, plasticRough: 0.28, plasticSpec: 6, coat: 0.5, coatRough: 0.1, stickerRough: 0.5, shadowSoft: 6 };
 let keyLight: any = null;
 const SHADOW_KEY = "xcube-lab-shadows";
 let shadowsOn = (() => {
@@ -124,24 +124,24 @@ function initScene(canvas: HTMLCanvasElement) {
   // Newer three.js (r165+) has only physically based light units: the same look needs
   // the old values times pi.
   const L = "useLegacyLights" in renderer ? 1 : Math.PI;
-  // Environment lighting: a soft studio room (prefiltered for rough reflections) lights
-  // and reflects in the glossy plastic. A sky/ground light makes up-facing surfaces a
-  // little brighter than down-facing ones. The key light gives highlights and shadows.
+  // Lighting: a soft studio room environment (prefiltered for rough reflections) gives
+  // most of the light and the reflections in the glossy plastic; one key light gives
+  // the corner glints and the (soft) shadows.
   if (THREE.RoomEnvironment) {
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = LIGHT.env;
     pmrem.dispose();
   }
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x8c9196, LIGHT.hemi * L));
   const key = new THREE.DirectionalLight(0xffffff, LIGHT.key * L);
   key.position.set(4, 9, 7);
   // Shadows: the key light's shadow map covers the whole lattice. The lights stay fixed
   // while the puzzle turns, so shadows move correctly as you tumble the view.
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // PCF with a sample radius gives soft shadow edges (the "soft" PCF variant ignores radius).
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   key.castShadow = shadowsOn;
-  key.shadow.mapSize.set(2048, 2048);
+  key.shadow.mapSize.set(1024, 1024);
   const sc = key.shadow.camera;
   sc.left = -4.6;
   sc.right = 4.6;
@@ -151,12 +151,10 @@ function initScene(canvas: HTMLCanvasElement) {
   sc.far = 22;
   key.shadow.bias = -0.0004;
   key.shadow.normalBias = 0.025;
-  key.shadow.radius = 3;
+  key.shadow.radius = LIGHT.shadowSoft;
+  key.shadow.blurSamples = 16;
   scene.add(key);
   keyLight = key;
-  const fill = new THREE.DirectionalLight(0xffffff, LIGHT.fill * L);
-  fill.position.set(-6, -4, -5);
-  scene.add(fill);
   pivot = new THREE.Group();
   const h = VIEWS.home;
   pivot.quaternion.set(h[0], h[1], h[2], h[3]);
@@ -170,7 +168,19 @@ function initScene(canvas: HTMLCanvasElement) {
   const body = roundedBox(0.985, BODY_RADIUS, 3);
   // Glossy plastic: small, tight highlights that slide along the rounded edges and
   // corners as the cube tumbles (the lights stay put while the puzzle turns).
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3a3e41, roughness: LIGHT.plasticRough, metalness: 0, vertexColors: true });
+  // Glossy molded plastic. Physically based plastic reflects only ~4% at its surface,
+  // which makes the corner glints too faint to see; boosting the specular reflectance
+  // (and a smooth clear coat) brings back small bright glints on the rounded corners.
+  const bodyMat = new THREE.MeshPhysicalMaterial({
+    color: 0x3a3e41,
+    roughness: LIGHT.plasticRough,
+    metalness: 0,
+    specularIntensity: 1,
+    specularColor: new THREE.Color(LIGHT.plasticSpec, LIGHT.plasticSpec, LIGHT.plasticSpec),
+    clearcoat: LIGHT.coat,
+    clearcoatRoughness: LIGHT.coatRough,
+    vertexColors: true,
+  });
   // Stickers sit on the flat part of each face, with rounded corners.
   const plane = roundedSquare(0.82, 0.07);
   const mats = new Map<Color, any>();
