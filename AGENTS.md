@@ -161,9 +161,72 @@ on this scene that the grid shading does not have.
 
 ## Working conventions
 
+These apply to every agent (Claude Code, Codex, or another), and most are adapted from
+`ahernsean/wordle`.
+
+### Respond to what's being asked
+
+- A question ("what do you think", "what should I do", "how would I") gets an answer in
+  words, not code. Stop there and wait for a decision.
+- A bug report is not by itself permission to edit. Diagnose and propose a fix first,
+  unless the wording already asks for the fix.
+- An explicit request for a change is permission to make it. In a cloud session the owner
+  can't see the container, so a change is done only when it is pushed to a pull request.
+
+### Look at the repository before you start
+
+Run `git status` and `git branch --show-current` first. Another agent may be working in the
+same checkout. If the branch isn't `main`, the tree has changes you didn't make, or
+`git log origin/main..HEAD` lists commits that aren't yours, work in your own worktree
+(`git worktree add -b <branch> <path> origin/main`) instead of on top of theirs.
+
+### Ask first, always
+
+Never do any of these without an explicit instruction from the owner:
+
+- merge a pull request ("CI is green" or "looks good" is not an instruction to merge);
+- delete a branch;
+- rewrite history (rebase, amend) or force push;
+- commit to `main`. Work goes on a branch with a pull request for the owner to merge, with
+  no exceptions.
+
+### Commits and checks
+
 - One commit per change, so the owner can back out any single step.
-- CI (`.github/workflows/ci.yml`) runs typecheck, unit tests and build on Node 22 and 24,
-  plus a browser smoke test of the Lab (`scripts/smoke-web.mjs`). Keep it green.
-- Run `npm test` and `npx tsc --noEmit` before committing. Check the Lab in headless
-  Chromium (Playwright) at phone width (390 px). Publish the Lab after changes.
+- Write or extend a test for every new or changed behavior.
+- Before committing: `npx tsc --noEmit` and `npm test`. For Lab changes, also
+  `node scripts/build-web.ts` and the smoke test (`node scripts/smoke-web.mjs chromium`,
+  and `webkit` where WebKit is installed), and look at the Lab at phone width (390 px).
+- CI (`.github/workflows/ci.yml`) runs the typecheck, unit tests and build on Node 22 and
+  24, and the smoke test in Chromium and WebKit. Keep it green. The `all checks` job is the
+  one a branch rule on `main` requires; renaming it means changing the rule.
+- Publish the Lab after changes.
 - Library versions must be at least two weeks old.
+
+### Safari is the main browser
+
+The owner uses the Lab mostly on an iPhone and iPad, where every browser is WebKit. A run
+that covers only Chromium has not tested the main engine. To run WebKit locally:
+`npx playwright install --with-deps webkit`, then `node scripts/smoke-web.mjs webkit`.
+
+### A screenshot is not evidence about width
+
+A full-page screenshot is as wide as the page, so a page that scrolls sideways looks fine
+in it. Measure instead: `document.documentElement.scrollWidth` must not exceed
+`clientWidth` at 390 px. The smoke test checks this.
+
+### Comments
+
+Describe what the code is and its non-obvious rules, not how it got that way ("was renamed
+from", "replaces the old"). Don't restate what the names already say, and don't refer to
+context a cold reader doesn't have.
+
+### Pull requests
+
+- The description has a **Summary** section only, describing what changed and why.
+- Keep the title and description current with every push; never leave them describing
+  only some of the commits.
+- After opening a pull request, subscribe to its activity if you can, and handle review
+  comments and CI failures.
+- Codex and Claude may both review pull requests. Treat a review finding as a claim to
+  check: reproduce it, then fix it with a test or reply with the evidence that it's wrong.
