@@ -133,6 +133,22 @@ try {
 
   check(errors.length === 0, `no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
 
+  // The standalone page (published to GitHub Pages) as a phone sees it: with the phone's
+  // own layout rules, the viewport tag must give a 390 px wide page that draws the cube.
+  {
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
+    const p = await phone.newPage();
+    const phoneErrors = [];
+    p.on("pageerror", (e) => phoneErrors.push(String(e)));
+    await p.goto(pathToFileURL(resolve(here, "../dist/index.html")).href);
+    await p.waitForFunction(() => window.THREE && window.THREE.REVISION, null, { timeout: 30000 });
+    await p.waitForTimeout(1000);
+    const [sw, cw, standards] = await p.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth, document.compatMode]);
+    check(cw === 390 && sw <= cw && standards === "CSS1Compat", `standalone page lays out at phone width (${cw} px wide, ${sw} px of content, ${standards})`);
+    check((await p.$eval("#status", (e) => e.textContent ?? "")).includes("Solved") && phoneErrors.length === 0, "standalone page starts solved, without page errors");
+    await phone.close();
+  }
+
   // Opened as a file there is no shared database, so saved states go to this device.
   // A save is confirmed only when it was stored; a storage failure is reported.
   // Each check gets its own context, so it starts with empty storage.
