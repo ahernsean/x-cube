@@ -94,6 +94,14 @@ function reduceMotionView() {
 /** Light levels (tuned by comparing renders; yellow must stay distinct from white). */
 const LIGHT = { env: 0.3, hemi: 0.34, key: 0.34, fill: 0.24, plasticRough: 0.3, stickerRough: 0.55 };
 let keyLight: any = null;
+const SHADOW_KEY = "xcube-lab-shadows";
+let shadowsOn = (() => {
+  try {
+    return localStorage.getItem(SHADOW_KEY) !== "0";
+  } catch {
+    return true;
+  }
+})();
 (window as any).__xcubeLight = (v: Partial<typeof LIGHT>) => {
   Object.assign(LIGHT, v);
   return LIGHT;
@@ -128,6 +136,22 @@ function initScene(canvas: HTMLCanvasElement) {
   scene.add(new THREE.HemisphereLight(0xffffff, 0x8c9196, LIGHT.hemi * L));
   const key = new THREE.DirectionalLight(0xffffff, LIGHT.key * L);
   key.position.set(4, 9, 7);
+  // Shadows: the key light's shadow map covers the whole lattice. The lights stay fixed
+  // while the puzzle turns, so shadows move correctly as you tumble the view.
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  key.castShadow = shadowsOn;
+  key.shadow.mapSize.set(2048, 2048);
+  const sc = key.shadow.camera;
+  sc.left = -4.6;
+  sc.right = 4.6;
+  sc.top = 4.6;
+  sc.bottom = -4.6;
+  sc.near = 4;
+  sc.far = 22;
+  key.shadow.bias = -0.0004;
+  key.shadow.normalBias = 0.025;
+  key.shadow.radius = 3;
   scene.add(key);
   keyLight = key;
   const fill = new THREE.DirectionalLight(0xffffff, LIGHT.fill * L);
@@ -192,6 +216,8 @@ function initScene(canvas: HTMLCanvasElement) {
   for (const c of CUBELETS) {
     const g = new THREE.Group();
     const bodyMesh = new THREE.Mesh(withAoColors(body), bodyMat);
+    bodyMesh.castShadow = true;
+    bodyMesh.receiveShadow = true;
     g.add(bodyMesh);
     registerBody(c.id, bodyMesh, 0.985);
     const aoList: AoFace[] = [];
@@ -199,6 +225,7 @@ function initScene(canvas: HTMLCanvasElement) {
     c.stickers.forEach((col, d) => {
       if (!col) return;
       const m = new THREE.Mesh(withAoColors(plane), matFor(col));
+      m.receiveShadow = true;
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px, py, pz);
       m.rotation.set(rx, ry, 0);
@@ -1828,6 +1855,17 @@ function bindUI() {
   shade.addEventListener("change", () => {
     aoOn["3d"] = aoOn.flat = shade.checked;
     if (!anim) applyShadingSettings();
+  });
+  const shadows = $("shadows") as HTMLInputElement;
+  shadows.checked = shadowsOn;
+  shadows.addEventListener("change", () => {
+    shadowsOn = shadows.checked;
+    if (keyLight) keyLight.castShadow = shadowsOn;
+    try {
+      localStorage.setItem(SHADOW_KEY, shadowsOn ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
   });
   const glow = $("glow") as HTMLInputElement;
   glow.checked = glowOn["3d"] && glowOn.flat;
