@@ -205,8 +205,9 @@ Never do any of these without an explicit instruction from the owner:
 - Before committing: `npx tsc --noEmit` and `npm test`. For Lab changes, also
   `node scripts/build-web.ts` and the smoke test (`node scripts/smoke-web.mjs chromium`,
   and `webkit` where WebKit is installed), and look at the Lab at phone width (390 px).
-- CI (`.github/workflows/ci.yml`) runs the typecheck, unit tests and build, and the smoke
-  test in Chromium and WebKit, all on Node 24 (the version `package.json` requires). Keep it green. The `all checks` job is the
+- CI (`.github/workflows/ci.yml`) runs the unit tests, the typecheck, and the build and
+  smoke test in Chromium and WebKit, each as its own check, all on Node 24 (the version
+  `package.json` requires). Keep it green. The `all checks` job is the
   one a branch rule on `main` requires; renaming it means changing the rule.
 - Publish the Lab after changes.
 - Library versions must be at least two weeks old.

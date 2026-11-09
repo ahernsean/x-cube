@@ -19,8 +19,24 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Typecheck, unit tests, build
+  # The unit tests and the typecheck are separate jobs because neither implies the other:
+  # Node runs the TypeScript by stripping the types without checking them, so tests can
+  # pass with type errors. As separate jobs, both always run and each reports on its own.
+  # (The build runs in the browser jobs.)
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  typecheck:
+    name: Typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -30,8 +46,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npm test
-      - run: node scripts/build-web.ts
 
   # WebKit is the engine of Safari, and of every browser on iPhone and iPad.
   browser:
@@ -97,11 +111,12 @@ jobs:
   all-checks:
     name: all checks
     if: always()
-    needs: [test, browser]
+    needs: [unit-tests, typecheck, browser]
     runs-on: ubuntu-latest
     steps:
       - name: Require every job to pass
         env:
-          TEST_RESULT: ${{ needs.test.result }}
+          UNIT_TESTS_RESULT: ${{ needs.unit-tests.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
-        run: test "$TEST_RESULT $BROWSER_RESULT" = "success success"
+        run: test "$UNIT_TESTS_RESULT $TYPECHECK_RESULT $BROWSER_RESULT" = "success success success"
