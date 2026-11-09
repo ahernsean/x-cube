@@ -1,7 +1,7 @@
 # X-Cube simulator
 
 **New here (person or agent)? Start with [AGENTS.md](AGENTS.md)** for the terminology,
-notation, cubelet names and code map.
+notation, cubelet names and code map. Solving algorithms are in [ALGORITHMS.md](ALGORITHMS.md).
 
 A simulator and algorithm-search toolkit for the X-Cube (Moving Parts, 2013): a 3x3x3
 with 3x3 extensions on four sides that turn on their own only when complete.

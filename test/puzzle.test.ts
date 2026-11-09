@@ -232,3 +232,29 @@ test("flat view rim: the U face shows each neighbor's color, including the 90-de
   assert.deepEqual([1, 2, 3, 4, 5].map((C) => f[1][C].bottom), ["W", "W", "W", "W", "W"]);
   assert.equal(f[3][0].right, "O"); // left end of the wide face: the left extension's left side
 });
+
+test("shape stage: one flipped single edge is fixed by R F D R2 D' R' F' (UF) and F R U F2 U' F' R' (DR)", () => {
+  // The owner's saved position "One edge flipped": only the DR single edge is flipped.
+  const owner = decodeState(
+    "X1:7k4qIb6h5hYwwc2kTc......qhphZcMaNalsskthukFm0hzhkrWaXa............chbhaaor8pgefeendsDjVrjcihhh........vb..GvnaLdKh1rOkPkQqRcHfAjUryaxr3p......9e..CoBqEhScmmruJm",
+  );
+  assert.ok(!isHomeX(owner));
+  const a = owner.clone();
+  assert.ok(applyTurns(a, parseAlg("F R U F2 U' F' R'")).ok);
+  assert.ok(isHomeX(a), "DR fix restores the X shape on the owner's position");
+
+  // UF case on many differently scrambled cubes: the fix depends only on the shape.
+  const keep = ["U", "D", "R2", "L2", "F2", "B2", "r", "l", "f", "b"].map((n) => parseAlg(n)[0]);
+  const rand = rng(21);
+  for (let k = 0; k < 50; k++) {
+    const st = State.solved();
+    for (let i = 0; i < 30; i++) {
+      const t = keep[Math.floor(rand() * keep.length)];
+      if (!blockedReason(st, t)) applyTurn(st, t);
+    }
+    applyTurns(st, parseAlg("(R F D R2 D' R' F')'")); // create the flipped UF edge
+    assert.ok(!isHomeX(st));
+    applyTurns(st, parseAlg("R F D R2 D' R' F'"));
+    assert.ok(isHomeX(st));
+  }
+});

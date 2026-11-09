@@ -104,6 +104,11 @@ corner 3-cycle is `R' F' R b R' F R b'` (both verified by tests).
 (`A-Z a-z 0-9 - _`) or `.` for empty, then orientation `a..x` (index into the 24 cube
 rotations). `src/core/serialize.ts`.
 
+## Algorithms
+
+`ALGORITHMS.md` collects algorithms found or verified with the engine, each with the
+situation it solves, how to recognize it, and the test that checks it. Add new ones there.
+
 ## Code map
 
 - `src/core/geometry.ts`: rotations, directions.
