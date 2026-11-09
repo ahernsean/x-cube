@@ -57,6 +57,68 @@ The tests check these invariants:
 - Outer turns never change the shape.
 - Fused centers never separate.
 
+## Running it yourself
+
+X-Cube Lab is published as a claude.ai artifact, but it is an ordinary web page and runs
+anywhere. The command-line tools run wherever Node.js does.
+
+### One-time setup (Mac or Linux)
+
+1. Install **Node.js 22.18 or newer** from [nodejs.org](https://nodejs.org). Check with `node -v`.
+2. Get the code and its build tools:
+   ```
+   git clone https://github.com/ahernsean/x-cube.git
+   cd x-cube
+   npm ci
+   ```
+   `npm ci` installs exactly the versions in `package-lock.json`.
+
+### The Lab in a desktop browser
+
+```
+node scripts/build-web.ts        # builds dist/x-cube-lab.html
+open dist/x-cube-lab.html        # Mac; on Linux, xdg-open
+```
+
+- **It needs the internet:** three.js comes from cdn.jsdelivr.net and the fonts from Google Fonts.
+- **Saved states stay in that browser.** The shared database exists only inside the
+  claude.ai artifact; elsewhere the Saved states badge reads "This device only". To move a
+  position between places, copy its state code (`X1:...`).
+- **After pulling new code,** build again and reload the page.
+
+### The Lab on an iPhone or iPad
+
+Serve the page from a computer on the same Wi-Fi network:
+
+```
+cd dist
+python3 -m http.server 8000
+```
+
+Then open `http://<computer's IP address>:8000/x-cube-lab.html` in Safari. On a Mac the IP
+address is under System Settings → Wi-Fi → Details. The page is there only while the
+server runs. Opening the file from the Files app is not a reliable way to run it.
+
+### The command-line tools
+
+From the `x-cube` folder (examples are under [Commands](#commands)):
+
+```
+node src/cli/xc.ts show "R U R' U'"
+node src/cli/xc.ts show "U" --state X1:...   # start from a state code copied from the Lab
+```
+
+### The checks CI runs
+
+```
+npx tsc --noEmit                                   # typecheck
+npm test                                           # unit tests
+npm install --no-save playwright@1.64.1            # browser tests need Playwright...
+npx playwright install --with-deps chromium webkit # ...and its browsers
+node scripts/smoke-web.mjs chromium
+node scripts/smoke-web.mjs webkit                  # WebKit is Safari's engine
+```
+
 ## Commands
 
 ```
