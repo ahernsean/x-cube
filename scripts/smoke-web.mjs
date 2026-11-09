@@ -132,6 +132,36 @@ try {
   check(collapsed === sections.length && sections.length > 0, `all ${sections.length} sections collapse`);
 
   check(errors.length === 0, `no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
+
+  // Opened as a file there is no shared database, so saved states go to this device.
+  // A save is confirmed only when it was stored; a storage failure is reported.
+  // Each check gets its own context, so it starts with empty storage.
+  const savePage = async (storageFails) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 900 } });
+    const p = await ctx.newPage();
+    if (storageFails)
+      await p.addInitScript(() => {
+        Storage.prototype.setItem = () => {
+          throw new DOMException("full", "QuotaExceededError");
+        };
+      });
+    await p.goto(pageUrl);
+    await p.waitForFunction(() => document.getElementById("store-kind")?.textContent === "This device only", null, { timeout: 30000 });
+    await p.evaluate(() => document.querySelector("[data-sec=saved]")?.classList.remove("collapsed"));
+    await p.fill("#save-name", "Smoke save");
+    await p.click("#save");
+    await p.waitForFunction(() => !document.getElementById("message")?.hidden, null, { timeout: 10000 });
+    const result = {
+      message: await p.$eval("#message", (m) => m.textContent ?? ""),
+      listed: await p.$eval("#saved-list", (l) => (l.textContent ?? "").includes("Smoke save")),
+    };
+    await ctx.close();
+    return result;
+  };
+  const good = await savePage(false);
+  check(good.listed && good.message.startsWith('Saved "Smoke save"'), `a device save is listed and confirmed ("${good.message}")`);
+  const full = await savePage(true);
+  check(!full.listed && full.message.startsWith("Could not save"), `a failed device save is reported, not listed ("${full.message}")`);
 } finally {
   await browser.close();
 }

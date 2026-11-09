@@ -1712,11 +1712,13 @@ function readDevice(): Saved[] {
     return [];
   }
 }
-function writeDevice(list: Saved[]) {
+/** Store the list on this device. Returns null, or why it could not be stored. */
+function writeDevice(list: Saved[]): string | null {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(list));
-  } catch {
-    /* storage unavailable */
+    return null;
+  } catch (e: any) {
+    return e?.name === "QuotaExceededError" ? "this device's storage is full" : "this browser isn't allowing storage";
   }
 }
 
@@ -1773,9 +1775,13 @@ async function saveCurrent(name: string, note: string) {
   } else {
     const list = readDevice();
     list.unshift({ id: String(Date.now()), ...entry });
-    writeDevice(list);
-    saved = list;
-    setMessage(`Saved "${entry.name}" on this device`, "ok");
+    const why = writeDevice(list);
+    if (why) {
+      setMessage(`Could not save: ${why}`, "error");
+    } else {
+      saved = list;
+      setMessage(`Saved "${entry.name}" on this device`, "ok");
+    }
   }
   render();
 }
@@ -1788,8 +1794,10 @@ async function deleteSaved(id: string) {
       setMessage(`Could not delete: ${e?.message ?? e}`, "error");
     }
   } else {
-    saved = readDevice().filter((s) => s.id !== id);
-    writeDevice(saved);
+    const list = readDevice().filter((s) => s.id !== id);
+    const why = writeDevice(list);
+    if (why) setMessage(`Could not delete: ${why}`, "error");
+    else saved = list;
   }
   pendingDelete = null;
   render();
