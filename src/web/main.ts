@@ -165,7 +165,7 @@ function initScene(canvas: HTMLCanvasElement) {
   // Cubelets nearly touch, as on the real puzzle: a hairline gap between them.
   // Rounded like a real cube's plastic. Dark gray, not black, so that inside faces
   // facing different ways can be told apart by their shading.
-  const body = roundedBox(0.985, BODY_RADIUS, 3);
+  const body = roundedBox(0.985, BODY_RADIUS, 4);
   // Glossy plastic: small, tight highlights that slide along the rounded edges and
   // corners as the cube tumbles (the lights stay put while the puzzle turns).
   // Glossy molded plastic. Physically based plastic reflects only ~4% at its surface,
@@ -775,7 +775,7 @@ function applyShadingSettings() {
 
 const GLOW3D_LAYER = 3;
 const GLOWNET_LAYER = 4;
-const BODY_RADIUS = 0.05; // rounding of cubelet edges
+const BODY_RADIUS = 0.07; // rounding of cubelet edges
 // The glow band lies just below the face's surface (GLOW_DEPTH) and starts under the
 // cubelet (GLOW_START), so the cubelet hides its inner part and the glow appears to
 // come from right under the cubelet's edge from any viewing angle, with no gap.
