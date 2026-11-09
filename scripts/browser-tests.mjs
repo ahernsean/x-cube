@@ -385,6 +385,74 @@ try {
   const replay = await page.evaluate(() => ({ state: window.xcubeProbe.state(), count: window.xcubeProbe.turns().split(" ").length, msg: document.getElementById("message").textContent }));
   check(scramble.split(" ").length === 30 && shuffled.turns === "" && replay.count === 30 && replay.state === shuffled.state, `Shuffle plays 30 legal turns and starts from the result (replayed: ${replay.count} turns, same state: ${replay.state === shuffled.state})`);
 
+  // ---- Playback: step, jump to the start, play, stop, and the speed slider.
+  const counter = () => page.$eval("#counter", (c) => c.textContent.replace(/\s/g, ""));
+  await startFresh();
+  await page.fill("#alg", "R U F");
+  await page.click("#load");
+  const loaded = { counter: await counter(), turns: await probe("turns") };
+  await page.click("#fwd");
+  await settle();
+  const afterOne = await probe("state");
+  await page.click("#fwd");
+  await settle();
+  await page.click("#back");
+  await settle();
+  const stepped = { counter: await counter(), turns: await probe("turns"), same: (await probe("state")) === afterOne };
+  await page.click("#first");
+  await settle();
+  const atStart = { counter: await counter(), solved: (await status()).includes("Solved") };
+  check(
+    loaded.counter === "0/3" && loaded.turns === "" && stepped.counter === "1/3" && stepped.turns === "R" && stepped.same && atStart.counter === "0/3" && atStart.solved,
+    `load, forward, back and back to the start (${loaded.counter} -> ${stepped.counter} "${stepped.turns}" -> ${atStart.counter})`,
+  );
+  // Play, then stop at once (both from inside the page, so slow frames can't separate
+  // them): no queued turn may play afterward. The slowest speed gives a broken stop
+  // plenty of time to show.
+  await page.$eval("#speed", (el) => {
+    el.value = "0"; // about 800 ms a turn
+    el.dispatchEvent(new Event("input"));
+  });
+  await page.evaluate(() => {
+    document.getElementById("last").click(); // play
+    document.getElementById("last").click(); // the same button stops
+  });
+  await page.waitForTimeout(3000);
+  await settle();
+  const stoppedAt = await counter();
+  check(stoppedAt === "0/3", `play, then stop, plays none of the queued turns (${stoppedAt})`);
+  await page.$eval("#speed", (el) => {
+    el.value = "42";
+    el.dispatchEvent(new Event("input"));
+  });
+
+  // ---- "Make current position the start", and state codes out and in.
+  await startFresh();
+  await page.fill("#alg", "R U");
+  await page.click("#run");
+  await settle();
+  const ruState = await probe("state");
+  await page.click("#rebase");
+  const rebased = { counter: await counter(), state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent) };
+  check(rebased.counter === "0/0" && rebased.state === ruState && /now the start/.test(rebased.msg), `making the current position the start keeps it and clears the turns (${rebased.counter})`);
+  await page.locator("summary", { hasText: "State code" }).click(); // the codes sit in a closed disclosure
+  const shown = await page.$eval("#code-out", (t) => t.value);
+  check(shown === ruState, "the state code shown is the current position's");
+  await page.click("#copy-code");
+  const copyMsg = await page.$eval("#message", (m) => m.textContent);
+  check(/State code copied|Select and copy the code below/.test(copyMsg), `Copy confirms, or asks to copy by hand where the clipboard is not allowed ("${copyMsg}")`);
+  await startFresh();
+  await page.fill("#code-in", "  " + ruState + "\n");
+  await page.click("#import");
+  const imported = { state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent), counter: await counter() };
+  check(imported.state === ruState && imported.msg === "Imported" && imported.counter === "0/0", `importing a state code makes it the start (${imported.msg})`);
+  await page.fill("#code-in", "X1:not a code");
+  await page.click("#import");
+  const refused = { state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent) };
+  check(refused.state === ruState && /^Couldn't import: /.test(refused.msg), `a malformed code is refused and changes nothing ("${refused.msg}")`);
+  sw = await sweep3d();
+  check(sw.wrong.length === 0, `the imported position is drawn as the model has it${sw.wrong.length ? ": " + sw.wrong.slice(0, 3).join("; ") : ""}`);
+
   // ---- The effect switches turn their effect off and on, and the drawing stays right.
   const effects = () => probe("effects");
   const flip = (id, on) =>
