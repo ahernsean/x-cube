@@ -1196,6 +1196,49 @@ function cancelLiveTurn() {
   return h && { normal: h.normal, cell: h.cell, point: [h.point.x, h.point.y, h.point.z] };
 };
 
+// ------------------------------------------------------------------ shuffle
+
+const SHUFFLE_TURNS = 30;
+const SHUFFLE_MS = 70; // per quarter turn, regardless of the speed slider
+let shuffling = false;
+let shuffleAlg = "";
+
+/**
+ * Mix up the cube: random legal turns (inner turns, slices, and outer turns when that
+ * extension is complete), never the same layer twice in a row and no whole-puzzle
+ * rotations. Plays quickly, then the result becomes the new start.
+ */
+function shuffle() {
+  flushAnimations();
+  const names = ["R", "L", "U", "D", "F", "B", "r", "l", "u", "d", "f", "b", "M", "H", "S"];
+  const st = app.current.clone();
+  const turns: Turn[] = [];
+  let prevDef = -1;
+  let guard = 0;
+  while (turns.length < SHUFFLE_TURNS && guard++ < 10000) {
+    const def = MOVE_BY_NAME.get(names[Math.floor(Math.random() * names.length)])!;
+    if (def === prevDef) continue;
+    const t: Turn = { def, amount: (1 + Math.floor(Math.random() * 3)) as 1 | 2 | 3 };
+    if (blockedReason(st, t)) continue;
+    applyTurn(st, t);
+    turns.push(t);
+    prevDef = def;
+  }
+  shuffleAlg = formatAlg(turns);
+  app.history = app.history.slice(0, app.cursor).concat(turns);
+  shuffling = true;
+  for (let i = app.cursor; i < app.history.length; i++) enqueue(app.history[i], true);
+  playing = queue.length > 0;
+  setMessage("Shuffling…", "info");
+  render();
+}
+
+function finishShuffle() {
+  shuffling = false;
+  setBase(app.current, "Shuffled");
+  setMessage(`Shuffled with ${SHUFFLE_TURNS} turns: ${shuffleAlg}`, "ok");
+}
+
 /** Undo the last turn (Undo button, or a double tap on the 3D view). */
 function undoLast() {
   if (app.cursor <= 0) {
@@ -1403,7 +1446,7 @@ function startNext() {
   const after = app.current;
   const d = MOVE_DEFS[turn.def];
   const amount = forward ? turn.amount : 4 - turn.amount;
-  const duration = reduceMotion ? 0 : speedMs * (amount === 2 ? 1.4 : 1);
+  const duration = reduceMotion ? 0 : (shuffling ? SHUFFLE_MS : speedMs) * (amount === 2 ? 1.4 : 1);
   const group = new THREE.Group();
   pivot.add(group);
   for (const s of d.slots) {
@@ -1519,12 +1562,14 @@ function tickAnimation() {
     finishAnim();
     if (playing && !queue.length) {
       playing = false;
+      if (shuffling) finishShuffle();
       render();
     }
   }
 }
 
 function flushAnimations() {
+  shuffling = false;
   cancelLiveTurn();
   queue.length = 0;
   playing = false;
@@ -1617,6 +1662,7 @@ function playToEnd() {
 function stopPlaying() {
   queue.length = 0;
   playing = false;
+  shuffling = false;
   render();
 }
 
@@ -1993,6 +2039,7 @@ function bindUI() {
   $("first").addEventListener("click", () => jump(0));
   $("last").addEventListener("click", () => (playing ? stopPlaying() : playToEnd()));
   $("undo").addEventListener("click", () => undoLast());
+  $("shuffle").addEventListener("click", () => shuffle());
   $("reset").addEventListener("click", () => {
     setBase(State.solved(), "Solved");
     setMessage("Reset to solved", "ok");

@@ -129,6 +129,9 @@ rotations). `src/core/serialize.ts`.
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
   two fingers spin it; double tap (cube or background) undoes the last turn.
+- **Shuffle:** 30 random legal turns (inner, slices, outer when complete; never the same
+  layer twice in a row; no rotations) played at 70 ms per quarter turn; the result becomes
+  the new start ("Shuffled") and the message shows the scramble.
 - **Turn buttons:** tap for the shown turn; long press flips it to the inverse (U to U');
   slide off to cancel.
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
