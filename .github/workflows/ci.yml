@@ -33,7 +33,20 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm test
+      # Node's built-in coverage; the table goes to the log and the run's summary page.
+      - name: Run the unit tests with coverage
+        shell: bash
+        run: npm run test:coverage | tee unit-tests.log
+      - name: Add unit test coverage to the summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '### Unit test coverage'
+            echo '```'
+            sed -n '/start of coverage report/,/end of coverage report/p' unit-tests.log | sed 's/^# //'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   typecheck:
     name: Typecheck
@@ -66,9 +79,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: node scripts/build-web.ts
-      # Playwright is installed only in the browser jobs, not as a project dependency.
-      - run: npm install --no-save playwright@1.64.1
+      # Chromium also records coverage, which needs a source map in the build and the
+      # coverage reporter. Like Playwright, the reporter is not a project dependency.
+      - run: node scripts/build-web.ts ${{ matrix.browser == 'chromium' && '--sourcemap' || '' }}
+      - run: npm install --no-save playwright@1.64.1 ${{ matrix.browser == 'chromium' && 'monocart-coverage-reports@2.13.2' || '' }}
 
       # WebKit's system libraries are a large set of Ubuntu packages, and the runner's
       # package mirror can be slow to serve them. The downloaded .deb files are cached
@@ -104,6 +118,20 @@ jobs:
           if (( ${#packages[@]} )); then cp "${packages[@]}" ~/webkit-packages/; fi
 
       - run: node scripts/browser-tests.mjs ${{ matrix.browser }}
+        env:
+          COVERAGE_DIR: ${{ matrix.browser == 'chromium' && 'coverage/browser' || '' }}
+      - name: Add browser test coverage to the summary
+        if: always() && matrix.browser == 'chromium'
+        run: |
+          echo '### Browser test coverage (Chromium)' >> "$GITHUB_STEP_SUMMARY"
+          cat coverage/browser/coverage-summary.md >> "$GITHUB_STEP_SUMMARY" || echo 'No coverage report' >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the browser coverage report
+        if: always() && matrix.browser == 'chromium'
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-coverage
+          path: coverage/browser
+          if-no-files-found: ignore
 
   # The single check for a branch rule on main to require. It passes only when every job
   # above passed, so the pull request cannot be merged while any of them is running or

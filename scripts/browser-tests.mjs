@@ -6,6 +6,9 @@
 //
 //   node scripts/browser-tests.mjs          # Chromium
 //   node scripts/browser-tests.mjs webkit   # WebKit, the engine of Safari on iPhone and iPad
+//   COVERAGE_DIR=coverage/browser node scripts/browser-tests.mjs
+//                                           # Chromium, with a coverage report (build with
+//                                           # --sourcemap; needs monocart-coverage-reports)
 //
 // Needs the `playwright` package and the browser for it (CI installs both). WebKit runs
 // with iPhone-like settings (touch, device pixel ratio 3) because the Lab is used mostly on
@@ -35,6 +38,19 @@ const check = (ok, what) => {
   if (!ok) failures.push(what);
 };
 
+// Coverage, Chromium only: with COVERAGE_DIR set, V8 records which code each page ran,
+// and monocart-coverage-reports maps it to the TypeScript sources through the inline
+// source map of a `node scripts/build-web.ts --sourcemap` build.
+const coverageDir = engine === "chromium" ? process.env.COVERAGE_DIR : undefined;
+if (process.env.COVERAGE_DIR && !coverageDir) console.log(`(coverage is recorded only in Chromium; ${engine} runs without it)`);
+const coverage = [];
+const track = async (p) => {
+  if (coverageDir) await p.coverage.startJSCoverage({ resetOnNavigation: false });
+};
+const collect = async (p) => {
+  if (coverageDir) coverage.push(...(await p.coverage.stopJSCoverage()));
+};
+
 const browser = await playwright[engine].launch();
 try {
   const context =
@@ -42,6 +58,7 @@ try {
       ? await browser.newContext({ viewport: { width: 390, height: 900 }, deviceScaleFactor: 3, hasTouch: true })
       : await browser.newContext({ viewport: { width: 390, height: 900 } });
   const page = await context.newPage();
+  await track(page);
   console.log(`${engine} ${browser.version()}`);
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
@@ -348,12 +365,14 @@ try {
   check(collapsed === sections.length && sections.length > 0, `all ${sections.length} sections collapse`);
 
   check(errors.length === 0, `no page errors${errors.length ? ": " + errors.join(" | ") : ""}`);
+  await collect(page);
 
   // The standalone page (published to GitHub Pages) as a phone sees it: with the phone's
   // own layout rules, the viewport tag must give a 390 px wide page that draws the cube.
   {
     const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true });
     const p = await phone.newPage();
+    await track(p);
     const phoneErrors = [];
     p.on("pageerror", (e) => phoneErrors.push(String(e)));
     await p.goto(pathToFileURL(resolve(here, "../dist/index.html")).href);
@@ -362,6 +381,7 @@ try {
     const [sw, cw, standards] = await p.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth, document.compatMode]);
     check(cw === 390 && sw <= cw && standards === "CSS1Compat", `standalone page lays out at phone width (${cw} px wide, ${sw} px of content, ${standards})`);
     check((await p.$eval("#status", (e) => e.textContent ?? "")).includes("Solved") && phoneErrors.length === 0, "standalone page starts solved, without page errors");
+    await collect(p);
     await phone.close();
   }
 
@@ -371,6 +391,7 @@ try {
   const savePage = async (storageFails) => {
     const ctx = await browser.newContext({ viewport: { width: 390, height: 900 } });
     const p = await ctx.newPage();
+    await track(p);
     if (storageFails)
       await p.addInitScript(() => {
         Storage.prototype.setItem = () => {
@@ -387,6 +408,7 @@ try {
       message: await p.$eval("#message", (m) => m.textContent ?? ""),
       listed: await p.$eval("#saved-list", (l) => (l.textContent ?? "").includes("Test save")),
     };
+    await collect(p);
     await ctx.close();
     return result;
   };
@@ -396,6 +418,19 @@ try {
   check(!full.listed && full.message.startsWith("Could not save"), `a failed device save is reported, not listed ("${full.message}")`);
 } finally {
   await browser.close();
+}
+
+if (coverageDir) {
+  const MCR = createRequire(import.meta.url)("monocart-coverage-reports");
+  const report = MCR({
+    name: "X-Cube Lab: browser test coverage (Chromium)",
+    outputDir: coverageDir,
+    reports: ["v8", "console-details", "markdown-summary"],
+    entryFilter: (entry) => entry.url.startsWith("file:") && entry.url.endsWith(".html"),
+    sourceFilter: (path) => path.includes("src/"),
+  });
+  await report.add(coverage);
+  await report.generate();
 }
 
 if (failures.length) {
