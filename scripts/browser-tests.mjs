@@ -385,6 +385,28 @@ try {
   const replay = await page.evaluate(() => ({ state: window.xcubeProbe.state(), count: window.xcubeProbe.turns().split(" ").length, msg: document.getElementById("message").textContent }));
   check(scramble.split(" ").length === 30 && shuffled.turns === "" && replay.count === 30 && replay.state === shuffled.state, `Shuffle plays 30 legal turns and starts from the result (replayed: ${replay.count} turns, same state: ${replay.state === shuffled.state})`);
 
+  // ---- The effect switches turn their effect off and on, and the drawing stays right.
+  const effects = () => probe("effects");
+  const flip = (id, on) =>
+    page.evaluate(([id, on]) => {
+      const el = document.getElementById(id);
+      el.checked = on;
+      el.dispatchEvent(new Event("change"));
+    }, [id, on]);
+  const initial = await page.evaluate(() => ["glow", "shade", "shadows"].map((id) => document.getElementById(id).checked));
+  for (const id of ["glow", "shade", "shadows"]) await flip(id, false);
+  const off = await effects();
+  sw = await sweep3d();
+  const offOk = !off.glow3d && !off.glowFlat && !off.shadows && !off.shading && sw.wrong.length === 0;
+  for (const id of ["glow", "shade", "shadows"]) await flip(id, true);
+  const on = await effects();
+  for (const [i, id] of ["glow", "shade", "shadows"].entries()) await flip(id, initial[i]);
+  check(offOk && on.glow3d && on.glowFlat && on.shadows && on.shading, `Edge glow, Shading and Shadows switch their effects off and on (off: ${JSON.stringify(off)})`);
+
+  // Live shading computed at the very start of a turn matches the shading at rest.
+  const restError = await probe("shadeRestError");
+  check(restError < 1e-6, `live shading at the start of every turn matches the rest shading (largest difference ${restError})`);
+
   // Every section collapses from its heading.
   const sections = await page.$$eval("[data-sec]", (els) => els.map((e) => e.getAttribute("data-sec")));
   for (const s of sections) await page.click(`[data-sec=${s}] h2`);
@@ -410,6 +432,31 @@ try {
     check((await p.$eval("#status", (e) => e.textContent ?? "")).includes("Solved") && phoneErrors.length === 0, "standalone page starts solved, without page errors");
     await collect(p);
     await phone.close();
+  }
+
+  // A device too slow for live shading falls back to blending between the shading before
+  // and after each turn (remembered on the device). The drawing must stay right.
+  {
+    const slow = await browser.newContext({ viewport: { width: 390, height: 900 } });
+    await slow.addInitScript(() => localStorage.setItem("xcube-lab-shade-mode", "blend"));
+    const p = await slow.newPage();
+    await track(p);
+    const slowErrors = [];
+    p.on("pageerror", (e) => slowErrors.push(String(e)));
+    await p.goto(pageUrl);
+    await p.waitForFunction(() => window.xcubeProbe?.idle(), null, { timeout: 30000 });
+    await p.fill("#alg", "F f R U r");
+    await p.click("#run");
+    await p.waitForFunction(() => window.xcubeProbe.idle() && window.xcubeProbe.turns() === "F f R U r", null, { timeout: 60000 });
+    const res = await p.evaluate(() => {
+      const P = window.xcubeProbe;
+      const hits = P.scan3d(6);
+      const wrong = hits.filter((h) => h.cubelet !== h.modelCubelet || h.color !== P.model(h.slot, h.face));
+      return { mode: P.shading().mode, wrong: wrong.length + P.missing3d().length };
+    });
+    check(res.mode === "blend" && res.wrong === 0 && slowErrors.length === 0, `blended shading (slow devices) plays turns and draws them right (mode ${res.mode}, ${res.wrong} wrong)`);
+    await collect(p);
+    await slow.close();
   }
 
   // Opened as a file there is no shared database, so saved states go to this device.

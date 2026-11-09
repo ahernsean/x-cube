@@ -898,8 +898,8 @@ function shadeTurnFrame(pose: TurnPose, progress: number) {
   else blendStep(progress);
 }
 
-/** For automated checks: largest change live shading makes at rest (should be ~0). */
-(window as any).__xcubeShadeRestCheck = () => {
+/** Largest change live shading makes to a puzzle at rest, over every turnable layer (should be ~0). */
+function shadeRestError() {
   let worst = 0;
   for (let def = 0; def < MOVE_DEFS.length; def++) {
     if (MOVE_DEFS[def].kind === "rotation") continue;
@@ -912,10 +912,7 @@ function shadeTurnFrame(pose: TurnPose, progress: number) {
     syncMeshes(app.current);
   }
   return worst;
-};
-
-/** For automated checks: average cost of live shading per frame so far. */
-(window as any).__xcubeShadeCost = () => ({ mode: shadeMode, frames: liveCostFrames, avgMs: liveCostFrames ? liveCostTotal / liveCostFrames : 0 });
+}
 
 function applyShadingSettings() {
   syncMeshes(app.current);
@@ -1329,12 +1326,6 @@ function cancelLiveTurn() {
     finishLiveTurn(l, 0);
   }
 }
-
-// Test hook (harmless): lets automated checks ask what a screen point would hit.
-(window as any).__xcubePick = (x: number, y: number) => {
-  const h = pickCube(renderer.domElement, x, y);
-  return h && { normal: h.normal, cell: h.cell, point: [h.point.x, h.point.y, h.point.z] };
-};
 
 // ------------------------------------------------------------------ shuffle
 
@@ -2434,6 +2425,11 @@ function installProbe() {
       g.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(a[0], a[1], a[2]), HALF));
     },
     resync: () => syncMeshes(app.current),
+    /** How shading follows a turn ("live" or, on a device too slow for that, "blend"), and its cost so far. */
+    shading: () => ({ mode: shadeMode, frames: liveCostFrames, avgMs: liveCostFrames ? liveCostTotal / liveCostFrames : 0 }),
+    shadeRestError,
+    /** What the effect switches currently control: glow layers, the key light's shadows, grid shading. */
+    effects: () => ({ glow3d: camera.layers.isEnabled(GLOW3D_LAYER), glowFlat: netCams.every((c) => c.cam.layers.isEnabled(GLOWNET_LAYER)), shadows: !!keyLight?.castShadow, shading: aoOn["3d"] && aoOn.flat }),
     /** The color the model says the sticker in slot shows toward face (null: none). */
     model(slot: string, face: string) {
       const s = slotByName(slot);
