@@ -316,6 +316,35 @@ function shadeCubelet(st: State, slot: number, ori: number, id: number) {
   applyToCubelet(id, per);
 }
 
+// Second ring: grid spots two cells out along the face, with less weight, so big
+// notches get deeper shading than small steps. (in-plane offsets along ux, uy; weight)
+const FAR_RING: [number, number, number][] = [
+  [2, 0, 1],
+  [0, 2, 1],
+  [2, 1, 0.75],
+  [1, 2, 0.75],
+  [2, 2, 0.5],
+];
+const FAR_RING_TOTAL = FAR_RING.reduce((t, r) => t + r[2], 0);
+const FAR_WEIGHT = 0.22; // how much a fully filled second ring darkens a corner
+
+/**
+ * Brightness of one face corner. `fill(x, y, z)` says how filled a spot is (0..1);
+ * f = the spot just in front of the face; ux, uy = the face's in-plane axes;
+ * sx, sy = which corner. Used both at rest (filled = 0 or 1) and mid-turn (continuous).
+ */
+function cornerValue(fill: (x: number, y: number, z: number) => number, f: readonly number[], ux: readonly number[], uy: readonly number[], sx: number, sy: number) {
+  const at = (i: number, j: number) => fill(f[0] + i * sx * ux[0] + j * sy * uy[0], f[1] + i * sx * ux[1] + j * sy * uy[1], f[2] + i * sx * ux[2] + j * sy * uy[2]);
+  const s1 = at(1, 0), s2 = at(0, 1), s3 = at(1, 1);
+  const near = levelBrightness((1 - s1 * s2) * (3 - (s1 + s2 + s3)));
+  let far = 0;
+  for (const [i, j, w] of FAR_RING) far += w * at(i, j);
+  return near * (1 - (FAR_WEIGHT * far) / FAR_RING_TOTAL);
+}
+
+/** Smoothstep easing of the blend across a face, so shading meets cleanly at face edges. */
+const ease = (t: number) => t * t * (3 - 2 * t);
+
 /** Four corner values for face d of the cubelet in `slot` (grid rule). */
 function gridCorners(st: State, slot: number, ori: number, d: number): number[] {
   const R = ROTATIONS[ori];
@@ -323,19 +352,9 @@ function gridCorners(st: State, slot: number, ori: number, d: number): number[] 
   const n = matVec(R, DIRS[d]);
   const ux = matVec(R, FACE_AXES[d].ux);
   const uy = matVec(R, FACE_AXES[d].uy);
-  const front: Vec3 = [p[0] + n[0], p[1] + n[1], p[2] + n[2]];
-  const corner = [1, 1, 1, 1];
-  for (let k = 0; k < 4; k++) {
-    const [sx, sy] = CORNER_SIGNS[k];
-    const a: Vec3 = [front[0] + sx * ux[0], front[1] + sx * ux[1], front[2] + sx * ux[2]];
-    const b: Vec3 = [front[0] + sy * uy[0], front[1] + sy * uy[1], front[2] + sy * uy[2]];
-    const c: Vec3 = [a[0] + sy * uy[0], a[1] + sy * uy[1], a[2] + sy * uy[2]];
-    const s1 = filledAt(st, a) ? 1 : 0;
-    const s2 = filledAt(st, b) ? 1 : 0;
-    const level = s1 && s2 ? 0 : 3 - (s1 + s2 + (filledAt(st, c) ? 1 : 0));
-    corner[k] = AO_LEVELS[level];
-  }
-  return corner;
+  const front = [p[0] + n[0], p[1] + n[1], p[2] + n[2]];
+  const fill = (x: number, y: number, z: number) => (filledAt(st, [x, y, z]) ? 1 : 0);
+  return CORNER_SIGNS.map(([sx, sy]) => cornerValue(fill, front, ux, uy, sx, sy));
 }
 
 /**
@@ -363,7 +382,7 @@ function applyToCubelet(id: number, per: (number[] | null)[]) {
   for (let i = 0; i < b.face.length; i++) {
     const c = per[b.face[i]];
     if (!c) continue;
-    const u = b.u[i], w = b.v[i];
+    const u = ease(b.u[i]), w = ease(b.v[i]);
     const top = c[0] * (1 - u) + c[1] * u;
     const bottom = c[2] * (1 - u) + c[3] * u;
     arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = bottom * (1 - w) + top * w;
@@ -519,8 +538,8 @@ function applyCorners(f: AoFace, corner: number[]) {
   const arr = col.array as Float32Array;
   const pos = f.mesh.geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) {
-    const u = Math.max(0, Math.min(1, pos.getX(i) / f.extent + 0.5)); // 0 at -x, 1 at +x
-    const w = Math.max(0, Math.min(1, pos.getY(i) / f.extent + 0.5)); // 0 at -y, 1 at +y
+    const u = ease(Math.max(0, Math.min(1, pos.getX(i) / f.extent + 0.5))); // 0 at -x, 1 at +x
+    const w = ease(Math.max(0, Math.min(1, pos.getY(i) / f.extent + 0.5))); // 0 at -y, 1 at +y
     const top = corner[0] * (1 - u) + corner[1] * u;
     const bottom = corner[2] * (1 - u) + corner[3] * u;
     const v = bottom * (1 - w) + top * w;
@@ -609,7 +628,17 @@ function shadeDuringTurn(pose: TurnPose) {
     const slot = slotAtXYZ(x, y, z);
     return slot >= 0 && st.occ[slot] >= 0 && !isMovingId[st.occ[slot]];
   };
+  // Neighboring faces check many of the same spots: remember each spot's value this frame.
+  const memo = new Map<number, number>();
   const filled = (qx: number, qy: number, qz: number) => {
+    const key = ((Math.round(qx * 64) + 512) * 1024 + (Math.round(qy * 64) + 512)) * 1024 + (Math.round(qz * 64) + 512);
+    const hit = memo.get(key);
+    if (hit !== undefined) return hit;
+    const v = filledUncached(qx, qy, qz);
+    memo.set(key, v);
+    return v;
+  };
+  const filledUncached = (qx: number, qy: number, qz: number) => {
     let best = 0;
     const x0 = Math.floor(qx + 1e-9), y0 = Math.floor(qy + 1e-9), z0 = Math.floor(qz + 1e-9);
     const x1 = Math.abs(qx - Math.round(qx)) < 1e-6 ? x0 : x0 + 1;
@@ -658,16 +687,8 @@ function shadeDuringTurn(pose: TurnPose) {
         per.push(null);
         continue;
       }
-      const corner = [1, 1, 1, 1];
-      for (let k = 0; k < 4; k++) {
-        const sx = CORNER_SIGNS[k][0], sy = CORNER_SIGNS[k][1];
-        const ax = fx + sx * ux[0], ay = fy + sx * ux[1], az = fz + sx * ux[2];
-        const s1 = filled(ax, ay, az);
-        const s2 = filled(fx + sy * uy[0], fy + sy * uy[1], fz + sy * uy[2]);
-        const s3 = filled(ax + sy * uy[0], ay + sy * uy[1], az + sy * uy[2]);
-        corner[k] = levelBrightness((1 - s1 * s2) * (3 - (s1 + s2 + s3)));
-      }
-      per.push(corner);
+      const f = [fx, fy, fz];
+      per.push(CORNER_SIGNS.map(([sx, sy]) => cornerValue(filled, f, ux, uy, sx, sy)));
     }
     applyToCubelet(id, per);
   }
