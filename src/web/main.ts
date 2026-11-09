@@ -1247,9 +1247,14 @@ function undoLast() {
     return;
   }
   flushAnimations();
+  const before = app.current;
   const last = app.history[app.cursor - 1];
+  // The history and cursor change now, together; only the animation waits in the queue,
+  // so anything that flushes the queue first still leaves them consistent.
   app.history = app.history.slice(0, app.cursor - 1);
-  enqueue(last, false);
+  app.cursor--;
+  recompute();
+  queue.push({ turn: last, forward: false, from: before });
   setMessage(`Undid ${turnName(last)}`, "info");
   render();
 }
@@ -1421,7 +1426,12 @@ interface Anim {
   after: State;
 }
 let anim: Anim | null = null;
-const queue: { turn: Turn; forward: boolean }[] = [];
+/**
+ * Turns waiting to animate. A job without `from` moves the cursor when it starts. A job
+ * with `from` animates a change already made to the history and cursor (an undo), from
+ * that earlier state to the current one.
+ */
+const queue: { turn: Turn; forward: boolean; from?: State }[] = [];
 const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 // Speed slider 0..100 maps logarithmically from 800 ms (slowest) to 30 ms (fastest) per quarter turn.
 const speedFromSlider = (v: number) => 800 * Math.pow(30 / 800, v / 100);
@@ -1438,11 +1448,13 @@ function startNext() {
   if (!job) return;
   showNetAnimation(true);
   const { turn, forward } = job;
-  const before = app.current;
+  const before = job.from ?? app.current;
   // Move the cursor and compute the end state first.
-  if (forward) app.cursor++;
-  else app.cursor--;
-  recompute();
+  if (!job.from) {
+    if (forward) app.cursor++;
+    else app.cursor--;
+    recompute();
+  }
   const after = app.current;
   const d = MOVE_DEFS[turn.def];
   const amount = forward ? turn.amount : 4 - turn.amount;

@@ -103,6 +103,28 @@ try {
   await page.waitForFunction(() => document.getElementById("last")?.textContent === "▶", null, { timeout: 60000 });
   check((await status()).includes("X shape"), "edge 3-cycle keeps the X shape");
 
+  // Undo takes back the last turn.
+  await page.click("#reset");
+  await page.evaluate(() => document.querySelector('[data-move="R"]').click());
+  await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "1/1", null, { timeout: 30000 });
+  await page.click("#undo");
+  await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "0/0", null, { timeout: 30000 });
+  await page.waitForTimeout(1000);
+  check((await status()).includes("Solved"), "undo takes back the last turn");
+
+  // A turn pressed while an undo is still waiting to animate: both take effect.
+  await page.evaluate(() => document.querySelector('[data-move="R"]').click());
+  await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "1/1", null, { timeout: 30000 });
+  await page.waitForTimeout(1000);
+  await page.evaluate(() => {
+    document.getElementById("undo").click();
+    document.querySelector('[data-move="F"]').click();
+  });
+  await page.waitForTimeout(1500);
+  const afterRace = await page.$$eval("#history .tok", (els) => els.map((e) => e.textContent).join(" "));
+  const raceStatus = await status();
+  check(afterRace === "F" && /l 6\/9/.test(raceStatus) && /r 6\/9/.test(raceStatus), `undo then an immediate F leaves just F (turns "${afterRace}")`);
+
   // Every section collapses from its heading.
   const sections = await page.$$eval("[data-sec]", (els) => els.map((e) => e.getAttribute("data-sec")));
   for (const s of sections) await page.click(`[data-sec=${s}] h2`);
