@@ -44,6 +44,10 @@ export function search(start: State, goal: (st: State) => boolean, opts: SearchO
     if (def < 0) throw new Error(`unknown move ${n}`);
     for (const a of amounts) turns.push({ def, amount: a });
   }
+  // Two consecutive turns of the same move can be merged into one only if every amount
+  // (quarter, half, inverse) is allowed; otherwise repeats must be searched (e.g. "R R"
+  // when only clockwise quarter turns are allowed).
+  const mergeRepeats = [1, 2, 3].every((a) => amounts.includes(a as 1 | 2 | 3));
   const maxSolutions = opts.maxSolutions ?? 1;
   const nodeLimit = opts.nodeLimit ?? 2e8;
   const h = opts.heuristic ?? (() => 0);
@@ -68,8 +72,9 @@ export function search(start: State, goal: (st: State) => boolean, opts: SearchO
     for (const t of turns) {
       const d = MOVE_DEFS[t.def];
       if (prev) {
-        if (prev === d) continue;
-        if (prev.axis === d.axis && prev.layerOrder >= d.layerOrder) continue;
+        if (prev === d) {
+          if (mergeRepeats) continue;
+        } else if (prev.axis === d.axis && prev.layerOrder >= d.layerOrder) continue;
       }
       if (blockedReason(st, t)) continue;
       const next = stack[depth + 1];

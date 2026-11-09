@@ -258,3 +258,15 @@ test("shape stage: one flipped single edge is fixed by R F D R2 D' R' F' (UF) an
     assert.ok(isHomeX(st));
   }
 });
+
+test("search: with restricted turn amounts, repeated turns of one move are still searched", async () => {
+  const { search } = await import("../src/core/search.ts");
+  const { looksLike } = await import("../src/core/goals.ts");
+  const target = State.solved();
+  applyTurns(target, parseAlg("R2"));
+  const r = search(State.solved(), looksLike(target), { moves: ["R"], amounts: [1], maxDepth: 2 });
+  assert.deepEqual(r.solutions.map(formatAlg), ["R R"]);
+  // With all amounts allowed, the same goal is found as a single half turn.
+  const all = search(State.solved(), looksLike(target), { moves: ["R"], maxDepth: 2 });
+  assert.deepEqual(all.solutions.map(formatAlg), ["R2"]);
+});
