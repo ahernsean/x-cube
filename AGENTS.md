@@ -142,7 +142,9 @@ rotations). `src/core/serialize.ts`.
 - **Shadows:** soft shadows from the single key light.
 - **Lighting:** a studio-room environment map supplies most of the light; one key light gives
   corner glints and shadows. The plastic has boosted specular reflectance plus a clear coat,
-  and its own dimmer copy of the environment so faces don't mirror the room.
+  and its own dimmer copy of the environment so faces don't mirror the room. Neutral tone
+  mapping (exposure 1.15) compresses bright values instead of clipping them, which keeps
+  well-lit yellow distinct from white; stickers have a reduced sheen for the same reason.
 - **Saved states:** stored in the artifact's shared database, collection `states`, with
   fields `name`, `code` (a state code), `note`, `savedAt`, `source` (`page` or `claude`).
 

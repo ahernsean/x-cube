@@ -92,7 +92,7 @@ function reduceMotionView() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 /** Light levels (tuned by comparing renders; yellow must stay distinct from white). */
-const LIGHT = { env: 0.45, key: 0.45, plasticRough: 0.28, plasticSpec: 6, plasticEnv: 0.22, coat: 0.5, coatRough: 0.1, stickerRough: 0.5, shadowSoft: 12 };
+const LIGHT = { env: 0.45, key: 0.45, plasticRough: 0.28, plasticSpec: 6, plasticEnv: 0.22, coat: 0.5, coatRough: 0.1, stickerRough: 0.6, stickerSpec: 0.5, exposure: 1.15, shadowSoft: 12 };
 let keyLight: any = null;
 let envTex: any = null;
 const SHADOW_KEY = "xcube-lab-shadows";
@@ -125,6 +125,13 @@ function initScene(canvas: HTMLCanvasElement) {
   // Newer three.js (r165+) has only physically based light units: the same look needs
   // the old values times pi.
   const L = "useLegacyLights" in renderer ? 1 : Math.PI;
+  // Tone mapping: compress bright values smoothly instead of clipping them, so a well-lit
+  // yellow stays yellow (not lemon) and white keeps its shading. "Neutral" (Khronos PBR
+  // Neutral) is designed to keep material colors faithful.
+  if (THREE.NeutralToneMapping !== undefined) {
+    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMappingExposure = LIGHT.exposure;
+  }
   // Lighting: a soft studio room environment (prefiltered for rough reflections) gives
   // most of the light and the reflections in the glossy plastic; one key light gives
   // the corner glints and the (soft) shadows.
@@ -213,7 +220,7 @@ function initScene(canvas: HTMLCanvasElement) {
   };
   const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark), vertexColors: true });
   const matFor = (c: Color) => {
-    if (!mats.has(c)) mats.set(c, new THREE.MeshStandardMaterial({ color: STICKER[c], vertexColors: true, roughness: LIGHT.stickerRough, metalness: 0 }));
+    if (!mats.has(c)) mats.set(c, new THREE.MeshPhysicalMaterial({ color: STICKER[c], vertexColors: true, roughness: LIGHT.stickerRough, metalness: 0, specularIntensity: LIGHT.stickerSpec }));
     return mats.get(c);
   };
   // local face d -> plane placement
