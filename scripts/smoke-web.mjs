@@ -125,6 +125,17 @@ try {
   const raceStatus = await status();
   check(afterRace === "F" && /l 6\/9/.test(raceStatus) && /r 6\/9/.test(raceStatus), `undo then an immediate F leaves just F (turns "${afterRace}")`);
 
+  // The Gloss switch turns the sticker film off and on without errors.
+  await page.evaluate(() => {
+    const g = document.getElementById("gloss");
+    for (const on of [false, true]) {
+      g.checked = on;
+      g.dispatchEvent(new Event("change"));
+    }
+  });
+  await page.waitForTimeout(500);
+  check(await page.$eval("#gloss", (g) => g.checked), "gloss switches off and back on");
+
   // Every section collapses from its heading.
   const sections = await page.$$eval("[data-sec]", (els) => els.map((e) => e.getAttribute("data-sec")));
   for (const s of sections) await page.click(`[data-sec=${s}] h2`);
