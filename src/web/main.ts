@@ -381,6 +381,7 @@ function initScene(canvas: HTMLCanvasElement) {
     bodyMesh.receiveShadow = true;
     g.add(bodyMesh);
     registerBody(c.id, bodyMesh, 0.985);
+    probeInfo.set(bodyMesh, { id: c.id, d: 6 });
     const aoList: AoFace[] = [];
     aoFaces[c.id] = aoList;
     c.stickers.forEach((col, d) => {
@@ -397,6 +398,7 @@ function initScene(canvas: HTMLCanvasElement) {
     // Flat-view faces: unlit, one per face, seen only by the flat view's cameras (layer 2),
     // in front of the cubelet's dark backing, which also hides deeper cubelets.
     const occluder = new THREE.Mesh(netBody, netOccluderMat);
+    probeInfo.set(occluder, { id: c.id, d: 6 });
     occluder.layers.set(NET_LAYER);
     occluder.renderOrder = -1;
     g.add(occluder);
@@ -2302,8 +2304,9 @@ function bindUI() {
 
 // ------------------------------------------------------------------ probe for browser tests
 
-// window.xcubeProbe answers "what is drawn where" for scripts/browser-tests.mjs. It only
-// reads: it draws into its own offscreen buffer, so the visible views do not change.
+// window.xcubeProbe answers "what is drawn where" for scripts/browser-tests.mjs. Apart
+// from the fault methods (which the tests use to check that a misdrawn cubelet is caught),
+// it only reads: it draws into its own offscreen buffer, so the visible views don't change.
 // - model(slot, face): the color the puzzle model says is there.
 // - sticker(slot, face): where the center of the sticker in that slot, facing that way,
 //   appears on screen (client coordinates), to aim gestures at.
@@ -2325,9 +2328,9 @@ let probeTarget: any = null;
 function probeMaterial(info: { id: number; d: number } | undefined, mode: "id" | "color", drawn: any) {
   let hex: number;
   if (mode === "id") {
-    const code = info ? info.id * 6 + info.d + 1 : 0; // 0: plastic
+    const code = info ? info.id * 7 + info.d + 1 : 0; // d 0-5: a sticker or tile; 6: the plastic
     hex = ((code & 255) << 16) | ((code >> 8) << 8);
-  } else hex = info && drawn?.color ? drawn.color.getHex() : PROBE_PLASTIC;
+  } else hex = info && info.d < 6 && drawn?.color ? drawn.color.getHex() : PROBE_PLASTIC;
   const key = mode + hex;
   if (!probeMats.has(key)) {
     const c = new THREE.Color();
@@ -2367,7 +2370,7 @@ function probeImage(cam: any, layer: number, w: number, h: number, mode: "id" | 
   return out;
 }
 
-type ProbeHit = { slot: string; face: string; color: string; cubelet: number; modelCubelet: number } | { plastic: true } | null;
+type ProbeHit = { slot: string; face: string; color: string; cubelet: number; modelCubelet: number } | { plastic: true; slot: string; cubelet: number } | null;
 
 
 /** What the two passes show at pixel (px, py) from the top left. */
@@ -2375,12 +2378,12 @@ function probeDecode(ids: Uint8Array, colors: Uint8Array, w: number, h: number, 
   const i = ((h - 1 - Math.floor(py)) * w + Math.floor(px)) * 4;
   if (ids[i + 3] === 0) return null; // background
   const code = ids[i] + ids[i + 1] * 256;
-  if (code === 0) return { plastic: true };
-  const cubelet = Math.floor((code - 1) / 6), d = (code - 1) % 6;
+  const cubelet = Math.floor((code - 1) / 7), d = (code - 1) % 7;
   // Where it was drawn: from the mesh's own transform in the puzzle frame, not from the
   // model, so a cubelet drawn in the wrong place or turned the wrong way shows up.
   const g = meshes[cubelet];
   const slot = slotAtXYZ(Math.round(g.position.x), Math.round(g.position.y), Math.round(g.position.z));
+  if (d === 6) return { plastic: true, slot: slot < 0 ? "?" : slotName(slot), cubelet };
   const n = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(g.quaternion);
   const dir = dirIndex([Math.round(n.x), Math.round(n.y), Math.round(n.z)]);
   const face = dir < 0 ? "?" : COMPASS_FACES[dir];
@@ -2414,6 +2417,23 @@ function installProbe() {
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
     view: () => pivot.quaternion.toArray(),
+    // Deliberate faults, for testing the tests: draw two cubelets in each other's places,
+    // or turn one cubelet's mesh a quarter turn about a face's axis. resync() redraws
+    // every cubelet where the model puts it.
+    faultSwap(a: string, b: string) {
+      const ga = meshes[app.current.occ[slotByName(a)]], gb = meshes[app.current.occ[slotByName(b)]];
+      const [pa, qa] = [ga.position.clone(), ga.quaternion.clone()];
+      ga.position.copy(gb.position);
+      ga.quaternion.copy(gb.quaternion);
+      gb.position.copy(pa);
+      gb.quaternion.copy(qa);
+    },
+    faultTwist(slot: string, face: string) {
+      const g = meshes[app.current.occ[slotByName(slot)]];
+      const a = DIRS[COMPASS_FACES.indexOf(face)];
+      g.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(a[0], a[1], a[2]), HALF));
+    },
+    resync: () => syncMeshes(app.current),
     /** The color the model says the sticker in slot shows toward face (null: none). */
     model(slot: string, face: string) {
       const s = slotByName(slot);
@@ -2439,9 +2459,38 @@ function installProbe() {
       for (let y = r.top + step / 2; y < r.bottom; y += step)
         for (let x = r.left + step / 2; x < r.right; x += step) {
           const h = at(x, y);
-          if (h && "slot" in h) seen.set(`${h.slot}/${h.face}/${h.color}`, h);
+          if (h && !("plastic" in h)) seen.set(`${h.slot}/${h.face}/${h.color}`, h);
         }
       return [...seen.values()];
+    },
+    /**
+     * Stickers the model says face the 3D view's camera that are not drawn: at the center
+     * of each, the drawing shows that slot's cubelet without that sticker, or nothing.
+     * (Where another cubelet is drawn in front, the sticker is hidden, not missing.)
+     */
+    missing3d() {
+      const { r, at } = probe3d();
+      const st = app.current;
+      const out: string[] = [];
+      for (let s = 0; s < NUM_SLOTS; s++) {
+        const id = st.occ[s];
+        if (id < 0) continue;
+        for (let dir = 0; dir < 6; dir++) {
+          if (!st.colorAt(s, dir) || !isExposed(st, s, dir)) continue;
+          const local = new THREE.Vector3(...SLOT_POS[s]).add(new THREE.Vector3(...DIRS[dir]).multiplyScalar(0.4945));
+          const world = pivot.localToWorld(local.clone());
+          const normal = new THREE.Vector3(...DIRS[dir]).applyQuaternion(pivot.quaternion);
+          if (normal.dot(camera.position.clone().sub(world)) <= 0) continue; // faces away
+          const p = world.project(camera);
+          const h = at(r.left + ((p.x + 1) / 2) * r.width, r.top + ((1 - p.y) / 2) * r.height);
+          const name = `${slotName(s)}/${COMPASS_FACES[dir]}`;
+          if (!h) out.push(`${name}: nothing drawn`);
+          else if (h.slot !== slotName(s)) continue; // hidden behind another cubelet
+          else if ("plastic" in h) out.push(`${name}: cubelet ${h.cubelet} drawn without it`);
+          else if (h.face !== COMPASS_FACES[dir] || h.cubelet !== id) out.push(`${name}: ${h.slot}/${h.face} of cubelet ${h.cubelet} drawn there`);
+        }
+      }
+      return out;
     },
     /** One face of the flat view as 5 rows of 5 cells, top row first, as that face is seen. */
     flatFace(face: string) {

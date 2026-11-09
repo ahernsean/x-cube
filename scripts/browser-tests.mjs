@@ -174,7 +174,8 @@ try {
   // Every sticker visible in the 3D view is drawn where the model puts it, in its color:
   // sample a grid of points; for each one that lands on a sticker, the ID pass names its
   // cubelet, whose mesh gives the slot and facing it is drawn at. The model must have
-  // that cubelet in that slot, and the flat-color pass must match the model's color.
+  // that cubelet in that slot, and the flat-color pass must match the model's color. And
+  // the other way round: every sticker the model turns toward the camera must be drawn.
   const sweep3d = () =>
     page.evaluate(() => {
       const P = window.xcubeProbe;
@@ -182,7 +183,7 @@ try {
       const wrong = hits
         .filter((h) => h.slot === "?" || h.cubelet !== h.modelCubelet || h.color !== P.model(h.slot, h.face))
         .map((h) => `${h.slot}/${h.face}: drawn cubelet ${h.cubelet} in ${h.color}, model has cubelet ${h.modelCubelet} in ${h.slot === "?" ? "?" : P.model(h.slot, h.face)}`);
-      return { stickers: new Set(hits.map((h) => h.slot + "/" + h.face)).size, wrong };
+      return { stickers: new Set(hits.map((h) => h.slot + "/" + h.face)).size, wrong: [...wrong, ...P.missing3d().map((m) => "missing " + m)] };
     });
   await startFresh();
   let sw = await sweep3d();
@@ -227,6 +228,25 @@ try {
       }
       return { counts, wrong };
     });
+  // The drawing checks catch a misdrawn cubelet: draw two cubelets in each other's places,
+  // and turn another a quarter turn, and both views must report exactly those cubelets.
+  await startFresh();
+  await page.evaluate(() => {
+    window.xcubeProbe.faultSwap("Fx.UR", "Rx.UF");
+    window.xcubeProbe.faultTwist("Fx.UL", "F");
+  });
+  const faulty3d = await sweep3d();
+  const faultyFlat = await sweepFlat();
+  await page.evaluate(() => window.xcubeProbe.resync());
+  const faulted = ["Fx.UR", "Rx.UF", "Fx.UL"];
+  const named = (list) => faulted.filter((slot) => list.some((w) => w.includes(slot)));
+  const only = (list) => list.every((w) => faulted.some((slot) => w.includes(slot)));
+  check(named(faulty3d.wrong).length === 3 && only(faulty3d.wrong), `a swapped pair and a twisted cubelet are caught in the 3D view, and nothing else (${named(faulty3d.wrong).join(", ") || "none"})`);
+  check(named(faultyFlat.wrong).length === 3 && only(faultyFlat.wrong), `...and in the flat view (${named(faultyFlat.wrong).join(", ") || "none"})`);
+  const healed = await sweep3d();
+  check(healed.wrong.length === 0, "after redrawing from the model, the 3D view is clean again");
+
+  await startFresh();
   let fl = await sweepFlat();
   const shapeOk = ["U", "D"].every((f) => fl.counts[f] === 21) && ["F", "B", "R", "L"].every((f) => fl.counts[f] === 15);
   check(shapeOk && fl.wrong.length === 0, `flat view, solved: X-faces show 21 cells, side faces 15, each in the model's color (${JSON.stringify(fl.counts)})${fl.wrong.length ? ": " + fl.wrong.slice(0, 4).join("; ") : ""}`);
