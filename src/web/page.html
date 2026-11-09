@@ -282,7 +282,8 @@ details[open] summary { margin-bottom: 8px; }
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE_NS from "three";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 THREE_NS.ColorManagement.enabled = false;
-window.THREE = Object.assign({}, THREE_NS);
+window.THREE = Object.assign({}, THREE_NS, { RoomEnvironment });
 </script>
 <script type="module">/*__APP__*/</script>

@@ -91,6 +91,14 @@ function goToView(q: Quat) {
 function reduceMotionView() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
+/** Light levels (tuned by comparing renders; yellow must stay distinct from white). */
+const LIGHT = { env: 0.3, hemi: 0.34, key: 0.34, fill: 0.24, plasticRough: 0.3, stickerRough: 0.55 };
+let keyLight: any = null;
+(window as any).__xcubeLight = (v: Partial<typeof LIGHT>) => {
+  Object.assign(LIGHT, v);
+  return LIGHT;
+};
+
 /** three.js r155+ changed color and light handling; keep the look tuned under r128. */
 function matchR128Look(r: any) {
   r.outputColorSpace = THREE.LinearSRGBColorSpace;
@@ -108,11 +116,21 @@ function initScene(canvas: HTMLCanvasElement) {
   // Newer three.js (r165+) has only physically based light units: the same look needs
   // the old values times pi.
   const L = "useLegacyLights" in renderer ? 1 : Math.PI;
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6 * L));
-  const key = new THREE.DirectionalLight(0xffffff, 0.4 * L);
+  // Environment lighting: a soft studio room (prefiltered for rough reflections) lights
+  // and reflects in the glossy plastic. A sky/ground light makes up-facing surfaces a
+  // little brighter than down-facing ones. The key light gives highlights and shadows.
+  if (THREE.RoomEnvironment) {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = LIGHT.env;
+    pmrem.dispose();
+  }
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8c9196, LIGHT.hemi * L));
+  const key = new THREE.DirectionalLight(0xffffff, LIGHT.key * L);
   key.position.set(4, 9, 7);
   scene.add(key);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.22 * L);
+  keyLight = key;
+  const fill = new THREE.DirectionalLight(0xffffff, LIGHT.fill * L);
   fill.position.set(-6, -4, -5);
   scene.add(fill);
   pivot = new THREE.Group();
@@ -128,7 +146,7 @@ function initScene(canvas: HTMLCanvasElement) {
   const body = roundedBox(0.985, BODY_RADIUS, 3);
   // Glossy plastic: small, tight highlights that slide along the rounded edges and
   // corners as the cube tumbles (the lights stay put while the puzzle turns).
-  const bodyMat = new THREE.MeshPhongMaterial({ color: 0x3a3e41, specular: 0x5a5e62, shininess: 70 });
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3a3e41, roughness: LIGHT.plasticRough, metalness: 0, vertexColors: true });
   // Stickers sit on the flat part of each face, with rounded corners.
   const plane = roundedSquare(0.82, 0.07);
   const mats = new Map<Color, any>();
@@ -153,7 +171,7 @@ function initScene(canvas: HTMLCanvasElement) {
   };
   const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark), vertexColors: true });
   const matFor = (c: Color) => {
-    if (!mats.has(c)) mats.set(c, new THREE.MeshPhongMaterial({ color: STICKER[c], vertexColors: true, specular: 0x1c1c1c, shininess: 22 }));
+    if (!mats.has(c)) mats.set(c, new THREE.MeshStandardMaterial({ color: STICKER[c], vertexColors: true, roughness: LIGHT.stickerRough, metalness: 0 }));
     return mats.get(c);
   };
   // local face d -> plane placement
@@ -168,7 +186,8 @@ function initScene(canvas: HTMLCanvasElement) {
   ];
   for (const c of CUBELETS) {
     const g = new THREE.Group();
-    g.add(new THREE.Mesh(body, bodyMat));
+    const bodyMesh = new THREE.Mesh(withAoColors(body), bodyMat);
+    g.add(bodyMesh);
     const aoList: AoFace[] = [];
     aoFaces[c.id] = aoList;
     c.stickers.forEach((col, d) => {
