@@ -127,10 +127,26 @@ node src/cli/xc.ts show "U" --state X1:...   # start from a state code copied fr
 ```
 npx tsc --noEmit                                   # typecheck
 npm test                                           # unit tests
+npm run test:coverage                              # unit tests, with a coverage table
 npm install --no-save playwright@1.64.1            # browser tests need Playwright...
 npx playwright install --with-deps chromium webkit # ...and its browsers
 node scripts/browser-tests.mjs chromium
 node scripts/browser-tests.mjs webkit              # WebKit is Safari's engine
+```
+
+The browser tests check that the Lab loads, that turns, undo, saving and Shuffle work,
+that swipes, taps and long presses do what they should, and that the 3D and flat views
+draw every sticker where the puzzle model puts it, in its color.
+
+CI also measures coverage: which lines of the code the tests ran. The unit tests' table
+and the browser tests' summary (Chromium only) appear on each CI run's summary page, and
+the browser tests' full report, line by line, is attached to the run as
+`browser-coverage`. To produce it yourself:
+
+```
+node scripts/build-web.ts --sourcemap
+npm install --no-save monocart-coverage-reports@2.13.2
+COVERAGE_DIR=coverage/browser node scripts/browser-tests.mjs chromium   # open coverage/browser/index.html
 ```
 
 ## Commands

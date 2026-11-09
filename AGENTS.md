@@ -164,6 +164,13 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
 - **Saved states:** stored in the artifact's shared database, collection `states`, with
   fields `name`, `code` (a state code), `note`, `savedAt`, `source` (`page` or `claude`).
 
+- **Probe:** `window.xcubeProbe` (end of `src/web/main.ts`) tells the browser tests what
+  is drawn where: the screen position of a sticker's center, and, for a point of the 3D
+  view or a cell of the flat view, the slot, face and color drawn there. It draws into its
+  own offscreen buffer (an ID pass and a plain-color pass), so the views don't change.
+  Gestures read event timestamps, not handler time, so a slow frame can't change what a
+  gesture means.
+
 Tried and removed: screen-space ambient occlusion (SAO, then GTAO). Both showed artifacts
 on this scene that the grid shading does not have.
 
@@ -207,7 +214,9 @@ Never do any of these without an explicit instruction from the owner:
   and `webkit` where WebKit is installed), and look at the Lab at phone width (390 px).
 - CI (`.github/workflows/ci.yml`) runs the unit tests, the typecheck, and the build and
   browser tests in Chromium and WebKit, each as its own check, all on Node 24 (the version
-  `package.json` requires). Keep it green. The `all checks` job is the
+  `package.json` requires). Keep it green. It reports coverage (unit tests, and browser
+  tests in Chromium) on each run's summary page; no minimum is enforced. When you add
+  a Lab behavior, test it in `scripts/browser-tests.mjs`, through the probe if it draws. The `all checks` job is the
   one a branch rule on `main` requires; renaming it means changing the rule.
 - Publish the Lab after changes.
 - Library versions must be at least two weeks old.
