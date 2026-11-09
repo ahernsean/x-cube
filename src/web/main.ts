@@ -105,11 +105,14 @@ function initScene(canvas: HTMLCanvasElement) {
   camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
   // Ambient + key light sum to 1.0 at most, so no face saturates: a fully lit
   // yellow must stay clearly yellow next to white.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-  const key = new THREE.DirectionalLight(0xffffff, 0.4);
+  // Newer three.js (r165+) has only physically based light units: the same look needs
+  // the old values times pi.
+  const L = "useLegacyLights" in renderer ? 1 : Math.PI;
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6 * L));
+  const key = new THREE.DirectionalLight(0xffffff, 0.4 * L);
   key.position.set(4, 9, 7);
   scene.add(key);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.22);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.22 * L);
   fill.position.set(-6, -4, -5);
   scene.add(fill);
   pivot = new THREE.Group();
