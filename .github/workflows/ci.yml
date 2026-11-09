@@ -49,7 +49,7 @@ jobs:
 
   # WebKit is the engine of Safari, and of every browser on iPhone and iPad.
   browser:
-    name: Browser smoke test (${{ matrix.label }})
+    name: Browser tests (${{ matrix.label }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -103,7 +103,7 @@ jobs:
           echo "Keeping ${#packages[@]} packages"
           if (( ${#packages[@]} )); then cp "${packages[@]}" ~/webkit-packages/; fi
 
-      - run: node scripts/smoke-web.mjs ${{ matrix.browser }}
+      - run: node scripts/browser-tests.mjs ${{ matrix.browser }}
 
   # The single check for a branch rule on main to require. It passes only when every job
   # above passed, so the pull request cannot be merged while any of them is running or

@@ -203,10 +203,10 @@ Never do any of these without an explicit instruction from the owner:
 - One commit per change, so the owner can back out any single step.
 - Write or extend a test for every new or changed behavior.
 - Before committing: `npx tsc --noEmit` and `npm test`. For Lab changes, also
-  `node scripts/build-web.ts` and the smoke test (`node scripts/smoke-web.mjs chromium`,
+  `node scripts/build-web.ts` and the browser tests (`node scripts/browser-tests.mjs chromium`,
   and `webkit` where WebKit is installed), and look at the Lab at phone width (390 px).
 - CI (`.github/workflows/ci.yml`) runs the unit tests, the typecheck, and the build and
-  smoke test in Chromium and WebKit, each as its own check, all on Node 24 (the version
+  browser tests in Chromium and WebKit, each as its own check, all on Node 24 (the version
   `package.json` requires). Keep it green. The `all checks` job is the
   one a branch rule on `main` requires; renaming it means changing the rule.
 - Publish the Lab after changes.
@@ -216,13 +216,13 @@ Never do any of these without an explicit instruction from the owner:
 
 The owner uses the Lab mostly on an iPhone and iPad, where every browser is WebKit. A run
 that covers only Chromium has not tested the main engine. To run WebKit locally:
-`npx playwright install --with-deps webkit`, then `node scripts/smoke-web.mjs webkit`.
+`npx playwright install --with-deps webkit`, then `node scripts/browser-tests.mjs webkit`.
 
 ### A screenshot is not evidence about width
 
 A full-page screenshot is as wide as the page, so a page that scrolls sideways looks fine
 in it. Measure instead: `document.documentElement.scrollWidth` must not exceed
-`clientWidth` at 390 px. The smoke test checks this.
+`clientWidth` at 390 px. The browser tests check this.
 
 ### Comments
 

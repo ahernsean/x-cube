@@ -25,6 +25,6 @@ echo '{"async": true, "asyncTimeout": 300000}'
 cd "${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 npm ci --no-audit --no-fund --loglevel=error
 
-# Chromium for the smoke test is already in the image. WebKit is not; install it
+# Chromium for the browser tests is already in the image. WebKit is not; install it
 # with `npx playwright install --with-deps webkit` when a change needs Safari checks.
 echo "npm dependencies installed. Run: npx tsc --noEmit && npm test"

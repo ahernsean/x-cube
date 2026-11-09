@@ -129,8 +129,8 @@ npx tsc --noEmit                                   # typecheck
 npm test                                           # unit tests
 npm install --no-save playwright@1.64.1            # browser tests need Playwright...
 npx playwright install --with-deps chromium webkit # ...and its browsers
-node scripts/smoke-web.mjs chromium
-node scripts/smoke-web.mjs webkit                  # WebKit is Safari's engine
+node scripts/browser-tests.mjs chromium
+node scripts/browser-tests.mjs webkit              # WebKit is Safari's engine
 ```
 
 ## Commands
@@ -145,7 +145,7 @@ node src/cli/xc.ts order  "R U"                   # repetitions until it looks t
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
 node src/cli/xc.ts show "U" --state X1:...        # start from a saved state code
 node scripts/build-web.ts                         # build dist/index.html and dist/x-cube-lab.html
-node scripts/smoke-web.mjs [chromium|webkit]      # browser smoke test of the built Lab (needs Playwright)
+node scripts/browser-tests.mjs [chromium|webkit]  # browser tests of the built Lab (needs Playwright)
 ```
 
 In cycle output, `A -> B` means the cubelet that was in slot A is now in slot B. Slot names:
