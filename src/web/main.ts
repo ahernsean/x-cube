@@ -92,7 +92,7 @@ function reduceMotionView() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 /** Light levels (tuned by comparing renders; yellow must stay distinct from white). */
-const LIGHT = { env: 0.45, key: 0.45, plasticRough: 0.28, plasticSpec: 6, plasticEnv: 0.22, coat: 0.5, coatRough: 0.1, stickerRough: 0.6, stickerSpec: 0.5, exposure: 1.15, shadowSoft: 12 };
+const LIGHT = { env: 0.45, key: 0.45, plasticRough: 0.28, plasticSpec: 6, plasticEnv: 0.22, coat: 0.5, coatRough: 0.1, stickerRough: 0.6, stickerSpec: 0.5, filmCoat: 1, filmNormal: 0.35, exposure: 1.15, shadowSoft: 12 };
 let keyLight: any = null;
 let envTex: any = null;
 const SHADOW_KEY = "xcube-lab-shadows";
@@ -103,6 +103,132 @@ let shadowsOn = (() => {
     return true;
   }
 })();
+const GLOSS_KEY = "xcube-lab-gloss";
+let glossOn = (() => {
+  try {
+    return localStorage.getItem(GLOSS_KEY) !== "0";
+  } catch {
+    return true;
+  }
+})();
+/** Sticker materials, so the gloss switch can change them in place. */
+const stickerMats: any[] = [];
+let filmTex: { normal: any; rough: any } | null = null;
+
+/**
+ * The look of a laminated sticker: a thin clear film over the color, with fine crinkles,
+ * a few scratches, and patches where it is more or less shiny. Returns the film's surface
+ * as a normal map and its roughness (green channel, multiplied by the coat roughness,
+ * which is 1 while gloss is on). Generated once, tileable, from a fixed seed.
+ */
+function makeFilmTexture() {
+  const N = 256;
+  let seed = 0x9e3779b9;
+  const rnd = () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  // Tileable value noise with `g` cells across.
+  const noise = (g: number) => {
+    const cells = Float32Array.from({ length: g * g }, rnd);
+    const out = new Float32Array(N * N);
+    const ease = (t: number) => t * t * (3 - 2 * t);
+    for (let y = 0; y < N; y++)
+      for (let x = 0; x < N; x++) {
+        const fx = (x / N) * g, fy = (y / N) * g;
+        const x0 = Math.floor(fx), y0 = Math.floor(fy);
+        const tx = ease(fx - x0), ty = ease(fy - y0);
+        const at = (i: number, j: number) => cells[((j % g) * g) + (i % g)];
+        const a = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx;
+        const b = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
+        out[y * N + x] = a + (b - a) * ty;
+      }
+    return out;
+  };
+  const crinkle = [noise(5), noise(10), noise(20)];
+  const patches = noise(4);
+  const scratch = new Float32Array(N * N);
+  for (let i = 0; i < 10; i++) {
+    let x = rnd() * N, y = rnd() * N;
+    const a = rnd() * Math.PI, len = 30 + rnd() * 90;
+    for (let k = 0; k < len; k++) {
+      x += Math.cos(a);
+      y += Math.sin(a);
+      scratch[((Math.floor(y) % N + N) % N) * N + ((Math.floor(x) % N + N) % N)] = 1;
+    }
+  }
+  const height = new Float32Array(N * N);
+  for (let i = 0; i < N * N; i++) height[i] = 0.6 * crinkle[0][i] + 0.3 * crinkle[1][i] + 0.1 * crinkle[2][i] - 0.08 * scratch[i];
+  const toTexture = (fill: (i: number, x: number, y: number, px: Uint8ClampedArray) => void) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = N;
+    const ctx = canvas.getContext("2d")!;
+    const img = ctx.createImageData(N, N);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) fill(y * N + x, x, y, img.data);
+    ctx.putImageData(img, 0, 0);
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  };
+  const h = (x: number, y: number) => height[((y + N) % N) * N + ((x + N) % N)];
+  const normal = toTexture((i, x, y, px) => {
+    const dx = (h(x + 1, y) - h(x - 1, y)) * 6;
+    const dy = (h(x, y + 1) - h(x, y - 1)) * 6;
+    const len = Math.hypot(dx, dy, 1);
+    px[i * 4] = Math.round((-dx / len * 0.5 + 0.5) * 255);
+    px[i * 4 + 1] = Math.round((dy / len * 0.5 + 0.5) * 255);
+    px[i * 4 + 2] = Math.round((1 / len * 0.5 + 0.5) * 255);
+    px[i * 4 + 3] = 255;
+  });
+  const rough = toTexture((i, _x, _y, px) => {
+    const r = Math.min(1, 0.08 + 0.22 * patches[i] + 0.3 * scratch[i]);
+    px[i * 4] = px[i * 4 + 1] = px[i * 4 + 2] = Math.round(r * 255);
+    px[i * 4 + 3] = 255;
+  });
+  return { normal, rough };
+}
+
+/** Turn the sticker film on or off (the Gloss switch). */
+function applyGloss() {
+  if (glossOn && !filmTex) filmTex = makeFilmTexture();
+  // The color layer underneath keeps its smooth, satin finish; only the clear coat
+  // carries the film's crinkles, so they show in reflections and not in the color.
+  for (const m of stickerMats) {
+    m.clearcoat = glossOn ? LIGHT.filmCoat : 0;
+    m.clearcoatRoughness = 1;
+    m.clearcoatRoughnessMap = glossOn ? filmTex!.rough : null;
+    m.clearcoatNormalMap = glossOn ? filmTex!.normal : null;
+    m.clearcoatNormalScale = new THREE.Vector2(LIGHT.filmNormal, LIGHT.filmNormal);
+    m.needsUpdate = true;
+  }
+}
+
+/**
+ * Give one sticker its own patch of the film: a random quarter-turn and offset of the
+ * texture, so neighboring stickers don't show the same crinkles.
+ */
+function varyFilm(geo: any, key: number) {
+  const pos = geo.attributes.position;
+  const uv = geo.attributes.uv;
+  // A fixed pseudo-random choice per sticker, so every load looks the same.
+  const hash = (n: number) => {
+    let t = Math.imul(key * 0x9e3779b1 + n * 0x85ebca6b, 0xc2b2ae35);
+    t ^= t >>> 15;
+    return (Math.imul(t, 0x27d4eb2f) >>> 0) / 4294967296;
+  };
+  const turn = Math.floor(hash(1) * 4);
+  const ox = hash(2), oy = hash(3);
+  for (let i = 0; i < uv.count; i++) {
+    let u = pos.getX(i) / 0.82 * 0.45, v = pos.getY(i) / 0.82 * 0.45;
+    for (let k = 0; k < turn; k++) [u, v] = [-v, u];
+    uv.setXY(i, u + ox, v + oy);
+  }
+  uv.needsUpdate = true;
+  return geo;
+}
+
 (window as any).__xcubeLight = (v: Partial<typeof LIGHT>) => {
   Object.assign(LIGHT, v);
   return LIGHT;
@@ -222,7 +348,11 @@ function initScene(canvas: HTMLCanvasElement) {
   };
   const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark), vertexColors: true });
   const matFor = (c: Color) => {
-    if (!mats.has(c)) mats.set(c, new THREE.MeshPhysicalMaterial({ color: STICKER[c], vertexColors: true, roughness: LIGHT.stickerRough, metalness: 0, specularIntensity: LIGHT.stickerSpec }));
+    if (!mats.has(c)) {
+      const m = new THREE.MeshPhysicalMaterial({ color: STICKER[c], vertexColors: true, roughness: LIGHT.stickerRough, metalness: 0, specularIntensity: LIGHT.stickerSpec });
+      mats.set(c, m);
+      stickerMats.push(m);
+    }
     return mats.get(c);
   };
   // local face d -> plane placement
@@ -251,7 +381,7 @@ function initScene(canvas: HTMLCanvasElement) {
     aoFaces[c.id] = aoList;
     c.stickers.forEach((col, d) => {
       if (!col) return;
-      const m = new THREE.Mesh(withAoColors(plane), matFor(col));
+      const m = new THREE.Mesh(varyFilm(withAoColors(plane), c.id * 6 + d), matFor(col));
       m.receiveShadow = true;
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px, py, pz);
@@ -305,6 +435,7 @@ function initScene(canvas: HTMLCanvasElement) {
     meshes[c.id] = g;
   }
   applyGlowSettings();
+  applyGloss();
   initNetAnimation();
   bindOrbit(canvas);
   resize();
@@ -2100,6 +2231,17 @@ function bindUI() {
     if (keyLight) keyLight.castShadow = shadowsOn;
     try {
       localStorage.setItem(SHADOW_KEY, shadowsOn ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
+  });
+  const gloss = $("gloss") as HTMLInputElement;
+  gloss.checked = glossOn;
+  gloss.addEventListener("change", () => {
+    glossOn = gloss.checked;
+    applyGloss();
+    try {
+      localStorage.setItem(GLOSS_KEY, glossOn ? "1" : "0");
     } catch {
       /* storage unavailable */
     }
