@@ -57,12 +57,27 @@ The tests check these invariants:
 - Outer turns never change the shape.
 - Fused centers never separate.
 
-## Running it yourself
+## Where to run it
 
-X-Cube Lab is published as a claude.ai artifact, but it is an ordinary web page and runs
-anywhere. The command-line tools run wherever Node.js does.
+X-Cube Lab runs in three places. The command-line tools run wherever Node.js does.
 
-### One-time setup (Mac or Linux)
+| | Saved states | Best for |
+|---|---|---|
+| **claude.ai artifact** | Shared list, kept in the artifact's database | Working with Claude: it can read and add saved states |
+| **GitHub Pages**: https://ahernsean.github.io/x-cube/ | In that browser only | Any browser or phone, nothing to install |
+| **Your own copy** | In that browser only | Trying changes to the code |
+
+Outside the artifact the Saved states badge reads "This device only". To move a position
+between places, copy its state code (`X1:...`) and paste it where you need it.
+
+### GitHub Pages
+
+Open https://ahernsean.github.io/x-cube/ in any browser, including Safari on an iPhone or
+iPad. It is rebuilt and published from `main` on every merge by
+`.github/workflows/pages.yml`, so it shows the latest merged version. It needs the internet:
+three.js comes from cdn.jsdelivr.net and the fonts from Google Fonts.
+
+### Your own copy: one-time setup (Mac or Linux)
 
 1. Install **Node.js 22.18 or newer** from [nodejs.org](https://nodejs.org). Check with `node -v`.
 2. Get the code and its build tools:
@@ -73,31 +88,30 @@ anywhere. The command-line tools run wherever Node.js does.
    ```
    `npm ci` installs exactly the versions in `package-lock.json`.
 
-### The Lab in a desktop browser
+### Your own copy in a desktop browser
 
 ```
-node scripts/build-web.ts        # builds dist/x-cube-lab.html
-open dist/x-cube-lab.html        # Mac; on Linux, xdg-open
+node scripts/build-web.ts        # builds dist/index.html (and the artifact's dist/x-cube-lab.html)
+open dist/index.html             # Mac; on Linux, xdg-open
 ```
 
-- **It needs the internet:** three.js comes from cdn.jsdelivr.net and the fonts from Google Fonts.
-- **Saved states stay in that browser.** The shared database exists only inside the
-  claude.ai artifact; elsewhere the Saved states badge reads "This device only". To move a
-  position between places, copy its state code (`X1:...`).
-- **After pulling new code,** build again and reload the page.
+Open `dist/index.html`, the complete page. `dist/x-cube-lab.html` is only the page body
+that claude.ai wraps when it publishes the artifact. After pulling new code, build again
+and reload.
 
-### The Lab on an iPhone or iPad
+### Your own copy on an iPhone or iPad
 
-Serve the page from a computer on the same Wi-Fi network:
+To try unmerged changes on a phone, serve the page from a computer on the same Wi-Fi
+network:
 
 ```
 cd dist
 python3 -m http.server 8000
 ```
 
-Then open `http://<computer's IP address>:8000/x-cube-lab.html` in Safari. On a Mac the IP
-address is under System Settings → Wi-Fi → Details. The page is there only while the
-server runs. Opening the file from the Files app is not a reliable way to run it.
+Then open `http://<computer's IP address>:8000/` in Safari. On a Mac the IP address is under
+System Settings → Wi-Fi → Details. The page is there only while the server runs. For the
+merged version, use GitHub Pages instead.
 
 ### The command-line tools
 
@@ -130,7 +144,7 @@ node src/cli/xc.ts effect "[R' F' R, b]"          # which cubelets moved
 node src/cli/xc.ts order  "R U"                   # repetitions until it looks the same
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
 node src/cli/xc.ts show "U" --state X1:...        # start from a saved state code
-node scripts/build-web.ts                         # build dist/x-cube-lab.html
+node scripts/build-web.ts                         # build dist/index.html and dist/x-cube-lab.html
 node scripts/smoke-web.mjs [chromium|webkit]      # browser smoke test of the built Lab (needs Playwright)
 ```
 
@@ -158,10 +172,15 @@ tables or meet-in-the-middle.
   - it loads without page errors and the 3D view draws the cube;
   - the page doesn't scroll sideways at 390 px;
   - turns play, a blocked outer turn is refused, and Baum's 3-cycle keeps the X shape;
-  - every section collapses.
+  - undo works, including an undo followed at once by another turn;
+  - a device save is confirmed only when it was stored;
+  - every section collapses;
+  - the standalone page (`dist/index.html`), opened as a phone opens it, is 390 px wide.
 - **all checks** passes only when every job above passed. It is the one check for a
   branch rule on `main` to require, so a pull request can't be merged while CI is running
   or failing.
+
+`.github/workflows/pages.yml` publishes the Lab to GitHub Pages on every commit to `main`.
 
 To run a smoke test locally: `node scripts/smoke-web.mjs chromium` or
 `node scripts/smoke-web.mjs webkit`. WebKit needs `npx playwright install --with-deps webkit`
