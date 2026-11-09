@@ -2,7 +2,7 @@
 // three.js r128 is loaded as a global from cdnjs by the page.
 
 import { isHomeX, isSolved, isXShape, isExposed, outerAvailability, effect } from "../core/analyze.ts";
-import { DIRS, ROT_DIR, ROTATIONS, matVec, type Vec3 } from "../core/geometry.ts";
+import { DIRS, ROT_DIR, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
   CUBELETS,
@@ -2308,8 +2308,9 @@ function bindUI() {
 // - sticker(slot, face): where the center of the sticker in that slot, facing that way,
 //   appears on screen (client coordinates), to aim gestures at.
 // - at3d(x, y), scan3d() and flatFace(face): what is drawn there. One offscreen pass draws
-//   each sticker in a color that encodes its cubelet and face (an ID buffer), which gives
-//   the slot and direction it is drawn at; a second pass draws each sticker in the plain
+//   each sticker in a color that encodes its cubelet and face (an ID buffer); the slot
+//   and direction it is drawn at come from that cubelet's mesh transform (not from the
+//   model), along with the cubelet the model has in that slot; a second pass draws each sticker in the plain
 //   color of the material it is drawn with (no lighting, shading, shadows, glow or
 //   gloss), which gives the color.
 // Answers are meaningful only while nothing is moving (idle()).
@@ -2366,7 +2367,7 @@ function probeImage(cam: any, layer: number, w: number, h: number, mode: "id" | 
   return out;
 }
 
-type ProbeHit = { slot: string; face: string; color: string } | { plastic: true } | null;
+type ProbeHit = { slot: string; face: string; color: string; cubelet: number; modelCubelet: number } | { plastic: true } | null;
 
 
 /** What the two passes show at pixel (px, py) from the top left. */
@@ -2376,8 +2377,13 @@ function probeDecode(ids: Uint8Array, colors: Uint8Array, w: number, h: number, 
   const code = ids[i] + ids[i + 1] * 256;
   if (code === 0) return { plastic: true };
   const cubelet = Math.floor((code - 1) / 6), d = (code - 1) % 6;
-  const slot = app.current.occ.indexOf(cubelet);
-  const face = slot < 0 ? "?" : COMPASS_FACES[ROT_DIR[app.current.ori[slot] * 6 + d]];
+  // Where it was drawn: from the mesh's own transform in the puzzle frame, not from the
+  // model, so a cubelet drawn in the wrong place or turned the wrong way shows up.
+  const g = meshes[cubelet];
+  const slot = slotAtXYZ(Math.round(g.position.x), Math.round(g.position.y), Math.round(g.position.z));
+  const n = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(g.quaternion);
+  const dir = dirIndex([Math.round(n.x), Math.round(n.y), Math.round(n.z)]);
+  const face = dir < 0 ? "?" : COMPASS_FACES[dir];
   let color = "?", best = Infinity;
   const named: [string, number][] = [...(Object.entries(STICKER) as [string, number][]), ["unstickered", probeUnstickered], ["plastic", PROBE_PLASTIC]];
   for (const [name, hex] of named) {
@@ -2385,7 +2391,7 @@ function probeDecode(ids: Uint8Array, colors: Uint8Array, w: number, h: number, 
     if (dist < best) [best, color] = [dist, name];
   }
   if (best > 12) color = "?";
-  return { slot: slot < 0 ? "?" : slotName(slot), face, color };
+  return { slot: slot < 0 ? "?" : slotName(slot), face, color, cubelet, modelCubelet: slot < 0 ? -1 : app.current.occ[slot] };
 }
 
 /** Both passes of the 3D view, with a lookup by client coordinates. */

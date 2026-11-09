@@ -172,13 +172,16 @@ try {
   await page.locator("#scene").scrollIntoViewIfNeeded();
 
   // Every sticker visible in the 3D view is drawn where the model puts it, in its color:
-  // sample a grid of points; for each one that lands on a sticker, the ID pass names the
-  // slot and face it belongs to, and the flat-color pass must match the model's color.
+  // sample a grid of points; for each one that lands on a sticker, the ID pass names its
+  // cubelet, whose mesh gives the slot and facing it is drawn at. The model must have
+  // that cubelet in that slot, and the flat-color pass must match the model's color.
   const sweep3d = () =>
     page.evaluate(() => {
       const P = window.xcubeProbe;
       const hits = P.scan3d(6);
-      const wrong = hits.filter((h) => h.color !== P.model(h.slot, h.face)).map((h) => `${h.slot}/${h.face} drawn ${h.color}, model ${P.model(h.slot, h.face)}`);
+      const wrong = hits
+        .filter((h) => h.slot === "?" || h.cubelet !== h.modelCubelet || h.color !== P.model(h.slot, h.face))
+        .map((h) => `${h.slot}/${h.face}: drawn cubelet ${h.cubelet} in ${h.color}, model has cubelet ${h.modelCubelet} in ${h.slot === "?" ? "?" : P.model(h.slot, h.face)}`);
       return { stickers: new Set(hits.map((h) => h.slot + "/" + h.face)).size, wrong };
     });
   await startFresh();
@@ -217,8 +220,8 @@ try {
           cells.forEach((h, col) => {
             if (!h || h.plastic) return;
             counts[face]++;
-            const want = P.model(h.slot, h.face) ?? "unstickered";
-            if (h.face !== face || h.color !== want) wrong.push(`${face}[${row},${col}] = ${h.slot}/${h.face} ${h.color}, model ${want}`);
+            const want = h.slot === "?" ? "?" : P.model(h.slot, h.face) ?? "unstickered";
+            if (h.face !== face || h.cubelet !== h.modelCubelet || h.color !== want) wrong.push(`${face}[${row},${col}] = cubelet ${h.cubelet} at ${h.slot}/${h.face} in ${h.color}; model has cubelet ${h.modelCubelet} in ${want}`);
           }),
         );
       }
