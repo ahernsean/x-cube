@@ -232,11 +232,6 @@ function varyFilm(geo: any, key: number) {
   return geo;
 }
 
-(window as any).__xcubeLight = (v: Partial<typeof LIGHT>) => {
-  Object.assign(LIGHT, v);
-  return LIGHT;
-};
-
 /** three.js r155+ changed color and light handling; keep the look tuned under r128. */
 function matchR128Look(r: any) {
   r.outputColorSpace = THREE.LinearSRGBColorSpace;
