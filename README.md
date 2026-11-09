@@ -159,29 +159,3 @@ one order. Goals come from `src/core/goals.ts`, which compares how slots look, s
 leave "don't care" regions out of the mask. It runs at roughly 2 to 3 million positions per
 second in Node, which is practical to about 7 turns. Deeper searches will need distance
 tables or meet-in-the-middle.
-
-## Continuous integration
-
-`.github/workflows/ci.yml` runs on every push to a pull request and on every commit to
-`main`. A newer push to the same pull request cancels the older run.
-
-- **Typecheck, unit tests, build** on Node 22 and 24.
-- **Browser smoke tests**, in Chromium and in WebKit (the engine of Safari, and of every
-  browser on iPhone and iPad). Each builds the Lab, opens it at phone width (Playwright
-  1.64.1, installed only in CI) and checks that:
-  - it loads without page errors and the 3D view draws the cube;
-  - the page doesn't scroll sideways at 390 px;
-  - turns play, a blocked outer turn is refused, and Baum's 3-cycle keeps the X shape;
-  - undo works, including an undo followed at once by another turn;
-  - a device save is confirmed only when it was stored;
-  - every section collapses;
-  - the standalone page (`dist/index.html`), opened as a phone opens it, is 390 px wide.
-- **all checks** passes only when every job above passed. It is the one check for a
-  branch rule on `main` to require, so a pull request can't be merged while CI is running
-  or failing.
-
-`.github/workflows/pages.yml` publishes the Lab to GitHub Pages on every commit to `main`.
-
-To run a smoke test locally: `node scripts/smoke-web.mjs chromium` or
-`node scripts/smoke-web.mjs webkit`. WebKit needs `npx playwright install --with-deps webkit`
-first.
