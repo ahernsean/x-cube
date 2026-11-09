@@ -57,6 +57,82 @@ The tests check these invariants:
 - Outer turns never change the shape.
 - Fused centers never separate.
 
+## Where to run it
+
+X-Cube Lab runs in three places. The command-line tools run wherever Node.js does.
+
+| | Saved states | Best for |
+|---|---|---|
+| **claude.ai artifact** | Shared list, kept in the artifact's database | Working with Claude: it can read and add saved states |
+| **GitHub Pages**: https://ahernsean.github.io/x-cube/ | In that browser only | Any browser or phone, nothing to install |
+| **Your own copy** | In that browser only | Trying changes to the code |
+
+Outside the artifact the Saved states badge reads "This device only". To move a position
+between places, copy its state code (`X1:...`) and paste it where you need it.
+
+### GitHub Pages
+
+Open https://ahernsean.github.io/x-cube/ in any browser, including Safari on an iPhone or
+iPad. It is rebuilt and published from `main` on every merge by
+`.github/workflows/pages.yml`, so it shows the latest merged version. It needs the internet:
+three.js comes from cdn.jsdelivr.net and the fonts from Google Fonts.
+
+### Your own copy: one-time setup (Mac or Linux)
+
+1. Install **Node.js 22.18 or newer** from [nodejs.org](https://nodejs.org). Check with `node -v`.
+2. Get the code and its build tools:
+   ```
+   git clone https://github.com/ahernsean/x-cube.git
+   cd x-cube
+   npm ci
+   ```
+   `npm ci` installs exactly the versions in `package-lock.json`.
+
+### Your own copy in a desktop browser
+
+```
+node scripts/build-web.ts        # builds dist/index.html (and the artifact's dist/x-cube-lab.html)
+open dist/index.html             # Mac; on Linux, xdg-open
+```
+
+Open `dist/index.html`, the complete page. `dist/x-cube-lab.html` is only the page body
+that claude.ai wraps when it publishes the artifact. After pulling new code, build again
+and reload.
+
+### Your own copy on an iPhone or iPad
+
+To try unmerged changes on a phone, serve the page from a computer on the same Wi-Fi
+network:
+
+```
+cd dist
+python3 -m http.server 8000
+```
+
+Then open `http://<computer's IP address>:8000/` in Safari. On a Mac the IP address is under
+System Settings → Wi-Fi → Details. The page is there only while the server runs. For the
+merged version, use GitHub Pages instead.
+
+### The command-line tools
+
+From the `x-cube` folder (examples are under [Commands](#commands)):
+
+```
+node src/cli/xc.ts show "R U R' U'"
+node src/cli/xc.ts show "U" --state X1:...   # start from a state code copied from the Lab
+```
+
+### The checks CI runs
+
+```
+npx tsc --noEmit                                   # typecheck
+npm test                                           # unit tests
+npm install --no-save playwright@1.64.1            # browser tests need Playwright...
+npx playwright install --with-deps chromium webkit # ...and its browsers
+node scripts/smoke-web.mjs chromium
+node scripts/smoke-web.mjs webkit                  # WebKit is Safari's engine
+```
+
 ## Commands
 
 ```
@@ -68,7 +144,7 @@ node src/cli/xc.ts effect "[R' F' R, b]"          # which cubelets moved
 node src/cli/xc.ts order  "R U"                   # repetitions until it looks the same
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
 node src/cli/xc.ts show "U" --state X1:...        # start from a saved state code
-node scripts/build-web.ts                         # build dist/x-cube-lab.html
+node scripts/build-web.ts                         # build dist/index.html and dist/x-cube-lab.html
 node scripts/smoke-web.mjs [chromium|webkit]      # browser smoke test of the built Lab (needs Playwright)
 ```
 
@@ -83,24 +159,3 @@ one order. Goals come from `src/core/goals.ts`, which compares how slots look, s
 leave "don't care" regions out of the mask. It runs at roughly 2 to 3 million positions per
 second in Node, which is practical to about 7 turns. Deeper searches will need distance
 tables or meet-in-the-middle.
-
-## Continuous integration
-
-`.github/workflows/ci.yml` runs on every push to a pull request and on every commit to
-`main`. A newer push to the same pull request cancels the older run.
-
-- **Typecheck, unit tests, build** on Node 22 and 24.
-- **Browser smoke tests**, in Chromium and in WebKit (the engine of Safari, and of every
-  browser on iPhone and iPad). Each builds the Lab, opens it at phone width (Playwright
-  1.64.1, installed only in CI) and checks that:
-  - it loads without page errors and the 3D view draws the cube;
-  - the page doesn't scroll sideways at 390 px;
-  - turns play, a blocked outer turn is refused, and Baum's 3-cycle keeps the X shape;
-  - every section collapses.
-- **all checks** passes only when every job above passed. It is the one check for a
-  branch rule on `main` to require, so a pull request can't be merged while CI is running
-  or failing.
-
-To run a smoke test locally: `node scripts/smoke-web.mjs chromium` or
-`node scripts/smoke-web.mjs webkit`. WebKit needs `npx playwright install --with-deps webkit`
-first.
