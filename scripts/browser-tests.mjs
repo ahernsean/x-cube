@@ -161,6 +161,9 @@ try {
     await page.waitForFunction(() => window.xcubeProbe.idle(), null, { timeout: 30000 });
     await page.waitForTimeout(100);
   };
+  // A legal sequence with inner and outer turns that leaves the puzzle out of shape. The
+  // checks below confirm all of it played (a refused turn would stop it short).
+  const MIXED = "F f R U r";
   // Clicking a button scrolls the page to it, so bring the 3D view back before aiming at it.
   const startFresh = async () => {
     await page.click("#reset");
@@ -188,11 +191,12 @@ try {
   await startFresh();
   let sw = await sweep3d();
   check(sw.stickers >= 45 && sw.wrong.length === 0, `3D view, solved: ${sw.stickers} stickers each drawn in place and in the model's color${sw.wrong.length ? ": " + sw.wrong.slice(0, 4).join("; ") : ""}`);
-  await page.fill("#alg", "R U f'");
+  await page.fill("#alg", MIXED);
   await page.click("#run");
   await settle();
   sw = await sweep3d();
-  check(sw.stickers >= 30 && sw.wrong.length === 0, `3D view after R U f': ${sw.stickers} stickers in place and in the model's color${sw.wrong.length ? ": " + sw.wrong.slice(0, 4).join("; ") : ""}`);
+  const mixedTurns = await probe("turns");
+  check(mixedTurns === MIXED && sw.stickers >= 30 && sw.wrong.length === 0, `3D view after ${mixedTurns}: ${sw.stickers} stickers in place and in the model's color${sw.wrong.length ? ": " + sw.wrong.slice(0, 4).join("; ") : ""}`);
 
   // Aiming at a named sticker finds that sticker.
   await startFresh();
@@ -259,11 +263,11 @@ try {
     return [at("F", 1, 1), at("F", 2, 4), at("U", 0, 1), at("U", 4, 2), at("R", 1, 4), at("D", 0, 2)].join(" ");
   });
   check(layout === "Fx.UL Rx.F Bx.UL Fx.U Bx.UR Fx.D", `flat view layout (F up-left, F right edge, U top row from the back, U bottom edge, R right edge, D top edge: ${layout})`);
-  await page.fill("#alg", "R U f'");
+  await page.fill("#alg", MIXED);
   await page.click("#run");
   await settle();
   fl = await sweepFlat();
-  check(fl.wrong.length === 0, `flat view after R U f': every cell in the model's color (${JSON.stringify(fl.counts)})${fl.wrong.length ? ": " + fl.wrong.slice(0, 4).join("; ") : ""}`);
+  check((await probe("turns")) === MIXED && fl.wrong.length === 0, `flat view after ${MIXED}: every cell in the model's color (${JSON.stringify(fl.counts)})${fl.wrong.length ? ": " + fl.wrong.slice(0, 4).join("; ") : ""}`);
 
   // ---- Gestures on the 3D view.
   // The pointer events are sent from inside the page, so a gesture keeps its pace however
