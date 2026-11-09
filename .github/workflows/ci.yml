@@ -1,8 +1,19 @@
 name: CI
 
+# Pull requests are tested on every push to them; main is tested when commits land.
+# A branch push without a pull request is not tested, so each pull request update runs
+# CI once rather than twice.
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# One run per pull request: a new push cancels the run the previous push started.
+# Every other run (main, manual) gets its own group, so none is cancelled.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -17,8 +28,8 @@ jobs:
         # The tests run TypeScript directly, which needs Node 22.18+ (type stripping).
         node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -27,18 +38,79 @@ jobs:
       - run: npm test
       - run: node scripts/build-web.ts
 
-  web-smoke:
-    name: Browser smoke test (X-Cube Lab)
+  chromium:
+    name: Browser smoke test (Chromium)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: node scripts/build-web.ts
-      # Playwright is installed only here, not as a project dependency.
+      # Playwright is installed only in the browser jobs, not as a project dependency.
       - run: npm install --no-save playwright@1.64.1
       - run: npx playwright install --with-deps chromium
-      - run: node scripts/smoke-web.mjs
+      - run: node scripts/smoke-web.mjs chromium
+
+  # WebKit is the engine of Safari, and of every browser on iPhone and iPad.
+  webkit:
+    name: Browser smoke test (WebKit / Safari)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/build-web.ts
+      - run: npm install --no-save playwright@1.64.1
+
+      # WebKit's system libraries are a large set of Ubuntu packages, and the runner's
+      # package mirror can be slow to serve them. The downloaded .deb files are cached
+      # between runs; apt uses a cached file only when its version and checksum match the
+      # index, so a stale cache costs time, not correctness. The key follows the runner
+      # image and the Playwright version, which together set the package list.
+      - name: Find the runner image
+        id: image
+        run: echo "name=$ImageOS" >> "$GITHUB_OUTPUT"
+      - name: Restore WebKit's system packages
+        uses: actions/cache@v4
+        with:
+          path: ~/webkit-packages
+          key: webkit-packages-${{ steps.image.outputs.name }}-playwright-1.64.1
+      - name: Seed apt with the restored packages
+        run: |
+          echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-downloaded-packages
+          mkdir -p ~/webkit-packages
+          shopt -s nullglob
+          packages=(~/webkit-packages/*.deb)
+          echo "Restored ${#packages[@]} packages"
+          if (( ${#packages[@]} )); then sudo cp "${packages[@]}" /var/cache/apt/archives/; fi
+      - run: npx playwright install --with-deps webkit
+      - name: Keep WebKit's system packages for the cache
+        run: |
+          shopt -s nullglob
+          packages=(/var/cache/apt/archives/*.deb)
+          echo "Keeping ${#packages[@]} packages"
+          if (( ${#packages[@]} )); then cp "${packages[@]}" ~/webkit-packages/; fi
+
+      - run: node scripts/smoke-web.mjs webkit
+
+  # The single check for a branch rule on main to require. It passes only when every job
+  # above passed, so the pull request cannot be merged while any of them is running or
+  # failed. The rule matches this display name: renaming the job means changing the rule.
+  all-checks:
+    name: all checks
+    if: always()
+    needs: [test, chromium, webkit]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to pass
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          CHROMIUM_RESULT: ${{ needs.chromium.result }}
+          WEBKIT_RESULT: ${{ needs.webkit.result }}
+        run: test "$TEST_RESULT $CHROMIUM_RESULT $WEBKIT_RESULT" = "success success success"

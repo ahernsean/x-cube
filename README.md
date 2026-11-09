@@ -69,7 +69,7 @@ node src/cli/xc.ts order  "R U"                   # repetitions until it looks t
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
 node src/cli/xc.ts show "U" --state X1:...        # start from a saved state code
 node scripts/build-web.ts                         # build dist/x-cube-lab.html
-node scripts/smoke-web.mjs                        # browser smoke test of the built Lab (needs Playwright)
+node scripts/smoke-web.mjs [chromium|webkit]      # browser smoke test of the built Lab (needs Playwright)
 ```
 
 In cycle output, `A -> B` means the cubelet that was in slot A is now in slot B. Slot names:
@@ -86,10 +86,21 @@ tables or meet-in-the-middle.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push and pull request:
+`.github/workflows/ci.yml` runs on every push to a pull request and on every commit to
+`main`. A newer push to the same pull request cancels the older run.
 
 - **Typecheck, unit tests, build** on Node 22 and 24.
-- **Browser smoke test:** builds the Lab, opens it in headless Chromium (Playwright
-  1.64.1, installed only in CI) and checks that it loads without page errors, that turns
-  play, that a blocked outer turn is refused, that Baum's 3-cycle keeps the X shape, and
-  that every section collapses.
+- **Browser smoke tests**, in Chromium and in WebKit (the engine of Safari, and of every
+  browser on iPhone and iPad). Each builds the Lab, opens it at phone width (Playwright
+  1.64.1, installed only in CI) and checks that:
+  - it loads without page errors and the 3D view draws the cube;
+  - the page doesn't scroll sideways at 390 px;
+  - turns play, a blocked outer turn is refused, and Baum's 3-cycle keeps the X shape;
+  - every section collapses.
+- **all checks** passes only when every job above passed. It is the one check for a
+  branch rule on `main` to require, so a pull request can't be merged while CI is running
+  or failing.
+
+To run a smoke test locally: `node scripts/smoke-web.mjs chromium` or
+`node scripts/smoke-web.mjs webkit`. WebKit needs `npx playwright install --with-deps webkit`
+first.
