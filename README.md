@@ -79,7 +79,7 @@ three.js comes from cdn.jsdelivr.net and the fonts from Google Fonts.
 
 ### Your own copy: one-time setup (Mac or Linux)
 
-1. Install **Node.js 22.18 or newer** from [nodejs.org](https://nodejs.org). Check with `node -v`.
+1. Install **Node.js 24 or newer** from [nodejs.org](https://nodejs.org). Check with `node -v`.
 2. Get the code and its build tools:
    ```
    git clone https://github.com/ahernsean/x-cube.git
