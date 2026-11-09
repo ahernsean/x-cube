@@ -184,10 +184,16 @@ function initScene(canvas: HTMLCanvasElement) {
     [0, 0, 0.4945, 0, 0],
     [0, 0, -0.4945, 0, Math.PI],
   ];
+  for (let d = 0; d < 6; d++) {
+    const e = new THREE.Euler(faceXform[d][3], faceXform[d][4], 0);
+    const r = (v: any): Vec3 => [Math.round(v.x), Math.round(v.y), Math.round(v.z)];
+    FACE_AXES[d] = { ux: r(new THREE.Vector3(1, 0, 0).applyEuler(e)), uy: r(new THREE.Vector3(0, 1, 0).applyEuler(e)) };
+  }
   for (const c of CUBELETS) {
     const g = new THREE.Group();
     const bodyMesh = new THREE.Mesh(withAoColors(body), bodyMat);
     g.add(bodyMesh);
+    registerBody(c.id, bodyMesh, 0.985);
     const aoList: AoFace[] = [];
     aoFaces[c.id] = aoList;
     c.stickers.forEach((col, d) => {
@@ -271,8 +277,95 @@ function syncMeshes(st: State) {
     for (const gl of glows[id] ?? []) {
       gl.mesh.visible = isExposed(st, s, ROT_DIR[o * 6 + gl.a]) && isExposed(st, s, ROT_DIR[o * 6 + gl.b]);
     }
-    for (const f of aoFaces[id] ?? []) shadeFace(st, s, o, f);
+    shadeCubelet(st, s, o, id);
   }
+}
+
+/** Grid shading for all six faces of the cubelet in `slot`, applied to its sticker, tile and plastic. */
+function shadeCubelet(st: State, slot: number, ori: number, id: number) {
+  const per: (number[] | null)[] = [];
+  const need = aoOn["3d"] || aoOn.flat;
+  for (let d = 0; d < 6; d++) per.push(need ? gridCorners(st, slot, ori, d) : null);
+  applyToCubelet(id, per);
+}
+
+/** Four corner values for face d of the cubelet in `slot` (grid rule). */
+function gridCorners(st: State, slot: number, ori: number, d: number): number[] {
+  const R = ROTATIONS[ori];
+  const p = SLOT_POS[slot];
+  const n = matVec(R, DIRS[d]);
+  const ux = matVec(R, FACE_AXES[d].ux);
+  const uy = matVec(R, FACE_AXES[d].uy);
+  const front: Vec3 = [p[0] + n[0], p[1] + n[1], p[2] + n[2]];
+  const corner = [1, 1, 1, 1];
+  for (let k = 0; k < 4; k++) {
+    const [sx, sy] = CORNER_SIGNS[k];
+    const a: Vec3 = [front[0] + sx * ux[0], front[1] + sx * ux[1], front[2] + sx * ux[2]];
+    const b: Vec3 = [front[0] + sy * uy[0], front[1] + sy * uy[1], front[2] + sy * uy[2]];
+    const c: Vec3 = [a[0] + sy * uy[0], a[1] + sy * uy[1], a[2] + sy * uy[2]];
+    const s1 = filledAt(st, a) ? 1 : 0;
+    const s2 = filledAt(st, b) ? 1 : 0;
+    const level = s1 && s2 ? 0 : 3 - (s1 + s2 + (filledAt(st, c) ? 1 : 0));
+    corner[k] = AO_LEVELS[level];
+  }
+  return corner;
+}
+
+/**
+ * Apply per-face corner values (index = face direction in the cubelet's frame; null =
+ * leave as is) to the cubelet's sticker and flat tile faces and to its plastic body.
+ */
+function applyToCubelet(id: number, per: (number[] | null)[]) {
+  for (const f of aoFaces[id] ?? []) {
+    if (!aoOn[f.view]) {
+      if (!f.cur || f.cur.some((v) => v !== 1)) applyCorners(f, [1, 1, 1, 1]);
+    } else if (per[f.d]) applyCorners(f, per[f.d]!);
+  }
+  const b = bodyAo[id];
+  if (!b) return;
+  const col = b.mesh.geometry.attributes.color;
+  const arr = col.array as Float32Array;
+  if (!aoOn["3d"]) {
+    if (b.shaded) {
+      arr.fill(1);
+      col.needsUpdate = true;
+      b.shaded = false;
+    }
+    return;
+  }
+  for (let i = 0; i < b.face.length; i++) {
+    const c = per[b.face[i]];
+    if (!c) continue;
+    const u = b.u[i], w = b.v[i];
+    const top = c[0] * (1 - u) + c[1] * u;
+    const bottom = c[2] * (1 - u) + c[3] * u;
+    arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = bottom * (1 - w) + top * w;
+  }
+  col.needsUpdate = true;
+  b.shaded = true;
+}
+
+/** The plane axes of each face direction (cubelet frame), shared by stickers, tiles and plastic. */
+const FACE_AXES: { ux: Vec3; uy: Vec3 }[] = [];
+/** Per-cubelet plastic body: which face each vertex belongs to, and its position across that face. */
+const bodyAo: { mesh: any; face: Uint8Array; u: Float32Array; v: Float32Array; shaded: boolean }[] = [];
+
+function registerBody(id: number, mesh: any, size: number) {
+  const pos = mesh.geometry.attributes.position;
+  const nor = mesh.geometry.attributes.normal;
+  const n = pos.count;
+  const face = new Uint8Array(n), u = new Float32Array(n), v = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const nx = nor.getX(i), ny = nor.getY(i), nz = nor.getZ(i);
+    const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+    const d = ax >= ay && ax >= az ? (nx > 0 ? 0 : 1) : ay >= az ? (ny > 0 ? 2 : 3) : nz > 0 ? 4 : 5;
+    face[i] = d;
+    const p = [pos.getX(i), pos.getY(i), pos.getZ(i)];
+    const { ux, uy } = FACE_AXES[d];
+    u[i] = Math.max(0, Math.min(1, (p[0] * ux[0] + p[1] * ux[1] + p[2] * ux[2]) / size + 0.5));
+    v[i] = Math.max(0, Math.min(1, (p[0] * uy[0] + p[1] * uy[1] + p[2] * uy[2]) / size + 0.5));
+  }
+  bodyAo[id] = { mesh, face, u, v, shaded: false };
 }
 
 // ------------------------------------------------------------------ corner shading (ambient occlusion)
@@ -390,36 +483,6 @@ function filledAt(st: State, p: Vec3): boolean {
   if (p[0] === 0 && p[1] === 0 && p[2] === 0) return true; // the solid center
   const s = slotAt(p);
   return s >= 0 && st.occ[s] >= 0;
-}
-
-function shadeFace(st: State, slot: number, ori: number, f: AoFace) {
-  const col = f.mesh.geometry.attributes.color;
-  const arr = col.array as Float32Array;
-  if (!aoOn[f.view]) {
-    if (arr[0] !== 1 || arr[arr.length - 1] !== 1) {
-      arr.fill(1);
-      col.needsUpdate = true;
-    }
-    return;
-  }
-  const R = ROTATIONS[ori];
-  const p = SLOT_POS[slot];
-  const n = matVec(R, DIRS[f.d]);
-  const ux = matVec(R, f.ux);
-  const uy = matVec(R, f.uy);
-  const front: Vec3 = [p[0] + n[0], p[1] + n[1], p[2] + n[2]];
-  const corner = [1, 1, 1, 1];
-  for (let k = 0; k < 4; k++) {
-    const [sx, sy] = CORNER_SIGNS[k];
-    const a: Vec3 = [front[0] + sx * ux[0], front[1] + sx * ux[1], front[2] + sx * ux[2]];
-    const b: Vec3 = [front[0] + sy * uy[0], front[1] + sy * uy[1], front[2] + sy * uy[2]];
-    const c: Vec3 = [a[0] + sy * uy[0], a[1] + sy * uy[1], a[2] + sy * uy[2]];
-    const s1 = filledAt(st, a) ? 1 : 0;
-    const s2 = filledAt(st, b) ? 1 : 0;
-    const level = s1 && s2 ? 0 : 3 - (s1 + s2 + (filledAt(st, c) ? 1 : 0));
-    corner[k] = AO_LEVELS[level];
-  }
-  applyCorners(f, corner);
 }
 
 /** Write four corner brightness values onto a face, blended across it (any vertex layout). */
@@ -559,26 +622,27 @@ function shadeDuringTurn(pose: TurnPose) {
       const g = matVec(R, v);
       return moving ? rotAxis(axis, c, sn, [g[0], g[1], g[2]]) : [g[0], g[1], g[2]];
     };
-    let lastD = -1;
-    for (const f of aoFaces[id] ?? []) {
-      if (!aoOn[f.view]) continue;
-      if (f.d !== lastD) {
-        lastD = f.d;
-        const n = tf(DIRS[f.d]), ux = tf(f.ux), uy = tf(f.uy);
-        const fx = center[0] + n[0], fy = center[1] + n[1], fz = center[2] + n[2];
-        // A face covered by a cubelet that isn't moving can't be seen: leave it.
-        if (!moving && staticAt(fx, fy, fz)) { corner[0] = -1; continue; }
-        for (let k = 0; k < 4; k++) {
-          const sx = CORNER_SIGNS[k][0], sy = CORNER_SIGNS[k][1];
-          const ax = fx + sx * ux[0], ay = fy + sx * ux[1], az = fz + sx * ux[2];
-          const s1 = filled(ax, ay, az);
-          const s2 = filled(fx + sy * uy[0], fy + sy * uy[1], fz + sy * uy[2]);
-          const s3 = filled(ax + sy * uy[0], ay + sy * uy[1], az + sy * uy[2]);
-          corner[k] = levelBrightness((1 - s1 * s2) * (3 - (s1 + s2 + s3)));
-        }
+    const per: (number[] | null)[] = [];
+    for (let fd = 0; fd < 6; fd++) {
+      const n = tf(DIRS[fd]), ux = tf(FACE_AXES[fd].ux), uy = tf(FACE_AXES[fd].uy);
+      const fx = center[0] + n[0], fy = center[1] + n[1], fz = center[2] + n[2];
+      // A face covered by a cubelet that isn't moving can't be seen: leave it.
+      if (!moving && staticAt(fx, fy, fz)) {
+        per.push(null);
+        continue;
       }
-      if (corner[0] >= 0) applyCorners(f, corner);
+      const corner = [1, 1, 1, 1];
+      for (let k = 0; k < 4; k++) {
+        const sx = CORNER_SIGNS[k][0], sy = CORNER_SIGNS[k][1];
+        const ax = fx + sx * ux[0], ay = fy + sx * ux[1], az = fz + sx * ux[2];
+        const s1 = filled(ax, ay, az);
+        const s2 = filled(fx + sy * uy[0], fy + sy * uy[1], fz + sy * uy[2]);
+        const s3 = filled(ax + sy * uy[0], ay + sy * uy[1], az + sy * uy[2]);
+        corner[k] = levelBrightness((1 - s1 * s2) * (3 - (s1 + s2 + s3)));
+      }
+      per.push(corner);
     }
+    applyToCubelet(id, per);
   }
   // Watch the cost; fall back to blending if this device can't keep up.
   liveCostTotal += performance.now() - t0;
