@@ -151,7 +151,7 @@ function makeFilmTexture() {
   const patches = noise(4);
   // Nicks: tiny round dents, a pixel or two across, scattered over the film.
   const nick = new Float32Array(N * N);
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < 30; i++) {
     const cx = rnd() * N, cy = rnd() * N, r = 0.8 + rnd() * 1.4;
     for (let dy = -2; dy <= 2; dy++)
       for (let dx = -2; dx <= 2; dx++) {
@@ -162,7 +162,7 @@ function makeFilmTexture() {
       }
   }
   const height = new Float32Array(N * N);
-  for (let i = 0; i < N * N; i++) height[i] = 0.6 * crinkle[0][i] + 0.3 * crinkle[1][i] + 0.1 * crinkle[2][i] - 0.12 * nick[i];
+  for (let i = 0; i < N * N; i++) height[i] = 0.6 * crinkle[0][i] + 0.3 * crinkle[1][i] + 0.1 * crinkle[2][i] - 0.06 * nick[i];
   const toTexture = (fill: (i: number, x: number, y: number, px: Uint8ClampedArray) => void) => {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = N;
