@@ -1,0 +1,24 @@
+{
+  "name": "x-cube",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Simulator and algorithm search for the X-Cube shape-shifting puzzle",
+  "type": "module",
+  "license": "BSD-3-Clause",
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "xc": "node src/cli/xc.ts",
+    "build:web": "node scripts/build-web.ts",
+    "smoke:web": "node scripts/smoke-web.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/three": "^0.170.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}
