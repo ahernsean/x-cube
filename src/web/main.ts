@@ -16,6 +16,7 @@ import {
   blockedReason,
   slotAt,
   slotAtXYZ,
+  slotName,
   turnName,
   type Color,
   type Turn,
@@ -349,6 +350,7 @@ function initScene(canvas: HTMLCanvasElement) {
     return netMats.get(c);
   };
   const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark), vertexColors: true });
+  probeUnstickered = netDarkMat.color.getHex();
   const matFor = (c: Color) => {
     if (!mats.has(c)) {
       const m = new THREE.MeshPhysicalMaterial({ color: STICKER[c], vertexColors: true, roughness: LIGHT.stickerRough, metalness: 0, specularIntensity: LIGHT.stickerSpec });
@@ -385,6 +387,7 @@ function initScene(canvas: HTMLCanvasElement) {
       if (!col) return;
       const m = new THREE.Mesh(varyFilm(withAoColors(plane), c.id * 6 + d), matFor(col));
       m.receiveShadow = true;
+      probeInfo.set(m, { id: c.id, d });
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px, py, pz);
       m.rotation.set(rx, ry, 0);
@@ -400,6 +403,7 @@ function initScene(canvas: HTMLCanvasElement) {
     for (let d = 0; d < 6; d++) {
       const col = c.stickers[d];
       const m = new THREE.Mesh(withAoColors(netPlane), col ? netMatFor(col) : netDarkMat);
+      probeInfo.set(m, { id: c.id, d });
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px / 0.4945 * 0.5, py / 0.4945 * 0.5, pz / 0.4945 * 0.5);
       m.rotation.set(rx, ry, 0);
@@ -1667,6 +1671,22 @@ function showNetAnimation(_on: boolean) {
   /* the flat view is always drawn by the cameras now */
 }
 
+const NET_HALF = 3.15; // world units from the center to the edge of each face box (room for the glow)
+
+/** Points a flat-view camera straight at its face, for the puzzle's current orientation q. */
+function aimNetCam(nc: (typeof netCams)[number], q: any) {
+  const cam = nc.cam;
+  cam.left = -NET_HALF;
+  cam.right = NET_HALF;
+  cam.top = NET_HALF;
+  cam.bottom = -NET_HALF;
+  cam.updateProjectionMatrix();
+  cam.position.copy(new THREE.Vector3(nc.view[0], nc.view[1], nc.view[2]).multiplyScalar(10).applyQuaternion(q));
+  cam.up.set(nc.up[0], nc.up[1], nc.up[2]).applyQuaternion(q);
+  cam.lookAt(0, 0, 0);
+  return cam;
+}
+
 function renderNetAnimation() {
   if (!netRenderer) return;
   const net = $("net");
@@ -1684,17 +1704,7 @@ function renderNetAnimation() {
     const nc = netCams.find((c) => c.face === name);
     if (!nc) continue;
     const fw = el.offsetWidth;
-    const half = 3.15; // world units from the center to the edge of each face box (room for the glow)
-    const cam = nc.cam;
-    cam.left = -half;
-    cam.right = half;
-    cam.top = half;
-    cam.bottom = -half;
-    cam.updateProjectionMatrix();
-    const pos = new THREE.Vector3(nc.view[0], nc.view[1], nc.view[2]).multiplyScalar(10).applyQuaternion(q);
-    cam.position.copy(pos);
-    cam.up.set(nc.up[0], nc.up[1], nc.up[2]).applyQuaternion(q);
-    cam.lookAt(0, 0, 0);
+    const cam = aimNetCam(nc, q);
     const x = el.offsetLeft, y = h - el.offsetTop - el.offsetHeight;
     netRenderer.setViewport(x, y, fw, el.offsetHeight);
     netRenderer.setScissor(x, y, fw, el.offsetHeight);
@@ -2290,6 +2300,157 @@ function bindUI() {
   });
 }
 
+// ------------------------------------------------------------------ probe for browser tests
+
+// window.xcubeProbe answers "what is drawn where" for scripts/browser-tests.mjs. It only
+// reads: it draws into its own offscreen buffer, so the visible views do not change.
+// - model(slot, face): the color the puzzle model says is there.
+// - sticker(slot, face): where the center of the sticker in that slot, facing that way,
+//   appears on screen (client coordinates), to aim gestures at.
+// - at3d(x, y), scan3d() and flatFace(face): what is drawn there. One offscreen pass draws
+//   each sticker in a color that encodes its cubelet and face (an ID buffer), which gives
+//   the slot and direction it is drawn at; a second pass draws each sticker in the plain
+//   color of the material it is drawn with (no lighting, shading, shadows, glow or
+//   gloss), which gives the color.
+// Answers are meaningful only while nothing is moving (idle()).
+
+const probeInfo = new Map<any, { id: number; d: number }>();
+const PROBE_PLASTIC = 0x404040;
+let probeUnstickered = 0x808080; // set to the flat view's unstickered tile color
+const probeMats = new Map<string, any>();
+let probeTarget: any = null;
+
+/** The stand-in material for a mesh: its ID code, or the color of the material it is drawn with. */
+function probeMaterial(info: { id: number; d: number } | undefined, mode: "id" | "color", drawn: any) {
+  let hex: number;
+  if (mode === "id") {
+    const code = info ? info.id * 6 + info.d + 1 : 0; // 0: plastic
+    hex = ((code & 255) << 16) | ((code >> 8) << 8);
+  } else hex = info && drawn?.color ? drawn.color.getHex() : PROBE_PLASTIC;
+  const key = mode + hex;
+  if (!probeMats.has(key)) {
+    const c = new THREE.Color();
+    c.setRGB(((hex >> 16) & 255) / 255, ((hex >> 8) & 255) / 255, (hex & 255) / 255, THREE.LinearSRGBColorSpace);
+    probeMats.set(key, new THREE.MeshBasicMaterial({ color: c, toneMapped: false }));
+  }
+  return probeMats.get(key);
+}
+
+/** The scene drawn by cam into a w x h offscreen buffer, as RGBA rows from the bottom. */
+function probeImage(cam: any, layer: number, w: number, h: number, mode: "id" | "color"): Uint8Array {
+  probeTarget ??= new THREE.WebGLRenderTarget(1, 1);
+  if (probeTarget.width !== w || probeTarget.height !== h) probeTarget.setSize(w, h);
+  const swapped: [any, any][] = [];
+  pivot.traverse((o: any) => {
+    if (!o.isMesh) return;
+    swapped.push([o, o.material]);
+    o.material = probeMaterial(probeInfo.get(o), mode, o.material);
+  });
+  const mask = cam.layers.mask;
+  cam.layers.set(layer);
+  const clear = renderer.getClearColor(new THREE.Color());
+  const alpha = renderer.getClearAlpha();
+  const out = new Uint8Array(w * h * 4);
+  try {
+    renderer.setRenderTarget(probeTarget);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+    renderer.render(scene, cam);
+    renderer.readRenderTargetPixels(probeTarget, 0, 0, w, h, out);
+  } finally {
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(clear, alpha);
+    cam.layers.mask = mask;
+    for (const [o, m] of swapped) o.material = m;
+  }
+  return out;
+}
+
+type ProbeHit = { slot: string; face: string; color: string } | { plastic: true } | null;
+
+
+/** What the two passes show at pixel (px, py) from the top left. */
+function probeDecode(ids: Uint8Array, colors: Uint8Array, w: number, h: number, px: number, py: number): ProbeHit {
+  const i = ((h - 1 - Math.floor(py)) * w + Math.floor(px)) * 4;
+  if (ids[i + 3] === 0) return null; // background
+  const code = ids[i] + ids[i + 1] * 256;
+  if (code === 0) return { plastic: true };
+  const cubelet = Math.floor((code - 1) / 6), d = (code - 1) % 6;
+  const slot = app.current.occ.indexOf(cubelet);
+  const face = slot < 0 ? "?" : COMPASS_FACES[ROT_DIR[app.current.ori[slot] * 6 + d]];
+  let color = "?", best = Infinity;
+  const named: [string, number][] = [...(Object.entries(STICKER) as [string, number][]), ["unstickered", probeUnstickered], ["plastic", PROBE_PLASTIC]];
+  for (const [name, hex] of named) {
+    const dist = Math.abs(colors[i] - ((hex >> 16) & 255)) + Math.abs(colors[i + 1] - ((hex >> 8) & 255)) + Math.abs(colors[i + 2] - (hex & 255));
+    if (dist < best) [best, color] = [dist, name];
+  }
+  if (best > 12) color = "?";
+  return { slot: slot < 0 ? "?" : slotName(slot), face, color };
+}
+
+/** Both passes of the 3D view, with a lookup by client coordinates. */
+function probe3d() {
+  const r = (renderer.domElement as HTMLCanvasElement).getBoundingClientRect();
+  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  const ids = probeImage(camera, 0, size.x, size.y, "id");
+  const colors = probeImage(camera, 0, size.x, size.y, "color");
+  return { r, at: (x: number, y: number) => probeDecode(ids, colors, size.x, size.y, ((x - r.left) / r.width) * size.x, ((y - r.top) / r.height) * size.y) };
+}
+
+function installProbe() {
+  const canvas = () => renderer.domElement as HTMLCanvasElement;
+  const slotByName = (name: string) => {
+    for (let s = 0; s < NUM_SLOTS; s++) if (slotName(s) === name) return s;
+    throw new Error(`no slot named ${name}`);
+  };
+  (window as any).xcubeProbe = {
+    idle: () => !anim && !queue.length && !settle && !live && !tween,
+    state: () => encodeState(app.current),
+    turns: () => formatAlg(app.history.slice(0, app.cursor)),
+    view: () => pivot.quaternion.toArray(),
+    /** The color the model says the sticker in slot shows toward face (null: none). */
+    model(slot: string, face: string) {
+      const s = slotByName(slot);
+      return app.current.occ[s] < 0 ? null : app.current.colorAt(s, COMPASS_FACES.indexOf(face));
+    },
+    sticker(slot: string, face: string) {
+      const s = slotByName(slot);
+      const id = app.current.occ[s];
+      const dir = COMPASS_FACES.indexOf(face);
+      if (id < 0 || dir < 0) return null;
+      const o = app.current.ori[s];
+      const d = [0, 1, 2, 3, 4, 5].find((k) => ROT_DIR[o * 6 + k] === dir)!;
+      if (!CUBELETS[id].stickers[d]) return null;
+      const p = meshes[id].localToWorld(new THREE.Vector3(DIRS[d][0] * 0.4945, DIRS[d][1] * 0.4945, DIRS[d][2] * 0.4945)).project(camera);
+      const r = canvas().getBoundingClientRect();
+      return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };
+    },
+    at3d: (x: number, y: number) => probe3d().at(x, y),
+    /** Every distinct (slot, face, color) drawn in the 3D view, sampled every step CSS pixels. */
+    scan3d(step = 6) {
+      const { r, at } = probe3d();
+      const seen = new Map<string, ProbeHit>();
+      for (let y = r.top + step / 2; y < r.bottom; y += step)
+        for (let x = r.left + step / 2; x < r.right; x += step) {
+          const h = at(x, y);
+          if (h && "slot" in h) seen.set(`${h.slot}/${h.face}/${h.color}`, h);
+        }
+      return [...seen.values()];
+    },
+    /** One face of the flat view as 5 rows of 5 cells, top row first, as that face is seen. */
+    flatFace(face: string) {
+      const nc = netCams.find((c) => c.face === face);
+      if (!nc) return null;
+      const cam = aimNetCam(nc, pivot.quaternion);
+      const n = 210;
+      const ids = probeImage(cam, NET_LAYER, n, n, "id");
+      const colors = probeImage(cam, NET_LAYER, n, n, "color");
+      const toPx = (u: number) => ((u + NET_HALF) / (2 * NET_HALF)) * n;
+      return [0, 1, 2, 3, 4].map((row) => [0, 1, 2, 3, 4].map((col) => probeDecode(ids, colors, n, n, toPx(col - 2), toPx(row - 2))));
+    },
+  };
+}
+
 function hotBoot() {
   const hot = (window as any).claude?.hot;
   const start = (data: any) => {
@@ -2306,6 +2467,7 @@ function hotBoot() {
     recompute();
     bindUI();
     initScene($("scene") as HTMLCanvasElement);
+    installProbe();
     render();
     initStore();
   };

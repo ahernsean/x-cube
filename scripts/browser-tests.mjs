@@ -1,6 +1,8 @@
 // Browser tests for the built X-Cube Lab (dist/x-cube-lab.html).
-// Opens it in a headless browser and checks that it loads without errors and that the
-// core interactions work. Run after `node scripts/build-web.ts`.
+// Opens it in a headless browser and checks that it loads without errors, that the core
+// interactions and gestures work, and that the 3D and flat views draw each sticker where
+// the puzzle model puts it, in its color (through window.xcubeProbe, defined at the end of
+// src/web/main.ts). Run after `node scripts/build-web.ts`.
 //
 //   node scripts/browser-tests.mjs          # Chromium
 //   node scripts/browser-tests.mjs webkit   # WebKit, the engine of Safari on iPhone and iPad
@@ -135,6 +137,209 @@ try {
   });
   await page.waitForTimeout(500);
   check(await page.$eval("#gloss", (g) => g.checked), "gloss switches off and back on");
+
+  // ---- What is drawn where (window.xcubeProbe, see the end of src/web/main.ts).
+  const probe = (fn, ...args) => page.evaluate(([f, a]) => window.xcubeProbe[f](...a), [fn, args]);
+  const settle = async () => {
+    await page.waitForFunction(() => window.xcubeProbe.idle(), null, { timeout: 30000 });
+    await page.waitForTimeout(100);
+  };
+  // Clicking a button scrolls the page to it, so bring the 3D view back before aiming at it.
+  const startFresh = async () => {
+    await page.click("#reset");
+    await page.click('[data-view="home"]');
+    await page.locator("#scene").scrollIntoViewIfNeeded();
+    await settle();
+  };
+  await page.evaluate(() => document.querySelectorAll("[data-sec].collapsed").forEach((s) => s.classList.remove("collapsed")));
+  await page.locator("#scene").scrollIntoViewIfNeeded();
+
+  // Every sticker visible in the 3D view is drawn where the model puts it, in its color:
+  // sample a grid of points; for each one that lands on a sticker, the ID pass names the
+  // slot and face it belongs to, and the flat-color pass must match the model's color.
+  const sweep3d = () =>
+    page.evaluate(() => {
+      const P = window.xcubeProbe;
+      const hits = P.scan3d(6);
+      const wrong = hits.filter((h) => h.color !== P.model(h.slot, h.face)).map((h) => `${h.slot}/${h.face} drawn ${h.color}, model ${P.model(h.slot, h.face)}`);
+      return { stickers: new Set(hits.map((h) => h.slot + "/" + h.face)).size, wrong };
+    });
+  await startFresh();
+  let sw = await sweep3d();
+  check(sw.stickers >= 45 && sw.wrong.length === 0, `3D view, solved: ${sw.stickers} stickers each drawn in place and in the model's color${sw.wrong.length ? ": " + sw.wrong.slice(0, 4).join("; ") : ""}`);
+  await page.fill("#alg", "R U f'");
+  await page.click("#run");
+  await settle();
+  sw = await sweep3d();
+  check(sw.stickers >= 30 && sw.wrong.length === 0, `3D view after R U f': ${sw.stickers} stickers in place and in the model's color${sw.wrong.length ? ": " + sw.wrong.slice(0, 4).join("; ") : ""}`);
+
+  // Aiming at a named sticker finds that sticker.
+  await startFresh();
+  const aimed = await page.evaluate(() => {
+    const P = window.xcubeProbe;
+    const out = [];
+    for (const [slot, face] of [["Fx", "F"], ["UFR", "U"], ["Rx", "R"], ["Fx.UR", "U"], ["Rx.F", "F"]]) {
+      const p = P.sticker(slot, face);
+      const h = p && P.at3d(p.x, p.y);
+      if (!h || h.slot !== slot || h.face !== face) out.push(`${slot}/${face} -> ${JSON.stringify(h)}`);
+    }
+    return out;
+  });
+  check(aimed.length === 0, `sticker positions point at their stickers${aimed.length ? ": " + aimed.join("; ") : ""}`);
+
+  // The flat view: each face shows exactly the cells of that face, each in the model's
+  // color, and the layout matches the puzzle (rows top to bottom as the face is seen).
+  const sweepFlat = () =>
+    page.evaluate(() => {
+      const P = window.xcubeProbe;
+      const counts = {};
+      const wrong = [];
+      for (const face of ["U", "D", "F", "B", "R", "L"]) {
+        counts[face] = 0;
+        P.flatFace(face).forEach((cells, row) =>
+          cells.forEach((h, col) => {
+            if (!h || h.plastic) return;
+            counts[face]++;
+            const want = P.model(h.slot, h.face) ?? "unstickered";
+            if (h.face !== face || h.color !== want) wrong.push(`${face}[${row},${col}] = ${h.slot}/${h.face} ${h.color}, model ${want}`);
+          }),
+        );
+      }
+      return { counts, wrong };
+    });
+  let fl = await sweepFlat();
+  const shapeOk = ["U", "D"].every((f) => fl.counts[f] === 21) && ["F", "B", "R", "L"].every((f) => fl.counts[f] === 15);
+  check(shapeOk && fl.wrong.length === 0, `flat view, solved: X-faces show 21 cells, side faces 15, each in the model's color (${JSON.stringify(fl.counts)})${fl.wrong.length ? ": " + fl.wrong.slice(0, 4).join("; ") : ""}`);
+  const layout = await page.evaluate(() => {
+    const P = window.xcubeProbe;
+    const at = (f, r, c) => {
+      const h = P.flatFace(f)[r][c];
+      return h && !h.plastic ? h.slot : String(h && "plastic");
+    };
+    return [at("F", 1, 1), at("F", 2, 4), at("U", 0, 1), at("U", 4, 2), at("R", 1, 4), at("D", 0, 2)].join(" ");
+  });
+  check(layout === "Fx.UL Rx.F Bx.UL Fx.U Bx.UR Fx.D", `flat view layout (F up-left, F right edge, U top row from the back, U bottom edge, R right edge, D top edge: ${layout})`);
+  await page.fill("#alg", "R U f'");
+  await page.click("#run");
+  await settle();
+  fl = await sweepFlat();
+  check(fl.wrong.length === 0, `flat view after R U f': every cell in the model's color (${JSON.stringify(fl.counts)})${fl.wrong.length ? ": " + fl.wrong.slice(0, 4).join("; ") : ""}`);
+
+  // ---- Gestures on the 3D view.
+  // The pointer events are sent from inside the page, so a gesture keeps its pace however
+  // slowly the browser draws: without a GPU a frame can take most of a second, and
+  // Playwright's mouse waits for a frame after each event, which would make every swipe a
+  // hold. A step is [type, x, y] or a pause in milliseconds.
+  const gesture = async (steps) => {
+    await page.evaluate(async (steps) => {
+      const c = document.getElementById("scene");
+      for (const st of steps) {
+        if (typeof st === "number") {
+          await new Promise((r) => setTimeout(r, st));
+          continue;
+        }
+        const [type, x, y] = st;
+        c.dispatchEvent(new PointerEvent(type, { pointerId: 7, pointerType: "touch", isPrimary: true, clientX: x, clientY: y, buttons: type === "pointerup" ? 0 : 1, bubbles: true, cancelable: true }));
+      }
+    }, steps);
+    await settle();
+  };
+  const drag = (from, dx, dy) => [["pointerdown", from.x, from.y], ...[1, 2, 3, 4, 5, 6].map((i) => ["pointermove", from.x + (dx * i) / 6, from.y + (dy * i) / 6]), ["pointerup", from.x + dx, from.y + dy]];
+  const swipe = (from, dx, dy) => gesture(drag(from, dx, dy));
+  await startFresh();
+  await swipe(await probe("sticker", "Fx.R", "F"), 0, -70);
+  check((await probe("turns")) === "R", `swiping up on the front face's right column turns R (got "${await probe("turns")}")`);
+  await swipe(await probe("sticker", "Rx.F", "F"), 0, -70);
+  check((await probe("turns")) === "R r", `swiping up on the extension's column turns the outer layer r (got "${await probe("turns")}")`);
+  await startFresh();
+  await swipe(await probe("sticker", "Fx.UL", "F"), 70, 0);
+  check((await probe("turns")) === "U'", `swiping right on the front face's top row turns U' (got "${await probe("turns")}")`);
+  await swipe(await probe("sticker", "Fx", "F"), -70, 0);
+  check((await probe("turns")) === "U' H", `swiping left on the front face's middle row turns the slice H (got "${await probe("turns")}")`);
+
+  // Double tap undoes the last turn.
+  const tapAt = await probe("sticker", "Fx", "F");
+  const tap = [["pointerdown", tapAt.x, tapAt.y], ["pointerup", tapAt.x, tapAt.y]];
+  await gesture([...tap, ...tap]);
+  check((await probe("turns")) === "U'", `double tap undoes the last turn (turns "${await probe("turns")}")`);
+
+  // Dragging the background tumbles the view; holding still on the cube first also tumbles.
+  // A point on the 3D view with nothing drawn and no edge label over it.
+  const empty = await page.evaluate(() => {
+    const c = document.getElementById("scene");
+    const r = c.getBoundingClientRect();
+    for (let y = r.top + 20; y < r.bottom - 60; y += 10)
+      for (let x = r.left + 20; x < r.left + r.width / 3; x += 10)
+        if (!window.xcubeProbe.at3d(x, y) && document.elementFromPoint(x, y) === c) return { x, y };
+    return null;
+  });
+  const before = await probe("view");
+  await swipe(empty, 60, 30);
+  const afterBg = await probe("view");
+  const moved = (a, b) => a.some((v, i) => Math.abs(v - b[i]) > 0.02);
+  check(moved(before, afterBg) && (await probe("turns")) === "U'", "dragging the background tumbles the view without turning");
+  const holdAt = await probe("sticker", "Fx", "F");
+  const [down, ...rest] = drag(holdAt, 60, 0);
+  await gesture([down, 600, ...rest]);
+  check(moved(afterBg, await probe("view")) && (await probe("turns")) === "U'", "holding on the cube, then dragging, tumbles the view without turning");
+
+  // Turn buttons: a tap turns; a long press turns the inverse.
+  await startFresh();
+  const uButton = page.locator('[data-move="U"]');
+  await uButton.scrollIntoViewIfNeeded();
+  let ub = await uButton.boundingBox();
+  await page.mouse.click(ub.x + ub.width / 2, ub.y + ub.height / 2);
+  await settle();
+  await uButton.scrollIntoViewIfNeeded();
+  ub = await uButton.boundingBox(); // the page can reflow after a turn (the message line)
+  await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(700);
+  await page.mouse.up();
+  await settle();
+  check((await probe("turns")) === "U U'", `tap on U turns U, a long press turns U' (turns "${await probe("turns")}")`);
+
+  // ---- Edge labels: one per face, inside the 3D view; tapping one turns that face to you.
+  await startFresh();
+  await page.locator("#scene").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(200);
+  const labels = await page.evaluate(() => {
+    const r = document.getElementById("scene").getBoundingClientRect();
+    return [...document.querySelectorAll(".cmp")].map((el) => {
+      const b = el.getBoundingClientRect();
+      return { text: el.textContent, shown: Number(getComputedStyle(el).opacity) > 0.05, inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1 };
+    });
+  });
+  const letters = labels.map((l) => l.text).sort().join("");
+  check(letters === "BDFLRU" && labels.filter((l) => l.shown).every((l) => l.inside) && labels.filter((l) => l.shown).length >= 3, `edge labels: ${letters}, ${labels.filter((l) => l.shown).length} shown, all inside the view`);
+  await page.click('[data-view="front"]');
+  await settle();
+  const frontView = await probe("view");
+  await page.click('[data-view="home"]');
+  await page.locator("#scene").scrollIntoViewIfNeeded();
+  await settle();
+  await page.evaluate(() => document.getElementById("compass-4").click()); // the F label
+  await settle();
+  const labelView = await probe("view");
+  const fx = await probe("sticker", "Fx", "F");
+  const fxHit = await probe("at3d", fx.x, fx.y);
+  check(!moved(frontView, labelView) && fxHit?.slot === "Fx", "tapping the F label turns to the Front view, front center in sight");
+
+  // ---- Shuffle: 30 legal turns, and the result becomes the new start.
+  await startFresh();
+  await page.click("#shuffle");
+  await page.waitForFunction(() => /^Shuffled with/.test(document.getElementById("message")?.textContent ?? ""), null, { timeout: 60000 });
+  await settle();
+  const shuffled = await page.evaluate(() => ({ msg: document.getElementById("message").textContent, state: window.xcubeProbe.state(), turns: window.xcubeProbe.turns() }));
+  const scramble = shuffled.msg.replace(/^Shuffled with 30 turns: /, "");
+  await startFresh();
+  await page.fill("#alg", scramble);
+  await page.click("#load");
+  await page.click("#last");
+  await page.waitForFunction(() => document.getElementById("last")?.textContent === "▶", null, { timeout: 60000 });
+  await settle();
+  const replay = await page.evaluate(() => ({ state: window.xcubeProbe.state(), count: window.xcubeProbe.turns().split(" ").length, msg: document.getElementById("message").textContent }));
+  check(scramble.split(" ").length === 30 && shuffled.turns === "" && replay.count === 30 && replay.state === shuffled.state, `Shuffle plays 30 legal turns and starts from the result (replayed: ${replay.count} turns, same state: ${replay.state === shuffled.state})`);
 
   // Every section collapses from its heading.
   const sections = await page.$$eval("[data-sec]", (els) => els.map((e) => e.getAttribute("data-sec")));
