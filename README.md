@@ -69,6 +69,7 @@ node src/cli/xc.ts order  "R U"                   # repetitions until it looks t
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
 node src/cli/xc.ts show "U" --state X1:...        # start from a saved state code
 node scripts/build-web.ts                         # build dist/x-cube-lab.html
+node scripts/smoke-web.mjs                        # browser smoke test of the built Lab (needs Playwright)
 ```
 
 In cycle output, `A -> B` means the cubelet that was in slot A is now in slot B. Slot names:
@@ -82,3 +83,13 @@ one order. Goals come from `src/core/goals.ts`, which compares how slots look, s
 leave "don't care" regions out of the mask. It runs at roughly 2 to 3 million positions per
 second in Node, which is practical to about 7 turns. Deeper searches will need distance
 tables or meet-in-the-middle.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request:
+
+- **Typecheck, unit tests, build** on Node 22 and 24.
+- **Browser smoke test:** builds the Lab, opens it in headless Chromium (Playwright
+  1.64.1, installed only in CI) and checks that it loads without page errors, that turns
+  play, that a blocked outer turn is refused, that Baum's 3-cycle keeps the X shape, and
+  that every section collapses.

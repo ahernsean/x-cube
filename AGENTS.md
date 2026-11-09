@@ -157,6 +157,8 @@ on this scene that the grid shading does not have.
 ## Working conventions
 
 - One commit per change, so the owner can back out any single step.
+- CI (`.github/workflows/ci.yml`) runs typecheck, unit tests and build on Node 22 and 24,
+  plus a browser smoke test of the Lab (`scripts/smoke-web.mjs`). Keep it green.
 - Run `npm test` and `npx tsc --noEmit` before committing. Check the Lab in headless
   Chromium (Playwright) at phone width (390 px). Publish the Lab after changes.
 - Library versions must be at least two weeks old.
