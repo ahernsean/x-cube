@@ -68,11 +68,9 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .cmp:hover { color: var(--ink); }
 .cmp:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .cmp i { width: 9px; height: 9px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--tile-edge); }
-.cmp.up { top: 6px; left: 50%; transform: translateX(-50%); }
-.cmp.down { bottom: 6px; left: 50%; transform: translateX(-50%); }
-.cmp.left { left: 6px; top: 50%; transform: translateY(-50%); }
-.cmp.right { right: 6px; top: 50%; transform: translateY(-50%); }
-.cmp.toward { left: 6px; top: 6px; font-weight: 600; }
+/* Positioned each frame where the face's axis meets the edge of the view. */
+.cmp { left: 0; top: 0; will-change: transform; transition: opacity 0.15s; }
+.cmp.away { background: transparent; box-shadow: inset 0 0 0 1px var(--muted); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--muted) 60%, transparent); }
 .gesture-hint { margin: 8px 0 0; }
 .stage.tumbling { box-shadow: 0 0 0 2px var(--accent); }
 /* Long presses on the 3D view are gestures: no text selection, magnifier or callout. */
@@ -155,6 +153,16 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .saved-name { font-weight: 700; overflow-wrap: anywhere; }
 .saved-note { font: 11px var(--f-mono); color: var(--muted); overflow-wrap: anywhere; }
 .saved-actions { display: flex; gap: 4px; flex-shrink: 0; }
+/* Collapsible sections: the heading toggles; collapsed shows only the heading row. */
+.sec-toggle { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; user-select: none; -webkit-user-select: none; }
+.sec-toggle::before { content: ""; width: 0; height: 0; border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; transform: rotate(90deg); transition: transform 0.15s; }
+[data-sec].collapsed .sec-toggle::before { transform: rotate(0deg); }
+.sec-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+[data-sec].collapsed > :not(.sec-head) { display: none !important; }
+[data-sec].collapsed .turn-head > :not(h2) { display: none !important; }
+[data-sec].collapsed .sec-head > :not(h2) { display: none !important; }
+.sec-title { margin: 0 0 6px; }
+@media (prefers-reduced-motion: reduce) { .sec-toggle::before { transition: none; } }
 details summary { cursor: pointer; font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-size: 15px; }
 details[open] summary { margin-bottom: 8px; }
 .legend { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
@@ -168,15 +176,17 @@ details[open] summary { margin-bottom: 8px; }
 </header>
 
 <div class="wrap">
-  <div class="stage-col">
+  <div class="stage-col" data-sec="view3d">
+    <h2 class="sec-title">3D view</h2>
     <div class="stage">
       <canvas id="scene" aria-label="3D view of the X-Cube"></canvas>
       <div class="compass" role="group" aria-label="Look at a face">
-        <button class="cmp up" id="compass-up"></button>
-        <button class="cmp down" id="compass-down"></button>
-        <button class="cmp left" id="compass-left"></button>
-        <button class="cmp right" id="compass-right"></button>
-        <button class="cmp toward" id="compass-toward"></button>
+        <button class="cmp" id="compass-0"></button>
+        <button class="cmp" id="compass-1"></button>
+        <button class="cmp" id="compass-2"></button>
+        <button class="cmp" id="compass-3"></button>
+        <button class="cmp" id="compass-4"></button>
+        <button class="cmp" id="compass-5"></button>
       </div>
     </div>
     <div class="views" role="group" aria-label="Views">
@@ -185,8 +195,8 @@ details[open] summary { margin-bottom: 8px; }
       <button class="btn small" data-view="back">Back</button>
       <button class="btn small" data-view="left">Left</button>
       <button class="btn small" data-view="right">Right</button>
-      <button class="btn small" data-view="top">Top</button>
-      <button class="btn small" data-view="bottom">Bottom</button>
+      <button class="btn small" data-view="top">Up</button>
+      <button class="btn small" data-view="bottom">Down</button>
     </div>
     <div class="view-toggles-row">
       <span class="view-toggles" title="Applies to the 3D view and the flat view"><label class="hint keep" for="glow"><input type="checkbox" id="glow"> Edge glow</label>
@@ -199,7 +209,7 @@ details[open] summary { margin-bottom: 8px; }
   </div>
 
   <div class="stack">
-    <section class="panel">
+    <section class="panel" data-sec="run">
       <h2>Run an algorithm</h2>
       <div class="alg-row">
         <input type="text" id="alg" placeholder="(R U2)5   or   [R' S' R, b]" autocomplete="off" autocapitalize="off" spellcheck="false">
@@ -220,7 +230,7 @@ details[open] summary { margin-bottom: 8px; }
         <button class="btn small ghost" id="reset">Reset to solved</button></p>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-sec="turn">
       <div class="turn-head">
         <h2>Turn</h2>
         <button class="btn small" id="undo">Undo last turn</button>
@@ -248,18 +258,18 @@ details[open] summary { margin-bottom: 8px; }
       <p class="legend"><code>H</code> turns the middle layer like <code>U</code>. <code>M</code> turns like <code>L</code>, <code>S</code> like <code>F</code>. Rotate turns the whole puzzle: <code>x</code> like <code>R</code>, <code>y</code> like <code>U</code>, <code>z</code> like <code>F</code>.</p>
     </section>
 
-    <section class="panel effect">
+    <section class="panel effect" data-sec="effect">
       <h2>What changed since the start</h2>
       <div id="effect"></div>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-sec="flat">
       <h2>Flat view</h2>
       <div class="net-wrap"><div class="net" id="net"></div><canvas id="net-canvas" class="net-canvas" aria-hidden="true"></canvas></div>
       <p class="legend">The first face you'd see looking straight at each side. Dark squares are cubelet faces with no sticker. A glow along an edge shows the sticker color around the corner, where the surface drops away. No glow there means that side has no sticker.</p>
     </section>
 
-    <section class="panel">
+    <section class="panel" data-sec="saved">
       <div class="row" style="justify-content:space-between"><h2 style="margin:0">Saved states</h2><span class="chip" id="store-kind">Loading</span></div>
       <div class="alg-row" style="margin-top:8px">
         <input type="text" id="save-name" placeholder="Name this position" autocomplete="off">

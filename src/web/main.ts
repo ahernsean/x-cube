@@ -92,8 +92,9 @@ function reduceMotionView() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 /** Light levels (tuned by comparing renders; yellow must stay distinct from white). */
-const LIGHT = { env: 0.45, key: 0.45, plasticRough: 0.28, plasticSpec: 6, coat: 0.5, coatRough: 0.1, stickerRough: 0.5, shadowSoft: 6 };
+const LIGHT = { env: 0.45, key: 0.45, plasticRough: 0.28, plasticSpec: 6, plasticEnv: 0.22, coat: 0.5, coatRough: 0.1, stickerRough: 0.5, shadowSoft: 12 };
 let keyLight: any = null;
+let envTex: any = null;
 const SHADOW_KEY = "xcube-lab-shadows";
 let shadowsOn = (() => {
   try {
@@ -129,7 +130,8 @@ function initScene(canvas: HTMLCanvasElement) {
   // the corner glints and the (soft) shadows.
   if (THREE.RoomEnvironment) {
     const pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
+    envTex = pmrem.fromScene(new THREE.RoomEnvironment(), 0.04).texture;
+    scene.environment = envTex;
     scene.environmentIntensity = LIGHT.env;
     pmrem.dispose();
   }
@@ -172,7 +174,7 @@ function initScene(canvas: HTMLCanvasElement) {
   // which makes the corner glints too faint to see; boosting the specular reflectance
   // (and a smooth clear coat) brings back small bright glints on the rounded corners.
   const bodyMat = new THREE.MeshPhysicalMaterial({
-    color: 0x3a3e41,
+    color: 0x575c61,
     roughness: LIGHT.plasticRough,
     metalness: 0,
     specularIntensity: 1,
@@ -181,6 +183,12 @@ function initScene(canvas: HTMLCanvasElement) {
     clearcoatRoughness: LIGHT.coatRough,
     vertexColors: true,
   });
+  // Give the plastic its own (dimmer) copy of the room: with the boosted reflectance, the
+  // room's bright panels otherwise mirror off whole faces. The key-light glints are unaffected.
+  if (envTex) {
+    bodyMat.envMap = envTex;
+    bodyMat.envMapIntensity = LIGHT.plasticEnv;
+  }
   // Stickers sit on the flat part of each face, with rounded corners.
   const plane = roundedSquare(0.82, 0.07);
   const mats = new Map<Color, any>();
@@ -888,25 +896,72 @@ function resize() {
 // Edge labels: which face of the puzzle points up, down, left, right and at you.
 const COMPASS_FACES = ["R", "L", "U", "D", "F", "B"];
 let compassKey = "";
+/**
+ * Edge labels that move with the cube: each face's label sits where that face's axis
+ * (its outward normal from the center), as seen on screen, meets the edge of the 3D
+ * view. Axes pointing toward you get a solid label, axes pointing away a dimmer one;
+ * an axis pointing almost straight at you (or away) projects to almost nothing, so its
+ * label fades out.
+ */
 function updateCompass() {
-  const q = pivot.quaternion;
-  const world = DIRS.map((d) => new THREE.Vector3(d[0], d[1], d[2]).applyQuaternion(q));
-  const pick = (f: (v: any) => number) => {
-    let best = 0;
-    for (let i = 1; i < 6; i++) if (f(world[i]) > f(world[best])) best = i;
-    return best;
-  };
-  const slots = { up: pick((v) => v.y), down: pick((v) => -v.y), left: pick((v) => -v.x), right: pick((v) => v.x), toward: pick((v) => v.z) };
-  const key = JSON.stringify(slots) + app.cursor + app.baseLabel;
-  if (key === compassKey) return;
+  const canvas = renderer.domElement as HTMLCanvasElement;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h) return;
+  // Contents (letter + center color) change only when the position changes.
+  const key = app.cursor + "|" + app.baseLabel + "|" + app.history.length;
+  const refreshText = key !== compassKey;
   compassKey = key;
-  for (const [where, d] of Object.entries(slots)) {
-    const el = document.getElementById(`compass-${where}`);
+  const toScreenXY = (v: any) => {
+    const p = v.clone().project(camera);
+    return [((p.x + 1) / 2) * w, ((1 - p.y) / 2) * h];
+  };
+  const [ox, oy] = toScreenXY(new THREE.Vector3(0, 0, 0));
+  // Work out each label's spot on the edge, then place the most visible first and slide
+  // any label that would cover an already placed one along its edge.
+  const items: { el: HTMLElement; x: number; y: number; vis: number; away: boolean; vertical: boolean; hw: number; hh: number }[] = [];
+  for (let d = 0; d < 6; d++) {
+    const el = document.getElementById(`compass-${d}`);
     if (!el) continue;
-    const c = faceCenterColor(app.current, d);
-    el.dataset.face = String(d);
-    el.setAttribute("aria-label", `Look at the ${COMPASS_FACES[d]} face`);
-    el.innerHTML = `<i style="background:${c ? NET_COLOR[c] : "transparent"}"></i>${where === "toward" ? "Facing you: " : ""}${COMPASS_FACES[d]}`;
+    if (refreshText) {
+      const c = faceCenterColor(app.current, d);
+      el.innerHTML = `<i style="background:${c ? NET_COLOR[c] : "transparent"}"></i>${COMPASS_FACES[d]}`;
+      el.setAttribute("aria-label", `Look at the ${COMPASS_FACES[d]} face`);
+    }
+    const dir = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(pivot.quaternion); // world
+    const [tx, ty] = toScreenXY(dir.clone().multiplyScalar(3));
+    let dx = tx - ox, dy = ty - oy;
+    const len = Math.hypot(dx, dy);
+    const inPlane = Math.sqrt(Math.max(0, 1 - dir.z * dir.z)); // 1 when the axis lies in the screen plane
+    const vis = len < 1e-3 ? 0 : Math.min(1, Math.max(0, (inPlane - 0.18) / 0.3));
+    if (len >= 1e-3) {
+      dx /= len;
+      dy /= len;
+    }
+    const hw = el.offsetWidth / 2 + 6, hh = el.offsetHeight / 2 + 6;
+    const t = Math.min(dx ? (w / 2 - hw) / Math.abs(dx) : Infinity, dy ? (h / 2 - hh) / Math.abs(dy) : Infinity);
+    const x = w / 2 + dx * (isFinite(t) ? t : 0), y = h / 2 + dy * (isFinite(t) ? t : 0);
+    const vertical = Math.abs(Math.abs(x - w / 2) - (w / 2 - hw)) < 1; // on the left or right edge
+    items.push({ el, x, y, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4 });
+  }
+  items.sort((a, b) => b.vis - a.vis);
+  const placed: typeof items = [];
+  for (const it of items) {
+    if (it.vis > 0.05) {
+      for (let tries = 0; tries < 8; tries++) {
+        const hit = placed.find((o) => Math.abs(o.x - it.x) < o.hw + it.hw && Math.abs(o.y - it.y) < o.hh + it.hh);
+        if (!hit) break;
+        // Slide along this label's edge, toward the middle of the edge (away from corners).
+        if (it.vertical) it.y = hit.y + (it.y < h / 2 ? 1 : -1) * (hit.hh + it.hh + 2);
+        else it.x = hit.x + (it.x < w / 2 ? 1 : -1) * (hit.hw + it.hw + 2);
+        it.x = Math.min(w - it.hw, Math.max(it.hw, it.x));
+        it.y = Math.min(h - it.hh, Math.max(it.hh, it.y));
+      }
+      placed.push(it);
+    }
+    it.el.style.transform = `translate(${it.x}px, ${it.y}px) translate(-50%, -50%)`;
+    it.el.style.opacity = String(it.vis * (it.away ? 0.6 : 1));
+    it.el.style.pointerEvents = it.vis > 0.3 ? "auto" : "none";
+    it.el.classList.toggle("away", it.away);
   }
 }
 
@@ -919,7 +974,9 @@ function faceCenterColor(st: State, d: number): Color | null {
   return null;
 }
 
+let view3dSection: HTMLElement | null = null;
 function frame() {
+  view3dSection ??= document.querySelector<HTMLElement>("[data-sec=view3d]");
   if (tween) {
     const t = tween.ms ? Math.min(1, (performance.now() - tween.start) / tween.ms) : 1;
     const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -928,9 +985,10 @@ function frame() {
   }
   tickAnimation();
   tickSettle();
-  updateCompass();
+  const view3dOpen = !view3dSection?.classList.contains("collapsed");
+  if (view3dOpen) updateCompass();
   renderNetAnimation();
-  renderer.render(scene, camera);
+  if (view3dOpen) renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 
@@ -1807,7 +1865,54 @@ function bindMoveButtons() {
   }
 }
 
+/** Each section's heading collapses and expands it; the choice is remembered on this device. */
+const SEC_KEY = "xcube-lab-collapsed";
+function setupCollapsibles() {
+  let closed: string[] = [];
+  try {
+    closed = JSON.parse(localStorage.getItem(SEC_KEY) || "[]");
+  } catch {
+    closed = [];
+  }
+  for (const sec of document.querySelectorAll<HTMLElement>("[data-sec]")) {
+    const name = sec.dataset.sec!;
+    const h = sec.querySelector("h2");
+    if (!h) continue;
+    // Mark the direct child that holds the heading as the part that stays visible.
+    let head: HTMLElement = h;
+    while (head.parentElement && head.parentElement !== sec) head = head.parentElement;
+    head.classList.add("sec-head");
+    h.classList.add("sec-toggle");
+    h.setAttribute("role", "button");
+    h.tabIndex = 0;
+    const apply = (collapsed: boolean) => {
+      sec.classList.toggle("collapsed", collapsed);
+      h.setAttribute("aria-expanded", String(!collapsed));
+      if (!collapsed && name === "view3d") requestAnimationFrame(() => resize());
+    };
+    apply(closed.includes(name));
+    const toggle = () => {
+      const collapsed = !sec.classList.contains("collapsed");
+      apply(collapsed);
+      closed = collapsed ? [...new Set([...closed, name])] : closed.filter((n) => n !== name);
+      try {
+        localStorage.setItem(SEC_KEY, JSON.stringify(closed));
+      } catch {
+        /* storage unavailable */
+      }
+    };
+    h.addEventListener("click", toggle);
+    h.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toggle();
+      }
+    });
+  }
+}
+
 function bindUI() {
+  setupCollapsibles();
   document.addEventListener("click", async (e) => {
     const t = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null;
     if (!t) return;
@@ -1875,7 +1980,7 @@ function bindUI() {
   const FACE_VIEW = ["right", "left", "top", "bottom", "front", "back"];
   for (const el of document.querySelectorAll<HTMLElement>(".cmp"))
     el.addEventListener("click", () => {
-      const d = Number(el.dataset.face);
+      const d = Number(el.id.replace("compass-", ""));
       if (Number.isInteger(d)) goToView(VIEWS[FACE_VIEW[d]]);
     });
   $("speed").addEventListener("input", (e) => (speedMs = speedFromSlider(Number((e.target as HTMLInputElement).value))));
