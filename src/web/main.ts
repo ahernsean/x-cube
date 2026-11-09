@@ -710,24 +710,10 @@ function applyCorners(f: AoFace, corner: number[]) {
 
 // ------------------------------------------------------------------ shading while a layer turns
 //
-// "live" (real occlusion, recomputed every frame): the same three-spots-per-corner rule,
-// but each spot's "filled" amount is continuous: it depends on how far the spot is from
-// the nearest cubelet's center, measured in that cubelet's own (possibly tilted) frame.
+// Real occlusion, recomputed every frame: the same three-spots-per-corner rule, but each
+// spot's "filled" amount is continuous: it depends on how far the spot is from the
+// nearest cubelet's center, measured in that cubelet's own (possibly tilted) frame.
 // At rest every cubelet sits on the grid and this matches the grid shading exactly.
-// "blend" (fallback): fade each face from its shading before the turn to after it.
-// The page starts with "live" and switches to "blend" if "live" proves too slow here.
-
-const SHADE_MODE_KEY = "xcube-lab-shade-mode";
-let shadeMode: "live" | "blend" = (() => {
-  try {
-    return localStorage.getItem(SHADE_MODE_KEY) === "blend" ? "blend" : "live";
-  } catch {
-    return "live";
-  }
-})();
-const LIVE_BUDGET_MS = 4; // average cost per frame above which we fall back
-let liveCostTotal = 0;
-let liveCostFrames = 0;
 
 /** How "filled" a spot is, from its distance d to a cubelet center (cube-shaped distance). */
 const fillAt = (d: number) => {
@@ -760,7 +746,6 @@ function rotAxis(axis: number, c: number, s: number, v: number[]): number[] {
 /** Recompute shading for the faces near a turning layer, from where cubelets actually are. */
 function shadeDuringTurn(pose: TurnPose) {
   if (!aoOn["3d"] && !aoOn.flat) return;
-  const t0 = performance.now();
   const d = MOVE_DEFS[pose.def];
   const axis = d.axis;
   const c = Math.cos(pose.angle), sn = Math.sin(pose.angle);
@@ -852,45 +837,6 @@ function shadeDuringTurn(pose: TurnPose) {
     }
     applyToCubelet(id, per);
   }
-  // Watch the cost; fall back to blending if this device can't keep up.
-  liveCostTotal += performance.now() - t0;
-  liveCostFrames++;
-  if (liveCostFrames >= 20 && liveCostTotal / liveCostFrames > LIVE_BUDGET_MS) {
-    shadeMode = "blend";
-    try {
-      localStorage.setItem(SHADE_MODE_KEY, "blend");
-    } catch {
-      /* storage unavailable */
-    }
-    setMessage(`Shading during turns switched to a lighter method on this device (${(liveCostTotal / liveCostFrames).toFixed(1)} ms per frame was too slow).`, "info");
-    render();
-  }
-}
-
-/** Fallback: fade from shading before the turn to after it. */
-let blendPlan: { face: AoFace; from: number[]; to: number[] }[] | null = null;
-function planBlend(after: State) {
-  const before: Map<AoFace, number[]> = new Map();
-  for (const list of aoFaces) for (const f of list ?? []) if (f.cur) before.set(f, f.cur.slice());
-  syncMeshes(after); // computes the "after" shading (and positions; the animation overrides them)
-  blendPlan = [];
-  for (const [f, from] of before) {
-    const to = f.cur!;
-    if (from.some((v, i) => Math.abs(v - to[i]) > 1e-3)) {
-      blendPlan.push({ face: f, from, to: to.slice() });
-      applyCorners(f, from);
-    }
-  }
-}
-function blendStep(t: number) {
-  if (!blendPlan) return;
-  for (const b of blendPlan) applyCorners(b.face, b.from.map((v, i) => v + (b.to[i] - v) * t));
-}
-
-/** Called each animation frame with the turning layer's current pose. */
-function shadeTurnFrame(pose: TurnPose, progress: number) {
-  if (shadeMode === "live") shadeDuringTurn(pose);
-  else blendStep(progress);
 }
 
 /** Largest change live shading makes to a puzzle at rest, over every turnable layer (should be ~0). */
@@ -900,9 +846,7 @@ function shadeRestError() {
     if (MOVE_DEFS[def].kind === "rotation") continue;
     const before = new Map<AoFace, number[]>();
     for (const list of aoFaces) for (const f of list ?? []) if (f.cur) before.set(f, f.cur.slice());
-    const saveCost = [liveCostTotal, liveCostFrames];
     shadeDuringTurn({ def, angle: 0, before: app.current });
-    [liveCostTotal, liveCostFrames] = saveCost;
     for (const [f, v] of before) for (let i = 0; i < 4; i++) worst = Math.max(worst, Math.abs(v[i] - f.cur![i]));
     syncMeshes(app.current);
   }
@@ -1265,7 +1209,7 @@ function updateLiveTurn(l: Live, x: number, y: number) {
   const along = (x - l.x0) * l.dirX + (y - l.y0) * l.dirY; // pixels along the swipe direction
   l.theta = (l.sign * (along / l.pxPerUnit)) / l.radius;
   l.group.quaternion.setFromAxisAngle(l.axisVec, l.theta);
-  if (shadeMode === "live") shadeDuringTurn({ def: l.def, angle: l.theta, before: app.current });
+  shadeDuringTurn({ def: l.def, angle: l.theta, before: app.current });
 }
 
 /** Finger lifted: settle to the nearest quarter turn (27 degrees is enough; a quick flick counts). */
@@ -1285,7 +1229,7 @@ function tickSettle() {
   const t = ms ? Math.min(1, (performance.now() - start) / ms) : 1;
   const e = 1 - Math.pow(1 - t, 3);
   l.group.quaternion.setFromAxisAngle(l.axisVec, from + (to - from) * e);
-  if (shadeMode === "live") shadeDuringTurn({ def: l.def, angle: from + (to - from) * e, before: app.current });
+  shadeDuringTurn({ def: l.def, angle: from + (to - from) * e, before: app.current });
   if (t < 1) return;
   settle = null;
   finishLiveTurn(l, Math.round(to / (Math.PI / 2)));
@@ -1600,15 +1544,6 @@ function startNext() {
   const q = ((d.ccw * amount) % 4 + 4) % 4;
   const angle = (q === 3 ? -1 : q) * (Math.PI / 2);
   anim = { turn, forward, start: performance.now(), duration, group, axis, angle, after, before };
-  if (shadeMode === "blend") {
-    // planBlend moves meshes to the "after" layout; put the turning ones back for the animation.
-    planBlend(after);
-    syncMeshes(before);
-    for (const s of d.slots) {
-      const id = before.occ[s];
-      if (id >= 0) group.attach(meshes[id]);
-    }
-  }
   render();
 }
 
@@ -1706,7 +1641,7 @@ function tickAnimation() {
   const t = anim.duration ? Math.min(1, (performance.now() - anim.start) / anim.duration) : 1;
   const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   anim.group.quaternion.setFromAxisAngle(anim.axis, anim.angle * e);
-  shadeTurnFrame({ def: anim.turn.def, angle: anim.angle * e, before: anim.before }, e);
+  shadeDuringTurn({ def: anim.turn.def, angle: anim.angle * e, before: anim.before });
   if (t >= 1) {
     finishAnim();
     if (playing && !queue.length) {
@@ -2420,8 +2355,6 @@ function installProbe() {
       g.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(a[0], a[1], a[2]), HALF));
     },
     resync: () => syncMeshes(app.current),
-    /** How shading follows a turn ("live" or, on a device too slow for that, "blend"), and its cost so far. */
-    shading: () => ({ mode: shadeMode, frames: liveCostFrames, avgMs: liveCostFrames ? liveCostTotal / liveCostFrames : 0 }),
     shadeRestError,
     /** What the effect switches currently control: glow layers, the key light's shadows, grid shading. */
     effects: () => ({ glow3d: camera.layers.isEnabled(GLOW3D_LAYER), glowFlat: netCams.every((c) => c.cam.layers.isEnabled(GLOWNET_LAYER)), shadows: !!keyLight?.castShadow, shading: aoOn["3d"] && aoOn.flat }),

@@ -502,31 +502,6 @@ try {
     await phone.close();
   }
 
-  // A device too slow for live shading falls back to blending between the shading before
-  // and after each turn (remembered on the device). The drawing must stay right.
-  {
-    const slow = await browser.newContext({ viewport: { width: 390, height: 900 } });
-    await slow.addInitScript(() => localStorage.setItem("xcube-lab-shade-mode", "blend"));
-    const p = await slow.newPage();
-    await track(p);
-    const slowErrors = [];
-    p.on("pageerror", (e) => slowErrors.push(String(e)));
-    await p.goto(pageUrl);
-    await p.waitForFunction(() => window.xcubeProbe?.idle(), null, { timeout: 30000 });
-    await p.fill("#alg", "F f R U r");
-    await p.click("#run");
-    await p.waitForFunction(() => window.xcubeProbe.idle() && window.xcubeProbe.turns() === "F f R U r", null, { timeout: 60000 });
-    const res = await p.evaluate(() => {
-      const P = window.xcubeProbe;
-      const hits = P.scan3d(6);
-      const wrong = hits.filter((h) => h.cubelet !== h.modelCubelet || h.color !== P.model(h.slot, h.face));
-      return { mode: P.shading().mode, wrong: wrong.length + P.missing3d().length };
-    });
-    check(res.mode === "blend" && res.wrong === 0 && slowErrors.length === 0, `blended shading (slow devices) plays turns and draws them right (mode ${res.mode}, ${res.wrong} wrong)`);
-    await collect(p);
-    await slow.close();
-  }
-
   // Opened as a file there is no shared database, so saved states go to this device.
   // A save is confirmed only when it was stored; a storage failure is reported.
   // Each check gets its own context, so it starts with empty storage.

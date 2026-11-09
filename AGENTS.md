@@ -171,8 +171,8 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
   turns toward the camera that are not drawn. It draws into its own offscreen buffer (an
   ID pass and a plain-color pass), so the views don't change. Its fault methods misdraw
   cubelets on purpose, so a test can check that the drawing checks catch them. It also
-  reports the shading mode (`live`, or `blend` on slow devices), what the effect switches
-  control, and how far live shading at the start of a turn is from the rest shading.
+  reports what the effect switches control, and how far the shading computed during a
+  turn is, at its start, from the rest shading.
   Gestures read event timestamps, not handler time, so a slow frame can't change what a
   gesture means.
 
