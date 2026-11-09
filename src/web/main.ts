@@ -211,8 +211,10 @@ function initScene(canvas: HTMLCanvasElement) {
     }
     return glowMats.get(c);
   };
-  const netBody = new THREE.BoxGeometry(0.92, 0.92, 0.92);
-  const netOccluderMat = new THREE.MeshBasicMaterial({ colorWrite: false });
+  // Flat-view backing: a dark body just inside each cubelet's cell, so the gaps between
+  // tiles read as black plastic, as on the puzzle, rather than as the light background.
+  const netBody = new THREE.BoxGeometry(0.98, 0.98, 0.98);
+  const netOccluderMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x141617) });
   const netMats = new Map<Color, any>();
   const netMatFor = (c: Color) => {
     if (!netMats.has(c)) netMats.set(c, new THREE.MeshBasicMaterial({ color: STICKER[c], vertexColors: true }));
@@ -257,9 +259,8 @@ function initScene(canvas: HTMLCanvasElement) {
       g.add(m);
       aoList.push(aoFace(m, d, "3d"));
     });
-    // Flat-view faces: unlit, one per face, seen only by the flat view's cameras (layer 2).
-    // An invisible occluder (depth only, drawn first) keeps deeper cubelets from
-    // showing through the gaps, so the gaps look like the resting grid's.
+    // Flat-view faces: unlit, one per face, seen only by the flat view's cameras (layer 2),
+    // in front of the cubelet's dark backing, which also hides deeper cubelets.
     const occluder = new THREE.Mesh(netBody, netOccluderMat);
     occluder.layers.set(NET_LAYER);
     occluder.renderOrder = -1;
