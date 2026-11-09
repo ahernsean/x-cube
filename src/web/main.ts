@@ -117,7 +117,7 @@ let filmTex: { normal: any; rough: any } | null = null;
 
 /**
  * The look of a laminated sticker: a thin clear film over the color, with fine crinkles,
- * a few scratches, and patches where it is more or less shiny. Returns the film's surface
+ * tiny nicks and dents, and patches where it is more or less shiny. Returns the film's surface
  * as a normal map and its roughness (green channel, multiplied by the coat roughness,
  * which is 1 while gloss is on). Generated once, tileable, from a fixed seed.
  */
@@ -149,18 +149,20 @@ function makeFilmTexture() {
   };
   const crinkle = [noise(5), noise(10), noise(20)];
   const patches = noise(4);
-  const scratch = new Float32Array(N * N);
-  for (let i = 0; i < 10; i++) {
-    let x = rnd() * N, y = rnd() * N;
-    const a = rnd() * Math.PI, len = 30 + rnd() * 90;
-    for (let k = 0; k < len; k++) {
-      x += Math.cos(a);
-      y += Math.sin(a);
-      scratch[((Math.floor(y) % N + N) % N) * N + ((Math.floor(x) % N + N) % N)] = 1;
-    }
+  // Nicks: tiny round dents, a pixel or two across, scattered over the film.
+  const nick = new Float32Array(N * N);
+  for (let i = 0; i < 90; i++) {
+    const cx = rnd() * N, cy = rnd() * N, r = 0.8 + rnd() * 1.4;
+    for (let dy = -2; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) {
+        const d = Math.hypot(dx + (cx % 1) - 0.5, dy + (cy % 1) - 0.5);
+        if (d >= r) continue;
+        const k = ((Math.floor(cy) + dy + N) % N) * N + ((Math.floor(cx) + dx + N) % N);
+        nick[k] = Math.max(nick[k], 1 - d / r);
+      }
   }
   const height = new Float32Array(N * N);
-  for (let i = 0; i < N * N; i++) height[i] = 0.6 * crinkle[0][i] + 0.3 * crinkle[1][i] + 0.1 * crinkle[2][i] - 0.08 * scratch[i];
+  for (let i = 0; i < N * N; i++) height[i] = 0.6 * crinkle[0][i] + 0.3 * crinkle[1][i] + 0.1 * crinkle[2][i] - 0.12 * nick[i];
   const toTexture = (fill: (i: number, x: number, y: number, px: Uint8ClampedArray) => void) => {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = N;
@@ -183,7 +185,7 @@ function makeFilmTexture() {
     px[i * 4 + 3] = 255;
   });
   const rough = toTexture((i, _x, _y, px) => {
-    const r = Math.min(1, 0.08 + 0.22 * patches[i] + 0.3 * scratch[i]);
+    const r = Math.min(1, 0.08 + 0.22 * patches[i] + 0.3 * nick[i]);
     px[i * 4] = px[i * 4 + 1] = px[i * 4 + 2] = Math.round(r * 255);
     px[i * 4 + 3] = 255;
   });

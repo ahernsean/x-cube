@@ -154,8 +154,8 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
   mapping (exposure 1.15) compresses bright values instead of clipping them, which keeps
   well-lit yellow distinct from white; stickers have a reduced sheen for the same reason.
 - **Gloss:** the stickers' laminated film, as a clear coat over the color. Its surface
-  comes from a small texture generated in code (broad soft crinkles, a few scratches,
-  patches of more and less shine), turned and offset differently on each sticker. Only the
+  comes from a small texture generated in code (broad soft crinkles, tiny nicks and
+  dents, patches of more and less shine), turned and offset differently on each sticker. Only the
   coat carries the crinkles, so they show in reflections while the color stays smooth.
   The Gloss switch turns it off.
 - **Saved states:** stored in the artifact's shared database, collection `states`, with
