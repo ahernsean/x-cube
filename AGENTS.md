@@ -166,8 +166,11 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
 
 - **Probe:** `window.xcubeProbe` (end of `src/web/main.ts`) tells the browser tests what
   is drawn where: the screen position of a sticker's center, and, for a point of the 3D
-  view or a cell of the flat view, the slot, face and color drawn there. It draws into its
-  own offscreen buffer (an ID pass and a plain-color pass), so the views don't change.
+  view or a cell of the flat view, the slot, face and color drawn there (the slot and face
+  from the cubelet's mesh, so a misdrawn cubelet shows up), and the stickers the model
+  turns toward the camera that are not drawn. It draws into its own offscreen buffer (an
+  ID pass and a plain-color pass), so the views don't change. Its fault methods misdraw
+  cubelets on purpose, so a test can check that the drawing checks catch them.
   Gestures read event timestamps, not handler time, so a slow frame can't change what a
   gesture means.
 
