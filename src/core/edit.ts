@@ -75,23 +75,25 @@ function shownColors(colors: FaceColors, s: number): Color[] {
   return out.sort((a, b) => COLOR_ORDER.indexOf(a) - COLOR_ORDER.indexOf(b));
 }
 
-/** Why no cubelet of this kind shows these colors, or null for a corner whose colors go around it in mirrored order. */
-function noCubelet(kind: string, cs: Color[]): string | null {
+/** Why no cubelet of this kind can show these colors, as the problem's text. */
+function noCubelet(kind: string, cs: Color[]): string {
   const sameKind = CUBELETS.filter((c) => c.kind === kind);
   const can = new Set(sameKind.flatMap((c) => c.stickers.filter((x): x is Color => !!x)));
   const cannot = [...new Set(cs)].filter((c) => !can.has(c));
-  if (cannot.length) return `no cubelet in that position can be ${listColors(cannot, "or")}`;
+  if (cannot.length)
+    return `A cubelet in this position must be ${listColors(COLOR_ORDER.filter((c) => can.has(c)), "or")}, never ${listColors(cannot, "or")}`;
+  const shows = `A cubelet shows ${listColors(cs)}, but`;
   const dup = cs.find((c, i) => cs.indexOf(c) !== i);
-  if (dup) return `no cubelet has two ${COLOR_NAME[dup]} stickers`;
+  if (dup) return `${shows} no cubelet has two ${COLOR_NAME[dup]} stickers`;
   for (let k = 0; k < 6; k += 2)
     if (cs.includes(FACE_COLOR[k]) && cs.includes(FACE_COLOR[k + 1]))
-      return `${COLOR_NAME[FACE_COLOR[k]]} and ${COLOR_NAME[FACE_COLOR[k + 1]]} are opposite colors, never on one cubelet`;
+      return `${shows} ${COLOR_NAME[FACE_COLOR[k]]} and ${COLOR_NAME[FACE_COLOR[k + 1]]} are opposite colors, never on one cubelet`;
   // The colors are on a cubelet of this kind, but not in this arrangement: on a corner,
   // the three colors go around it in a fixed order that no turn can mirror.
   const holders = sameKind.filter((c) => cs.every((x) => c.stickers.includes(x))).length;
-  if (holders && cs.length === 3) return null;
-  if (holders) return "no cubelet in that position can show them this way";
-  return `no cubelet in that position has ${cs.length === 1 ? "that color" : "these colors"}`;
+  if (holders && cs.length === 3) return "Wrong color order";
+  if (holders) return `${shows} no cubelet in this position can show them this way`;
+  return `${shows} no cubelet in this position has ${cs.length === 1 ? "that color" : "these colors"}`;
 }
 
 const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
@@ -234,8 +236,7 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
   for (const s of loose.slots)
     if (loose.cand.get(s)!.length === 0) {
       const cs = shownColors(colors, s);
-      const why = noCubelet(CUBELETS[shape.occ[s]].kind, cs);
-      problems.push(problem(why === null ? "Wrong color order" : `A cubelet shows ${listColors(cs)}, but ${why}`, [s]));
+      problems.push(problem(noCubelet(CUBELETS[shape.occ[s]].kind, cs), [s]));
     }
   if (!problems.length) {
     // Every slot has candidates, but some spots compete for too few cubelets.

@@ -76,7 +76,7 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
   assert.deepEqual(say(1, -1, -2, 5, "O"), { text: "A cubelet shows yellow, red, and orange, but red and orange are opposite colors, never on one cubelet", slots: [at(1, -1, -2)] });
   assert.equal(say(-1, 1, 2, F, "O").text, "A cubelet shows white, orange, and orange, but no cubelet has two orange stickers");
   // A color no cubelet of that kind has: core corners are only white or yellow.
-  assert.equal(say(1, -1, 1, 3, "B").text, "A cubelet shows blue, but no cubelet in that position can be blue");
+  assert.equal(say(1, -1, 1, 3, "B").text, "A cubelet in this position must be white or yellow, never blue");
   // Two stickers of a corner swapped: its colors exist, but go around it the other way.
   const swapped = visibleColors(st);
   swapped[at(-1, -1, -2) * 6 + 5] = "O";
