@@ -107,7 +107,8 @@ rotations). `src/core/serialize.ts`.
 ## Algorithms
 
 `ALGORITHMS.md` collects algorithms found or verified with the engine, each with the
-situation it solves, how to recognize it, and the test that checks it. Add new ones there.
+situation it solves, how to recognize it, and the test that checks it. Add new ones there,
+and to `src/core/algorithms.ts` (with an example position) so the Lab lists them.
 
 ## Code map
 
@@ -116,6 +117,8 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
 - `src/core/notation.ts`: parser and formatter.
 - `src/core/analyze.ts`: shape and solved tests, effect (cycles and twists), text face views,
   flat-view rim data (`faceRimView`).
+- `src/core/algorithms.ts`: the known algorithms the Lab lists, each with an example position.
+- `src/core/edit.ts`: fitting edited sticker colors to real cubelets (the Lab's color editor).
 - `src/core/search.ts`, `src/core/goals.ts`: iterative-deepening search with goal masks
   based on appearance (look-alike twins compare equal).
 - `src/cli/xc.ts`: command-line driver (see `README.md`).
@@ -136,14 +139,24 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
   screen, meets the edge of the 3D view; tapping one turns the view to that face.
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
-  two fingers spin it; double tap (cube or background) undoes the last turn.
+  two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ button
+  beside the 3D view's heading shows this help.
+- **Display panel:** the Display button beside the 3D view's heading opens the Edge glow,
+  Shading, Shadows and Gloss switches, over the view.
+- **Layout rule:** on a phone, nothing appears or disappears in the page's flow except
+  through a disclosure triangle (and the turn list, which grows with the turns). Help and
+  switches open in panels over the views; messages float near the bottom of the screen and
+  fade after 4 seconds (8 for errors) or a tap. The browser tests check the page height.
+- **Playback:** ⏮ back to the start, ◀ play backward to the start, ◀1 back one turn, ▶1
+  forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
+- **Clear:** empties the turn list; the position shown becomes the start ("Current position").
 - **Shuffle:** 30 random legal turns (inner, slices, outer when complete; never the same
   layer twice in a row; no rotations) played at 70 ms per quarter turn; the result becomes
   the new start ("Shuffled") and the message shows the scramble.
 - **Turn buttons:** tap for the shown turn; long press flips it to the inverse (U to U');
   slide off to cancel.
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
-  orthographic cameras, so it animates.
+  orthographic cameras, so it animates. Its ⓘ button explains how to read it.
 - **Edge glow:** a soft band at a depth discontinuity, in the color of the sticker around
   the edge. No glow means that side has no sticker. Only shown where the side face points
   away from the viewer or is edge-on. Where two visible faces of one cubelet meet, the
@@ -169,6 +182,28 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
   dents, patches of more and less shine), turned and offset differently on each sticker. Only the
   coat carries the crinkles, so they show in reflections while the color stays smooth.
   The Gloss switch turns it off.
+- **Color editing:** Edit colors under the 3D view. Pick a color, then tap stickers to paint
+  them; drags tumble the view, and the other controls are set aside. The shape stays as it
+  is. A painted sticker's edge glow takes the paint too. Each paint is refit to real cubelets (`fitColors` in `src/core/edit.ts`), and a line
+  says "Valid" (real cubelets, each facing a way the puzzle allows), "Not possible on the
+  puzzle" (real cubelets, but one breaks the outward-color rule) or "Not valid" (with the
+  spot and the reason). Done, available only when valid, makes the fitted position the start
+  ("Edited colors"). Whether a valid position can be reached by turning is not checked yet.
+- **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
+  center colors up, toward you and on your right as they are now (slice turns move the side
+  centers). Tell the owner how to hold the cube from it, never from the solved colors.
+- **Turn field:** in the Run an algorithm panel, under Clear. Load adds the typed turns at
+  the current step (replacing any after it) and empties the field, so the turn list is the
+  one record of the turns. Edit puts the whole turn list in the field and Load reads Update:
+  it replaces the list, keeping the position where the old and new lists agree; Cancel
+  leaves the list as it was.
+- **Algorithms list:** in the Run an algorithm panel. Load makes an algorithm's position
+  the start, with its turns loaded and unplayed; Save keeps the turn list with the
+  current start position; ✕ deletes (after Delete or Keep). Kept like saved states: the shared
+  database's `algorithms` collection (`name`, `alg`, `code` for the start position, `note`,
+  `savedAt`, `source`), seeded by Claude from the known algorithms, or this device, where it
+  starts as them. The known algorithms (`src/core/algorithms.ts`) are each checked from their
+  position by `test/algorithms.test.ts` and described in `ALGORITHMS.md`.
 - **Saved states:** stored in the artifact's shared database, collection `states`, with
   fields `name`, `code` (a state code), `note`, `savedAt`, `source` (`page` or `claude`).
 
@@ -223,23 +258,37 @@ Never do any of these without an explicit instruction from the owner:
 
 - One commit per change, so the owner can back out any single step.
 - Write or extend a test for every new or changed behavior.
-- Before committing: `npx tsc --noEmit` and `npm test`. For Lab changes, also
-  `node scripts/build-web.ts` and the browser tests (`node scripts/browser-tests.mjs chromium`,
-  and `webkit` where WebKit is installed), and look at the Lab at phone width (390 px).
+- **Test locally only what you changed; let CI test the rest.** The full browser run takes
+  10 to 15 minutes for both engines, which stalls iterating with the owner. So:
+  - Before committing, run `npx tsc --noEmit` (fast) and only the tests that cover the code
+    you changed: one unit test file (`node --test test/edit.test.ts`), or one test by name
+    (`node --test --test-name-pattern="^edit:" test/*.test.ts`). For a Lab change, build
+    (`node scripts/build-web.ts`) and check the changed behavior with a short Playwright
+    script in your scratch space, at phone width (390 px) where layout is involved.
+  - Don't run the full `npm test` or `scripts/browser-tests.mjs` locally as a matter of
+    course, and never for code you didn't change, or after a merge from `main` with no
+    conflicts. Push, and let CI run everything.
+  - Use CI as your test runner: after pushing, read the check results (the GitHub tools give
+    the check runs and job logs) and fix what fails. Reproduce a CI failure locally with the
+    narrowest run that shows it, then show that same run passing.
 - CI (`.github/workflows/ci.yml`) runs the unit tests, the typecheck, and the build and
   browser tests in Chromium and WebKit, each as its own check, all on Node 24 (the version
   `package.json` requires). Keep it green. It reports coverage (unit tests, and browser
   tests in Chromium) on each run's summary page; no minimum is enforced. When you add
   a Lab behavior, test it in `scripts/browser-tests.mjs`, through the probe if it draws. The `all checks` job is the
   one a branch rule on `main` requires; renaming it means changing the rule.
-- Publish the Lab after changes.
+- **Publish the Lab early**, as soon as a change builds and its focused check passes,
+  without waiting for CI: the owner tries changes in the Lab while CI runs. If CI then
+  fails, fix it and publish again.
 - Library versions must be at least two weeks old.
 
 ### Safari is the main browser
 
 The owner uses the Lab mostly on an iPhone and iPad, where every browser is WebKit. A run
-that covers only Chromium has not tested the main engine. To run WebKit locally:
-`npx playwright install --with-deps webkit`, then `node scripts/browser-tests.mjs webkit`.
+that covers only Chromium has not tested the main engine; CI's WebKit check covers it on
+every push. Run WebKit locally only to reproduce a WebKit failure or to check a change
+that touches something engines differ on (layout, gestures, WebGL): install it with
+`npx playwright install --with-deps webkit`, then point your focused check at `webkit`.
 
 ### A screenshot is not evidence about width
 
