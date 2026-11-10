@@ -325,7 +325,15 @@ function initScene(canvas: HTMLCanvasElement) {
   const mats = new Map<Color, any>();
   const dark = getComputedStyle(document.documentElement).getPropertyValue("--unstickered").trim() || "#2b2f2e";
   const netPlane = new THREE.PlaneGeometry(0.92, 0.92);
-  const glowPlane = new THREE.PlaneGeometry(1.0, GLOW_WIDTH);
+  // Columns of vertices at the ends and where an open end is cut back to (GLOW_CUT).
+  const glowPlane = new THREE.PlaneGeometry(1.0, GLOW_WIDTH, 3, 1);
+  const gp = glowPlane.attributes.position;
+  for (let i = 0; i < gp.count; i++) {
+    const col = Math.round((gp.getX(i) + 0.5) * 3);
+    gp.setX(i, [-0.5, -GLOW_CUT, GLOW_CUT, 0.5][col]);
+    glowPlane.attributes.uv.setX(i, gp.getX(i) + 0.5);
+  }
+  const glowCorner = makeGlowCorner();
   const glowTex = makeGlowTexture();
   const glowMats = new Map<string, any>();
   const glowMatFor = (c: Color, open: number) => {
@@ -411,7 +419,8 @@ function initScene(canvas: HTMLCanvasElement) {
     // shown only when both faces are exposed, i.e. where face a steps down to something
     // deeper or to empty space. Seen by the 3D view (layer 3) and the flat view (layer 4).
     // Each end of the band reaches the cubelet face beside it (lo at -X, hi at +X); where
-    // that face is exposed too, the band in its plane carries the same glow around the corner.
+    // that face is exposed too, the band in its plane carries the same glow around the
+    // corner, joined to this one by a rounded corner piece (made here for the hi end).
     const list: GlowBand[] = [];
     for (let a = 0; a < 6; a++)
       for (let b = 0; b < 6; b++) {
@@ -432,7 +441,14 @@ function initScene(canvas: HTMLCanvasElement) {
         m.visible = false;
         g.add(m);
         const lo = dirIndex([-X.x, -X.y, -X.z]), hi = dirIndex([X.x, X.y, X.z]);
-        list.push({ mesh: m, a, b, lo, hi, mats });
+        // The corner piece's frame: x along A, y along B, so the band at the hi end lies at -z.
+        const corner = new THREE.Mesh(glowCorner, mats[0]);
+        corner.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(A, B, new THREE.Vector3().crossVectors(A, B)));
+        corner.layers.set(GLOW3D_LAYER);
+        corner.renderOrder = 2;
+        corner.visible = false;
+        g.add(corner);
+        list.push({ mesh: m, a, b, lo, hi, mats, corner });
       }
     glows[c.id] = list;
     aoList.sort((a, b) => a.d - b.d); // same-direction faces (3D sticker, flat tile) share one computation
@@ -467,6 +483,7 @@ function syncMeshes(st: State) {
     for (const gl of glows[id] ?? []) {
       gl.mesh.visible = exposed[gl.a] && exposed[gl.b];
       gl.mesh.material = gl.mats[(exposed[gl.lo] ? 1 : 0) | (exposed[gl.hi] ? 2 : 0)];
+      gl.corner.visible = gl.mesh.visible && exposed[gl.hi];
     }
     shadeCubelet(st, s, o, id);
   }
@@ -878,12 +895,15 @@ const GLOW_DEPTH = 0.47;
 const GLOW_START = 0.36;
 const GLOW_WIDTH = 0.56;
 const GLOW_SOLID = (0.495 - GLOW_START) / GLOW_WIDTH; // fraction kept at full strength (to just past the edge)
-// The overlap trimmed off a band's end where it joins the band around the corner: each
-// band reaches the cubelet's side (0.5) but lies at GLOW_DEPTH, so the two cross there.
-const GLOW_JOIN = 0.5 - GLOW_DEPTH;
+// Where two bands of one hidden sticker meet at a corner, a quarter cylinder of this
+// radius joins them, so the glow is rounded there like the sticker's own corner. Each
+// band reaches the cubelet's side (0.5); at an open end it is cut back to where the
+// cylinder takes over (GLOW_CUT from its middle).
+const GLOW_ROUND = 0.25;
+const GLOW_CUT = GLOW_DEPTH - GLOW_ROUND;
 const GLOW_TAPER = 0.22; // fraction of the band's length over which a closed end fades out
 /** One glow band: faces a (its plane) and b (its color), the faces beside its two ends, and its material for each combination of open ends. */
-type GlowBand = { mesh: any; a: number; b: number; lo: number; hi: number; mats: any[] };
+type GlowBand = { mesh: any; a: number; b: number; lo: number; hi: number; mats: any[]; corner: any };
 const glows: GlowBand[][] = [];
 const GLOW_KEY = "xcube-lab-glow";
 const glowOn = (() => {
@@ -915,13 +935,19 @@ function makeGlowMaterial(map: any, color: any, open: number) {
     transparent: true,
     depthWrite: false,
     vertexShader: `
+      uniform vec2 open;
       varying vec2 vUv;
       varying float vFade;
       varying float vOrtho;
       void main() {
-        vUv = uv;
         vOrtho = projectionMatrix[3][3] == 1.0 ? 1.0 : 0.0;
-        vec4 world = modelMatrix * vec4(position, 1.0);
+        // An open end is cut back to where the corner piece starts, by moving the end
+        // column of vertices onto the column there, so the two meet on shared edges.
+        vec3 p = position;
+        vUv = uv;
+        if (vOrtho < 0.5 && open.x > 0.5 && p.x < ${-GLOW_CUT} - 1e-4) { p.x = ${-GLOW_CUT}; vUv.x = p.x + 0.5; }
+        if (vOrtho < 0.5 && open.y > 0.5 && p.x > ${GLOW_CUT} + 1e-4) { p.x = ${GLOW_CUT}; vUv.x = p.x + 0.5; }
+        vec4 world = modelMatrix * vec4(p, 1.0);
         vec3 sideDir = normalize(mat3(modelMatrix) * vec3(0.0, 1.0, 0.0));
         // Direction toward the viewer: constant for orthographic cameras.
         vec3 toViewer = projectionMatrix[3][3] == 1.0
@@ -940,7 +966,6 @@ function makeGlowMaterial(map: any, color: any, open: number) {
       varying float vOrtho;
       void main() {
         vec2 o = vOrtho > 0.5 ? vec2(0.0) : open;
-        if ((o.x > 0.5 && vUv.x < ${GLOW_JOIN}) || (o.y > 0.5 && vUv.x > ${1 - GLOW_JOIN})) discard;
         float lo = o.x > 0.5 ? 1.0 : smoothstep(0.0, ${GLOW_TAPER}, vUv.x);
         float hi = o.y > 0.5 ? 1.0 : smoothstep(0.0, ${GLOW_TAPER}, 1.0 - vUv.x);
         float a = texture2D(map, vUv).a * vFade * min(lo, hi);
@@ -948,6 +973,33 @@ function makeGlowMaterial(map: any, color: any, open: number) {
         gl_FragColor = vec4(color, a);
       }`,
   });
+}
+
+/**
+ * The rounded corner piece between two glow bands, in a frame with x along one band's
+ * face, y along the glowing face and -z along the other band's face: a quarter cylinder
+ * about the y axis, tangent to both bands. Its uv.y runs along y like the bands' (so it
+ * fades outward at the same rate). It uses the material of a band with no open end
+ * (which moves no vertices), and its uv.x is mid-band, so no end fade applies.
+ * The 3D view only: the flat view sees a corner from one side.
+ */
+function makeGlowCorner() {
+  const SEG = 12;
+  const c = GLOW_CUT;
+  const pos: number[] = [], uv: number[] = [], index: number[] = [];
+  for (let i = 0; i <= SEG; i++) {
+    const t = (i / SEG) * (Math.PI / 2);
+    for (const v of [0, 1]) {
+      pos.push(c + GLOW_ROUND * Math.cos(t), GLOW_START + v * GLOW_WIDTH, -(c + GLOW_ROUND * Math.sin(t)));
+      uv.push(0.5, v);
+    }
+    if (i < SEG) index.push(2 * i, 2 * i + 2, 2 * i + 1, 2 * i + 1, 2 * i + 2, 2 * i + 3);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(index);
+  return geo;
 }
 
 /** White band, opaque at the edge (bottom) fading upward. The ends taper in the shader. */
@@ -2381,14 +2433,16 @@ function installProbe() {
      * a face's flat-view camera (view "U", "F", ...): its opacity (0-1) at the point
      * offset from the slot's center by each [face, distance], in the puzzle's frame.
      */
+    /** Where the glow lies: depth of a band below its face, and the radius of a rounded corner. */
+    glowShape: () => ({ depth: GLOW_DEPTH, round: GLOW_ROUND }),
     glowAt(slot: string, view: string, points: [string, number][][]) {
       const s = slotByName(slot);
-      const own = new Set(glows[app.current.occ[s]].map((g) => g.mesh));
+      const own = new Set(glows[app.current.occ[s]].flatMap((g) => [g.mesh, g.corner]));
       const nc = netCams.find((c) => c.face === view);
       const cam = nc ? aimNetCam(nc, pivot.quaternion) : camera;
       const n = 400;
       const hidden: any[] = [];
-      for (const list of glows) for (const g of list ?? []) if (g.mesh.visible && !own.has(g.mesh)) (hidden.push(g.mesh), (g.mesh.visible = false));
+      for (const list of glows) for (const g of list ?? []) for (const m of [g.mesh, g.corner]) if (m.visible && !own.has(m)) (hidden.push(m), (m.visible = false));
       let img: Uint8Array;
       try {
         img = probeImage(cam, nc ? GLOWNET_LAYER : GLOW3D_LAYER, n, n, "drawn");

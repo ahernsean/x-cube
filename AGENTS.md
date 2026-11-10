@@ -147,8 +147,9 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
 - **Edge glow:** a soft band at a depth discontinuity, in the color of the sticker around
   the edge. No glow means that side has no sticker. Only shown where the side face points
   away from the viewer or is edge-on. Where two visible faces of one cubelet meet, the
-  hidden sticker's glow continues around the corner between them; elsewhere a glow fades
-  out at its ends, and always in the flat view, which sees only one side of a corner.
+  hidden sticker's glow continues around the corner between them, rounded like the
+  sticker's corner; elsewhere a glow fades out at its ends, and always in the flat view,
+  which sees only one side of a corner.
 - **Shading:** grid-based ambient occlusion. Each face corner is darkened by filled grid
   spots in front of it (three near, five farther with less weight), blended across the
   face. Applied to stickers, flat tiles and plastic; recomputed every frame during turns.
