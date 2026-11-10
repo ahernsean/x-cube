@@ -1599,6 +1599,7 @@ const speedFromSlider = (v: number) => 1600 * Math.pow(30 / 1600, v / 100);
 let speedMs = speedFromSlider(52);
 /** True while "play" is running through the remaining turns. */
 let playing = false;
+let playingBack = false; // playing toward the start (◀) rather than the end (▶)
 
 function enqueue(turn: Turn, forward: boolean) {
   queue.push({ turn, forward });
@@ -1829,6 +1830,14 @@ function playToEnd() {
 }
 
 /** Stop playing: the turn in progress finishes, the rest wait. */
+/** Plays the turns before the cursor backward, undoing each one, back to the start. */
+function playToStart() {
+  flushAnimations();
+  for (let i = app.cursor - 1; i >= 0; i--) enqueue(app.history[i], false);
+  playing = queue.length > 0;
+  playingBack = playing;
+  render();
+}
 function stopPlaying() {
   queue.length = 0;
   playing = false;
@@ -2164,10 +2173,15 @@ function render() {
     .join("");
   $("history").innerHTML = hist || `<span class="hint">Turns you make or load appear here. Tap one to jump to it.</span>`;
   $("counter").textContent = `${app.cursor} / ${app.history.length}`;
+  if (!playing) playingBack = false;
   const play = $("last");
-  play.textContent = playing ? "■" : "▶";
-  play.setAttribute("aria-label", playing ? "Stop" : "Play to the end");
-  play.classList.toggle("stop", playing);
+  play.textContent = playing && !playingBack ? "■" : "▶";
+  play.setAttribute("aria-label", playing && !playingBack ? "Stop" : "Play to the end");
+  play.classList.toggle("stop", playing && !playingBack);
+  const back = $("rewind");
+  back.textContent = playing && playingBack ? "■" : "◀";
+  back.setAttribute("aria-label", playing && playingBack ? "Stop" : "Play backward to the start");
+  back.classList.toggle("stop", playing && playingBack);
   $("base-label").textContent = app.baseLabel;
 
   // modifier buttons
@@ -2386,6 +2400,7 @@ function bindUI() {
   $("fwd").addEventListener("click", () => step(1));
   $("first").addEventListener("click", () => jump(0));
   $("last").addEventListener("click", () => (playing ? stopPlaying() : playToEnd()));
+  $("rewind").addEventListener("click", () => (playing ? stopPlaying() : playToStart()));
   $("undo").addEventListener("click", () => undoLast());
   $("shuffle").addEventListener("click", () => shuffle());
   $("reset").addEventListener("click", () => {

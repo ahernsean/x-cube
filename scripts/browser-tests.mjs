@@ -506,6 +506,27 @@ try {
     `algorithms: delete one (${algsBefore.length} -> ${afterDelete.length}), save one ("${afterSave.at(-1)}"), and load it back ("${loadedMine.alg}", ${loadedMine.counter})`,
   );
 
+  // ◀ plays the turns backward to the start, undoing each one; the turns stay listed.
+  await startFresh();
+  await page.fill("#alg", "R U F");
+  await page.click("#load");
+  await page.click("#last");
+  await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "3/3", null, { timeout: 60000 });
+  await settle();
+  const playedState = await probe("state");
+  await page.click("#rewind");
+  const rewindLabel = await page.$eval("#rewind", (b) => b.textContent);
+  await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "0/3", null, { timeout: 60000 });
+  await settle();
+  const rewound = { solved: (await status()).includes("Solved"), label: await page.$eval("#rewind", (b) => b.textContent), turns: await page.$$eval("#history .tok", (els) => els.length) };
+  await page.click("#last");
+  await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "3/3", null, { timeout: 60000 });
+  await settle();
+  check(
+    rewindLabel === "■" && rewound.solved && rewound.label === "◀" && rewound.turns === 3 && (await probe("state")) === playedState,
+    `◀ plays back to the start (shows ■ while playing), keeps the 3 turns, and ▶ plays them again`,
+  );
+
   // ---- "Make current position the start", and state codes out and in.
   await startFresh();
   await page.fill("#alg", "R U");
