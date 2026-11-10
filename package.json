@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "xc": "node src/cli/xc.ts",
     "build:web": "node scripts/build-web.ts",
-    "test:browser": "node scripts/browser-tests.mjs"
+    "test:browser": "node --test scripts/browser-tests.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
