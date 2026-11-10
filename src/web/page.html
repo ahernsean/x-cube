@@ -265,8 +265,12 @@ details[open] summary { margin-bottom: 8px; }
         <button class="btn small" id="shuffle">Shuffle</button>
       </div>
       <details class="known">
-        <summary>Known algorithms</summary>
-        <p class="hint" style="margin:6px 0 0">Load sets up a position where the algorithm applies and its turns, ready to play.</p>
+        <summary>Algorithms</summary>
+        <p class="hint" style="margin:6px 0 0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turns in the box above with the current start position.</p>
+        <div class="alg-row" style="margin-top:8px">
+          <input type="text" id="alg-name" placeholder="Name these turns" autocomplete="off">
+          <button class="btn" id="alg-save">Save</button>
+        </div>
         <ul class="saved" id="known-list"></ul>
       </details>
     </section>

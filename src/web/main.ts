@@ -1888,11 +1888,13 @@ async function initStore() {
   if (!ns) {
     storeKind = "device";
     saved = readDevice();
+    watchAlgorithms();
     render();
     return;
   }
   db = ns;
   storeKind = "shared";
+  watchAlgorithms();
   const timer = setTimeout(() => {
     if (!saved.length) setMessage("Saved states can't be reached yet.", "info");
     render();
@@ -1957,6 +1959,160 @@ async function deleteSaved(id: string) {
   }
   pendingDelete = null;
   render();
+}
+
+// Algorithms: named turns with the position they apply to, kept like saved states (the
+// shared database's "algorithms" collection, or this device). On a device the list starts
+// as the known algorithms (src/core/algorithms.ts); the shared collection is seeded with
+// them by Claude. Any of them can be deleted.
+interface SavedAlg {
+  id: string;
+  name: string;
+  alg: string;
+  code: string; // the start position, a state code
+  note?: string;
+  savedAt: number;
+  source?: string;
+}
+let algs: SavedAlg[] = [];
+const ALG_LS_KEY = "xcube-lab-algorithms";
+let pendingAlgDelete: string | null = null;
+
+function readDeviceAlgs(): SavedAlg[] {
+  try {
+    const raw = localStorage.getItem(ALG_LS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    /* unreadable: start from the known algorithms */
+  }
+  return KNOWN_ALGORITHMS.map((a, i) => ({ id: a.id, name: a.name, alg: a.alg, code: encodeState(a.start()), note: a.situation, savedAt: i + 1, source: "claude" }));
+}
+function writeDeviceAlgs(list: SavedAlg[]): string | null {
+  try {
+    localStorage.setItem(ALG_LS_KEY, JSON.stringify(list));
+    return null;
+  } catch (e: any) {
+    return e?.name === "QuotaExceededError" ? "this device's storage is full" : "this browser isn't allowing storage";
+  }
+}
+
+function watchAlgorithms() {
+  if (!db) {
+    algs = readDeviceAlgs();
+    return;
+  }
+  db.collection("algorithms").onSnapshot(
+    (snap: any) => {
+      algs = snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as object) }) as SavedAlg).sort((a: SavedAlg, b: SavedAlg) => (a.savedAt || 0) - (b.savedAt || 0));
+      render();
+    },
+    (err: any) => {
+      setMessage(`Algorithms unavailable (${err.code}).`, "error");
+      render();
+    },
+  );
+}
+
+/** Saves the turns in the box, with the current start position, under `name`. */
+async function saveAlgorithm(name: string) {
+  const text = ($("alg") as HTMLInputElement).value.trim() || formatAlg(app.history);
+  let turns: Turn[];
+  try {
+    turns = parseAlg(text);
+  } catch (e) {
+    setMessage(`Can't save: ${e instanceof ParseError ? e.message : String(e)}`, "error");
+    return render();
+  }
+  if (!turns.length) {
+    setMessage("Type or load some turns first, then save them.", "error");
+    return render();
+  }
+  const entry = { name: name || formatAlg(turns), alg: formatAlg(turns), code: encodeState(app.base), note: `From ${app.baseLabel}`, savedAt: Date.now(), source: "page" };
+  if (db) {
+    try {
+      await db.collection("algorithms").add(entry);
+      setMessage(`Saved "${entry.name}"`, "ok");
+    } catch (e: any) {
+      setMessage(`Could not save: ${e?.message ?? e}`, "error");
+    }
+  } else {
+    const list = [...algs, { id: String(Date.now()), ...entry }];
+    const why = writeDeviceAlgs(list);
+    if (why) setMessage(`Could not save: ${why}`, "error");
+    else {
+      algs = list;
+      setMessage(`Saved "${entry.name}" on this device`, "ok");
+    }
+  }
+  render();
+}
+
+async function deleteAlgorithm(id: string) {
+  if (db) {
+    try {
+      await db.collection("algorithms").doc(id).delete();
+    } catch (e: any) {
+      setMessage(`Could not delete: ${e?.message ?? e}`, "error");
+    }
+  } else {
+    const list = algs.filter((a) => a.id !== id);
+    const why = writeDeviceAlgs(list);
+    if (why) setMessage(`Could not delete: ${why}`, "error");
+    else algs = list;
+  }
+  pendingAlgDelete = null;
+  render();
+}
+
+function loadAlgorithm(id: string) {
+  const a = algs.find((x) => x.id === id);
+  if (!a) return;
+  let start: State;
+  try {
+    start = decodeState(a.code);
+  } catch (e) {
+    setMessage(`Couldn't load "${a.name}": ${(e as Error).message}`, "error");
+    return render();
+  }
+  setBase(start, a.name);
+  ($("alg") as HTMLInputElement).value = a.alg;
+  runAlg(a.alg, false);
+  setMessage(`Loaded "${a.name}". Play it with ▶ or step with ▶1.`, "ok");
+  render();
+}
+
+function renderAlgorithms() {
+  $("known-list").innerHTML = algs.length
+    ? algs
+        .map(
+          (a) => `<li><div class="saved-main"><span class="saved-name">${escapeHtml(a.name)}</span><span class="known-alg">${escapeHtml(a.alg)}</span>${a.note ? `<span class="hint">${escapeHtml(a.note)}</span>` : ""}</div>
+        <div class="saved-actions"><button class="btn small" data-alg-load="${a.id}">Load</button>
+        ${pendingAlgDelete === a.id ? `<button class="btn small danger" data-alg-del-yes="${a.id}">Delete</button><button class="btn small" data-alg-del-no="1">Keep</button>` : `<button class="btn small ghost" data-alg-del="${a.id}" aria-label="Delete ${escapeHtml(a.name)}">✕</button>`}</div></li>`,
+        )
+        .join("")
+    : `<li class="hint">${storeKind === "loading" ? "Loading algorithms…" : "No algorithms yet. Type turns above, name them, and save them."}</li>`;
+}
+
+function bindAlgorithms() {
+  $("known-list").addEventListener("click", (e) => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>("button");
+    const ds = el?.dataset;
+    if (!ds) return;
+    if (ds.algLoad) loadAlgorithm(ds.algLoad);
+    else if (ds.algDel) {
+      pendingAlgDelete = ds.algDel;
+      render();
+    } else if (ds.algDelYes) deleteAlgorithm(ds.algDelYes);
+    else if (ds.algDelNo) {
+      pendingAlgDelete = null;
+      render();
+    }
+  });
+  $("alg-save").addEventListener("click", () => {
+    const n = $("alg-name") as HTMLInputElement;
+    saveAlgorithm(n.value.trim());
+    n.value = "";
+  });
 }
 
 function formatAlgSummary(): string {
@@ -2052,6 +2208,7 @@ function render() {
         .join("")
     : `<li class="hint">No saved states yet. Save the current position to come back to it later.</li>`;
   ($("code-out") as HTMLTextAreaElement).value = encodeState(st);
+  renderAlgorithms();
 }
 
 const NET_COLOR: Record<string, string> = { W: "#f3f3ee", Y: "#f5d00f", G: "#17a34a", B: "#1d5fd6", R: "#c8202b", O: "#f47a12", "#": "var(--unstickered)" };
@@ -2186,28 +2343,8 @@ function setupCollapsibles() {
   }
 }
 
-/** Known algorithms: each Load sets up the algorithm's position as the start and its turns, unplayed. */
-function setupKnownAlgorithms() {
-  const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-  $("known-list").innerHTML = KNOWN_ALGORITHMS.map(
-    (a) =>
-      `<li><div class="saved-main"><span class="saved-name">${esc(a.name)}</span><span class="known-alg">${esc(a.alg)}</span><span class="hint">${esc(a.situation)}</span></div>` +
-      `<div class="saved-actions"><button class="btn small" data-known="${a.id}">Load</button></div></li>`,
-  ).join("");
-  $("known-list").addEventListener("click", (e) => {
-    const id = (e.target as HTMLElement).closest<HTMLElement>("[data-known]")?.dataset.known;
-    const a = KNOWN_ALGORITHMS.find((k) => k.id === id);
-    if (!a) return;
-    setBase(a.start(), a.name);
-    ($("alg") as HTMLInputElement).value = a.alg;
-    runAlg(a.alg, false);
-    setMessage(`Loaded "${a.name}". Play it with ▶ or step with ▶1.`, "ok");
-    render();
-  });
-}
-
 function bindUI() {
-  setupKnownAlgorithms();
+  bindAlgorithms();
   $("edit-start").addEventListener("click", () => startEdit());
   $("edit-done").addEventListener("click", () => endEdit(true));
   $("edit-cancel").addEventListener("click", () => endEdit(false));

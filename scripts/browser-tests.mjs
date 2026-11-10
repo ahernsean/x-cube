@@ -469,8 +469,8 @@ try {
   // ---- Known algorithms: Load sets up the position and the turns; playing them does what
   // the entry says (here: back in shape with the white top kept).
   await startFresh();
-  await page.locator("summary", { hasText: "Known algorithms" }).click();
-  await page.click('[data-known="flip-df-white-top"]');
+  await page.locator("summary", { hasText: "Algorithms" }).click();
+  await page.click('[data-alg-load="flip-df-white-top"]');
   const known = { base: await page.$eval("#base-label", (e) => e.textContent), alg: await page.$eval("#alg", (e) => e.value), counter: await counter(), hold: await hold(), shape: await status() };
   await page.click("#last");
   await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "7/7", null, { timeout: 60000 });
@@ -479,6 +479,27 @@ try {
   check(
     known.base === "Flipped bottom edge, white top solved" && known.alg === "R F H2 F2 H F R'" && known.counter === "0/7" && known.hold === "Hold: white up, blue front, orange right" && /Out of shape/.test(known.shape) && /X shape/.test(played.shape) && played.top === 21,
     `a known algorithm loads its position and turns, and playing them works (start "${known.base}", ${known.hold}; then ${played.top} white on top)`,
+  );
+
+  // Algorithms can be saved (the turns in the box, with the start position) and deleted
+  // (after a confirmation), like saved states; on this device the list starts as the known ones.
+  const algNames = () => page.$$eval("#known-list .saved-name", (els) => els.map((e) => e.textContent));
+  const algsBefore = await algNames();
+  await page.click('[data-alg-del="baum-corner"]');
+  await page.click("[data-alg-del-yes]");
+  const afterDelete = await algNames();
+  await startFresh();
+  await page.fill("#alg", "R U R' U'");
+  await page.fill("#alg-name", "Sexy move");
+  await page.click("#alg-save");
+  const afterSave = await algNames();
+  await page.click("#reset");
+  const mine = await page.evaluate(() => [...document.querySelectorAll("#known-list li")].find((li) => li.textContent.includes("Sexy move"))?.querySelector("[data-alg-load]")?.dataset.algLoad);
+  await page.click(`[data-alg-load="${mine}"]`);
+  const loadedMine = { base: await page.$eval("#base-label", (e) => e.textContent), alg: await page.$eval("#alg", (e) => e.value), counter: await counter() };
+  check(
+    algsBefore.length === 5 && algsBefore.includes("Corner 3-cycle (Baum)") && !afterDelete.includes("Corner 3-cycle (Baum)") && afterDelete.length === 4 && afterSave.at(-1) === "Sexy move" && loadedMine.base === "Sexy move" && loadedMine.alg === "R U R' U'" && loadedMine.counter === "0/4",
+    `algorithms: delete one (${algsBefore.length} -> ${afterDelete.length}), save one ("${afterSave.at(-1)}"), and load it back ("${loadedMine.alg}", ${loadedMine.counter})`,
   );
 
   // ---- "Make current position the start", and state codes out and in.
