@@ -109,6 +109,11 @@ jobs:
           echo "Restored ${#packages[@]} packages"
           if (( ${#packages[@]} )); then sudo cp "${packages[@]}" /var/cache/apt/archives/; fi
       - run: npx playwright install --with-deps ${{ matrix.browser }}
+      # Chromium draws with Mesa's llvmpipe, much faster than its own SwiftShader, which it
+      # quietly falls back to without Mesa's EGL (see scripts/browser-tests.mjs).
+      - name: Install Mesa's EGL and llvmpipe for Chromium
+        if: matrix.browser == 'chromium'
+        run: sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
       - name: Keep WebKit's system packages for the cache
         if: matrix.browser == 'webkit'
         run: |
@@ -120,6 +125,7 @@ jobs:
       - run: node scripts/browser-tests.mjs ${{ matrix.browser }}
         env:
           COVERAGE_DIR: ${{ matrix.browser == 'chromium' && 'coverage/browser' || '' }}
+          EXPECT_RENDERER: ${{ matrix.browser == 'chromium' && 'llvmpipe' || '' }}
       - name: Add browser test coverage to the summary
         if: always() && matrix.browser == 'chromium'
         run: |
