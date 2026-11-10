@@ -134,6 +134,16 @@ try {
   const msgGone = !(await isShown("message"));
   check(floating.shown && floating.fixed === "fixed" && floating.height === h0 && msgGone, `a message floats over the page (${floating.fixed}) without moving it, and a tap dismisses it`);
 
+  // The algorithm panel reads top to bottom: the turn list and playback, then Clear, Reset
+  // and Shuffle, then the ways to add turns (typing, and the algorithms list).
+  const runOrder = await page.evaluate(() => {
+    const sec = document.querySelector("[data-sec=run]");
+    const ids = ["#history", ".transport", ".base-actions", "#alg", "details.known"];
+    const els = ids.map((q) => sec.querySelector(q));
+    return els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  check(runOrder, "the algorithm panel shows the turn list and playback first, then Clear/Reset/Shuffle, then typing and the algorithms list");
+
   // The turn field's example text fits inside it at phone width.
   const hintFit = await page.evaluate(() => {
     const el = document.getElementById("alg");

@@ -169,6 +169,7 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .base-line { margin: 8px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .base-actions { display: flex; gap: 6px; margin-top: 6px; }
 .base-actions .btn { flex: 1 1 auto; white-space: nowrap; padding-left: 8px; padding-right: 8px; }
+.add-turns { margin-top: 10px; }
 .known { margin-top: 10px; }
 .known summary { cursor: pointer; font-weight: 600; }
 .known-alg { font: 13px var(--f-mono); overflow-wrap: anywhere; }
@@ -258,10 +259,6 @@ details[open] summary { margin-bottom: 8px; }
   <div class="stack" id="stack-col">
     <section class="panel" data-sec="run">
       <h2>Run an algorithm</h2>
-      <div class="alg-row">
-        <input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <button class="btn primary" id="load" title="Load the turns, then play them with ▶ or step through them">Load</button>
-      </div>
       <div class="history" id="history"></div>
       <div class="transport">
         <button class="btn small tp" id="first" aria-label="Back to the start" title="Back to the start">⏮</button>
@@ -277,6 +274,10 @@ details[open] summary { margin-bottom: 8px; }
         <button class="btn small ghost" id="clear" title="Clear the turn list; the position shown becomes the start">Clear</button>
         <button class="btn small ghost" id="reset">Reset to solved</button>
         <button class="btn small" id="shuffle">Shuffle</button>
+      </div>
+      <div class="alg-row add-turns">
+        <input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Turns">
+        <button class="btn primary" id="load" title="Load the turns, then play them with ▶ or step through them">Load</button>
       </div>
       <details class="known">
         <summary>Algorithms</summary>
