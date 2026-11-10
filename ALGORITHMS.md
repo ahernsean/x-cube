@@ -1,8 +1,10 @@
 # X-Cube algorithms
 
 Algorithms found or verified with this project's engine. Notation and terms are in
-`AGENTS.md`. Hold: white up, green front. Every entry here is checked by a test in
-`test/puzzle.test.ts`.
+`AGENTS.md`. Hold: white up, and the front is whichever side the Lab's hold line names for
+the position. On a solved puzzle that is green, but slice turns (H, M, S) move the side
+centers, so on a scrambled puzzle it can be another color. Every entry here is checked by a
+test in `test/puzzle.test.ts` or `test/algorithms.test.ts`.
 
 ## Shape stage: one flipped single edge
 
@@ -36,3 +38,27 @@ The result is the X shape. Colors are scrambled by it, as by any shape-stage ste
   200 differently scrambled cubes.
 - **Same case at bottom right (DR)** without regripping: `F R U F2 U' F' R'` (also 7 turns;
   verified on the owner's saved position "One edge flipped").
+
+## Shape stage: one flipped bottom edge, white top already solved
+
+**Situation.** The white top is solved (all 21 white stickers up), but the puzzle is out of
+shape because one core single edge in the bottom layer is flipped: its yellow sticker faces
+sideways instead of down, the cubelet below it sticks out, and the extension beside it is
+short one cubelet (for example "f 8/9"). This is the same lone flip as above (its partner is
+a hidden double edge), found after solving the top.
+
+**Fix.** Hold the cube so the flipped edge is at **bottom front (DF)**, its yellow facing you,
+white up. Then do **R F H2 F2 H F R'** (7 turns; H is the middle slice, turned like U).
+
+The result is the X shape with the white top still all white. The other faces' colors are
+rearranged. Found by search on the owner's saved position "Confusing edge"; the shorter
+fixes above work too but scramble part of the white top.
+
+**Holding the cube.** The H turns move the side centers, so after a sequence with H in it a
+side center no longer marks the side it marked before. Hold the cube as the Lab's hold line
+says for the position (its colors come from the centers where they are now), and never
+regrip by a center between steps. Holding the cube turned half around (y2) instead turns
+the opposite layers: on "Confusing edge" that makes a second flipped edge at bottom back.
+
+The Lab lists this algorithm under Known algorithms, with "Confusing edge" as its
+position. `test/algorithms.test.ts` checks every listed algorithm from its position.
