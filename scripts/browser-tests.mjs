@@ -143,6 +143,16 @@ try {
     return els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
   });
   check((await page.$eval("[data-sec=turn] h2", (h) => h.textContent)) === "Turn the puzzle", 'the turn buttons\' panel is "Turn the puzzle"');
+  // The slice and rotate notes sit to the right of their buttons, on the same row, no taller than it.
+  const notes = await page.evaluate(() =>
+    ["slice-note", "rotate-note"].map((id) => {
+      const note = document.getElementById(id).getBoundingClientRect();
+      const keys = [...document.getElementById(id).parentElement.querySelectorAll(".mv")].map((b) => b.getBoundingClientRect());
+      const last = keys.at(-1);
+      return note.left >= last.right && note.top >= last.top - 1 && note.bottom <= last.bottom + 1;
+    }),
+  );
+  check(notes.every(Boolean) && (await page.$$eval("[data-sec=turn] .legend", (els) => els.length)) === 0, `the H/M/S and x/y/z notes sit beside their buttons (${notes})`);
   check(runOrder, "the algorithm panel shows the turn list and playback first, then Clear/Reset/Shuffle, then typing and the algorithms list");
 
   // The turn field's example text fits inside it at phone width.
