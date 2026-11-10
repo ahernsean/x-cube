@@ -52,9 +52,14 @@ const coverage = [];
 // quietly keeps SwiftShader, so the startup test prints the renderer in use, and with
 // EXPECT_RENDERER set (CI sets it to llvmpipe) a different renderer fails it.
 const launchArgs = engine === "chromium" && process.platform === "linux" ? ["--ignore-gpu-blocklist", "--use-angle=gl-egl"] : [];
+// Where the network is reached through a proxy (HTTPS_PROXY, as in some cloud sandboxes),
+// the browser and the CDN downloads below (route.fetch, made by Playwright, not the page)
+// use it too; without this those downloads try to reach the CDN directly and fail.
+const proxyServer = process.env.HTTPS_PROXY || process.env.https_proxy;
+const proxy = proxyServer ? { server: proxyServer, bypass: process.env.NO_PROXY || process.env.no_proxy } : undefined;
 let browser;
 before(async () => {
-  browser = await playwright[engine].launch({ args: launchArgs });
+  browser = await playwright[engine].launch({ args: launchArgs, proxy });
   console.log(`${engine} ${browser.version()}`);
 });
 
