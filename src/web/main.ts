@@ -452,7 +452,7 @@ function initScene(canvas: HTMLCanvasElement) {
         list.push({ mesh: m, a, b, lo, hi, mats, corner });
       }
     glows[c.id] = list;
-    aoList.sort((a, b) => a.d - b.d); // same-direction faces (3D sticker, flat tile) share one computation
+    aoList.sort((a, b) => a.d - b.d);
     pivot.add(g);
     meshes[c.id] = g;
   }
@@ -492,10 +492,12 @@ function syncMeshes(st: State) {
 
 /** Grid shading for all six faces of the cubelet in `slot`, applied to its sticker, tile and plastic. */
 function shadeCubelet(st: State, slot: number, ori: number, id: number) {
-  const per: (number[] | null)[] = [];
-  const need = aoOn["3d"] || aoOn.flat;
-  for (let d = 0; d < 6; d++) per.push(need ? gridCorners(st, slot, ori, d) : null);
-  applyToCubelet(id, per);
+  const per: (number[] | null)[] = [], perFlat: (number[] | null)[] = [];
+  for (let d = 0; d < 6; d++) {
+    per.push(aoOn["3d"] ? gridCorners(st, slot, ori, d, false) : null);
+    perFlat.push(aoOn.flat ? gridCorners(st, slot, ori, d, true) : null);
+  }
+  applyToCubelet(id, per, perFlat);
 }
 
 // Second ring: grid spots two cells out along the face, with less weight, so big
@@ -514,11 +516,14 @@ const FAR_WEIGHT = 0.22; // how much a fully filled second ring darkens a corner
  * Brightness of one face corner. `fill(x, y, z)` says how filled a spot is (0..1);
  * f = the spot just in front of the face; ux, uy = the face's in-plane axes;
  * sx, sy = which corner. Used both at rest (filled = 0 or 1) and mid-turn (continuous).
+ * In the 3D view a corner with both edge spots filled is boxed in and darkest. In the
+ * flat view (`flat`) it is only as dark as one filled edge spot, so where two of the
+ * flat view's narrow bands meet they form one even L instead of a darker square.
  */
-function cornerValue(fill: (x: number, y: number, z: number) => number, f: readonly number[], ux: readonly number[], uy: readonly number[], sx: number, sy: number) {
+function cornerValue(fill: (x: number, y: number, z: number) => number, f: readonly number[], ux: readonly number[], uy: readonly number[], sx: number, sy: number, flat: boolean) {
   const at = (i: number, j: number) => fill(f[0] + i * sx * ux[0] + j * sy * uy[0], f[1] + i * sx * ux[1] + j * sy * uy[1], f[2] + i * sx * ux[2] + j * sy * uy[2]);
   const s1 = at(1, 0), s2 = at(0, 1), s3 = at(1, 1);
-  const near = levelBrightness((1 - s1 * s2) * (3 - (s1 + s2 + s3)));
+  const near = levelBrightness(flat ? 3 - Math.max(s1, s2) - s3 : (1 - s1 * s2) * (3 - (s1 + s2 + s3)));
   let far = 0;
   for (const [i, j, w] of FAR_RING) far += w * at(i, j);
   return near * (1 - (FAR_WEIGHT * far) / FAR_RING_TOTAL);
@@ -527,8 +532,8 @@ function cornerValue(fill: (x: number, y: number, z: number) => number, f: reado
 /** Smoothstep easing of the blend across a face, so shading meets cleanly at face edges. */
 const ease = (t: number) => t * t * (3 - 2 * t);
 
-/** Four corner values for face d of the cubelet in `slot` (grid rule). */
-function gridCorners(st: State, slot: number, ori: number, d: number): number[] {
+/** Four corner values for face d of the cubelet in `slot` (grid rule), for the 3D or flat view. */
+function gridCorners(st: State, slot: number, ori: number, d: number, flat: boolean): number[] {
   const R = ROTATIONS[ori];
   const p = SLOT_POS[slot];
   const n = matVec(R, DIRS[d]);
@@ -536,18 +541,20 @@ function gridCorners(st: State, slot: number, ori: number, d: number): number[] 
   const uy = matVec(R, FACE_AXES[d].uy);
   const front = [p[0] + n[0], p[1] + n[1], p[2] + n[2]];
   const fill = (x: number, y: number, z: number) => (filledAt(st, [x, y, z]) ? 1 : 0);
-  return CORNER_SIGNS.map(([sx, sy]) => cornerValue(fill, front, ux, uy, sx, sy));
+  return CORNER_SIGNS.map(([sx, sy]) => cornerValue(fill, front, ux, uy, sx, sy, flat));
 }
 
 /**
  * Apply per-face corner values (index = face direction in the cubelet's frame; null =
- * leave as is) to the cubelet's sticker and flat tile faces and to its plastic body.
+ * leave as is) to the cubelet's sticker faces and plastic body (`per`) and its flat
+ * tiles (`perFlat`).
  */
-function applyToCubelet(id: number, per: (number[] | null)[]) {
+function applyToCubelet(id: number, per: (number[] | null)[], perFlat: (number[] | null)[]) {
   for (const f of aoFaces[id] ?? []) {
+    const c = (f.view === "flat" ? perFlat : per)[f.d];
     if (!aoOn[f.view]) {
       if (!f.cur || f.cur.some((v) => v !== 1)) applyCorners(f, [1, 1, 1, 1]);
-    } else if (per[f.d]) applyCorners(f, per[f.d]!);
+    } else if (c) applyCorners(f, c);
   }
   const b = bodyAo[id];
   if (!b) return;
@@ -867,19 +874,21 @@ function shadeDuringTurn(pose: TurnPose) {
       const g = matVec(R, v);
       return moving ? rotAxis(axis, c, sn, [g[0], g[1], g[2]]) : [g[0], g[1], g[2]];
     };
-    const per: (number[] | null)[] = [];
+    const per: (number[] | null)[] = [], perFlat: (number[] | null)[] = [];
     for (let fd = 0; fd < 6; fd++) {
       const n = tf(DIRS[fd]), ux = tf(FACE_AXES[fd].ux), uy = tf(FACE_AXES[fd].uy);
       const fx = center[0] + n[0], fy = center[1] + n[1], fz = center[2] + n[2];
       // A face covered by a cubelet that isn't moving can't be seen: leave it.
       if (!moving && staticAt(fx, fy, fz)) {
         per.push(null);
+        perFlat.push(null);
         continue;
       }
       const f = [fx, fy, fz];
-      per.push(CORNER_SIGNS.map(([sx, sy]) => cornerValue(filled, f, ux, uy, sx, sy)));
+      per.push(aoOn["3d"] ? CORNER_SIGNS.map(([sx, sy]) => cornerValue(filled, f, ux, uy, sx, sy, false)) : null);
+      perFlat.push(aoOn.flat ? CORNER_SIGNS.map(([sx, sy]) => cornerValue(filled, f, ux, uy, sx, sy, true)) : null);
     }
-    applyToCubelet(id, per);
+    applyToCubelet(id, per, perFlat);
   }
 }
 
@@ -2486,10 +2495,14 @@ function installProbe() {
     /**
      * Flat-view shading profile over every flat tile: the largest gap between a tile
      * corner's drawn value and its computed corner value, and the largest gap between the
-     * drawn values past the ramp and the tile's lightest corner (both should be ~0).
+     * drawn values past the ramp and the tile's lightest corner (both should be ~0); and
+     * the darkest corner in each view, with the darkest a corner next to one filled edge
+     * spot can be (`oneWall`), which the flat view never goes below.
      */
     flatShadeProfile() {
       let edge = 0, beyond = 0, shaded = 0;
+      const darkest = { "3d": 1, flat: 1 };
+      for (const list of aoFaces) for (const f of list ?? []) if (f.cur) darkest[f.view] = Math.min(darkest[f.view], ...f.cur);
       for (const list of aoFaces)
         for (const f of list ?? []) {
           if (f.view !== "flat" || !f.cur) continue;
@@ -2506,7 +2519,7 @@ function installProbe() {
             } else if (near(x) >= FLAT_AO_RAMP && near(y) >= FLAT_AO_RAMP) beyond = Math.max(beyond, Math.abs(a[i * 3] - lightest));
           }
         }
-      return { edge, beyond, shaded, ramp: FLAT_AO_RAMP };
+      return { edge, beyond, shaded, ramp: FLAT_AO_RAMP, darkest3d: darkest["3d"], darkestFlat: darkest.flat, oneWall: AO_LEVELS[1] * (1 - FAR_WEIGHT) };
     },
     /** What the effect switches currently control: glow layers, the key light's shadows, grid shading. */
     effects: () => ({ glow3d: camera.layers.isEnabled(GLOW3D_LAYER), glowFlat: netCams.every((c) => c.cam.layers.isEnabled(GLOWNET_LAYER)), shadows: !!keyLight?.castShadow, shading: aoOn["3d"] && aoOn.flat }),

@@ -520,6 +520,16 @@ try {
   // Flat-view shading: full corner darkness at the tile's edge, gone past the ramp.
   const prof = await probe("flatShadeProfile");
   check(prof.shaded > 0 && prof.edge < 1e-6 && prof.beyond < 1e-6 && prof.ramp < 0.5, `flat view shading is a narrow band at the edge (${prof.shaded} shaded tiles, edge error ${prof.edge}, past-ramp error ${prof.beyond}, ramp ${prof.ramp})`);
+  // Where two walls meet, the 3D view's corner is boxed in and darker than one wall; the
+  // flat view's is no darker than one wall, so its two bands form an even L. Checked in a
+  // scrambled position, which has such corners (the solved X has none).
+  await page.fill("#alg", "R U' F2 D B' L2 R' H S' M");
+  await page.click("#load");
+  await page.click("#last");
+  await settle();
+  const inner = await probe("flatShadeProfile");
+  await startFresh();
+  check(inner.darkest3d < inner.oneWall - 0.02 && inner.darkestFlat >= inner.oneWall - 1e-6, `flat view inner corners are no darker than one wall (darkest 3D ${inner.darkest3d.toFixed(3)}, flat ${inner.darkestFlat.toFixed(3)}, one wall at least ${inner.oneWall.toFixed(3)})`);
 
   // Live shading computed at the very start of a turn matches the shading at rest.
   const restError = await probe("shadeRestError");
