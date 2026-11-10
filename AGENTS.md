@@ -147,7 +147,10 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
   orthographic cameras, so it animates.
 - **Edge glow:** a soft band at a depth discontinuity, in the color of the sticker around
   the edge. No glow means that side has no sticker. Only shown where the side face points
-  away from the viewer or is edge-on.
+  away from the viewer or is edge-on. Where two visible faces of one cubelet meet, the
+  hidden sticker's glow continues around the corner between them, rounded like the
+  sticker's corner; elsewhere a glow fades out at its ends, and always in the flat view,
+  which sees only one side of a corner.
 - **Shading:** grid-based ambient occlusion. Each face corner is darkened by filled grid
   spots in front of it (three near, five farther with less weight), blended across the
   face. Applied to stickers, flat tiles and plastic; recomputed every frame during turns.
@@ -176,7 +179,8 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
   is drawn where: the screen position of a sticker's center, and, for a point of the 3D
   view or a cell of the flat view, the slot, face and color drawn there (the slot and face
   from the cubelet's mesh, so a misdrawn cubelet shows up), and the stickers the model
-  turns toward the camera that are not drawn. It draws into its own offscreen buffer (an
+  turns toward the camera that are not drawn, and how strong one cubelet's edge glow is at
+  a point in either view. It draws into its own offscreen buffer (an
   ID pass and a plain-color pass), so the views don't change. Its fault methods misdraw
   cubelets on purpose, so a test can check that the drawing checks catch them. It also
   reports what the effect switches control, and how far the shading computed during a
