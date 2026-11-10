@@ -952,6 +952,18 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await paint("W", "Fx.U", "F");
   const flipped = await editLine();
   check(/^Not valid: White can't point straight out from the core on an extension cubelet\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  // With several problems, ‹ and › step through them, and the halo moves with the line
+  // without turning the view.
+  await paint("Y", "Rx.U", "R");
+  await paint("Y", "Fx.UR", "F");
+  const navLine = await editLine();
+  const firstLit = (await probe("highlighted")).join();
+  const viewBefore = JSON.stringify(await probe("view"));
+  await page.click('[data-halo="next"]');
+  const stepped = { line: await editLine(), lit: (await probe("highlighted")).join(), still: JSON.stringify(await probe("view")) === viewBefore };
+  await page.click('[data-halo="next"]');
+  const wrapped = (await probe("highlighted")).join();
+  check(/‹1\/2›/.test(navLine) && /‹2\/2›/.test(stepped.line) && stepped.lit !== firstLit && stepped.still && wrapped === firstLit, `‹ and › step through the problems, moving the halo, not the view (${firstLit}, then ${stepped.lit}, then ${wrapped})`);
   await page.click("#edit-cancel");
   sw = await sweep3d();
   const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");

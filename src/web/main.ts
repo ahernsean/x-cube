@@ -2539,9 +2539,13 @@ function bindUI() {
   $("edit-status").addEventListener("click", (e) => {
     if (!edit || !$("edit-status").classList.contains("tappable")) return;
     const act = (e.target as HTMLElement).closest<HTMLElement>("[data-halo]")?.dataset.halo ?? "show";
-    edit.hidden = act === "hide" ? (edit.fit.problems[0]?.slots ?? []).join() : null;
+    if (act === "prev" || act === "next") {
+      const n = edit.fit.problems.length;
+      const { i } = shownProblem();
+      edit.selected = edit.fit.problems[(i + (act === "next" ? 1 : n - 1)) % n].slots.join();
+    } else edit.hidden = act === "hide" ? shownProblem().slots.join() : null;
     renderEdit();
-    if (act === "show") showHighlighted();
+    if (act === "show" && edit.highlight) showHighlighted();
   });
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) {
     b.style.background = NET_COLOR[b.dataset.paint!];
@@ -2702,6 +2706,7 @@ interface Edit {
   painted: any[]; // meshes currently drawn in a color other than their own
   highlight: number[] | null; // slots shown with a halo: the first problem's, unless hidden
   hidden: string | null; // the slots (joined) whose halo was hidden with Hide
+  selected: string; // the slots (joined) of the problem the line shows, kept across paints
 }
 let edit: Edit | null = null;
 
@@ -2709,7 +2714,7 @@ function startEdit() {
   if (edit) return;
   flushAnimations();
   const st = app.current.clone();
-  edit = { shape: st, colors: visibleColors(st), fit: { level: "possible", state: st.clone(), problems: [] }, shown: st.clone(), paint: "W", painted: [], highlight: null, hidden: null };
+  edit = { shape: st, colors: visibleColors(st), fit: { level: "possible", state: st.clone(), problems: [] }, shown: st.clone(), paint: "W", painted: [], highlight: null, hidden: null, selected: "" };
   document.body.classList.add("editing");
   ($("stack-col") as HTMLElement & { inert: boolean }).inert = true;
   renderEdit();
@@ -2914,9 +2919,17 @@ function showHighlighted() {
 }
 
 /** The halo shows the first problem's slots, unless Hide was used on those same slots. */
+/** The problem the line shows: the one picked with ‹ and › if it is still there, else the first. */
+function shownProblem(): { i: number; slots: number[] } {
+  const problems = edit && edit.fit.level !== "possible" ? edit.fit.problems : [];
+  const i = Math.max(0, problems.findIndex((p) => p.slots.join() === edit!.selected));
+  return { i, slots: problems[i]?.slots ?? [] };
+}
+
 function updateHighlight() {
   if (!edit) return;
-  const slots = edit.fit.level === "possible" ? [] : (edit.fit.problems[0]?.slots ?? []);
+  const { slots } = shownProblem();
+  edit.selected = slots.join();
   if (edit.hidden !== slots.join()) edit.hidden = null; // Hide lasts until other cubelets are named
   edit.highlight = slots.length && edit.hidden === null ? [...slots] : null;
 }
@@ -2935,18 +2948,33 @@ function renderEdit() {
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) b.setAttribute("aria-checked", String(b.dataset.paint === edit.paint));
   const st = $("edit-status");
   const { level, problems } = edit.fit;
-  const more = problems.length > 1 ? ` (and ${problems.length - 1} more)` : "";
+  const { i } = shownProblem();
   if (level === "possible") {
     st.className = "edit-status good";
     st.textContent = "Valid";
   } else {
     st.className = "edit-status bad";
-    st.textContent = `Not valid: ${problems[0].text}${more}.`;
+    st.textContent = `Not valid: ${problems[i].text}.`;
   }
-  // A problem about particular spots shows them with a halo by itself. Show (or tapping
-  // the line) also tumbles the view to them; Hide removes the halo until the spots change.
-  const tappable = level !== "possible" && problems[0].slots.length > 0;
-  st.classList.toggle("tappable", tappable);
+  // With several problems, ‹ and › step through them, and the halo moves with the line. A
+  // problem about particular spots shows them with a halo by itself; Show (or tapping the
+  // line) also tumbles the view to them; Hide removes the halo until the spots change.
+  if (level !== "possible" && problems.length > 1) {
+    const nav = document.createElement("span");
+    nav.className = "edit-nav";
+    const step = (act: string, label: string, name: string) => {
+      const b = document.createElement("button");
+      b.className = "edit-step";
+      b.dataset.halo = act;
+      b.textContent = label;
+      b.setAttribute("aria-label", name);
+      return b;
+    };
+    nav.append(step("prev", "‹", "Previous problem"), `${i + 1}/${problems.length}`, step("next", "›", "Next problem"));
+    st.append(" ", nav);
+  }
+  const tappable = level !== "possible" && problems[i].slots.length > 0;
+  st.classList.toggle("tappable", tappable || (level !== "possible" && problems.length > 1));
   if (tappable) {
     const actions: [string, string][] = edit.highlight ? [["show", "Show"], ["hide", "Hide"]] : [["show", "Show"]];
     for (const [act, label] of actions) {

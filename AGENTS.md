@@ -204,16 +204,18 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   extension cubelet's outward sticker is white or yellow), or "Two cubelets of this type
   have red pointing straight out from the core, but only one with green and red does". It says what, not where ("A
   cubelet shows yellow, red, and orange, but red and orange are opposite colors, never on
-  one cubelet"), not where: words for a spot proved unreliable (center colors move with
+  one cubelet"): words for a spot proved unreliable (center colors move with
   slices, extensions leave their sides, left depends on the viewpoint), so the Lab points
-  the spot out instead. Lists of three colors use the serial comma. The first problem's
+  the spot out instead. Lists of three colors use the serial comma. The line shows one
+  problem at a time; with several, tiny ‹ and › buttons step through them ("‹2/4›"), and the
+  choice is kept across paints while that problem remains. The shown problem's
   cubelets get a **halo** by themselves: a purple glow around the whole cubelet, drawn
   over everything (so it shows a cubelet behind others), in the 3D view and on each
   flat-view face where the cubelet shows. A halo appearing never moves the view. **Show**
   (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
   most unblocked, then each as squarely as possible, from the preset views and the
   directions between the stickers), again each time it is tapped. **Hide** removes the
-  halo until the problem names other cubelets. Done, available only when valid, makes the fitted position the start
+  halo until the shown problem names other cubelets. Done, available only when valid, makes the fitted position the start
   ("Edited colors"). Whether a valid position can be reached by turning is not checked yet.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
