@@ -439,7 +439,11 @@ try {
   const shown = await page.$eval("#code-out", (t) => t.value);
   check(shown === ruState, "the state code shown is the current position's");
   await page.click("#copy-code");
-  const copyMsg = await page.$eval("#message", (m) => m.textContent);
+  // Copying is asynchronous (the clipboard may ask for permission); wait for its message.
+  const copyMsg = await page
+    .waitForFunction(() => /State code copied|Select and copy the code below/.test(document.getElementById("message").textContent), null, { timeout: 10000 })
+    .then(() => page.$eval("#message", (m) => m.textContent))
+    .catch(() => page.$eval("#message", (m) => m.textContent));
   check(/State code copied|Select and copy the code below/.test(copyMsg), `Copy confirms, or asks to copy by hand where the clipboard is not allowed ("${copyMsg}")`);
   await startFresh();
   await page.fill("#code-in", "  " + ruState + "\n");
