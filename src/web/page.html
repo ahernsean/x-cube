@@ -144,9 +144,6 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .transport { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .counter { font: 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
 .hint { color: var(--muted); font-size: 13px; }
-.effect p { margin: 0; }
-.cycles { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
-.cycles code { font-family: var(--f-mono); word-break: break-word; }
 .net { display: grid; grid-template-columns: repeat(4, minmax(0, 100px)); grid-template-rows: repeat(3, auto); gap: 6px; justify-content: start; }
 .net-wrap { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 .net-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -301,11 +298,6 @@ details[open] summary { margin-bottom: 8px; }
         </div></div>
       </div>
       <p class="legend"><code>H</code> turns the middle layer like <code>U</code>. <code>M</code> turns like <code>L</code>, <code>S</code> like <code>F</code>. Rotate turns the whole puzzle: <code>x</code> like <code>R</code>, <code>y</code> like <code>U</code>, <code>z</code> like <code>F</code>.</p>
-    </section>
-
-    <section class="panel effect" data-sec="effect">
-      <h2>What changed since the start</h2>
-      <div id="effect"></div>
     </section>
 
     <section class="panel" data-sec="flat">

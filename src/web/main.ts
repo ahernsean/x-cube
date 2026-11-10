@@ -1,7 +1,7 @@
 // X-Cube Lab: browser viewer. Uses the same engine as the CLI.
 // three.js r128 is loaded as a global from cdnjs by the page.
 
-import { isHomeX, isSolved, isXShape, isExposed, outerAvailability, effect } from "../core/analyze.ts";
+import { isHomeX, isSolved, isXShape, isExposed, outerAvailability } from "../core/analyze.ts";
 import { DIRS, ROT_DIR, ROT_INV, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
@@ -2178,15 +2178,6 @@ function render() {
     const held = b.classList.contains("inverted");
     b.textContent = b.dataset.move! + suffixFor(held ? invertAmount(app.modifier) : app.modifier);
   }
-
-  // effect vs base
-  const eff = effect(app.base, st);
-  $("effect").innerHTML = app.cursor
-    ? `<p><strong>${eff.moved.length}</strong> cubelets moved, <strong>${eff.twisted.length}</strong> turned in place, <strong>${eff.visibleChanges}</strong> visible faces changed${eff.shapeSame ? "" : ", shape changed"}.</p>` +
-      (eff.cycles.length && eff.moved.length <= 12
-        ? `<ul class="cycles">${eff.cycles.map((c) => `<li><code>${escapeHtml(c)}</code></li>`).join("")}</ul>`
-        : "")
-    : `<p class="hint">Make some turns to see what they did, compared with the start position.</p>`;
 
   // flat view
   renderNet(st);
