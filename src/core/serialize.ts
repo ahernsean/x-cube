@@ -102,7 +102,7 @@ const F_CENTER = CENTERS.find((id) => SLOT_POS[CUBELETS[id].home][2] === 1)!;
 const ROTS_TO: number[][][] = CUBELETS.map((c) =>
   SLOT_POS.map((p) => [...Array(NUM_ROT).keys()].filter((r) => same(rotate(r, SLOT_POS[c.home]), p))),
 );
-const rotsTo = (id: number, s: number) => ROTS_TO[id][s];
+export const rotsTo = (id: number, s: number): readonly number[] => ROTS_TO[id][s];
 
 /**
  * Corner twist 0..2: where the cubelet's home up/down face points, counted around the

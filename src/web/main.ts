@@ -2714,7 +2714,8 @@ function startEdit() {
   if (edit) return;
   flushAnimations();
   const st = app.current.clone();
-  edit = { shape: st, colors: visibleColors(st), fit: { level: "possible", state: st.clone(), problems: [] }, shown: st.clone(), paint: "W", painted: [], highlight: null, hidden: null, selected: "" };
+  const colors = visibleColors(st);
+  edit = { shape: st, colors, fit: fitColors(st, colors), shown: st.clone(), paint: "W", painted: [], highlight: null, hidden: null, selected: "" };
   document.body.classList.add("editing");
   ($("stack-col") as HTMLElement & { inert: boolean }).inert = true;
   renderEdit();
@@ -2921,7 +2922,7 @@ function showHighlighted() {
 /** The halo shows the first problem's slots, unless Hide was used on those same slots. */
 /** The problem the line shows: the one picked with ‹ and › if it is still there, else the first. */
 function shownProblem(): { i: number; slots: number[] } {
-  const problems = edit && edit.fit.level !== "possible" ? edit.fit.problems : [];
+  const problems = edit && edit.fit.level !== "reachable" ? edit.fit.problems : [];
   const i = Math.max(0, problems.findIndex((p) => p.slots.join() === edit!.selected));
   return { i, slots: problems[i]?.slots ?? [] };
 }
@@ -2949,7 +2950,7 @@ function renderEdit() {
   const st = $("edit-status");
   const { level, problems } = edit.fit;
   const { i } = shownProblem();
-  if (level === "possible") {
+  if (level === "reachable") {
     st.className = "edit-status good";
     st.textContent = "Valid";
   } else {
@@ -2959,7 +2960,7 @@ function renderEdit() {
   // With several problems, ‹ and › step through them, and the halo moves with the line. A
   // problem about particular spots shows them with a halo by itself; Show (or tapping the
   // line) also tumbles the view to them; Hide removes the halo until the spots change.
-  if (level !== "possible" && problems.length > 1) {
+  if (level !== "reachable" && problems.length > 1) {
     const nav = document.createElement("span");
     nav.className = "edit-nav";
     const step = (act: string, label: string, name: string) => {
@@ -2973,8 +2974,8 @@ function renderEdit() {
     nav.append(step("prev", "‹", "Previous problem"), `${i + 1}/${problems.length}`, step("next", "›", "Next problem"));
     st.append(" ", nav);
   }
-  const tappable = level !== "possible" && problems[i].slots.length > 0;
-  st.classList.toggle("tappable", tappable || (level !== "possible" && problems.length > 1));
+  const tappable = level !== "reachable" && problems[i].slots.length > 0;
+  st.classList.toggle("tappable", tappable || (level !== "reachable" && problems.length > 1));
   if (tappable) {
     const actions: [string, string][] = edit.highlight ? [["show", "Show"], ["hide", "Hide"]] : [["show", "Show"]];
     for (const [act, label] of actions) {
@@ -2985,7 +2986,7 @@ function renderEdit() {
       st.append(" ", b);
     }
   }
-  ($("edit-done") as HTMLButtonElement).disabled = level !== "possible";
+  ($("edit-done") as HTMLButtonElement).disabled = level !== "reachable";
 }
 
 function endEdit(apply: boolean) {
@@ -2997,7 +2998,7 @@ function endEdit(apply: boolean) {
   placeHalos();
   document.body.classList.remove("editing");
   ($("stack-col") as HTMLElement & { inert: boolean }).inert = false;
-  if (apply && e.fit.level === "possible" && e.fit.state) {
+  if (apply && e.fit.level === "reachable" && e.fit.state) {
     const changed = !e.fit.state.equals(app.current);
     if (changed) setBase(e.fit.state, "Edited colors");
     setMessage(changed ? "The edited position is now the start" : "No colors changed", "ok");

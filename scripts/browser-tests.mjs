@@ -977,6 +977,43 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   check((await probe("state")) === editedState && sw.wrong.length === 0 && cancelGlow === "W R", `Cancel leaves the position, and its drawing and glow, as they were (glow ${cancelGlow})`);
 });
 
+labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {
+  // Valid means turns can reach some position showing the paint. Center colors arranged
+  // as no turns arrange them are refused; a swap that look-alike cubelets can absorb is not.
+  const editLine = () => page.$eval("#edit-status", (e) => e.textContent);
+  const doneOff = () => page.$eval("#edit-done", (e) => e.disabled);
+  const paint = async (color, slot, face) => {
+    await page.click(`[data-paint="${color}"]`);
+    await page.locator("#scene").scrollIntoViewIfNeeded();
+    const at = await probe("sticker", slot, face);
+    const there = await probe("at3d", at.x, at.y);
+    if (there?.slot !== slot || there?.face !== face) throw new Error(`can't tap ${slot}/${face}: ${JSON.stringify(there)} is drawn there`);
+    await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+  };
+  await page.click("#edit-start");
+  await paint("R", "Fx", "F");
+  await paint("G", "Rx", "R"); // the red and green centers traded: red is now opposite blue
+  const centers = { line: await editLine(), off: await doneOff(), lit: (await probe("highlighted")).sort().join(), level: (await probe("editing")).level };
+  check(
+    /^Not valid: Red and orange centers are always on opposite sides, and so are green and blue\. Show Hide$/.test(centers.line) && centers.off && centers.lit === "Bx,Fx,Lx,Rx" && centers.level === "possible",
+    `center colors no turns arrange are not valid, with a halo on the centers and Done off ("${centers.line}", halo ${centers.lit})`,
+  );
+  await paint("G", "Fx", "F");
+  await paint("R", "Rx", "R");
+  const restored = await editLine();
+  // Two outer edges traded. With every other cubelet where it was, no turns make this;
+  // with two look-alike core cubelets traded as well, turns do, and Done gives that position.
+  await paint("R", "Fx.U", "F");
+  await paint("G", "Rx.U", "R");
+  const traded = { line: await editLine(), off: await doneOff(), level: (await probe("editing")).level };
+  await page.click("#edit-done");
+  const done = { code: await probe("state"), model: [await probe("model", "Fx.U", "F"), await probe("model", "Rx.U", "R")].join() };
+  check(
+    restored === "Valid" && traded.line === "Valid" && !traded.off && traded.level === "reachable" && done.model === "R,G" && /^([A-Z]{4} ){10}[A-Z]{4}$/.test(done.code),
+    `two outer edges traded are valid, and Done gives a position turns can reach, which has a 44-letter code (${traded.line}, ${done.code})`,
+  );
+});
+
 // ---- The standalone page, and saving on this device.
 
 // The standalone page (published to GitHub Pages) as a phone sees it: with the phone's

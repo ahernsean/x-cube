@@ -7,15 +7,37 @@
 // hidden cubelets and the hidden faces of visible ones are filled in as needed, keeping
 // the starting state wherever possible.
 //
-// Two levels of validity:
+// Three levels of validity:
 // - "cubelets": every slot can hold a real cubelet showing those colors, each cubelet once;
 // - "possible": also obeys the outward-color rule (an outer cubelet always shows the same
-//   color away from the core), which no sequence of turns can break.
-// Whether a "possible" state can actually be reached by turning is not checked here.
+//   color away from the core), which no sequence of turns can break;
+// - "reachable": some state showing those colors can be reached by turning.
+//
+// Reachable. Many states show the same colors: look-alike core cubelets can trade places,
+// and cubelets and faces nobody can see can be anything. The colors are reachable when
+// any one of those states is. Turns keep six things true (serialize.ts lists them), and
+// the paint settles fewer of them than it seems:
+// - Every sticker of an outer corner or outer edge is on a face nothing can cover, so the
+//   paint settles which outer cubelet is in each spot and how it is turned, and the
+//   outward-color rule is the whole of what turns demand of that.
+// - A core corner or core single edge shows its one sticker on its one bare face, so the
+//   shape settles the corner twists and the single edges' flips. A shape that turns made
+//   has them right.
+// - The center colors must be arranged as turning the whole puzzle arranges them. The
+//   paint settles this, and it is the one thing the paint can get wrong.
+// - Every parity can be put right without changing what shows: flipping a core double
+//   edge (never seen) fixes the flip sum; trading two look-alike core single edges fixes
+//   the outer swap parity, because it trades the sites of the outer edges on them; trading
+//   two look-alike core corners then fixes the core swap parity; a quarter turn of a
+//   white or yellow center, and of an extension center, fixes the two center spin sums.
+// So colors that are "possible" are reachable exactly when the centers are arranged
+// right. reachableFit doesn't rely on that argument: it builds the state and has
+// unreachableReason check it.
 
-import { NUM_ROT, ROT_DIR, ROT_INV } from "./geometry.ts";
+import { axisRotation, DIRS, NUM_ROT, ROT_DIR, ROT_INV, ROT_MUL } from "./geometry.ts";
 import { isExposed } from "./analyze.ts";
-import { COLOR_NAME, CUBELETS, FACE_COLOR, NUM_SLOTS, SLOT_POS, State, type Color, type Kind } from "./puzzle.ts";
+import { COLOR_NAME, CUBELETS, FACE_COLOR, NUM_SLOTS, SLOT_NEIGHBOR, SLOT_POS, State, slotAt, type Color, type Kind } from "./puzzle.ts";
+import { rotsTo, unreachableReason } from "./serialize.ts";
 
 /**
  * Colors indexed by slot * 6 + direction: a color for a visible sticker, null for a
@@ -34,11 +56,14 @@ export function visibleColors(st: State): FaceColors {
 }
 
 export interface Fit {
-  /** "cubelets" or "possible" (see above); null when the colors can't be real cubelets. */
-  level: "cubelets" | "possible" | null;
-  /** A state with the shape and these colors (obeying the outward-color rule when level is "possible"). */
+  /** "cubelets", "possible" or "reachable" (see above); null when the colors can't be real cubelets. */
+  level: "cubelets" | "possible" | "reachable" | null;
+  /**
+   * A state with the shape and these colors: one that turns can reach when level is
+   * "reachable", one obeying the outward-color rule when it is "possible".
+   */
   state: State | null;
-  /** Why the colors fall short of "possible". Empty when level is "possible". */
+  /** Why the colors fall short of "reachable". Empty when level is "reachable". */
   problems: Problem[];
 }
 
@@ -115,8 +140,15 @@ const problem = (text: string, slots: number[]): Problem => ({ text, slots });
 const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
 const numberWord = (n: number) => NUMBER_WORDS[n] ?? String(n);
 
+/**
+ * What a fit must obey besides the colors: nothing, the outward-color rule, or "turned":
+ * each cubelet turned as some rotation of the whole puzzle would turn it into its slot,
+ * which every turn keeps true (and which implies the outward-color rule).
+ */
+type Rule = "none" | "outward" | "turned";
+
 /** Every (cubelet, orientation) that could sit in slot s and show these colors there. */
-function candidates(shape: State, colors: FaceColors, s: number, outwardRule: boolean): [number, number][] {
+function candidates(shape: State, colors: FaceColors, s: number, rule: Rule): [number, number][] {
   const kind = CUBELETS[shape.occ[s]].kind;
   const out: [number, number][] = [];
   const outDir = outwardDir(s);
@@ -126,7 +158,8 @@ function candidates(shape: State, colors: FaceColors, s: number, outwardRule: bo
     const c = CUBELETS[id];
     const oris = [shape.ori[s], ...[...Array(NUM_ROT).keys()].filter((o) => o !== shape.ori[s])];
     for (const o of oris) {
-      if (outwardRule && c.outward !== null && ROT_DIR[o * 6 + c.outward] !== outDir) continue;
+      if (rule === "outward" && c.outward !== null && ROT_DIR[o * 6 + c.outward] !== outDir) continue;
+      if (rule === "turned" && !rotsTo(id, s).includes(o)) continue;
       let ok = true;
       for (let d = 0; d < 6 && ok; d++) {
         const want = colors[s * 6 + d];
@@ -161,9 +194,9 @@ function match(slots: number[], cand: Map<number, [number, number][]>) {
   return { choice, slotOf, unmatched };
 }
 
-function attempt(shape: State, colors: FaceColors, outwardRule: boolean) {
+function attempt(shape: State, colors: FaceColors, rule: Rule) {
   const slots = [...Array(NUM_SLOTS).keys()].filter((s) => shape.occ[s] >= 0);
-  const cand = new Map(slots.map((s) => [s, candidates(shape, colors, s, outwardRule)] as const));
+  const cand = new Map(slots.map((s) => [s, candidates(shape, colors, s, rule)] as const));
   const m = match(slots, cand);
   let state: State | null = null;
   if (m.unmatched.length === 0) {
@@ -203,11 +236,135 @@ function competing(a: ReturnType<typeof attempt>) {
   return groups;
 }
 
+const SOLVED = State.solved();
+/** The core center each extension center is fused to. */
+const FUSED_TO = new Map(CUBELETS.filter((c) => c.kind === "extCenter").map((c) => [c.id, SOLVED.occ[SLOT_NEIGHBOR[c.home * 6 + (c.outward! ^ 1)]]]));
+/** The core center slot in each direction. */
+const CENTER_SLOTS = DIRS.map((d) => slotAt(d));
+
+/** Slots of `st` holding cubelets of this kind, optionally only those with this sticker color. */
+const slotsOf = (st: State, kind: Kind, color?: Color) =>
+  [...Array(NUM_SLOTS).keys()].filter((s) => st.occ[s] >= 0 && CUBELETS[st.occ[s]].kind === kind && (!color || CUBELETS[st.occ[s]].stickers.includes(color)));
+
+/** Trades the cubelets in slots a and b, each turned to show what the other showed. False if they can't. */
+function trade(st: State, a: number, b: number): boolean {
+  const look = (s: number) => [0, 1, 2, 3, 4, 5].map((d) => st.colorAt(s, d)).join();
+  const [la, lb, ia, ib] = [look(a), look(b), st.occ[a], st.occ[b]];
+  const put = (s: number, id: number, want: string) => {
+    st.occ[s] = id;
+    for (const o of rotsTo(id, s)) {
+      st.ori[s] = o;
+      if (look(s) === want) return true;
+    }
+    return false;
+  };
+  return put(a, ib, la) && put(b, ia, lb);
+}
+
+/** Gives the cubelet in slot s a quarter turn about the axis its slot is on (a center's spin). */
+function spin(st: State, s: number) {
+  const axis = SLOT_POS[s].findIndex((c) => c !== 0);
+  st.ori[s] = ROT_MUL[axisRotation(axis, 1) * NUM_ROT + st.ori[s]];
+}
+
+/**
+ * Changes to a state that nobody can see, each changing a different set of the parities
+ * turns keep (see the top of this file). Each returns false if the state has no place for it.
+ */
+const UNSEEN_CHANGES: ((st: State) => boolean)[] = [
+  // Flip a core double edge: it has no stickers.
+  (st) => {
+    const [s] = slotsOf(st, "doubleEdge");
+    if (s === undefined) return false;
+    const other = rotsTo(st.occ[s], s).find((o) => o !== st.ori[s]);
+    if (other === undefined) return false;
+    st.ori[s] = other;
+    return true;
+  },
+  // Trade two look-alike core single edges, or two look-alike core corners.
+  ...(["singleEdge", "coreCorner"] as const).map((kind) => (st: State) => {
+    for (const color of ["W", "Y"] as const) {
+      const [a, b] = slotsOf(st, kind, color);
+      if (b !== undefined) return trade(st, a, b);
+    }
+    return false;
+  }),
+  // Spin a white or yellow center, or an extension center: only the face on its axis has a sticker.
+  ...(["center", "extCenter"] as const).map((kind) => (st: State) => {
+    const s = slotsOf(st, kind).find((s) => CUBELETS[st.occ[s]].stickers.some((c) => c));
+    if (s === undefined) return false;
+    spin(st, s);
+    return true;
+  }),
+];
+/** Every set of unseen changes, fewest first, so a fit keeps as much of the start as it can. */
+const CHANGE_SETS = [...Array(1 << UNSEEN_CHANGES.length).keys()].sort((a, b) => bits(a) - bits(b) || a - b);
+function bits(n: number): number {
+  return n ? (n & 1) + bits(n >> 1) : 0;
+}
+
+/** What's wrong with the arrangement of the center colors of st, or null if turns can arrange them so. */
+function centerProblem(st: State): Problem | null {
+  const ids = CENTER_SLOTS.map((s) => st.occ[s]);
+  if (ids.some((id) => id < 0 || CUBELETS[id].kind !== "center")) return null;
+  // The direction each center's cubelet faces when solved.
+  const home = ids.map((id) => CENTER_SLOTS.indexOf(CUBELETS[id].home));
+  const ok = [...Array(NUM_ROT).keys()].some((r) => home.every((h, d) => ROT_DIR[r * 6 + h] === d));
+  if (ok) return null;
+  // The spot that shows a center's color: its extension center, if it has one.
+  const spot = (d: number) => {
+    const out = SLOT_NEIGHBOR[CENTER_SLOTS[d] * 6 + d];
+    return out >= 0 && st.occ[out] >= 0 ? out : CENTER_SLOTS[d];
+  };
+  // Opposite spots whose colors aren't an opposite pair, and the color pairs they split up.
+  const apart = [0, 2, 4].filter((d) => (home[d] ^ 1) !== home[d + 1]);
+  if (apart.length) {
+    const split = [0, 2, 4].filter((h) => apart.some((d) => home[d] >> 1 === h >> 1 || home[d + 1] >> 1 === h >> 1));
+    const [first, ...rest] = split.map((h) => `${COLOR_NAME[FACE_COLOR[h]]} and ${COLOR_NAME[FACE_COLOR[h + 1]]}`);
+    return problem(
+      `${cap(first)} centers are always on opposite sides${rest.length ? `, and so are ${rest.join(", and ")}` : ""}`,
+      apart.flatMap((d) => [spot(d), spot(d + 1)]),
+    );
+  }
+  return problem("The center colors go around in mirrored order", [0, 1, 2, 3, 4, 5].map(spot));
+}
+
+/**
+ * A state turns can reach that has the shape and shows the colors, or the problem that
+ * leaves none. Call it only for colors that fit under the outward-color rule.
+ */
+function reachableFit(shape: State, colors: FaceColors): { state: State; problem?: undefined } | { state: null; problem: Problem } {
+  const a = attempt(shape, colors, "turned");
+  const start = "The position editing started from can't be reached by turning";
+  if (!a.state) return { state: null, problem: problem(start, []) };
+  const st = a.state;
+  // A side core center has no stickers, so any of them fits behind any extension center.
+  // Only the one fused to it is ever there.
+  for (const s of slotsOf(st, "extCenter")) {
+    const behind = SLOT_NEIGHBOR[s * 6 + (outwardDir(s) ^ 1)];
+    const own = FUSED_TO.get(st.occ[s])!;
+    const at = st.occ.indexOf(own);
+    if (behind < 0 || st.occ[behind] < 0 || CUBELETS[st.occ[behind]].kind !== "center") return { state: null, problem: problem(start, []) };
+    if (at !== behind && !trade(st, at, behind)) return { state: null, problem: problem(start, []) };
+  }
+  const centers = centerProblem(st);
+  if (centers) return { state: null, problem: centers };
+  for (const set of CHANGE_SETS) {
+    const t = st.clone();
+    if (UNSEEN_CHANGES.every((change, i) => !(set & (1 << i)) || change(t)) && unreachableReason(t) === null) return { state: t };
+  }
+  return { state: null, problem: problem(`${start} (${unreachableReason(st)})`, []) };
+}
+
 /** Finds real cubelets showing `colors` on the shape of `shape` (see the top of this file). */
 export function fitColors(shape: State, colors: FaceColors): Fit {
-  const strict = attempt(shape, colors, true);
-  if (strict.state) return { level: "possible", state: strict.state, problems: [] };
-  const loose = attempt(shape, colors, false);
+  const strict = attempt(shape, colors, "outward");
+  if (strict.state) {
+    const reach = reachableFit(shape, colors);
+    if (reach.state) return { level: "reachable", state: reach.state, problems: [] };
+    return { level: "possible", state: strict.state, problems: [reach.problem] };
+  }
+  const loose = attempt(shape, colors, "none");
   const problems: Problem[] = [];
   if (loose.state) {
     for (const s of strict.slots)
