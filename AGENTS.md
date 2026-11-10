@@ -202,9 +202,9 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   physical cube can't do that). Outward-rule problems name only what the owner can check on
   the cube: "White can't point straight out from the core on an extension cubelet" (no
   extension cubelet's outward sticker is white or yellow), or "Two cubelets of this type
-  have red pointing straight out from the core, but only one with green and red does". It says what, not where ("A
-  cubelet shows yellow, red, and orange, but red and orange are opposite colors, never on
-  one cubelet"): words for a spot proved unreliable (center colors move with
+  have red pointing straight out from the core, but only one with green and red does". Each names the problem
+  itself ("Red and orange can never be on the same cubelet"), not "a cubelet" (the halo
+  marks it), and says what, not where: words for a spot proved unreliable (center colors move with
   slices, extensions leave their sides, left depends on the viewpoint), so the Lab points
   the spot out instead. Lists of three colors use the serial comma. The line shows one
   problem at a time; with several, tiny ‹ and › buttons step through them ("‹2/4›"), and the

@@ -42,7 +42,7 @@ test("edit: colors no cubelet has are refused, naming the spot", () => {
   const fit = fitColors(st, colors);
   assert.equal(fit.level, null);
   assert.equal(fit.state, null);
-  assert.deepEqual(fit.problems, [{ text: "A cubelet shows white and yellow, but white and yellow are opposite colors, never on one cubelet", slots: [at(0, 1, 2)] }]);
+  assert.deepEqual(fit.problems, [{ text: "White and yellow can never be on the same cubelet", slots: [at(0, 1, 2)] }]);
 });
 
 test("edit: one cubelet needed in two places is refused", () => {
@@ -73,8 +73,8 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
     colors[at(x, y, z) * 6 + d] = c;
     return fitColors(st, colors).problems[0];
   };
-  assert.deepEqual(say(1, -1, -2, 5, "O"), { text: "A cubelet shows yellow, red, and orange, but red and orange are opposite colors, never on one cubelet", slots: [at(1, -1, -2)] });
-  assert.equal(say(-1, 1, 2, F, "O").text, "A cubelet shows white, orange, and orange, but no cubelet has two orange stickers");
+  assert.deepEqual(say(1, -1, -2, 5, "O"), { text: "Red and orange can never be on the same cubelet", slots: [at(1, -1, -2)] });
+  assert.equal(say(-1, 1, 2, F, "O").text, "No cubelet has two orange stickers");
   // A color no cubelet of that kind has: core corners are only white or yellow.
   assert.equal(say(1, -1, 1, 3, "B").text, "A cubelet in this position must be white or yellow, never blue");
   // Two stickers of a corner swapped: its colors exist, but go around it the other way.

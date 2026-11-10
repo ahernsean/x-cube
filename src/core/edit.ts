@@ -82,18 +82,17 @@ function noCubelet(kind: string, cs: Color[]): string {
   const cannot = [...new Set(cs)].filter((c) => !can.has(c));
   if (cannot.length)
     return `A cubelet in this position must be ${listColors(COLOR_ORDER.filter((c) => can.has(c)), "or")}, never ${listColors(cannot, "or")}`;
-  const shows = `A cubelet shows ${listColors(cs)}, but`;
   const dup = cs.find((c, i) => cs.indexOf(c) !== i);
-  if (dup) return `${shows} no cubelet has two ${COLOR_NAME[dup]} stickers`;
+  if (dup) return `No cubelet has two ${COLOR_NAME[dup]} stickers`;
   for (let k = 0; k < 6; k += 2)
     if (cs.includes(FACE_COLOR[k]) && cs.includes(FACE_COLOR[k + 1]))
-      return `${shows} ${COLOR_NAME[FACE_COLOR[k]]} and ${COLOR_NAME[FACE_COLOR[k + 1]]} are opposite colors, never on one cubelet`;
+      return `${cap(COLOR_NAME[FACE_COLOR[k]])} and ${COLOR_NAME[FACE_COLOR[k + 1]]} can never be on the same cubelet`;
   // The colors are on a cubelet of this kind, but not in this arrangement: on a corner,
   // the three colors go around it in a fixed order that no turn can mirror.
   const holders = sameKind.filter((c) => cs.every((x) => c.stickers.includes(x))).length;
   if (holders && cs.length === 3) return "Wrong color order";
-  if (holders) return `${shows} no cubelet in this position can show them this way`;
-  return `${shows} no cubelet in this position has ${cs.length === 1 ? "that color" : "these colors"}`;
+  if (holders) return `No cubelet in this position can show ${listColors(cs)} this way`;
+  return `No cubelet in this position has ${listColors(cs)}`;
 }
 
 const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
