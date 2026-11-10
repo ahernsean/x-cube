@@ -13,7 +13,7 @@
 //   color away from the core), which no sequence of turns can break.
 // Whether a "possible" state can actually be reached by turning is not checked here.
 
-import { DIRS, NUM_ROT, ROT_DIR, ROT_INV, dirIndex, type Vec3 } from "./geometry.ts";
+import { DIRS, NUM_ROT, ROT_DIR, ROT_INV, type Vec3 } from "./geometry.ts";
 import { isExposed } from "./analyze.ts";
 import { COLOR_NAME, CUBELETS, FACE_COLOR, NUM_SLOTS, SLOT_POS, State, slotAt, type Color } from "./puzzle.ts";
 
@@ -94,18 +94,18 @@ export function sideWords(shape: State, colors: FaceColors): { word: string[]; b
 
 /**
  * Where slot s is, in words. An extension spot is named as seen looking straight at that
- * extension, as in the flat view, with the neighboring side's color as a check: "blue
- * extension, bottom-left corner (next to red)". The up and down extensions, whose left and
- * right depend on how you look, and the core use neighboring colors only: "core, top
- * corner between green and orange". Notes in `used` which sides it named by word.
+ * extension, as in the flat view: "blue extension, bottom-left corner". The up and down
+ * extensions, whose left and right depend on how you look, and the core are named by the
+ * sides they are on: "core, top corner between the green and orange sides". Notes in
+ * `used` which sides it named by word.
  */
-function where(s: number, words: string[], byColor: boolean[], used: Set<number>): string {
+function where(s: number, words: string[], used: Set<number>): string {
   const p = SLOT_POS[s];
   const axis = p.findIndex((c) => Math.abs(c) === 2);
   const dirOf = (a: number, sign: number) => a * 2 + (sign > 0 ? 0 : 1);
   const name = (d: number) => (used.add(d), words[d]);
   const sides = [0, 2].filter((a) => a !== axis && p[a]).map((a) => dirOf(a, p[a]));
-  const between = () => (sides.length === 2 ? `between ${name(sides[0])} and ${name(sides[1])}` : `next to ${name(sides[0])}`);
+  const between = () => (sides.length === 2 ? `between the ${name(sides[0])} and ${name(sides[1])} sides` : `on the ${name(sides[0])} side`);
   if (axis === 0 || axis === 2) {
     // A side extension, seen from outside: up is up, and right is up x outward.
     const out = DIRS[dirOf(axis, p[axis])];
@@ -114,12 +114,7 @@ function where(s: number, words: string[], byColor: boolean[], used: Set<number>
     const v = p[1] > 0 ? "top" : p[1] < 0 ? "bottom" : "";
     const hw = h > 0 ? "right" : h < 0 ? "left" : "";
     const spot = v && hw ? `${v}-${hw} corner` : v || hw ? `${v || hw} edge` : "center";
-    let next = "";
-    if (h) {
-      const d = dirIndex(h > 0 ? right : [-right[0], 0, -right[2]]);
-      if (byColor[d]) next = ` (next to ${words[d]})`;
-    }
-    return `${name(dirOf(axis, p[axis]))} extension, ${spot}${next}`;
+    return `${name(dirOf(axis, p[axis]))} extension, ${spot}`;
   }
   if (axis === 1) {
     const spot = sides.length ? `${sides.length === 2 ? "corner" : "edge"} ${between()}` : "center";
@@ -127,7 +122,7 @@ function where(s: number, words: string[], byColor: boolean[], used: Set<number>
   }
   const layer = p[1] > 0 ? "top" : p[1] < 0 ? "bottom" : "middle";
   if (!sides.length) return `core, ${layer} center`;
-  if (p[1] === 0 && sides.length === 1) return `core, center behind ${name(sides[0])}`;
+  if (p[1] === 0 && sides.length === 1) return `core, center on the ${name(sides[0])} side`;
   return `core, ${layer} ${sides.length === 2 ? "corner" : "edge"} ${between()}`;
 }
 
@@ -147,7 +142,7 @@ const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
 function problem(shape: State, colors: FaceColors, slots: number[], say: (at: (s: number) => string) => string): Problem {
   const { word, byColor } = sideWords(shape, colors);
   const used = new Set<number>();
-  const text = cap(say((s) => where(s, word, byColor, used)));
+  const text = cap(say((s) => where(s, word, used)));
   const byPlace = [...used].some((d) => d >> 1 !== 1 && !byColor[d]);
   return { text: byPlace ? `${text} (sides named as in the Front view)` : text, slots };
 }

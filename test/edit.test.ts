@@ -71,14 +71,14 @@ test("edit: problems name spots by where they are and sides by their center colo
   const st = State.solved();
   const colors = visibleColors(st);
   colors[at(1, -1, -2) * 6 + 5] = "O"; // Bx.DR: red, yellow and orange
-  assert.deepEqual(fitColors(st, colors).problems, [{ text: "Blue extension, bottom-left corner (next to red), shows yellow, red, and orange, but red and orange are opposite colors, never on one cubelet", slots: [at(1, -1, -2)] }]);
+  assert.deepEqual(fitColors(st, colors).problems, [{ text: "Blue extension, bottom-left corner, shows yellow, red, and orange, but red and orange are opposite colors, never on one cubelet", slots: [at(1, -1, -2)] }]);
   // After a slice turn the side centers move, and the words follow them.
   const h = after("H");
   assert.deepEqual(sideWords(h, visibleColors(h)).word, ["blue", "green", "top", "bottom", "red", "orange"]);
   const twoReds = visibleColors(st);
   twoReds[at(1, 0, 2) * 6 + F] = "R";
   twoReds[at(1, 0, 2) * 6 + R] = "R";
-  assert.match(fitColors(st, twoReds).problems[0].text, /^Green extension, right edge \(next to red\), shows red and red, but no cubelet has two red stickers$/);
+  assert.match(fitColors(st, twoReds).problems[0].text, /^Green extension, right edge, shows red and red, but no cubelet has two red stickers$/);
 });
 
 test("edit: spots are named as seen looking at their extension, or by neighboring colors", () => {
@@ -88,10 +88,10 @@ test("edit: spots are named as seen looking at their extension, or by neighborin
     colors[at(x, y, z) * 6 + d] = c;
     return fitColors(st, colors).problems[0].text;
   };
-  assert.equal(say(-1, 1, 2, F, "O"), "Green extension, top-left corner (next to orange), shows white, orange, and orange, but no cubelet has two orange stickers");
-  assert.equal(say(2, 1, 1, R, "B"), "Red extension, top-left corner (next to green), shows white, green, and blue, but green and blue are opposite colors, never on one cubelet");
+  assert.equal(say(-1, 1, 2, F, "O"), "Green extension, top-left corner, shows white, orange, and orange, but no cubelet has two orange stickers");
+  assert.equal(say(2, 1, 1, R, "B"), "Red extension, top-left corner, shows white, green, and blue, but green and blue are opposite colors, never on one cubelet");
   // Look-alike core cubelets: more painted than the puzzle has.
-  assert.equal(say(1, 1, 1, U, "Y"), "Core, top corner between red and green, shows yellow, but the puzzle's 4 cubelets like that are all in other spots");
+  assert.equal(say(1, 1, 1, U, "Y"), "Core, top corner between the red and green sides, shows yellow, but the puzzle's 4 cubelets like that are all in other spots");
 });
 
 test("edit: no cubelet has opposite colors or two of one color (the reasons problems give)", () => {

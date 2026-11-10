@@ -190,9 +190,10 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   spots, or an outer cubelet is turned against the outward-color rule (a sign of a sticker
   painted wrong; the physical cube can't do that). Spots are named in words, not slot
   names: an extension spot as seen looking straight at that extension, as in the flat view,
-  with the neighboring side's color as a check ("blue extension, bottom-left corner (next
-  to red)"); the up and down extensions and the core by neighboring colors ("core, top
-  corner between red and green"). Sides are named by the color their center shows now,
+  ("blue extension, bottom-left corner"); the up and down extensions and the core by the
+  sides they are on ("core, top corner between the red and green sides"). "Next to" is only
+  for things that are actually near each other; a side's center color says nothing about
+  what's near a spot. Sides are named by the color their center shows now,
   painted colors included; when that color is missing or on two centers, by place in the
   Front view ("front extension"), with a note saying so. Lists of three colors use the
   serial comma. A line that names spots has **Show**, which puts a **halo** on those
