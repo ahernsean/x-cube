@@ -178,7 +178,7 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
     if (loose.cand.get(s)!.length === 0) {
       const cs = shownColors(colors, s);
       const why = noCubelet(CUBELETS[shape.occ[s]].kind, cs);
-      problems.push(problem(why === null ? "Invalid color ordering" : `A cubelet shows ${listColors(cs)}, but ${why}`, [s]));
+      problems.push(problem(why === null ? "Wrong color order" : `A cubelet shows ${listColors(cs)}, but ${why}`, [s]));
     }
   if (!problems.length) {
     // Every slot has candidates, but some cubelet would be needed twice.
