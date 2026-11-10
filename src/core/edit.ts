@@ -13,9 +13,9 @@
 //   color away from the core), which no sequence of turns can break.
 // Whether a "possible" state can actually be reached by turning is not checked here.
 
-import { FACE_NAMES, NUM_ROT, ROT_DIR, ROT_INV } from "./geometry.ts";
+import { NUM_ROT, ROT_DIR, ROT_INV } from "./geometry.ts";
 import { isExposed } from "./analyze.ts";
-import { COLOR_NAME, CUBELETS, NUM_SLOTS, SLOT_POS, State, slotName, type Color } from "./puzzle.ts";
+import { COLOR_NAME, CUBELETS, FACE_COLOR, NUM_SLOTS, SLOT_POS, State, type Color, type Kind } from "./puzzle.ts";
 
 /**
  * Colors indexed by slot * 6 + direction: a color for a visible sticker, null for a
@@ -38,8 +38,15 @@ export interface Fit {
   level: "cubelets" | "possible" | null;
   /** A state with the shape and these colors (obeying the outward-color rule when level is "possible"). */
   state: State | null;
-  /** Why the colors fall short of "possible", in the owner's terms. Empty when level is "possible". */
-  problems: string[];
+  /** Why the colors fall short of "possible". Empty when level is "possible". */
+  problems: Problem[];
+}
+
+export interface Problem {
+  /** What's wrong, in the owner's terms. It doesn't say where: the Lab points the slots out. */
+  text: string;
+  /** The slots it is about. */
+  slots: number[];
 }
 
 /** Direction pointing away from the core for an outer (extension) slot, or -1. */
@@ -49,15 +56,64 @@ function outwardDir(s: number): number {
   return axis < 0 ? -1 : axis * 2 + (p[axis] > 0 ? 0 : 1);
 }
 
-/** "U white, F green" for the visible faces of slot s. */
-function describe(colors: FaceColors, s: number): string {
-  const parts: string[] = [];
+/** "red, yellow, and orange". */
+function listColors(cs: Color[], and = "and"): string {
+  const n = cs.map((c) => COLOR_NAME[c]);
+  return n.length < 3 ? n.join(` ${and} `) : `${n.slice(0, -1).join(", ")}, ${and} ${n[n.length - 1]}`;
+}
+
+/** The order colors are listed in. */
+const COLOR_ORDER: Color[] = ["W", "Y", "G", "B", "R", "O"];
+
+/** The colors showing on slot s (a color twice if painted twice), in COLOR_ORDER. */
+function shownColors(colors: FaceColors, s: number): Color[] {
+  const out: Color[] = [];
   for (let d = 0; d < 6; d++) {
     const c = colors[s * 6 + d];
-    if (c) parts.push(`${FACE_NAMES[d]} ${COLOR_NAME[c]}`);
+    if (c) out.push(c);
   }
-  return parts.join(", ");
+  return out.sort((a, b) => COLOR_ORDER.indexOf(a) - COLOR_ORDER.indexOf(b));
 }
+
+/** Why no cubelet of this kind can show these colors, as the problem's text. */
+function noCubelet(kind: Kind, cs: Color[]): string {
+  const sameKind = CUBELETS.filter((c) => c.kind === kind);
+  const can = new Set(sameKind.flatMap((c) => c.stickers.filter((x): x is Color => !!x)));
+  const cannot = [...new Set(cs)].filter((c) => !can.has(c));
+  if (cannot.length)
+    return `${/^[aeiouX]/.test(KIND_NAME[kind][0]) ? "An" : "A"} ${KIND_NAME[kind][0]} must be ${listColors(COLOR_ORDER.filter((c) => can.has(c)), "or")}, never ${listColors(cannot, "or")}`;
+  const dup = cs.find((c, i) => cs.indexOf(c) !== i);
+  if (dup) return `No cubelet has two ${COLOR_NAME[dup]} stickers`;
+  for (let k = 0; k < 6; k += 2)
+    if (cs.includes(FACE_COLOR[k]) && cs.includes(FACE_COLOR[k + 1]))
+      return `${cap(COLOR_NAME[FACE_COLOR[k]])} and ${COLOR_NAME[FACE_COLOR[k + 1]]} can never be on the same cubelet`;
+  // The colors are on a cubelet of this kind, but not in this arrangement: on a corner,
+  // the three colors go around it in a fixed order that no turn can mirror.
+  const holders = sameKind.filter((c) => cs.every((x) => c.stickers.includes(x))).length;
+  if (holders && cs.length === 3) return "Wrong color order";
+  if (holders) return `No cubelet in this position can show ${listColors(cs)} this way`;
+  return `No cubelet in this position has ${listColors(cs)}`;
+}
+
+/** The owner's names for the kinds of cubelet (AGENTS.md), singular and plural. */
+const KIND_NAME: Record<Kind, [string, string]> = {
+  // Plural for counts: each center color shows on exactly one center of either kind.
+  center: ["core center", "centers"],
+  extCenter: ["extension center", "centers"],
+  coreCorner: ["core corner", "core corners"],
+  singleEdge: ["core single edge", "core single edges"],
+  doubleEdge: ["core double edge", "core double edges"],
+  outerCorner: ["X-face corner", "X-face corners"],
+  outerEdge: ["extension edge", "extension edges"],
+};
+const kindOf = (shape: State, s: number) => CUBELETS[shape.occ[s]].kind;
+
+const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
+
+const problem = (text: string, slots: number[]): Problem => ({ text, slots });
+
+const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const numberWord = (n: number) => NUMBER_WORDS[n] ?? String(n);
 
 /** Every (cubelet, orientation) that could sit in slot s and show these colors there. */
 function candidates(shape: State, colors: FaceColors, s: number, outwardRule: boolean): [number, number][] {
@@ -120,37 +176,97 @@ function attempt(shape: State, colors: FaceColors, outwardRule: boolean) {
   return { slots, cand, ...m, state };
 }
 
+/**
+ * Spots competing for too few cubelets in a failed attempt. From a spot left without one,
+ * the spots reachable by trading cubelets (its candidates, the spots those fill, their
+ * candidates, ...) are N spots sharing N - 1 cubelets; spots whose sets overlap are one
+ * group. Any of them may be the one painted wrong.
+ */
+function competing(a: ReturnType<typeof attempt>) {
+  const groups: { slots: Set<number>; ids: Set<number> }[] = [];
+  for (const s of a.unmatched) {
+    const slots = new Set<number>(), ids = new Set<number>();
+    const visit = (t: number) => {
+      if (slots.has(t)) return;
+      slots.add(t);
+      for (const [id] of a.cand.get(t)!) {
+        ids.add(id);
+        const holder = a.slotOf.get(id);
+        if (holder !== undefined) visit(holder);
+      }
+    };
+    visit(s);
+    const g = groups.find((g) => [...slots].some((t) => g.slots.has(t)));
+    if (g) for (const t of slots) g.slots.add(t), [...ids].forEach((id) => g.ids.add(id));
+    else groups.push({ slots, ids });
+  }
+  return groups;
+}
+
 /** Finds real cubelets showing `colors` on the shape of `shape` (see the top of this file). */
 export function fitColors(shape: State, colors: FaceColors): Fit {
   const strict = attempt(shape, colors, true);
   if (strict.state) return { level: "possible", state: strict.state, problems: [] };
   const loose = attempt(shape, colors, false);
-  const problems: string[] = [];
+  const problems: Problem[] = [];
   if (loose.state) {
     for (const s of strict.slots)
-      if (strict.cand.get(s)!.length === 0)
-        problems.push(`${slotName(s)} (${describe(colors, s)}): that cubelet can't be turned this way; its ${COLOR_NAME[outwardColor(loose.state, s)!]} side always faces outward`);
-    if (!problems.length) problems.push("Every cubelet exists, but not all can face these ways at once on a real puzzle");
+      if (strict.cand.get(s)!.length === 0) {
+        // White and yellow never point out: that rule needs no knowledge of the cubelet.
+        const facing = colors[s * 6 + outwardDir(s)];
+        if (facing === "W" || facing === "Y") {
+          problems.push(problem(`${cap(COLOR_NAME[facing])} can't point straight out from the core on an extension cubelet`, [s]));
+          continue;
+        }
+        const cs = shownColors(colors, s);
+        const kind = CUBELETS[shape.occ[s]].kind;
+        const holders = CUBELETS.filter((c) => c.kind === kind && c.outward !== null && cs.every((x) => c.stickers.includes(x)));
+        const outs = COLOR_ORDER.filter((x) => holders.some((c) => c.stickers[c.outward!] === x));
+        const one = holders.length === 1;
+        problems.push(problem(`The ${one ? "cubelet" : "cubelets"} with ${listColors(cs)} always ${one ? "has" : "have"} ${listColors(outs, "or")} pointing straight out from the core`, [s]));
+      }
+    // Every spot fits a cubelet turned a way the rule allows, but some compete for too few.
+    if (!problems.length)
+      for (const g of competing(strict)) {
+        const spots = [...g.slots];
+        const out = new Set(spots.map((t) => colors[t * 6 + outwardDir(t)]));
+        const shown = new Set(spots.map((t) => listColors(shownColors(colors, t))));
+        const [o] = out;
+        const n = numberWord(spots.length), k = numberWord(g.ids.size);
+        problems.push(
+          problem(
+            out.size === 1 && o && shown.size === 1
+              ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} have ${COLOR_NAME[o]} pointing straight out from the core, but only ${k} with ${[...shown][0]} ${g.ids.size === 1 ? "does" : "do"}`
+              : `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be turned this way at once. A sticker is probably painted wrong`,
+            spots,
+          ),
+        );
+      }
+    if (!problems.length) problems.push({ text: "Each spot matches a cubelet, but they can't all be turned this way at once. A sticker is probably painted wrong", slots: [] });
     return { level: "cubelets", state: loose.state, problems };
   }
   for (const s of loose.slots)
-    if (loose.cand.get(s)!.length === 0) problems.push(`${slotName(s)} (${describe(colors, s)}): no cubelet has these colors`);
+    if (loose.cand.get(s)!.length === 0) {
+      const cs = shownColors(colors, s);
+      problems.push(problem(noCubelet(CUBELETS[shape.occ[s]].kind, cs), [s]));
+    }
   if (!problems.length) {
-    // Every slot has candidates, but some cubelet would be needed twice.
-    for (const s of loose.unmatched) {
-      const [id] = loose.cand.get(s)![0];
-      const other = loose.slotOf.get(id);
-      const twin = other === undefined ? "" : ` and ${slotName(other)} (${describe(colors, other)})`;
-      problems.push(`${slotName(s)} (${describe(colors, s)})${twin} would need the same cubelet`);
+    // Every slot has candidates, but some spots compete for too few cubelets.
+    const groups = competing(loose);
+    for (const g of groups) {
+      const spots = [...g.slots];
+      const shown = new Set(spots.map((t) => listColors(shownColors(colors, t))));
+      const n = numberWord(spots.length), k = numberWord(g.ids.size);
+      problems.push(
+        problem(
+          shown.size === 1
+            ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k}`
+            : `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} can only be filled by ${k} ${g.ids.size === 1 ? "cubelet" : "cubelets"} on the puzzle`,
+          spots,
+        ),
+      );
     }
   }
   return { level: null, state: null, problems };
-}
-
-/** The color on the outward face of the outer cubelet in slot s of st. */
-function outwardColor(st: State, s: number): Color | null {
-  const c = CUBELETS[st.occ[s]];
-  if (c.outward === null) return null;
-  return c.stickers[c.outward];
 }
 

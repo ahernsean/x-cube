@@ -193,10 +193,29 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   The Gloss switch turns it off.
 - **Color editing:** Edit colors under the 3D view. Pick a color, then tap stickers to paint
   them; drags tumble the view, and the other controls are set aside. The shape stays as it
-  is. A painted sticker's edge glow takes the paint too. Each paint is refit to real cubelets (`fitColors` in `src/core/edit.ts`), and a line
-  says "Valid" (real cubelets, each facing a way the puzzle allows), "Not possible on the
-  puzzle" (real cubelets, but one breaks the outward-color rule) or "Not valid" (with the
-  spot and the reason). Done, available only when valid, makes the fitted position the start
+  is. A painted sticker's edge glow takes the paint too. Each paint is refit to cubelets
+  (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
+  wrong: no cubelet of that kind can have a color ("A core corner must be white or
+  yellow, never blue"), two stickers of one color or opposite colors, a corner's colors going around it
+  in mirrored order ("Wrong color order"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two"; the halo marks every competing spot), or an outer
+  cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
+  physical cube can't do that). Outward-rule problems name only what the owner can check on
+  the cube: "White can't point straight out from the core on an extension cubelet" (no
+  extension cubelet's outward sticker is white or yellow), or "Two extension edges
+  have red pointing straight out from the core, but only one with green and red does". Each names the problem
+  itself ("Red and orange can never be on the same cubelet"), not "a cubelet" (the halo
+  marks it), and says what, not where: words for a spot proved unreliable (center colors move with
+  slices, extensions leave their sides, left depends on the viewpoint), so the Lab points
+  the spot out instead. Lists of three colors use the serial comma. The line shows one
+  problem at a time; with several, tiny ‹ and › buttons step through them ("‹2/4›"), and the
+  choice is kept across paints while that problem remains. The shown problem's
+  cubelets get a **halo** by themselves: a purple glow around the whole cubelet, drawn
+  over everything (so it shows a cubelet behind others), in the 3D view and on each
+  flat-view face where the cubelet shows. A halo appearing never moves the view. **Show**
+  (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
+  most unblocked, then each as squarely as possible, from the preset views and the
+  directions between the stickers), again each time it is tapped. **Hide** removes the
+  halo until the shown problem names other cubelets. Done, available only when valid, makes the fitted position the start
   ("Edited colors"). Whether a valid position can be reached by turning is not checked yet.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
@@ -285,6 +304,10 @@ Never do any of these without an explicit instruction from the owner:
   - Use CI as your test runner: after pushing, read the check results (the GitHub tools give
     the check runs and job logs) and fix what fails. Reproduce a CI failure locally with the
     narrowest run that shows it, then show that same run passing.
+  - A push to a pull request cancels CI still running on its previous commit, and that
+    run's `all checks` then fails because a job was cancelled. That is not a failure: when
+    a failed check is on a commit that is no longer the pull request's head, ignore it and
+    don't report it. Only failures on the current head need looking into.
 - CI (`.github/workflows/ci.yml`) runs the unit tests, the typecheck, and the build and
   browser tests in Chromium and WebKit, each as its own check, all on Node 24 (the version
   `package.json` requires). Keep it green. It reports coverage (unit tests, and browser

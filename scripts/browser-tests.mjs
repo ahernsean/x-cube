@@ -52,9 +52,14 @@ const coverage = [];
 // quietly keeps SwiftShader, so the startup test prints the renderer in use, and with
 // EXPECT_RENDERER set (CI sets it to llvmpipe) a different renderer fails it.
 const launchArgs = engine === "chromium" && process.platform === "linux" ? ["--ignore-gpu-blocklist", "--use-angle=gl-egl"] : [];
+// Where the network is reached through a proxy (HTTPS_PROXY, as in some cloud sandboxes),
+// the browser and the CDN downloads below (route.fetch, made by Playwright, not the page)
+// use it too; without this those downloads try to reach the CDN directly and fail.
+const proxyServer = process.env.HTTPS_PROXY || process.env.https_proxy;
+const proxy = proxyServer ? { server: proxyServer, bypass: process.env.NO_PROXY || process.env.no_proxy } : undefined;
 let browser;
 before(async () => {
-  browser = await playwright[engine].launch({ args: launchArgs });
+  browser = await playwright[engine].launch({ args: launchArgs, proxy });
   console.log(`${engine} ${browser.version()}`);
 });
 
@@ -891,14 +896,42 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   check(/^Valid/.test(entered.line) && entered.done && entered.inert, `edit mode starts valid, with the other controls set aside ("${entered.line}")`);
   await paint("R", "Fx.U", "F");
   const half = { line: await editLine(), off: await doneOff(), drawn: (await probe("at3d", ...Object.values(await probe("sticker", "Fx.U", "F"))))?.color };
-  check(/^Not valid: .*would need the same cubelet/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
+  check(/^Not valid: Two extension edges are white and red, but there can be only one\. Show Hide$/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
   // The edge glow around a painted sticker shows the paint too (the glow is the only sign
   // of a sticker's color where that face is hidden).
   const paintedGlow = (await probe("glowColors", "Fx.U", "F")).join();
   check(paintedGlow === "R", `the edge glow of a painted sticker takes the paint (${paintedGlow})`);
+  // A problem puts a purple halo on the cubelets it names by itself, in the 3D view and
+  // on the flat view's faces where they show, without moving the view. Show (or tapping
+  // the line) tumbles the 3D view to show all their stickers, again after any tumble;
+  // Hide removes the halo.
+  const seenBoth = async () => `${await probe("facesSeen", "Fx.U")},${await probe("facesSeen", "Rx.U")}`;
+  await page.click('[data-view="bottom"]');
+  await settle();
+  const lit = { slots: (await probe("highlighted")).sort().join(), seen: await seenBoth(), px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), flatD: await probe("haloPixels", "D"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
+  check(lit.slots === "Fx.U,Rx.U" && lit.seen === "0,0" && lit.px3d > 0 && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `a problem haloes the cubelets it names by itself, without turning the view (${JSON.stringify(lit)})`);
+  await page.click("#edit-status");
+  await settle();
+  const shownAt = await seenBoth();
+  await page.click('[data-view="bottom"]');
+  await settle();
+  await page.click('[data-halo="show"]');
+  await settle();
+  const back = await seenBoth();
+  check(shownAt === "2,2" && back === "2,2", `tapping the line, or Show after a tumble, turns the view to show all their stickers (faces seen ${shownAt}, then ${back})`);
+  await page.click('[data-halo="hide"]');
+  const unlit = { slots: (await probe("highlighted")).length, px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
+  check(unlit.slots === 0 && unlit.px3d === 0 && unlit.flatU === 0 && unlit.buttons === "Show", `Hide removes the halo (${JSON.stringify(unlit)})`);
+  await page.click('[data-view="home"]');
+  await settle();
   await paint("G", "Rx.U", "R");
   const swapped = { line: await editLine(), off: await doneOff() };
-  check(/^Valid/.test(swapped.line) && !swapped.off, `painting the other edge to match makes it valid again ("${swapped.line}")`);
+  check(swapped.line === "Valid" && !swapped.off && (await probe("highlighted")).length === 0, `painting the other edge to match makes it valid again, with no halo ("${swapped.line}")`);
+  // Hide lasts only until the problem changes: painting back to the hidden problem shows its halo.
+  await paint("R", "Rx.U", "R");
+  const relit = (await probe("highlighted")).sort().join();
+  await paint("G", "Rx.U", "R");
+  check(relit === "Fx.U,Rx.U", `a hidden halo comes back when its problem returns after another (${relit})`);
   // The effect switches stay usable while editing; Shading must redraw the edited position.
   await flip("shade", false);
   await flip("shade", true);
@@ -923,7 +956,21 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await paint("R", "Fx.U", "U"); // flip the white-red edge now at Fx.U in place
   await paint("W", "Fx.U", "F");
   const flipped = await editLine();
-  check(/^Not possible on the puzzle: Fx\.U .*can't be turned this way; its red side always faces outward/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  check(/^Not valid: White can't point straight out from the core on an extension cubelet\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  // With several problems, ‹ and › step through them, and the halo moves with the line
+  // without turning the view.
+  await paint("Y", "Rx.U", "R");
+  await paint("Y", "Fx.UR", "F");
+  const navLine = await editLine();
+  const firstLit = (await probe("highlighted")).join();
+  const viewBefore = JSON.stringify(await probe("view"));
+  await page.click('[data-halo="next"]');
+  const stepped = { line: await editLine(), lit: (await probe("highlighted")).join(), still: JSON.stringify(await probe("view")) === viewBefore };
+  await page.click('[data-halo="next"]');
+  const wrapped = (await probe("highlighted")).join();
+  // The line stays on the problem it showed (Rx.U's) when the new one sorts ahead of it.
+  const at = (line) => line.match(/‹(\d)\/(\d)›/)?.slice(1).join("/");
+  check(firstLit === "Rx.U" && at(navLine) === "2/2" && at(stepped.line) === "1/2" && stepped.lit === "Fx.UR" && stepped.still && wrapped === firstLit, `the line stays on its problem when another appears; ‹ and › step through them, moving the halo, not the view (${at(navLine)} ${firstLit}, then ${at(stepped.line)} ${stepped.lit}, then ${wrapped})`);
   await page.click("#edit-cancel");
   sw = await sweep3d();
   const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");
