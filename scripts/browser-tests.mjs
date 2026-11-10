@@ -51,7 +51,11 @@ const collect = async (p) => {
   if (coverageDir) coverage.push(...(await p.coverage.stopJSCoverage()));
 };
 
-const browser = await playwright[engine].launch();
+// Without a GPU, headless Chromium draws WebGL with SwiftShader, which here is about four
+// times slower than Mesa's llvmpipe (the CPU renderer WebKit uses on Linux). These flags
+// send Chromium's ANGLE to Mesa through EGL instead; the renderer in use is printed below.
+const launchArgs = engine === "chromium" && process.platform === "linux" ? ["--ignore-gpu-blocklist", "--use-angle=gl-egl"] : [];
+const browser = await playwright[engine].launch({ args: launchArgs });
 try {
   const context =
     engine === "webkit"
@@ -71,6 +75,12 @@ try {
   await page.waitForFunction(() => window.THREE && window.THREE.REVISION, null, { timeout: 30000 });
   await page.waitForTimeout(1000);
   check(true, `three.js r${await page.evaluate(() => window.THREE.REVISION)} loaded`);
+  const renderer = await page.evaluate(() => {
+    const gl = document.createElement("canvas").getContext("webgl2");
+    const ext = gl?.getExtension("WEBGL_debug_renderer_info");
+    return gl ? gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) : "no WebGL 2";
+  });
+  console.log(`     WebGL renderer: ${renderer}`);
 
   // The 3D view really draws: sample the canvas right after a frame renders (the
   // drawing buffer is not preserved, so it must be read in the same frame).
