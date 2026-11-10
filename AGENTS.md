@@ -152,7 +152,12 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
   which sees only one side of a corner.
 - **Shading:** grid-based ambient occlusion. Each face corner is darkened by filled grid
   spots in front of it (three near, five farther with less weight), blended across the
-  face. Applied to stickers, flat tiles and plastic; recomputed every frame during turns.
+  face. Applied to stickers and plastic; recomputed every frame during turns. The flat
+  view shades each tile from its neighbors in the view instead: each neighbor standing
+  nearer casts a band along the shared edge (a patch, if it touches only a corner), dark
+  at the edge and gone within 30% of the tile; where bands overlap the darker wins. A
+  visible face at depth 0 or below has always been unstickered in sampled positions, so
+  every drop seen on a sticker is one step.
 - **Shadows:** soft shadows from the single key light.
 - **Lighting:** a studio-room environment map supplies most of the light; one key light gives
   corner glints and shadows. The plastic has boosted specular reflectance plus a clear coat,

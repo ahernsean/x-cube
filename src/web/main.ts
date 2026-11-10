@@ -324,7 +324,8 @@ function initScene(canvas: HTMLCanvasElement) {
   const plane = roundedSquare(0.82, 0.07);
   const mats = new Map<Color, any>();
   const dark = getComputedStyle(document.documentElement).getPropertyValue("--unstickered").trim() || "#2b2f2e";
-  const netPlane = new THREE.PlaneGeometry(0.92, 0.92);
+  // Subdivided so the flat view's narrow shading ramp has vertices to fall across.
+  const netPlane = new THREE.PlaneGeometry(0.92, 0.92, 16, 16);
   // Columns of vertices at the ends and where an open end is cut back to (GLOW_CUT).
   const glowPlane = new THREE.PlaneGeometry(1.0, GLOW_WIDTH, 3, 1);
   const gp = glowPlane.attributes.position;
@@ -451,7 +452,7 @@ function initScene(canvas: HTMLCanvasElement) {
         list.push({ mesh: m, a, b, lo, hi, mats, corner });
       }
     glows[c.id] = list;
-    aoList.sort((a, b) => a.d - b.d); // same-direction faces (3D sticker, flat tile) share one computation
+    aoList.sort((a, b) => a.d - b.d);
     pivot.add(g);
     meshes[c.id] = g;
   }
@@ -491,10 +492,12 @@ function syncMeshes(st: State) {
 
 /** Grid shading for all six faces of the cubelet in `slot`, applied to its sticker, tile and plastic. */
 function shadeCubelet(st: State, slot: number, ori: number, id: number) {
-  const per: (number[] | null)[] = [];
-  const need = aoOn["3d"] || aoOn.flat;
-  for (let d = 0; d < 6; d++) per.push(need ? gridCorners(st, slot, ori, d) : null);
-  applyToCubelet(id, per);
+  const per: (number[] | null)[] = [], perFlat: (number[] | null)[] = [];
+  for (let d = 0; d < 6; d++) {
+    per.push(aoOn["3d"] ? gridCorners(st, slot, ori, d) : null);
+    perFlat.push(aoOn.flat ? gridNeighbors(st, slot, ori, d) : null);
+  }
+  applyToCubelet(id, per, perFlat);
 }
 
 // Second ring: grid spots two cells out along the face, with less weight, so big
@@ -526,27 +529,57 @@ function cornerValue(fill: (x: number, y: number, z: number) => number, f: reado
 /** Smoothstep easing of the blend across a face, so shading meets cleanly at face edges. */
 const ease = (t: number) => t * t * (3 - 2 * t);
 
-/** Four corner values for face d of the cubelet in `slot` (grid rule). */
-function gridCorners(st: State, slot: number, ori: number, d: number): number[] {
+/**
+ * Flat-view darkness cast on a face by the grid spots around the spot in front of it:
+ * [the four diagonal spots in CORNER_SIGNS order, then the edge spots at -x, +x, -y, +y].
+ * A filled edge spot is a neighbor standing nearer than the face along that edge; a
+ * filled diagonal spot, one touching only that corner. Same arguments as cornerValue.
+ */
+function flatNeighbors(fill: (x: number, y: number, z: number) => number, f: readonly number[], ux: readonly number[], uy: readonly number[]): number[] {
+  const at = (i: number, j: number) => fill(f[0] + i * ux[0] + j * uy[0], f[1] + i * ux[1] + j * uy[1], f[2] + i * ux[2] + j * uy[2]);
+  return [
+    ...CORNER_SIGNS.map(([sx, sy]) => FLAT_DIAG_DARK * at(sx, sy)),
+    FLAT_EDGE_DARK * at(-1, 0),
+    FLAT_EDGE_DARK * at(1, 0),
+    FLAT_EDGE_DARK * at(0, -1),
+    FLAT_EDGE_DARK * at(0, 1),
+  ];
+}
+
+/** The front spot and in-plane axes of face d of the cubelet in `slot`, at rest. */
+function restFrame(slot: number, ori: number, d: number) {
   const R = ROTATIONS[ori];
   const p = SLOT_POS[slot];
   const n = matVec(R, DIRS[d]);
-  const ux = matVec(R, FACE_AXES[d].ux);
-  const uy = matVec(R, FACE_AXES[d].uy);
-  const front = [p[0] + n[0], p[1] + n[1], p[2] + n[2]];
+  return { front: [p[0] + n[0], p[1] + n[1], p[2] + n[2]], ux: matVec(R, FACE_AXES[d].ux), uy: matVec(R, FACE_AXES[d].uy) };
+}
+
+/** Four corner values for face d of the cubelet in `slot` (grid rule), 3D view. */
+function gridCorners(st: State, slot: number, ori: number, d: number): number[] {
+  const { front, ux, uy } = restFrame(slot, ori, d);
   const fill = (x: number, y: number, z: number) => (filledAt(st, [x, y, z]) ? 1 : 0);
   return CORNER_SIGNS.map(([sx, sy]) => cornerValue(fill, front, ux, uy, sx, sy));
 }
 
+/** Flat-view neighbor darkness for face d of the cubelet in `slot` (see flatNeighbors). */
+function gridNeighbors(st: State, slot: number, ori: number, d: number): number[] {
+  const { front, ux, uy } = restFrame(slot, ori, d);
+  return flatNeighbors((x, y, z) => (filledAt(st, [x, y, z]) ? 1 : 0), front, ux, uy);
+}
+
 /**
- * Apply per-face corner values (index = face direction in the cubelet's frame; null =
- * leave as is) to the cubelet's sticker and flat tile faces and to its plastic body.
+ * Apply per-face shading (index = face direction in the cubelet's frame; null = leave as
+ * is) to the cubelet's sticker faces and plastic body (`per`, corner values) and its flat
+ * tiles (`perFlat`, neighbor darkness).
  */
-function applyToCubelet(id: number, per: (number[] | null)[]) {
+function applyToCubelet(id: number, per: (number[] | null)[], perFlat: (number[] | null)[]) {
   for (const f of aoFaces[id] ?? []) {
+    const flat = f.view === "flat";
+    const c = (flat ? perFlat : per)[f.d];
     if (!aoOn[f.view]) {
-      if (!f.cur || f.cur.some((v) => v !== 1)) applyCorners(f, [1, 1, 1, 1]);
-    } else if (per[f.d]) applyCorners(f, per[f.d]!);
+      const none = flat ? FLAT_NONE : CORNERS_NONE;
+      if (!f.cur || f.cur.some((v, i) => v !== none[i])) applyShading(f, none);
+    } else if (c) applyShading(f, c);
   }
   const b = bodyAo[id];
   if (!b) return;
@@ -615,6 +648,16 @@ interface AoFace {
 const aoFaces: AoFace[][] = [];
 // Brightness by number of open spots around a corner (0 = boxed in, 3 = open).
 const AO_LEVELS = [0.39, 0.575, 0.765, 1];
+// The flat view shades a tile from its neighbors in the view: each neighbor standing
+// nearer casts a band along the shared edge (or, touching only a corner, a patch in that
+// corner) that is darkest at the edge and gone within FLAT_AO_RAMP of the tile. Where
+// bands overlap the darker one wins, so a recess between two walls shows two bands with
+// a clean middle, and two walls meeting at a corner make one even L.
+const FLAT_AO_RAMP = 0.3;
+const FLAT_EDGE_DARK = 0.45;
+const FLAT_DIAG_DARK = 0.25;
+const CORNERS_NONE = [1, 1, 1, 1];
+const FLAT_NONE = [0, 0, 0, 0, 0, 0, 0, 0];
 // The four corners of a face, as (x, y) signs in the plane's own coordinates.
 const CORNER_SIGNS: [number, number][] = [
   [-1, 1],
@@ -712,18 +755,37 @@ function filledAt(st: State, p: Vec3): boolean {
   return s >= 0 && st.occ[s] >= 0;
 }
 
-/** Write four corner brightness values onto a face, blended across it (any vertex layout). */
-function applyCorners(f: AoFace, corner: number[]) {
-  f.cur = corner.slice();
+/** How much of a band's darkness remains at distance t (0..1, fraction of the tile) from its edge. */
+const flatFalloff = (t: number) => (t >= FLAT_AO_RAMP ? 0 : 1 - ease(t / FLAT_AO_RAMP));
+
+/** Flat-view brightness at (x, y) (0..1 across the tile) from neighbor darkness `n` (see flatNeighbors). */
+function flatBrightness(n: readonly number[], x: number, y: number) {
+  const l = flatFalloff(x), r = flatFalloff(1 - x), b = flatFalloff(y), t = flatFalloff(1 - y);
+  return 1 - Math.max(n[0] * l * t, n[1] * r * t, n[2] * l * b, n[3] * r * b, n[4] * l, n[5] * r, n[6] * b, n[7] * t);
+}
+
+/**
+ * Write shading onto a face (any vertex layout): for a 3D face, four corner brightness
+ * values blended across it; for a flat tile, neighbor darkness (see flatNeighbors).
+ */
+function applyShading(f: AoFace, vals: number[]) {
+  f.cur = vals.slice();
+  const flat = f.view === "flat";
   const col = f.mesh.geometry.attributes.color;
   const arr = col.array as Float32Array;
   const pos = f.mesh.geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) {
-    const u = ease(Math.max(0, Math.min(1, pos.getX(i) / f.extent + 0.5))); // 0 at -x, 1 at +x
-    const w = ease(Math.max(0, Math.min(1, pos.getY(i) / f.extent + 0.5))); // 0 at -y, 1 at +y
-    const top = corner[0] * (1 - u) + corner[1] * u;
-    const bottom = corner[2] * (1 - u) + corner[3] * u;
-    const v = bottom * (1 - w) + top * w;
+    const x = Math.max(0, Math.min(1, pos.getX(i) / f.extent + 0.5)); // 0 at -x, 1 at +x
+    const y = Math.max(0, Math.min(1, pos.getY(i) / f.extent + 0.5)); // 0 at -y, 1 at +y
+    let v: number;
+    if (flat) {
+      v = flatBrightness(vals, x, y);
+    } else {
+      const u = ease(x), w = ease(y);
+      const top = vals[0] * (1 - u) + vals[1] * u;
+      const bottom = vals[2] * (1 - u) + vals[3] * u;
+      v = bottom * (1 - w) + top * w;
+    }
     arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = v;
   }
   col.needsUpdate = true;
@@ -844,19 +906,21 @@ function shadeDuringTurn(pose: TurnPose) {
       const g = matVec(R, v);
       return moving ? rotAxis(axis, c, sn, [g[0], g[1], g[2]]) : [g[0], g[1], g[2]];
     };
-    const per: (number[] | null)[] = [];
+    const per: (number[] | null)[] = [], perFlat: (number[] | null)[] = [];
     for (let fd = 0; fd < 6; fd++) {
       const n = tf(DIRS[fd]), ux = tf(FACE_AXES[fd].ux), uy = tf(FACE_AXES[fd].uy);
       const fx = center[0] + n[0], fy = center[1] + n[1], fz = center[2] + n[2];
       // A face covered by a cubelet that isn't moving can't be seen: leave it.
       if (!moving && staticAt(fx, fy, fz)) {
         per.push(null);
+        perFlat.push(null);
         continue;
       }
       const f = [fx, fy, fz];
-      per.push(CORNER_SIGNS.map(([sx, sy]) => cornerValue(filled, f, ux, uy, sx, sy)));
+      per.push(aoOn["3d"] ? CORNER_SIGNS.map(([sx, sy]) => cornerValue(filled, f, ux, uy, sx, sy)) : null);
+      perFlat.push(aoOn.flat ? flatNeighbors(filled, f, ux, uy) : null);
     }
-    applyToCubelet(id, per);
+    applyToCubelet(id, per, perFlat);
   }
 }
 
@@ -868,7 +932,7 @@ function shadeRestError() {
     const before = new Map<AoFace, number[]>();
     for (const list of aoFaces) for (const f of list ?? []) if (f.cur) before.set(f, f.cur.slice());
     shadeDuringTurn({ def, angle: 0, before: app.current });
-    for (const [f, v] of before) for (let i = 0; i < 4; i++) worst = Math.max(worst, Math.abs(v[i] - f.cur![i]));
+    for (const [f, v] of before) for (let i = 0; i < v.length; i++) worst = Math.max(worst, Math.abs(v[i] - f.cur![i]));
     syncMeshes(app.current);
   }
   return worst;
@@ -2460,6 +2524,36 @@ function installProbe() {
       });
     },
     shadeRestError,
+    /**
+     * Flat-view shading over every flat tile: how many tiles are shaded and how many have
+     * bands on two opposite edges (a recess between two walls); the largest gap between
+     * the drawn value at an edge's midpoint and that edge's band (should be ~0); the
+     * darkest value drawn past the ramp from every edge (should be 1, a clean middle); and
+     * the darkest value drawn anywhere, with the darkness of one band.
+     */
+    flatShadeProfile() {
+      let shaded = 0, channels = 0, edgeErr = 0, middle = 1, darkest = 1;
+      for (const list of aoFaces)
+        for (const f of list ?? []) {
+          if (f.view !== "flat" || !f.cur) continue;
+          const n = f.cur;
+          if (n.some((v) => v > 0)) shaded++;
+          if ((n[4] > 0 && n[5] > 0) || (n[6] > 0 && n[7] > 0)) channels++;
+          const a = f.mesh.geometry.attributes.color.array as Float32Array;
+          const pos = f.mesh.geometry.attributes.position;
+          for (let i = 0; i < pos.count; i++) {
+            const x = pos.getX(i) / f.extent + 0.5, y = pos.getY(i) / f.extent + 0.5, v = a[i * 3];
+            darkest = Math.min(darkest, v);
+            const mid = (t: number) => Math.abs(t - 0.5) < 1e-6, at0 = (t: number) => Math.abs(t) < 1e-6, at1 = (t: number) => Math.abs(t - 1) < 1e-6;
+            if (mid(y) && at0(x)) edgeErr = Math.max(edgeErr, Math.abs(v - (1 - n[4])));
+            if (mid(y) && at1(x)) edgeErr = Math.max(edgeErr, Math.abs(v - (1 - n[5])));
+            if (mid(x) && at0(y)) edgeErr = Math.max(edgeErr, Math.abs(v - (1 - n[6])));
+            if (mid(x) && at1(y)) edgeErr = Math.max(edgeErr, Math.abs(v - (1 - n[7])));
+            if (Math.min(x, 1 - x) >= FLAT_AO_RAMP && Math.min(y, 1 - y) >= FLAT_AO_RAMP) middle = Math.min(middle, v);
+          }
+        }
+      return { shaded, channels, edgeErr, middle, darkest, oneBand: 1 - FLAT_EDGE_DARK };
+    },
     /** What the effect switches currently control: glow layers, the key light's shadows, grid shading. */
     effects: () => ({ glow3d: camera.layers.isEnabled(GLOW3D_LAYER), glowFlat: netCams.every((c) => c.cam.layers.isEnabled(GLOWNET_LAYER)), shadows: !!keyLight?.castShadow, shading: aoOn["3d"] && aoOn.flat }),
     /** The color the model says the sticker in slot shows toward face (null: none). */
