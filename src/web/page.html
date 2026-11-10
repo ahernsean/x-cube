@@ -185,7 +185,8 @@ details summary { cursor: pointer; font-family: var(--f-display); text-transform
 details[open] summary { margin-bottom: 8px; }
 .legend { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
 .legend code { font-family: var(--f-mono); color: var(--ink); }
-.speed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.speed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); flex: 1 1 auto; min-width: 0; }
+.speed input { flex: 1 1 auto; min-width: 0; }
 @media (prefers-reduced-motion: reduce) { .mv:active { transform: none; } }
 </style>
 
@@ -252,7 +253,7 @@ details[open] summary { margin-bottom: 8px; }
         <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
         <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
         <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
-        <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="42"></label>
+        <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
         <span class="counter" id="counter">0 / 0</span>
       </div>
       <p class="hint" style="margin:8px 0 0">Start: <strong id="base-label">Solved</strong>. Loaded turns start from the current step.</p>

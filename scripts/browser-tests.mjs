@@ -438,9 +438,10 @@ try {
   // them): no queued turn may play afterward. The slowest speed gives a broken stop
   // plenty of time to show.
   await page.$eval("#speed", (el) => {
-    el.value = "0"; // about 800 ms a turn
+    el.value = "0"; // about 1600 ms a turn
     el.dispatchEvent(new Event("input"));
   });
+  const slowest = await probe("speed");
   await page.evaluate(() => {
     document.getElementById("last").click(); // play
     document.getElementById("last").click(); // the same button stops
@@ -450,9 +451,12 @@ try {
   const stoppedAt = await counter();
   check(stoppedAt === "0/3", `play, then stop, plays none of the queued turns (${stoppedAt})`);
   await page.$eval("#speed", (el) => {
-    el.value = "42";
+    el.value = "52";
     el.dispatchEvent(new Event("input"));
   });
+  const usual = await probe("speed");
+  const sliderWidth = await page.$eval("#speed", (el) => el.getBoundingClientRect().width);
+  check(Math.round(slowest) === 1600 && Math.round(usual) === 202 && sliderWidth >= 150, `the speed slider runs from 1600 ms a turn, default 202 ms, and is ${Math.round(sliderWidth)} px wide`);
 
   // ---- The hold line names the centers up, toward you and on your right, as they are now:
   // the H slice carries the side centers around.

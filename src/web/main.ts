@@ -1593,8 +1593,10 @@ let anim: Anim | null = null;
 const queue: { turn: Turn; forward: boolean; from?: State }[] = [];
 const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 // Speed slider 0..100 maps logarithmically from 800 ms (slowest) to 30 ms (fastest) per quarter turn.
-const speedFromSlider = (v: number) => 800 * Math.pow(30 / 800, v / 100);
-let speedMs = speedFromSlider(42);
+// Milliseconds per quarter turn: 1600 at the slow end, 30 at the fast end; the default
+// (52) is about 200.
+const speedFromSlider = (v: number) => 1600 * Math.pow(30 / 1600, v / 100);
+let speedMs = speedFromSlider(52);
 /** True while "play" is running through the remaining turns. */
 let playing = false;
 
@@ -2711,6 +2713,8 @@ function installProbe() {
       g.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(a[0], a[1], a[2]), HALF));
     },
     resync: () => syncMeshes(app.current),
+    /** Milliseconds per quarter turn, as the speed slider sets it. */
+    speed: () => speedMs,
     /** While editing colors: how the painted colors fit, and the color of a painted face. */
     editing: () => edit && { level: edit.fit.level, problems: edit.fit.problems, paint: edit.paint },
     painted: (slot: string, face: string) => edit?.colors[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)] ?? null,
