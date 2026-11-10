@@ -494,8 +494,8 @@ function syncMeshes(st: State) {
 function shadeCubelet(st: State, slot: number, ori: number, id: number) {
   const per: (number[] | null)[] = [], perFlat: (number[] | null)[] = [];
   for (let d = 0; d < 6; d++) {
-    per.push(aoOn["3d"] ? gridCorners(st, slot, ori, d, false) : null);
-    perFlat.push(aoOn.flat ? gridCorners(st, slot, ori, d, true) : null);
+    per.push(aoOn["3d"] ? gridCorners(st, slot, ori, d) : null);
+    perFlat.push(aoOn.flat ? gridNeighbors(st, slot, ori, d) : null);
   }
   applyToCubelet(id, per, perFlat);
 }
@@ -516,14 +516,11 @@ const FAR_WEIGHT = 0.22; // how much a fully filled second ring darkens a corner
  * Brightness of one face corner. `fill(x, y, z)` says how filled a spot is (0..1);
  * f = the spot just in front of the face; ux, uy = the face's in-plane axes;
  * sx, sy = which corner. Used both at rest (filled = 0 or 1) and mid-turn (continuous).
- * In the 3D view a corner with both edge spots filled is boxed in and darkest. In the
- * flat view (`flat`) it is only as dark as one filled edge spot, so where two of the
- * flat view's narrow bands meet they form one even L instead of a darker square.
  */
-function cornerValue(fill: (x: number, y: number, z: number) => number, f: readonly number[], ux: readonly number[], uy: readonly number[], sx: number, sy: number, flat: boolean) {
+function cornerValue(fill: (x: number, y: number, z: number) => number, f: readonly number[], ux: readonly number[], uy: readonly number[], sx: number, sy: number) {
   const at = (i: number, j: number) => fill(f[0] + i * sx * ux[0] + j * sy * uy[0], f[1] + i * sx * ux[1] + j * sy * uy[1], f[2] + i * sx * ux[2] + j * sy * uy[2]);
   const s1 = at(1, 0), s2 = at(0, 1), s3 = at(1, 1);
-  const near = levelBrightness(flat ? 3 - Math.max(s1, s2) - s3 : (1 - s1 * s2) * (3 - (s1 + s2 + s3)));
+  const near = levelBrightness((1 - s1 * s2) * (3 - (s1 + s2 + s3)));
   let far = 0;
   for (const [i, j, w] of FAR_RING) far += w * at(i, j);
   return near * (1 - (FAR_WEIGHT * far) / FAR_RING_TOTAL);
@@ -532,29 +529,57 @@ function cornerValue(fill: (x: number, y: number, z: number) => number, f: reado
 /** Smoothstep easing of the blend across a face, so shading meets cleanly at face edges. */
 const ease = (t: number) => t * t * (3 - 2 * t);
 
-/** Four corner values for face d of the cubelet in `slot` (grid rule), for the 3D or flat view. */
-function gridCorners(st: State, slot: number, ori: number, d: number, flat: boolean): number[] {
+/**
+ * Flat-view darkness cast on a face by the grid spots around the spot in front of it:
+ * [the four diagonal spots in CORNER_SIGNS order, then the edge spots at -x, +x, -y, +y].
+ * A filled edge spot is a neighbor standing nearer than the face along that edge; a
+ * filled diagonal spot, one touching only that corner. Same arguments as cornerValue.
+ */
+function flatNeighbors(fill: (x: number, y: number, z: number) => number, f: readonly number[], ux: readonly number[], uy: readonly number[]): number[] {
+  const at = (i: number, j: number) => fill(f[0] + i * ux[0] + j * uy[0], f[1] + i * ux[1] + j * uy[1], f[2] + i * ux[2] + j * uy[2]);
+  return [
+    ...CORNER_SIGNS.map(([sx, sy]) => FLAT_DIAG_DARK * at(sx, sy)),
+    FLAT_EDGE_DARK * at(-1, 0),
+    FLAT_EDGE_DARK * at(1, 0),
+    FLAT_EDGE_DARK * at(0, -1),
+    FLAT_EDGE_DARK * at(0, 1),
+  ];
+}
+
+/** The front spot and in-plane axes of face d of the cubelet in `slot`, at rest. */
+function restFrame(slot: number, ori: number, d: number) {
   const R = ROTATIONS[ori];
   const p = SLOT_POS[slot];
   const n = matVec(R, DIRS[d]);
-  const ux = matVec(R, FACE_AXES[d].ux);
-  const uy = matVec(R, FACE_AXES[d].uy);
-  const front = [p[0] + n[0], p[1] + n[1], p[2] + n[2]];
+  return { front: [p[0] + n[0], p[1] + n[1], p[2] + n[2]], ux: matVec(R, FACE_AXES[d].ux), uy: matVec(R, FACE_AXES[d].uy) };
+}
+
+/** Four corner values for face d of the cubelet in `slot` (grid rule), 3D view. */
+function gridCorners(st: State, slot: number, ori: number, d: number): number[] {
+  const { front, ux, uy } = restFrame(slot, ori, d);
   const fill = (x: number, y: number, z: number) => (filledAt(st, [x, y, z]) ? 1 : 0);
-  return CORNER_SIGNS.map(([sx, sy]) => cornerValue(fill, front, ux, uy, sx, sy, flat));
+  return CORNER_SIGNS.map(([sx, sy]) => cornerValue(fill, front, ux, uy, sx, sy));
+}
+
+/** Flat-view neighbor darkness for face d of the cubelet in `slot` (see flatNeighbors). */
+function gridNeighbors(st: State, slot: number, ori: number, d: number): number[] {
+  const { front, ux, uy } = restFrame(slot, ori, d);
+  return flatNeighbors((x, y, z) => (filledAt(st, [x, y, z]) ? 1 : 0), front, ux, uy);
 }
 
 /**
- * Apply per-face corner values (index = face direction in the cubelet's frame; null =
- * leave as is) to the cubelet's sticker faces and plastic body (`per`) and its flat
- * tiles (`perFlat`).
+ * Apply per-face shading (index = face direction in the cubelet's frame; null = leave as
+ * is) to the cubelet's sticker faces and plastic body (`per`, corner values) and its flat
+ * tiles (`perFlat`, neighbor darkness).
  */
 function applyToCubelet(id: number, per: (number[] | null)[], perFlat: (number[] | null)[]) {
   for (const f of aoFaces[id] ?? []) {
-    const c = (f.view === "flat" ? perFlat : per)[f.d];
+    const flat = f.view === "flat";
+    const c = (flat ? perFlat : per)[f.d];
     if (!aoOn[f.view]) {
-      if (!f.cur || f.cur.some((v) => v !== 1)) applyCorners(f, [1, 1, 1, 1]);
-    } else if (c) applyCorners(f, c);
+      const none = flat ? FLAT_NONE : CORNERS_NONE;
+      if (!f.cur || f.cur.some((v, i) => v !== none[i])) applyShading(f, none);
+    } else if (c) applyShading(f, c);
   }
   const b = bodyAo[id];
   if (!b) return;
@@ -623,10 +648,16 @@ interface AoFace {
 const aoFaces: AoFace[][] = [];
 // Brightness by number of open spots around a corner (0 = boxed in, 3 = open).
 const AO_LEVELS = [0.39, 0.575, 0.765, 1];
-// The flat view keeps each corner's full darkness at the tile's edge but fades it out
-// within this fraction of the tile, so it reads as a narrow band next to the cubelet
-// that casts it rather than a gradient across the whole tile.
+// The flat view shades a tile from its neighbors in the view: each neighbor standing
+// nearer casts a band along the shared edge (or, touching only a corner, a patch in that
+// corner) that is darkest at the edge and gone within FLAT_AO_RAMP of the tile. Where
+// bands overlap the darker one wins, so a recess between two walls shows two bands with
+// a clean middle, and two walls meeting at a corner make one even L.
 const FLAT_AO_RAMP = 0.3;
+const FLAT_EDGE_DARK = 0.45;
+const FLAT_DIAG_DARK = 0.25;
+const CORNERS_NONE = [1, 1, 1, 1];
+const FLAT_NONE = [0, 0, 0, 0, 0, 0, 0, 0];
 // The four corners of a face, as (x, y) signs in the plane's own coordinates.
 const CORNER_SIGNS: [number, number][] = [
   [-1, 1],
@@ -724,20 +755,21 @@ function filledAt(st: State, p: Vec3): boolean {
   return s >= 0 && st.occ[s] >= 0;
 }
 
-/** How much of the darker end's darkness remains at distance t (0..1) from it, in the flat view. */
+/** How much of a band's darkness remains at distance t (0..1, fraction of the tile) from its edge. */
 const flatFalloff = (t: number) => (t >= FLAT_AO_RAMP ? 0 : 1 - ease(t / FLAT_AO_RAMP));
 
-/**
- * Brightness at t (0..1) between end values a (t = 0) and b (t = 1), flat view: the
- * lighter value everywhere except within the ramp next to the darker end.
- */
-function flatBetween(a: number, b: number, t: number) {
-  return a < b ? b + (a - b) * flatFalloff(t) : a + (b - a) * flatFalloff(1 - t);
+/** Flat-view brightness at (x, y) (0..1 across the tile) from neighbor darkness `n` (see flatNeighbors). */
+function flatBrightness(n: readonly number[], x: number, y: number) {
+  const l = flatFalloff(x), r = flatFalloff(1 - x), b = flatFalloff(y), t = flatFalloff(1 - y);
+  return 1 - Math.max(n[0] * l * t, n[1] * r * t, n[2] * l * b, n[3] * r * b, n[4] * l, n[5] * r, n[6] * b, n[7] * t);
 }
 
-/** Write four corner brightness values onto a face, blended across it (any vertex layout). */
-function applyCorners(f: AoFace, corner: number[]) {
-  f.cur = corner.slice();
+/**
+ * Write shading onto a face (any vertex layout): for a 3D face, four corner brightness
+ * values blended across it; for a flat tile, neighbor darkness (see flatNeighbors).
+ */
+function applyShading(f: AoFace, vals: number[]) {
+  f.cur = vals.slice();
   const flat = f.view === "flat";
   const col = f.mesh.geometry.attributes.color;
   const arr = col.array as Float32Array;
@@ -747,11 +779,11 @@ function applyCorners(f: AoFace, corner: number[]) {
     const y = Math.max(0, Math.min(1, pos.getY(i) / f.extent + 0.5)); // 0 at -y, 1 at +y
     let v: number;
     if (flat) {
-      v = flatBetween(flatBetween(corner[2], corner[3], x), flatBetween(corner[0], corner[1], x), y);
+      v = flatBrightness(vals, x, y);
     } else {
       const u = ease(x), w = ease(y);
-      const top = corner[0] * (1 - u) + corner[1] * u;
-      const bottom = corner[2] * (1 - u) + corner[3] * u;
+      const top = vals[0] * (1 - u) + vals[1] * u;
+      const bottom = vals[2] * (1 - u) + vals[3] * u;
       v = bottom * (1 - w) + top * w;
     }
     arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = v;
@@ -885,8 +917,8 @@ function shadeDuringTurn(pose: TurnPose) {
         continue;
       }
       const f = [fx, fy, fz];
-      per.push(aoOn["3d"] ? CORNER_SIGNS.map(([sx, sy]) => cornerValue(filled, f, ux, uy, sx, sy, false)) : null);
-      perFlat.push(aoOn.flat ? CORNER_SIGNS.map(([sx, sy]) => cornerValue(filled, f, ux, uy, sx, sy, true)) : null);
+      per.push(aoOn["3d"] ? CORNER_SIGNS.map(([sx, sy]) => cornerValue(filled, f, ux, uy, sx, sy)) : null);
+      perFlat.push(aoOn.flat ? flatNeighbors(filled, f, ux, uy) : null);
     }
     applyToCubelet(id, per, perFlat);
   }
@@ -900,7 +932,7 @@ function shadeRestError() {
     const before = new Map<AoFace, number[]>();
     for (const list of aoFaces) for (const f of list ?? []) if (f.cur) before.set(f, f.cur.slice());
     shadeDuringTurn({ def, angle: 0, before: app.current });
-    for (const [f, v] of before) for (let i = 0; i < 4; i++) worst = Math.max(worst, Math.abs(v[i] - f.cur![i]));
+    for (const [f, v] of before) for (let i = 0; i < v.length; i++) worst = Math.max(worst, Math.abs(v[i] - f.cur![i]));
     syncMeshes(app.current);
   }
   return worst;
@@ -2493,33 +2525,34 @@ function installProbe() {
     },
     shadeRestError,
     /**
-     * Flat-view shading profile over every flat tile: the largest gap between a tile
-     * corner's drawn value and its computed corner value, and the largest gap between the
-     * drawn values past the ramp and the tile's lightest corner (both should be ~0); and
-     * the darkest corner in each view, with the darkest a corner next to one filled edge
-     * spot can be (`oneWall`), which the flat view never goes below.
+     * Flat-view shading over every flat tile: how many tiles are shaded and how many have
+     * bands on two opposite edges (a recess between two walls); the largest gap between
+     * the drawn value at an edge's midpoint and that edge's band (should be ~0); the
+     * darkest value drawn past the ramp from every edge (should be 1, a clean middle); and
+     * the darkest value drawn anywhere, with the darkness of one band.
      */
     flatShadeProfile() {
-      let edge = 0, beyond = 0, shaded = 0;
-      const darkest = { "3d": 1, flat: 1 };
-      for (const list of aoFaces) for (const f of list ?? []) if (f.cur) darkest[f.view] = Math.min(darkest[f.view], ...f.cur);
+      let shaded = 0, channels = 0, edgeErr = 0, middle = 1, darkest = 1;
       for (const list of aoFaces)
         for (const f of list ?? []) {
           if (f.view !== "flat" || !f.cur) continue;
-          if (f.cur.some((c) => c < 1)) shaded++;
+          const n = f.cur;
+          if (n.some((v) => v > 0)) shaded++;
+          if ((n[4] > 0 && n[5] > 0) || (n[6] > 0 && n[7] > 0)) channels++;
           const a = f.mesh.geometry.attributes.color.array as Float32Array;
           const pos = f.mesh.geometry.attributes.position;
-          const lightest = Math.max(...f.cur);
           for (let i = 0; i < pos.count; i++) {
-            const x = pos.getX(i) / f.extent + 0.5, y = pos.getY(i) / f.extent + 0.5;
-            const near = (t: number) => Math.min(t, 1 - t);
-            if (near(x) < 1e-6 && near(y) < 1e-6) {
-              const c = (y > 0.5 ? 0 : 2) + (x > 0.5 ? 1 : 0);
-              edge = Math.max(edge, Math.abs(a[i * 3] - f.cur[c]));
-            } else if (near(x) >= FLAT_AO_RAMP && near(y) >= FLAT_AO_RAMP) beyond = Math.max(beyond, Math.abs(a[i * 3] - lightest));
+            const x = pos.getX(i) / f.extent + 0.5, y = pos.getY(i) / f.extent + 0.5, v = a[i * 3];
+            darkest = Math.min(darkest, v);
+            const mid = (t: number) => Math.abs(t - 0.5) < 1e-6, at0 = (t: number) => Math.abs(t) < 1e-6, at1 = (t: number) => Math.abs(t - 1) < 1e-6;
+            if (mid(y) && at0(x)) edgeErr = Math.max(edgeErr, Math.abs(v - (1 - n[4])));
+            if (mid(y) && at1(x)) edgeErr = Math.max(edgeErr, Math.abs(v - (1 - n[5])));
+            if (mid(x) && at0(y)) edgeErr = Math.max(edgeErr, Math.abs(v - (1 - n[6])));
+            if (mid(x) && at1(y)) edgeErr = Math.max(edgeErr, Math.abs(v - (1 - n[7])));
+            if (Math.min(x, 1 - x) >= FLAT_AO_RAMP && Math.min(y, 1 - y) >= FLAT_AO_RAMP) middle = Math.min(middle, v);
           }
         }
-      return { edge, beyond, shaded, ramp: FLAT_AO_RAMP, darkest3d: darkest["3d"], darkestFlat: darkest.flat, oneWall: AO_LEVELS[1] * (1 - FAR_WEIGHT) };
+      return { shaded, channels, edgeErr, middle, darkest, oneBand: 1 - FLAT_EDGE_DARK };
     },
     /** What the effect switches currently control: glow layers, the key light's shadows, grid shading. */
     effects: () => ({ glow3d: camera.layers.isEnabled(GLOW3D_LAYER), glowFlat: netCams.every((c) => c.cam.layers.isEnabled(GLOWNET_LAYER)), shadows: !!keyLight?.castShadow, shading: aoOn["3d"] && aoOn.flat }),
