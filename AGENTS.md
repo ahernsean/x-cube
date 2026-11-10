@@ -100,9 +100,18 @@ corner 3-cycle is `R' F' R b R' F R b'` (both verified by tests).
 
 ## State codes
 
-`X1:` followed by 80 pairs of characters, one pair per slot in slot order: cubelet id
-(`A-Z a-z 0-9 - _`) or `.` for empty, then orientation `a..x` (index into the 24 cube
-rotations). `src/core/serialize.ts`.
+`src/core/serialize.ts`. Two formats; `decodeState` reads both.
+
+- **X2** (written for every position turns can reach): 44 letters A-Z in 11 groups of 4,
+  e.g. solved is `VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS`. Case, spaces,
+  dashes and an `X2:` prefix are ignored. Lossless: twins and center spins are kept. It is
+  an index of the position (`positionIndex`, `positionAt`) times a check prime, so a typo
+  is refused: any error within 6 neighboring letters, any swap of two letters, and all but
+  about 1 in 3 billion others.
+- **X1** (written only for positions turns can't reach, which X2 can't hold;
+  `unreachableReason` says why): `X1:` followed by 80 pairs of characters, one pair per
+  slot in slot order: cubelet id (`A-Z a-z 0-9 - _`) or `.` for empty, then orientation
+  `a..x` (index into the 24 cube rotations). Older saved states and test files hold X1 codes.
 
 ## Algorithms
 
