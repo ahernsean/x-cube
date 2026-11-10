@@ -189,8 +189,11 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   wrong: no cubelet of that kind can have a color (core corners are only white or
   yellow), two stickers of one color or opposite colors, a corner's colors going around it
   in mirrored order ("Wrong color order"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three cubelets of this type are green and orange, but only two can be colored this way"; the halo marks every competing spot), or an outer
-  cubelet turned against the outward-color rule (a sign of a sticker
-  painted wrong; the physical cube can't do that). It says what, not where ("A
+  cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
+  physical cube can't do that). Outward-rule problems name only what the owner can check on
+  the cube: "White can't point straight out from the core on an extension cubelet" (no
+  extension cubelet's outward sticker is white or yellow), or "Two cubelets of this type
+  have red pointing straight out from the core, but only one with green and red does". It says what, not where ("A
   cubelet shows yellow, red, and orange, but red and orange are opposite colors, never on
   one cubelet"), not where: words for a spot proved unreliable (center colors move with
   slices, extensions leave their sides, left depends on the viewpoint), so the Lab points

@@ -63,7 +63,7 @@ test("edit: an outer cubelet turned against the outward-color rule is real cubel
   colors[at(0, 1, 2) * 6 + U] = "G";
   const fit = fitColors(st, colors);
   assert.equal(fit.level, "cubelets");
-  assert.deepEqual(fit.problems, [{ text: "A cubelet's green sticker always faces out from the core. One of its stickers is probably painted wrong", slots: [at(0, 1, 2)] }]);
+  assert.deepEqual(fit.problems, [{ text: "White can't point straight out from the core on an extension cubelet", slots: [at(0, 1, 2)] }]);
 });
 
 test("edit: problems say what's wrong, and which slots they are about", () => {
@@ -90,6 +90,17 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
   const threeGreenOrange = say(-1, 0, -2, 5, "G");
   assert.equal(threeGreenOrange.text, "Three cubelets of this type are green and orange, but only two can be colored this way");
   assert.deepEqual([...threeGreenOrange.slots].sort(), [at(-1, 0, 2), at(-2, 0, 1), at(-1, 0, -2)].sort());
+});
+
+test("edit: two spots wanting the one cubelet with a color pointing out are named together", () => {
+  const st = State.solved();
+  const colors = visibleColors(st);
+  colors[at(1, 0, 2) * 6 + F] = "R"; // flip the green-red side edge of the green extension
+  colors[at(1, 0, 2) * 6 + R] = "G";
+  const fit = fitColors(st, colors);
+  assert.equal(fit.level, "cubelets");
+  assert.equal(fit.problems[0].text, "Two cubelets of this type have red pointing straight out from the core, but only one with green and red does");
+  assert.deepEqual([...fit.problems[0].slots].sort(), [at(1, 0, 2), at(2, 0, 1)].sort());
 });
 
 test("edit: no cubelet has opposite colors or two of one color (the reasons problems give)", () => {
