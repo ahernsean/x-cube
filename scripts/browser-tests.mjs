@@ -554,16 +554,16 @@ try {
     `◀ plays back to the start (shows ■ while playing), keeps the 3 turns, and ▶ plays them again`,
   );
 
-  // ---- "Make current position the start", and state codes out and in.
+  // ---- Clear (the position shown becomes the start), and state codes out and in.
   await startFresh();
   await page.fill("#alg", "R U");
   await page.click("#load");
   await page.click("#last"); // play
   await settle();
   const ruState = await probe("state");
-  await page.click("#rebase");
-  const rebased = { counter: await counter(), state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent) };
-  check(rebased.counter === "0/0" && rebased.state === ruState && /now the start/.test(rebased.msg), `making the current position the start keeps it and clears the turns (${rebased.counter})`);
+  await page.click("#clear");
+  const cleared = { counter: await counter(), state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent) };
+  check(cleared.counter === "0/0" && cleared.state === ruState && /^Turns cleared/.test(cleared.msg) && (await page.$eval("#clear", (b) => b.textContent)) === "Clear", `Clear empties the turn list and keeps the position shown as the start (${cleared.counter})`);
   await page.locator("summary", { hasText: "State code" }).click(); // the codes sit in a closed disclosure
   const shown = await page.$eval("#code-out", (t) => t.value);
   check(shown === ruState, "the state code shown is the current position's");

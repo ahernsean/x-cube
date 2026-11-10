@@ -149,6 +149,7 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   fade after 4 seconds (8 for errors) or a tap. The browser tests check the page height.
 - **Playback:** ⏮ back to the start, ◀ play backward to the start, ◀1 back one turn, ▶1
   forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
+- **Clear:** empties the turn list; the position shown becomes the start ("Current position").
 - **Shuffle:** 30 random legal turns (inner, slices, outer when complete; never the same
   layer twice in a row; no rotations) played at 70 ms per quarter turn; the result becomes
   the new start ("Shuffled") and the message shows the scramble.

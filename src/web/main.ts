@@ -2521,9 +2521,9 @@ function bindUI() {
     setMessage("Reset to solved", "ok");
     render();
   });
-  $("rebase").addEventListener("click", () => {
+  $("clear").addEventListener("click", () => {
     setBase(app.current, "Current position");
-    setMessage("This position is now the start", "ok");
+    setMessage("Turns cleared. This position is now the start", "ok");
     render();
   });
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-view]"))
