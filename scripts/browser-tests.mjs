@@ -118,11 +118,14 @@ try {
   const renderOpen = { shown: await isShown("render-pop"), boxes: await page.$$eval("#render-pop input[type=checkbox]", (els) => els.length), height: await pageHeight() };
   await page.click("#info-btn");
   const infoOpen = { shown: await isShown("info-pop"), renderClosed: !(await isShown("render-pop")), height: await pageHeight() };
+  await page.click("#flat-info-btn");
+  const flatOpen = { shown: await isShown("flat-info-pop"), infoClosed: !(await isShown("info-pop")), height: await pageHeight(), text: await page.$eval("#flat-info-pop", (e) => e.textContent) };
   await page.mouse.click(5, h0 - 5 > 600 ? 600 : 300);
-  const allClosed = !(await isShown("info-pop")) && !(await isShown("render-pop"));
+  const allClosed = !(await isShown("info-pop")) && !(await isShown("render-pop")) && !(await isShown("flat-info-pop"));
+  const flatLegendInFlow = await page.$$eval("[data-sec=flat] .legend", (els) => els.length);
   check(
-    renderOpen.shown && renderOpen.boxes === 4 && infoOpen.shown && infoOpen.renderClosed && allClosed && renderOpen.height === h0 && infoOpen.height === h0,
-    `the Display and ⓘ panels open over the view without moving the page (height ${h0} px), one at a time, and close on a tap elsewhere`,
+    renderOpen.shown && renderOpen.boxes === 4 && infoOpen.shown && infoOpen.renderClosed && flatOpen.shown && flatOpen.infoClosed && /no sticker/.test(flatOpen.text) && flatLegendInFlow === 0 && allClosed && renderOpen.height === h0 && infoOpen.height === h0 && flatOpen.height === h0,
+    `the Display panel and both ⓘ panels (3D and flat view) open over the views without moving the page (height ${h0} px), one at a time, and close on a tap elsewhere`,
   );
   await page.fill("#alg", "");
   await page.click("#load"); // nothing to load: only a message changes

@@ -2430,11 +2430,12 @@ function setupCollapsibles() {
   }
 }
 
-/** The ⓘ and Display buttons beside the 3D view's heading each open a small panel over the view. */
+/** The ⓘ and Display buttons beside the 3D and flat views' headings each open a small panel over the view. */
 function bindViewTools() {
   const pairs: [string, string][] = [
     ["info-btn", "info-pop"],
     ["render-btn", "render-pop"],
+    ["flat-info-btn", "flat-info-pop"],
   ];
   const close = (except?: string) => {
     for (const [b, p] of pairs)

@@ -145,7 +145,7 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   Shading, Shadows and Gloss switches, over the view.
 - **Layout rule:** on a phone, nothing appears or disappears in the page's flow except
   through a disclosure triangle (and the turn list, which grows with the turns). Help and
-  switches open in panels over the view; messages float near the bottom of the screen and
+  switches open in panels over the views; messages float near the bottom of the screen and
   fade after 4 seconds (8 for errors) or a tap. The browser tests check the page height.
 - **Playback:** ⏮ back to the start, ◀ play backward to the start, ◀1 back one turn, ▶1
   forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
@@ -155,7 +155,7 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
 - **Turn buttons:** tap for the shown turn; long press flips it to the inverse (U to U');
   slide off to cancel.
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
-  orthographic cameras, so it animates.
+  orthographic cameras, so it animates. Its ⓘ button explains how to read it.
 - **Edge glow:** a soft band at a depth discontinuity, in the color of the sticker around
   the edge. No glow means that side has no sticker. Only shown where the side face points
   away from the viewer or is edge-on. Where two visible faces of one cubelet meet, the
