@@ -285,6 +285,10 @@ Never do any of these without an explicit instruction from the owner:
   - Use CI as your test runner: after pushing, read the check results (the GitHub tools give
     the check runs and job logs) and fix what fails. Reproduce a CI failure locally with the
     narrowest run that shows it, then show that same run passing.
+  - A push to a pull request cancels CI still running on its previous commit, and that
+    run's `all checks` then fails because a job was cancelled. That is not a failure: when
+    a failed check is on a commit that is no longer the pull request's head, ignore it and
+    don't report it. Only failures on the current head need looking into.
 - CI (`.github/workflows/ci.yml`) runs the unit tests, the typecheck, and the build and
   browser tests in Chromium and WebKit, each as its own check, all on Node 24 (the version
   `package.json` requires). Keep it green. It reports coverage (unit tests, and browser
