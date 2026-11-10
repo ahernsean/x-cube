@@ -2201,7 +2201,7 @@ function render() {
         <div class="saved-main"><span class="saved-name">${escapeHtml(s.name)}</span>
         <span class="saved-note">${escapeHtml(s.note ?? "")}${s.source === "claude" ? " · from Claude" : ""}</span></div>
         <div class="saved-actions">
-          <button class="btn small" data-load="${s.id}">Start here</button>
+          <button class="btn small" data-load="${s.id}" title="Make this position the start">Load</button>
           ${pendingDelete === s.id ? `<button class="btn small danger" data-del-yes="${s.id}">Delete</button><button class="btn small" data-del-no="1">Keep</button>` : `<button class="btn small ghost" data-del="${s.id}" aria-label="Delete ${escapeHtml(s.name)}">✕</button>`}
         </div></li>`,
         )

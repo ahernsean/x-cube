@@ -691,12 +691,19 @@ try {
       message: await p.$eval("#message", (m) => m.textContent ?? ""),
       listed: await p.$eval("#saved-list", (l) => (l.textContent ?? "").includes("Test save")),
     };
+    if (result.listed) {
+      // Its Load button makes the saved position the start.
+      result.button = await p.$eval("#saved-list [data-load]", (b) => b.textContent);
+      await p.click("#saved-list [data-load]");
+      result.base = await p.$eval("#base-label", (e) => e.textContent);
+    }
     await collect(p);
     await ctx.close();
     return result;
   };
   const good = await savePage(false);
   check(good.listed && good.message.startsWith('Saved "Test save"'), `a device save is listed and confirmed ("${good.message}")`);
+  check(good.button === "Load" && good.base === "Test save", `a saved position's Load button makes it the start ("${good.button}", start "${good.base}")`);
   const full = await savePage(true);
   check(!full.listed && full.message.startsWith("Could not save"), `a failed device save is reported, not listed ("${full.message}")`);
 } finally {
