@@ -879,7 +879,8 @@ function shadeRestError() {
 }
 
 function applyShadingSettings() {
-  syncMeshes(app.current);
+  if (edit) drawEdit(); // the edited position, with its paint
+  else syncMeshes(app.current);
   try {
     localStorage.setItem(AO_KEY, JSON.stringify(aoOn));
   } catch {

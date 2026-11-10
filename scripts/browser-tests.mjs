@@ -545,6 +545,19 @@ try {
   await paint("G", "Rx.U", "R");
   const swapped = { line: await editLine(), off: await doneOff() };
   check(/^Valid/.test(swapped.line) && !swapped.off, `painting the other edge to match makes it valid again ("${swapped.line}")`);
+  // The effect switches stay usable while editing; Shading must redraw the edited position.
+  const shadeBox = (on) =>
+    page.evaluate((on) => {
+      const el = document.getElementById("shade");
+      el.checked = on;
+      el.dispatchEvent(new Event("change"));
+    }, on);
+  await shadeBox(false);
+  await shadeBox(true);
+  await page.locator("#scene").scrollIntoViewIfNeeded();
+  const shadeHit = await probe("at3d", ...Object.values(await probe("sticker", "Fx.U", "F")));
+  const afterShade = `${shadeHit?.slot}/${shadeHit?.face} ${shadeHit?.color}`;
+  check(afterShade === "Fx.U/F R", `turning Shading off and on while editing keeps the edited drawing (drawn: ${afterShade})`);
   const swipeAt = await probe("sticker", "Fx", "F");
   await swipe(swipeAt, 0, -70);
   check((await probe("turns")) === "", "a swipe while editing doesn't turn a layer");
