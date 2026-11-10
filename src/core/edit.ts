@@ -98,6 +98,9 @@ const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
 
 const problem = (text: string, slots: number[]): Problem => ({ text, slots });
 
+const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const numberWord = (n: number) => NUMBER_WORDS[n] ?? String(n);
+
 /** Every (cubelet, orientation) that could sit in slot s and show these colors there. */
 function candidates(shape: State, colors: FaceColors, s: number, outwardRule: boolean): [number, number][] {
   const kind = CUBELETS[shape.occ[s]].kind;
@@ -181,26 +184,37 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
       problems.push(problem(why === null ? "Wrong color order" : `A cubelet shows ${listColors(cs)}, but ${why}`, [s]));
     }
   if (!problems.length) {
-    // Every slot has candidates, but some cubelet would be needed twice.
+    // Every slot has candidates, but some spots compete for too few cubelets. From a spot
+    // left without one, the spots reachable by trading cubelets (its candidates, the spots
+    // those fill, their candidates, ...) are N spots sharing N - 1 cubelets; spots whose
+    // sets overlap are one problem. Any of them may be the one painted wrong.
+    const groups: { slots: Set<number>; ids: Set<number> }[] = [];
     for (const s of loose.unmatched) {
-      const [id] = loose.cand.get(s)![0];
-      const other = loose.slotOf.get(id);
-      const mine = listColors(shownColors(colors, s));
-      // Look-alike core cubelets: the paint shows more of them than the puzzle has.
-      const twins = CUBELETS.filter((c) => c.kind === CUBELETS[id].kind && c.stickers.join() === CUBELETS[id].stickers.join()).length;
-      if (twins > 1) {
-        problems.push(problem(`A cubelet shows ${mine}, but the puzzle's ${twins} cubelets like that are all in other spots`, [s]));
-        continue;
-      }
-      if (other === undefined) {
-        problems.push(problem(`A cubelet shows ${mine}, but the only cubelet colored this way is needed elsewhere`, [s]));
-        continue;
-      }
-      const theirs = listColors(shownColors(colors, other));
+      const slots = new Set<number>(), ids = new Set<number>();
+      const visit = (t: number) => {
+        if (slots.has(t)) return;
+        slots.add(t);
+        for (const [id] of loose.cand.get(t)!) {
+          ids.add(id);
+          const holder = loose.slotOf.get(id);
+          if (holder !== undefined) visit(holder);
+        }
+      };
+      visit(s);
+      const g = groups.find((g) => [...slots].some((t) => g.slots.has(t)));
+      if (g) for (const t of slots) g.slots.add(t), [...ids].forEach((id) => g.ids.add(id));
+      else groups.push({ slots, ids });
+    }
+    for (const g of groups) {
+      const spots = [...g.slots];
+      const shown = new Set(spots.map((t) => listColors(shownColors(colors, t))));
+      const n = numberWord(spots.length), k = numberWord(g.ids.size);
       problems.push(
         problem(
-          mine === theirs ? `Two cubelets of this type are ${mine}, but only one can be colored this way` : `One cubelet shows ${mine} and another shows ${theirs}, but only one cubelet fits both`,
-          [s, other],
+          shown.size === 1
+            ? `${cap(n)} cubelets of this type are ${[...shown][0]}, but only ${k} can be colored this way`
+            : `${cap(n)} cubelets of this type can only be filled by ${k} ${g.ids.size === 1 ? "cubelet" : "cubelets"} on the puzzle`,
+          spots,
         ),
       );
     }

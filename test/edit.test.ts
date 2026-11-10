@@ -83,7 +83,13 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
   swapped[at(-1, -1, -2) * 6 + 1] = "B";
   assert.equal(fitColors(st, swapped).problems[0].text, "Wrong color order");
   // Look-alike core cubelets: more painted than the puzzle has.
-  assert.deepEqual(say(1, 1, 1, U, "Y"), { text: "A cubelet shows yellow, but the puzzle's 4 cubelets like that are all in other spots", slots: [at(1, 1, 1)] });
+  const lookAlike = say(1, 1, 1, U, "Y");
+  assert.equal(lookAlike.text, "Five cubelets of this type are yellow, but only four can be colored this way");
+  assert.deepEqual([...lookAlike.slots].sort(), [at(1, 1, 1), at(1, -1, 1), at(-1, -1, 1), at(1, -1, -1), at(-1, -1, -1)].sort(), "names every spot competing for them");
+  // Outer cubelets with the same colors are not look-alikes, but the count works the same.
+  const threeGreenOrange = say(-1, 0, -2, 5, "G");
+  assert.equal(threeGreenOrange.text, "Three cubelets of this type are green and orange, but only two can be colored this way");
+  assert.deepEqual([...threeGreenOrange.slots].sort(), [at(-1, 0, 2), at(-2, 0, 1), at(-1, 0, -2)].sort());
 });
 
 test("edit: no cubelet has opposite colors or two of one color (the reasons problems give)", () => {
