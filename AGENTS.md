@@ -107,7 +107,8 @@ rotations). `src/core/serialize.ts`.
 ## Algorithms
 
 `ALGORITHMS.md` collects algorithms found or verified with the engine, each with the
-situation it solves, how to recognize it, and the test that checks it. Add new ones there.
+situation it solves, how to recognize it, and the test that checks it. Add new ones there,
+and to `src/core/algorithms.ts` (with an example position) so the Lab lists them.
 
 ## Code map
 
@@ -116,6 +117,7 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
 - `src/core/notation.ts`: parser and formatter.
 - `src/core/analyze.ts`: shape and solved tests, effect (cycles and twists), text face views,
   flat-view rim data (`faceRimView`).
+- `src/core/algorithms.ts`: the known algorithms the Lab lists, each with an example position.
 - `src/core/edit.ts`: fitting edited sticker colors to real cubelets (the Lab's color editor).
 - `src/core/search.ts`, `src/core/goals.ts`: iterative-deepening search with goal masks
   based on appearance (look-alike twins compare equal).
@@ -172,6 +174,13 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
   puzzle" (real cubelets, but one breaks the outward-color rule) or "Not valid" (with the
   spot and the reason). Done, available only when valid, makes the fitted position the start
   ("Edited colors"). Whether a valid position can be reached by turning is not checked yet.
+- **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
+  center colors up, toward you and on your right as they are now (slice turns move the side
+  centers). Tell the owner how to hold the cube from it, never from the solved colors.
+- **Known algorithms:** a list in the Run an algorithm panel (`src/core/algorithms.ts`);
+  Load makes an algorithm's example position the start, with its turns loaded and unplayed.
+  Each is checked from its position by `test/algorithms.test.ts`, and described in
+  `ALGORITHMS.md`.
 - **Saved states:** stored in the artifact's shared database, collection `states`, with
   fields `name`, `code` (a state code), `note`, `savedAt`, `source` (`page` or `claude`).
 
