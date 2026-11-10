@@ -52,7 +52,7 @@ test("edit: one cubelet needed in two places is refused", () => {
   const fit = fitColors(st, colors);
   assert.equal(fit.level, null);
   assert.equal(fit.problems.length, 1);
-  assert.equal(fit.problems[0].text, "Two extension centers are red, but there can be only one");
+  assert.equal(fit.problems[0].text, "Two centers are red, but there can be only one");
   assert.deepEqual([...fit.problems[0].slots].sort(), [at(0, 0, 2), at(2, 0, 0)].sort());
 });
 

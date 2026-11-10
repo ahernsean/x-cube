@@ -97,8 +97,9 @@ function noCubelet(kind: Kind, cs: Color[]): string {
 
 /** The owner's names for the kinds of cubelet (AGENTS.md), singular and plural. */
 const KIND_NAME: Record<Kind, [string, string]> = {
-  center: ["core center", "core centers"],
-  extCenter: ["extension center", "extension centers"],
+  // Plural for counts: each center color shows on exactly one center of either kind.
+  center: ["core center", "centers"],
+  extCenter: ["extension center", "centers"],
   coreCorner: ["core corner", "core corners"],
   singleEdge: ["core single edge", "core single edges"],
   doubleEdge: ["core double edge", "core double edges"],
