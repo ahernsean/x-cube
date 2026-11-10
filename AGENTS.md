@@ -100,9 +100,18 @@ corner 3-cycle is `R' F' R b R' F R b'` (both verified by tests).
 
 ## State codes
 
-`X1:` followed by 80 pairs of characters, one pair per slot in slot order: cubelet id
-(`A-Z a-z 0-9 - _`) or `.` for empty, then orientation `a..x` (index into the 24 cube
-rotations). `src/core/serialize.ts`.
+`src/core/serialize.ts`. Two formats; `decodeState` reads both.
+
+- **X2** (written for every position turns can reach): 44 letters A-Z in 11 groups of 4,
+  e.g. solved is `VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS`. Case, spaces,
+  dashes and an `X2:` prefix are ignored. Lossless: twins and center spins are kept. It is
+  an index of the position (`positionIndex`, `positionAt`) times a check prime, so a typo
+  is refused: any error within 6 neighboring letters, any swap of two letters, and all but
+  about 1 in 3 billion others.
+- **X1** (written only for positions turns can't reach, which X2 can't hold;
+  `unreachableReason` says why): `X1:` followed by 80 pairs of characters, one pair per
+  slot in slot order: cubelet id (`A-Z a-z 0-9 - _`) or `.` for empty, then orientation
+  `a..x` (index into the 24 cube rotations). Older saved states and test files hold X1 codes.
 
 ## Algorithms
 
@@ -277,9 +286,12 @@ Never do any of these without an explicit instruction from the owner:
   tests in Chromium) on each run's summary page; no minimum is enforced. When you add
   a Lab behavior, test it in `scripts/browser-tests.mjs`, through the probe if it draws. The `all checks` job is the
   one a branch rule on `main` requires; renaming it means changing the rule.
-- **Publish the Lab early**, as soon as a change builds and its focused check passes,
-  without waiting for CI: the owner tries changes in the Lab while CI runs. If CI then
-  fails, fix it and publish again.
+- **Publish the Lab early.** When your work includes publishing the Lab, publish as soon
+  as the change builds and its focused check passes. Don't wait for a commit, a pull
+  request or CI: the owner tries changes in the Lab before they are shared with others,
+  and rapid feedback is the point. If CI then fails, fix it and publish again. This says
+  when to publish, not that every change must be published: if the owner has said to hold
+  off (for example while another agent is publishing), wait until they say go.
 - Library versions must be at least two weeks old.
 
 ### Safari is the main browser
