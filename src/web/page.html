@@ -269,19 +269,20 @@ details[open] summary { margin-bottom: 8px; }
         <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
         <span class="counter" id="counter">0 / 0</span>
       </div>
-      <p class="hint base-line" title="Loaded turns start from the current step">Start: <strong id="base-label">Solved</strong></p>
+      <p class="hint base-line" title="The position the turn list starts from">Start: <strong id="base-label">Solved</strong></p>
       <div class="base-actions">
         <button class="btn small ghost" id="clear" title="Clear the turn list; the position shown becomes the start">Clear</button>
         <button class="btn small ghost" id="reset">Reset to solved</button>
         <button class="btn small" id="shuffle">Shuffle</button>
       </div>
       <div class="alg-row add-turns">
-        <input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Turns">
-        <button class="btn primary" id="load" title="Load the turns, then play them with ▶ or step through them">Load</button>
+        <input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Turns to add">
+        <button class="btn primary" id="load" title="Add the turns at the current step, then play them with ▶ or step through them">Load</button>
+        <button class="btn" id="alg-edit" title="Edit the whole turn list here">Edit</button>
       </div>
       <details class="known">
         <summary>Algorithms</summary>
-        <p class="hint" style="margin:6px 0 0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turns in the box above with the current start position.</p>
+        <p class="hint" style="margin:6px 0 0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turn list with its start position.</p>
         <div class="alg-row" style="margin-top:8px">
           <input type="text" id="alg-name" placeholder="Name algorithm" autocomplete="off">
           <button class="btn" id="alg-save">Save</button>

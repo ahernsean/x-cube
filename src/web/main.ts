@@ -1846,8 +1846,75 @@ function doTurn(turn: Turn) {
   enqueue(turn, true);
 }
 
-/** Run an algorithm from the current position: replaces any turns after the cursor. */
-function runAlg(src: string, play: boolean) {
+/** Typed or edited turns, checked from `from`: how many can be made before one is refused, and why. */
+function legalPrefix(from: State, turns: Turn[]): { ok: number; why: string | null } {
+  const probe = from.clone();
+  for (let i = 0; i < turns.length; i++) {
+    const why = blockedReason(probe, turns[i]);
+    if (why) return { ok: i, why };
+    applyTurn(probe, turns[i]);
+  }
+  return { ok: turns.length, why: null };
+}
+
+const stopsAt = (turns: Turn[], ok: number, why: string) => `Stops at turn ${ok + 1} of ${turns.length} (${turnName(turns[ok])}): ${why.replace(/^\w+ blocked: /, "")}`;
+
+/**
+ * While true, the turn field holds the whole turn list for editing (after Edit), and Load
+ * reads Update: it replaces the list rather than adding at the current step.
+ */
+let editingTurns = false;
+const algField = () => $("alg") as HTMLInputElement;
+
+/** The Load button: adds the typed turns at the current step, or, while editing, replaces the list. */
+function loadField() {
+  if (editingTurns) updateTurns(algField().value);
+  else if (runAlg(algField().value, false)) algField().value = "";
+}
+
+/** Starts or cancels editing the turn list in the field. */
+function toggleEditTurns() {
+  if (editingTurns) {
+    editingTurns = false;
+    algField().value = "";
+  } else if (app.history.length) {
+    editingTurns = true;
+    algField().value = formatAlg(app.history);
+    algField().focus();
+  }
+  render();
+}
+
+/** Replaces the turn list with the edited one. The position stays where the two lists agree. */
+function updateTurns(src: string) {
+  flushAnimations();
+  let turns: Turn[];
+  try {
+    turns = parseAlg(src);
+  } catch (e) {
+    setMessage(e instanceof ParseError ? e.message : String(e), "error");
+    return render();
+  }
+  const { ok, why } = legalPrefix(app.base, turns);
+  const next = turns.slice(0, ok);
+  let same = 0;
+  while (same < Math.min(next.length, app.history.length) && turnName(next[same]) === turnName(app.history[same])) same++;
+  app.history = next;
+  app.cursor = Math.min(app.cursor, same);
+  editingTurns = false;
+  algField().value = "";
+  recompute();
+  syncMeshes(app.current);
+  if (why) setMessage(stopsAt(turns, ok, why), "error");
+  else setMessage(`Turn list updated: ${next.length} turns`, "ok");
+  render();
+}
+
+/**
+ * Adds an algorithm's turns at the current step, replacing any turns after it. Returns
+ * whether any turns were added.
+ */
+function runAlg(src: string, play: boolean): boolean {
   flushAnimations();
   let turns: Turn[];
   try {
@@ -1855,32 +1922,23 @@ function runAlg(src: string, play: boolean) {
   } catch (e) {
     setMessage(e instanceof ParseError ? e.message : String(e), "error");
     render();
-    return;
+    return false;
   }
   if (!turns.length) {
     setMessage("Type some moves first, for example (R U2)5", "error");
     render();
-    return;
+    return false;
   }
   // Check legality up front so the stop point is known.
-  const probe = app.current.clone();
-  let ok = turns.length;
-  let why: string | null = null;
-  for (let i = 0; i < turns.length; i++) {
-    why = blockedReason(probe, turns[i]);
-    if (why) {
-      ok = i;
-      break;
-    }
-    applyTurn(probe, turns[i]);
-  }
+  const { ok, why } = legalPrefix(app.current, turns);
   const startCursor = app.cursor;
   app.history = app.history.slice(0, app.cursor).concat(turns.slice(0, ok));
-  if (why) setMessage(`Stops at turn ${ok + 1} of ${turns.length} (${turnName(turns[ok])}): ${why.replace(/^\w+ blocked: /, "")}`, "error");
+  if (why) setMessage(stopsAt(turns, ok, why), "error");
   else setMessage(`${turns.length} turns loaded`, "ok");
   if (play) for (let i = startCursor; i < app.history.length; i++) enqueue(app.history[i], true);
   playing = play && queue.length > 0;
   render();
+  return ok > 0;
 }
 
 function step(dir: 1 | -1) {
@@ -1926,6 +1984,10 @@ function setBase(st: State, label: string) {
   app.baseLabel = label;
   app.history = [];
   app.cursor = 0;
+  if (editingTurns) {
+    editingTurns = false;
+    algField().value = "";
+  }
   recompute();
   syncMeshes(app.current);
   render();
@@ -2099,18 +2161,11 @@ function watchAlgorithms() {
   );
 }
 
-/** Saves the turns in the box, with the current start position, under `name`. */
+/** Saves the turn list, with the current start position, under `name`. */
 async function saveAlgorithm(name: string) {
-  const text = ($("alg") as HTMLInputElement).value.trim() || formatAlg(app.history);
-  let turns: Turn[];
-  try {
-    turns = parseAlg(text);
-  } catch (e) {
-    setMessage(`Can't save: ${e instanceof ParseError ? e.message : String(e)}`, "error");
-    return render();
-  }
+  const turns = app.history;
   if (!turns.length) {
-    setMessage("Type or load some turns first, then save them.", "error");
+    setMessage("Make or load some turns first, then save them.", "error");
     return render();
   }
   const entry = { name: name || formatAlg(turns), alg: formatAlg(turns), code: encodeState(app.base), note: `From ${app.baseLabel}`, savedAt: Date.now(), source: "page" };
@@ -2161,7 +2216,6 @@ function loadAlgorithm(id: string) {
     return render();
   }
   setBase(start, a.name);
-  ($("alg") as HTMLInputElement).value = a.alg;
   runAlg(a.alg, false);
   setMessage(`Loaded "${a.name}". Play it with ▶ or step with ▶1.`, "ok");
   render();
@@ -2253,6 +2307,9 @@ function render() {
     .join("");
   $("history").innerHTML = hist || `<span class="hint">Turns you make or load appear here. Tap one to jump to it.</span>`;
   $("counter").textContent = `${app.cursor} / ${app.history.length}`;
+  $("load").textContent = editingTurns ? "Update" : "Load";
+  $("alg-edit").textContent = editingTurns ? "Cancel" : "Edit";
+  ($("alg-edit") as HTMLButtonElement).disabled = !editingTurns && !app.history.length;
   if (!playing) playingBack = false;
   const play = $("last");
   play.textContent = playing && !playingBack ? "■" : "▶";
@@ -2505,9 +2562,10 @@ function bindUI() {
       render();
     }
   });
-  $("load").addEventListener("click", () => runAlg(($("alg") as HTMLInputElement).value, false));
+  $("load").addEventListener("click", loadField);
+  $("alg-edit").addEventListener("click", toggleEditTurns);
   $("alg").addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key === "Enter") runAlg(($("alg") as HTMLInputElement).value, false);
+    if ((e as KeyboardEvent).key === "Enter") loadField();
   });
   $("back").addEventListener("click", () => step(-1));
   $("fwd").addEventListener("click", () => step(1));

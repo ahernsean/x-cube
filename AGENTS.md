@@ -192,8 +192,13 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.
+- **Turn field:** in the Run an algorithm panel, under Clear. Load adds the typed turns at
+  the current step (replacing any after it) and empties the field, so the turn list is the
+  one record of the turns. Edit puts the whole turn list in the field and Load reads Update:
+  it replaces the list, keeping the position where the old and new lists agree; Cancel
+  leaves the list as it was.
 - **Algorithms list:** in the Run an algorithm panel. Load makes an algorithm's position
-  the start, with its turns loaded and unplayed; Save keeps the turns in the box with the
+  the start, with its turns loaded and unplayed; Save keeps the turn list with the
   current start position; ✕ deletes (after Delete or Keep). Kept like saved states: the shared
   database's `algorithms` collection (`name`, `alg`, `code` for the start position, `note`,
   `savedAt`, `source`), seeded by Claude from the known algorithms, or this device, where it
