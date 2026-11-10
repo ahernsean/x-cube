@@ -258,23 +258,37 @@ Never do any of these without an explicit instruction from the owner:
 
 - One commit per change, so the owner can back out any single step.
 - Write or extend a test for every new or changed behavior.
-- Before committing: `npx tsc --noEmit` and `npm test`. For Lab changes, also
-  `node scripts/build-web.ts` and the browser tests (`node scripts/browser-tests.mjs chromium`,
-  and `webkit` where WebKit is installed), and look at the Lab at phone width (390 px).
+- **Test locally only what you changed; let CI test the rest.** The full browser run takes
+  10 to 15 minutes for both engines, which stalls iterating with the owner. So:
+  - Before committing, run `npx tsc --noEmit` (fast) and only the tests that cover the code
+    you changed: one unit test file (`node --test test/edit.test.ts`), or one test by name
+    (`node --test --test-name-pattern="^edit:" test/*.test.ts`). For a Lab change, build
+    (`node scripts/build-web.ts`) and check the changed behavior with a short Playwright
+    script in your scratch space, at phone width (390 px) where layout is involved.
+  - Don't run the full `npm test` or `scripts/browser-tests.mjs` locally as a matter of
+    course, and never for code you didn't change, or after a merge from `main` with no
+    conflicts. Push, and let CI run everything.
+  - Use CI as your test runner: after pushing, read the check results (the GitHub tools give
+    the check runs and job logs) and fix what fails. Reproduce a CI failure locally with the
+    narrowest run that shows it, then show that same run passing.
 - CI (`.github/workflows/ci.yml`) runs the unit tests, the typecheck, and the build and
   browser tests in Chromium and WebKit, each as its own check, all on Node 24 (the version
   `package.json` requires). Keep it green. It reports coverage (unit tests, and browser
   tests in Chromium) on each run's summary page; no minimum is enforced. When you add
   a Lab behavior, test it in `scripts/browser-tests.mjs`, through the probe if it draws. The `all checks` job is the
   one a branch rule on `main` requires; renaming it means changing the rule.
-- Publish the Lab after changes.
+- **Publish the Lab early**, as soon as a change builds and its focused check passes,
+  without waiting for CI: the owner tries changes in the Lab while CI runs. If CI then
+  fails, fix it and publish again.
 - Library versions must be at least two weeks old.
 
 ### Safari is the main browser
 
 The owner uses the Lab mostly on an iPhone and iPad, where every browser is WebKit. A run
-that covers only Chromium has not tested the main engine. To run WebKit locally:
-`npx playwright install --with-deps webkit`, then `node scripts/browser-tests.mjs webkit`.
+that covers only Chromium has not tested the main engine; CI's WebKit check covers it on
+every push. Run WebKit locally only to reproduce a WebKit failure or to check a change
+that touches something engines differ on (layout, gestures, WebGL): install it with
+`npx playwright install --with-deps webkit`, then point your focused check at `webkit`.
 
 ### A screenshot is not evidence about width
 
