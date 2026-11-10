@@ -177,10 +177,13 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.
-- **Known algorithms:** a list in the Run an algorithm panel (`src/core/algorithms.ts`);
-  Load makes an algorithm's example position the start, with its turns loaded and unplayed.
-  Each is checked from its position by `test/algorithms.test.ts`, and described in
-  `ALGORITHMS.md`.
+- **Algorithms list:** in the Run an algorithm panel. Load makes an algorithm's position
+  the start, with its turns loaded and unplayed; Save keeps the turns in the box with the
+  current start position; ✕ deletes (after Delete or Keep). Kept like saved states: the shared
+  database's `algorithms` collection (`name`, `alg`, `code` for the start position, `note`,
+  `savedAt`, `source`), seeded by Claude from the known algorithms, or this device, where it
+  starts as them. The known algorithms (`src/core/algorithms.ts`) are each checked from their
+  position by `test/algorithms.test.ts` and described in `ALGORITHMS.md`.
 - **Saved states:** stored in the artifact's shared database, collection `states`, with
   fields `name`, `code` (a state code), `note`, `savedAt`, `source` (`page` or `claude`).
 

@@ -60,5 +60,4 @@ says for the position (its colors come from the centers where they are now), and
 regrip by a center between steps. Holding the cube turned half around (y2) instead turns
 the opposite layers: on "Confusing edge" that makes a second flipped edge at bottom back.
 
-The Lab lists this algorithm under Known algorithms, with "Confusing edge" as its
-position. `test/algorithms.test.ts` checks every listed algorithm from its position.
+The Lab lists this algorithm under Algorithms, with "Confusing edge" as its position. `test/algorithms.test.ts` checks every listed algorithm from its position.
