@@ -42,7 +42,7 @@ test("edit: colors no cubelet has are refused, naming the spot", () => {
   const fit = fitColors(st, colors);
   assert.equal(fit.level, null);
   assert.equal(fit.state, null);
-  assert.deepEqual(fit.problems, [{ text: "Top edge of the green extension shows white and yellow: white and yellow are opposite colors, never on one cubelet", slots: [at(0, 1, 2)] }]);
+  assert.deepEqual(fit.problems, [{ text: "Green extension, top edge, shows white and yellow, but white and yellow are opposite colors, never on one cubelet", slots: [at(0, 1, 2)] }]);
 });
 
 test("edit: one cubelet needed in two places is refused", () => {
@@ -53,7 +53,7 @@ test("edit: one cubelet needed in two places is refused", () => {
   assert.equal(fit.level, null);
   assert.equal(fit.problems.length, 1);
   // Red now shows on two centers, so the sides are named by their place instead.
-  assert.equal(fit.problems[0].text, "Center of the right extension and the center of the front extension would both need the red cubelet (sides named as in the Front view)");
+  assert.equal(fit.problems[0].text, "Right extension, center, and front extension, center, both show red. There is only one cubelet with those colors (sides named as in the Front view)");
   assert.deepEqual([...fit.problems[0].slots].sort(), [at(0, 0, 2), at(2, 0, 0)].sort());
 });
 
@@ -64,21 +64,34 @@ test("edit: an outer cubelet turned against the outward-color rule is real cubel
   colors[at(0, 1, 2) * 6 + U] = "G";
   const fit = fitColors(st, colors);
   assert.equal(fit.level, "cubelets");
-  assert.deepEqual(fit.problems, [{ text: "Top edge of the green extension can't be turned this way: that cubelet's green sticker always faces away from the core", slots: [at(0, 1, 2)] }]);
+  assert.deepEqual(fit.problems, [{ text: "Green extension, top edge: that cubelet's green sticker always faces out from the core. One of its stickers is probably painted wrong", slots: [at(0, 1, 2)] }]);
 });
 
 test("edit: problems name spots by where they are and sides by their center colors now", () => {
   const st = State.solved();
   const colors = visibleColors(st);
   colors[at(1, -1, -2) * 6 + 5] = "O"; // Bx.DR: red, yellow and orange
-  assert.deepEqual(fitColors(st, colors).problems, [{ text: "Bottom corner of the blue extension on the red side shows red, yellow, and orange: red and orange are opposite colors, never on one cubelet", slots: [at(1, -1, -2)] }]);
+  assert.deepEqual(fitColors(st, colors).problems, [{ text: "Blue extension, bottom-left corner (next to red), shows yellow, red, and orange, but red and orange are opposite colors, never on one cubelet", slots: [at(1, -1, -2)] }]);
   // After a slice turn the side centers move, and the words follow them.
   const h = after("H");
   assert.deepEqual(sideWords(h, visibleColors(h)).word, ["blue", "green", "top", "bottom", "red", "orange"]);
   const twoReds = visibleColors(st);
   twoReds[at(1, 0, 2) * 6 + F] = "R";
   twoReds[at(1, 0, 2) * 6 + R] = "R";
-  assert.match(fitColors(st, twoReds).problems[0].text, /^Edge of the green extension on the red side shows red and red: no cubelet has two red stickers$/);
+  assert.match(fitColors(st, twoReds).problems[0].text, /^Green extension, right edge \(next to red\), shows red and red, but no cubelet has two red stickers$/);
+});
+
+test("edit: spots are named as seen looking at their extension, or by neighboring colors", () => {
+  const st = State.solved();
+  const say = (x: number, y: number, z: number, d: number, c: "W" | "Y" | "G" | "B" | "R" | "O") => {
+    const colors = visibleColors(st);
+    colors[at(x, y, z) * 6 + d] = c;
+    return fitColors(st, colors).problems[0].text;
+  };
+  assert.equal(say(-1, 1, 2, F, "O"), "Green extension, top-left corner (next to orange), shows white, orange, and orange, but no cubelet has two orange stickers");
+  assert.equal(say(2, 1, 1, R, "B"), "Red extension, top-left corner (next to green), shows white, green, and blue, but green and blue are opposite colors, never on one cubelet");
+  // Look-alike core cubelets: more painted than the puzzle has.
+  assert.equal(say(1, 1, 1, U, "Y"), "Core, top corner between red and green, shows yellow, but the puzzle's 4 cubelets like that are all in other spots");
 });
 
 test("edit: no cubelet has opposite colors or two of one color (the reasons problems give)", () => {

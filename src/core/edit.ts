@@ -13,7 +13,7 @@
 //   color away from the core), which no sequence of turns can break.
 // Whether a "possible" state can actually be reached by turning is not checked here.
 
-import { DIRS, NUM_ROT, ROT_DIR, ROT_INV } from "./geometry.ts";
+import { DIRS, NUM_ROT, ROT_DIR, ROT_INV, dirIndex, type Vec3 } from "./geometry.ts";
 import { isExposed } from "./analyze.ts";
 import { COLOR_NAME, CUBELETS, FACE_COLOR, NUM_SLOTS, SLOT_POS, State, slotAt, type Color } from "./puzzle.ts";
 
@@ -62,14 +62,17 @@ function listColors(cs: Color[]): string {
   return n.length < 3 ? n.join(" and ") : `${n.slice(0, -1).join(", ")}, and ${n[n.length - 1]}`;
 }
 
-/** The colors showing on slot s, in direction order. */
+/** The order colors are listed in. */
+const COLOR_ORDER: Color[] = ["W", "Y", "G", "B", "R", "O"];
+
+/** The colors showing on slot s (a color twice if painted twice), in COLOR_ORDER. */
 function shownColors(colors: FaceColors, s: number): Color[] {
   const out: Color[] = [];
   for (let d = 0; d < 6; d++) {
     const c = colors[s * 6 + d];
     if (c) out.push(c);
   }
-  return out;
+  return out.sort((a, b) => COLOR_ORDER.indexOf(a) - COLOR_ORDER.indexOf(b));
 }
 
 const HOLD_WORD = ["right", "left", "top", "bottom", "front", "back"];
@@ -89,31 +92,43 @@ export function sideWords(shape: State, colors: FaceColors): { word: string[]; b
   return { word: HOLD_WORD.map((w, d) => (byColor[d] ? COLOR_NAME[center[d]!] : w)), byColor };
 }
 
-/** Where slot s is, in words: "bottom corner of the blue extension on the red side". Notes in `used` which directions it named. */
-function where(s: number, words: string[], used: Set<number>): string {
+/**
+ * Where slot s is, in words. An extension spot is named as seen looking straight at that
+ * extension, as in the flat view, with the neighboring side's color as a check: "blue
+ * extension, bottom-left corner (next to red)". The up and down extensions, whose left and
+ * right depend on how you look, and the core use neighboring colors only: "core, top
+ * corner between green and orange". Notes in `used` which sides it named by word.
+ */
+function where(s: number, words: string[], byColor: boolean[], used: Set<number>): string {
   const p = SLOT_POS[s];
-  const dirs: number[] = [];
-  let ext = -1;
-  for (let a = 0; a < 3; a++) {
-    if (!p[a]) continue;
-    const d = a * 2 + (p[a] > 0 ? 0 : 1);
-    if (Math.abs(p[a]) === 2) ext = d;
-    else dirs.push(d);
+  const axis = p.findIndex((c) => Math.abs(c) === 2);
+  const dirOf = (a: number, sign: number) => a * 2 + (sign > 0 ? 0 : 1);
+  const name = (d: number) => (used.add(d), words[d]);
+  const sides = [0, 2].filter((a) => a !== axis && p[a]).map((a) => dirOf(a, p[a]));
+  const between = () => (sides.length === 2 ? `between ${name(sides[0])} and ${name(sides[1])}` : `next to ${name(sides[0])}`);
+  if (axis === 0 || axis === 2) {
+    // A side extension, seen from outside: up is up, and right is up x outward.
+    const out = DIRS[dirOf(axis, p[axis])];
+    const right: Vec3 = [out[2], 0, -out[0]];
+    const h = p[0] * right[0] + p[2] * right[2];
+    const v = p[1] > 0 ? "top" : p[1] < 0 ? "bottom" : "";
+    const hw = h > 0 ? "right" : h < 0 ? "left" : "";
+    const spot = v && hw ? `${v}-${hw} corner` : v || hw ? `${v || hw} edge` : "center";
+    let next = "";
+    if (h) {
+      const d = dirIndex(h > 0 ? right : [-right[0], 0, -right[2]]);
+      if (byColor[d]) next = ` (next to ${words[d]})`;
+    }
+    return `${name(dirOf(axis, p[axis]))} extension, ${spot}${next}`;
   }
-  for (const d of [...dirs, ext]) if (d >= 0) used.add(d);
-  const vert = dirs.filter((d) => d >> 1 === 1), sides = dirs.filter((d) => d >> 1 !== 1);
-  const side = (d: number) => `the ${words[d]} side`;
-  const between = (a: number, b: number) => `between the ${words[a]} and ${words[b]} sides`;
-  if (ext >= 0) {
-    const of = `the ${words[ext]} extension`;
-    if (dirs.length === 0) return `center of ${of}`;
-    if (dirs.length === 1) return vert.length ? `${words[vert[0]]} edge of ${of}` : `edge of ${of} on ${side(sides[0])}`;
-    if (vert.length) return `${words[vert[0]]} corner of ${of} on ${side(sides[0])}`;
-    return `corner of ${of} ${between(sides[0], sides[1])}`;
+  if (axis === 1) {
+    const spot = sides.length ? `${sides.length === 2 ? "corner" : "edge"} ${between()}` : "center";
+    return `${p[1] > 0 ? "top" : "bottom"} extension, ${spot}`;
   }
-  if (dirs.length === 1) return vert.length ? `center of the ${words[vert[0]]}` : `center of ${side(sides[0])}`;
-  if (dirs.length === 2) return vert.length ? `core edge at the ${words[vert[0]]} on ${side(sides[0])}` : `core edge ${between(sides[0], sides[1])}`;
-  return `core corner at the ${words[vert[0]]} ${between(sides[0], sides[1])}`;
+  const layer = p[1] > 0 ? "top" : p[1] < 0 ? "bottom" : "middle";
+  if (!sides.length) return `core, ${layer} center`;
+  if (p[1] === 0 && sides.length === 1) return `core, center behind ${name(sides[0])}`;
+  return `core, ${layer} ${sides.length === 2 ? "corner" : "edge"} ${between()}`;
 }
 
 /** Why no cubelet shows these colors, when there's a simple reason. */
@@ -126,16 +141,13 @@ function noCubelet(cs: Color[]): string {
   return "no cubelet has these colors";
 }
 
-/** The order to name a cubelet's colors in: "the white and red cubelet". */
-const COLOR_ORDER: Color[] = ["W", "Y", "G", "B", "R", "O"];
-
 const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
 
 /** Builds a problem's text from spots and a sentence, adding a note when a side was named by its place. */
 function problem(shape: State, colors: FaceColors, slots: number[], say: (at: (s: number) => string) => string): Problem {
   const { word, byColor } = sideWords(shape, colors);
   const used = new Set<number>();
-  const text = cap(say((s) => where(s, word, used)));
+  const text = cap(say((s) => where(s, word, byColor, used)));
   const byPlace = [...used].some((d) => d >> 1 !== 1 && !byColor[d]);
   return { text: byPlace ? `${text} (sides named as in the Front view)` : text, slots };
 }
@@ -211,26 +223,39 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
     for (const s of strict.slots)
       if (strict.cand.get(s)!.length === 0) {
         const out = COLOR_NAME[outwardColor(loose.state, s)!];
-        problems.push(problem(shape, colors, [s], (at) => `${at(s)} can't be turned this way: that cubelet's ${out} sticker always faces away from the core`));
+        problems.push(problem(shape, colors, [s], (at) => `${at(s)}: that cubelet's ${out} sticker always faces out from the core. One of its stickers is probably painted wrong`));
       }
-    if (!problems.length) problems.push({ text: "Every cubelet exists, but not all can face these ways at once on a real puzzle", slots: [] });
+    if (!problems.length) problems.push({ text: "Each spot matches a cubelet, but they can't all be turned this way at once. A sticker is probably painted wrong", slots: [] });
     return { level: "cubelets", state: loose.state, problems };
   }
   for (const s of loose.slots)
     if (loose.cand.get(s)!.length === 0) {
       const cs = shownColors(colors, s);
-      problems.push(problem(shape, colors, [s], (at) => `${at(s)} shows ${listColors(cs)}: ${noCubelet(cs)}`));
+      problems.push(problem(shape, colors, [s], (at) => `${at(s)}, shows ${listColors(cs)}, but ${noCubelet(cs)}`));
     }
   if (!problems.length) {
     // Every slot has candidates, but some cubelet would be needed twice.
     for (const s of loose.unmatched) {
       const [id] = loose.cand.get(s)![0];
       const other = loose.slotOf.get(id);
-      const named = listColors(COLOR_ORDER.filter((c) => CUBELETS[id].stickers.includes(c)));
+      const mine = listColors(shownColors(colors, s));
+      // Look-alike core cubelets: the paint shows more of them than the puzzle has.
+      const twins = CUBELETS.filter((c) => c.kind === CUBELETS[id].kind && c.stickers.join() === CUBELETS[id].stickers.join()).length;
+      if (twins > 1) {
+        problems.push(problem(shape, colors, [s], (at) => `${at(s)}, shows ${mine}, but the puzzle's ${twins} cubelets like that are all in other spots`));
+        continue;
+      }
+      if (other === undefined) {
+        problems.push(problem(shape, colors, [s], (at) => `${at(s)}, shows ${mine}, but the one cubelet with those colors is needed elsewhere`));
+        continue;
+      }
+      const theirs = listColors(shownColors(colors, other));
       problems.push(
-        other === undefined
-          ? problem(shape, colors, [s], (at) => `${at(s)} would need the ${named} cubelet, which is used elsewhere`)
-          : problem(shape, colors, [s, other], (at) => `${at(s)} and the ${at(other)} would both need the ${named} cubelet`),
+        problem(shape, colors, [s, other], (at) =>
+          mine === theirs
+            ? `${at(s)}, and ${at(other)}, both show ${mine}. There is only one cubelet with those colors`
+            : `${at(s)}, shows ${mine}, and ${at(other)}, shows ${theirs}. Only one cubelet fits both`,
+        ),
       );
     }
   }
