@@ -364,7 +364,7 @@ function initScene(canvas: HTMLCanvasElement) {
     }
     return mats.get(c);
   };
-  paintMaterial = { sticker: matFor, tile: netMatFor };
+  paintMaterial = { sticker: matFor, tile: netMatFor, glow: (c: Color) => [0, 1, 2, 3].map((open) => glowMatFor(c, open)) };
   // local face d -> plane placement
   const faceXform: [number, number, number, number, number][] = [
     // [px, py, pz, rotX, rotY]
@@ -489,7 +489,8 @@ function syncMeshes(st: State) {
     const exposed = [0, 1, 2, 3, 4, 5].map((d) => isExposed(st, s, ROT_DIR[o * 6 + d]));
     for (const gl of glows[id] ?? []) {
       gl.mesh.visible = exposed[gl.a] && exposed[gl.b];
-      gl.mesh.material = gl.mats[(exposed[gl.lo] ? 1 : 0) | (exposed[gl.hi] ? 2 : 0)];
+      gl.mesh.material = (gl.paint ?? gl.mats)[(exposed[gl.lo] ? 1 : 0) | (exposed[gl.hi] ? 2 : 0)];
+      if (gl.corner.material !== (gl.paint ?? gl.mats)[0]) gl.corner.material = (gl.paint ?? gl.mats)[0];
       gl.corner.visible = gl.mesh.visible && exposed[gl.hi];
     }
     shadeCubelet(st, s, o, id);
@@ -974,7 +975,7 @@ const GLOW_ROUND = 0.25;
 const GLOW_CUT = GLOW_DEPTH - GLOW_ROUND;
 const GLOW_TAPER = 0.22; // fraction of the band's length over which a closed end fades out
 /** One glow band: faces a (its plane) and b (its color), the faces beside its two ends, and its material for each combination of open ends. */
-type GlowBand = { mesh: any; a: number; b: number; lo: number; hi: number; mats: any[]; corner: any };
+type GlowBand = { mesh: any; a: number; b: number; lo: number; hi: number; mats: any[]; corner: any; paint?: any[] };
 const glows: GlowBand[][] = [];
 const GLOW_KEY = "xcube-lab-glow";
 const glowOn = (() => {
@@ -2673,7 +2674,7 @@ function bindUI() {
 /** Sticker and flat-tile meshes by cubelet id * 6 + face (in the cubelet's own frame). */
 const stickerMesh3d: any[] = [];
 const tileMesh: any[] = [];
-let paintMaterial: { sticker: (c: Color) => any; tile: (c: Color) => any } | null = null;
+let paintMaterial: { sticker: (c: Color) => any; tile: (c: Color) => any; glow: (c: Color) => any[] } | null = null;
 
 interface Edit {
   shape: State; // the position editing started from; its shape is kept
@@ -2712,7 +2713,7 @@ function drawEdit() {
   if (!edit || !paintMaterial) return;
   for (const m of edit.painted) m.material = m.userData.ownMaterial;
   edit.painted = [];
-  syncMeshes(edit.shown);
+  clearGlowPaint();
   const shown = visibleColors(edit.shown);
   for (let i = 0; i < edit.colors.length; i++) {
     const want = edit.colors[i];
@@ -2726,7 +2727,15 @@ function drawEdit() {
       mesh.material = mat;
       edit.painted.push(mesh);
     }
+    // The glow bands around the edge show this sticker's color too.
+    for (const gl of glows[id] ?? []) if (gl.b === local) gl.paint = paintMaterial.glow(want);
   }
+  syncMeshes(edit.shown);
+}
+
+/** Returns every glow band to its own sticker's color. */
+function clearGlowPaint() {
+  for (const list of glows) for (const gl of list ?? []) gl.paint = undefined;
 }
 
 function renderEdit() {
@@ -2755,6 +2764,7 @@ function endEdit(apply: boolean) {
   if (!edit) return;
   const e = edit;
   for (const m of e.painted) m.material = m.userData.ownMaterial;
+  clearGlowPaint();
   edit = null;
   document.body.classList.remove("editing");
   ($("stack-col") as HTMLElement & { inert: boolean }).inert = false;
@@ -2909,6 +2919,14 @@ function installProbe() {
      * a face's flat-view camera (view "U", "F", ...): its opacity (0-1) at the point
      * offset from the slot's center by each [face, distance], in the puzzle's frame.
      */
+    /** The colors the glow bands showing the sticker in slot, facing face, are drawn in. */
+    glowColors(slot: string, face: string) {
+      const s = slotByName(slot);
+      const st = edit?.shown ?? app.current;
+      const local = ROT_DIR[ROT_INV[st.ori[s]] * 6 + COMPASS_FACES.indexOf(face)];
+      const byHex = new Map(Object.entries(STICKER).map(([c, h]) => [h, c]));
+      return [...new Set(glows[st.occ[s]].filter((g) => g.b === local).flatMap((g) => [g.mesh, g.corner]).map((m) => byHex.get(m.material.uniforms.color.value.getHex())))].sort();
+    },
     /** Where the glow lies: depth of a band below its face, and the radius of a rounded corner. */
     glowShape: () => ({ depth: GLOW_DEPTH, round: GLOW_ROUND }),
     glowAt(slot: string, view: string, points: [string, number][][]) {

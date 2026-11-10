@@ -732,6 +732,10 @@ try {
   await paint("R", "Fx.U", "F");
   const half = { line: await editLine(), off: await doneOff(), drawn: (await probe("at3d", ...Object.values(await probe("sticker", "Fx.U", "F"))))?.color };
   check(/^Not valid: .*would need the same cubelet/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
+  // The edge glow around a painted sticker shows the paint too (the glow is the only sign
+  // of a sticker's color where that face is hidden).
+  const paintedGlow = (await probe("glowColors", "Fx.U", "F")).join();
+  check(paintedGlow === "R", `the edge glow of a painted sticker takes the paint (${paintedGlow})`);
   await paint("G", "Rx.U", "R");
   const swapped = { line: await editLine(), off: await doneOff() };
   check(/^Valid/.test(swapped.line) && !swapped.off, `painting the other edge to match makes it valid again ("${swapped.line}")`);
@@ -754,6 +758,8 @@ try {
   await page.click('[data-view="home"]'); // the swipe tumbled the view
   await settle();
   await page.click("#edit-done");
+  const appliedGlow = [(await probe("glowColors", "Fx.U", "F")).join(), (await probe("glowColors", "Rx.U", "R")).join()].join(" ");
+  check(appliedGlow === "R G", `after Done, the moved cubelets' glow shows their own colors (${appliedGlow})`);
   const applied = { model: [await probe("model", "Fx.U", "F"), await probe("model", "Rx.U", "R")], label: await page.$eval("#base-label", (e) => e.textContent), inert: await page.$eval("#stack-col", (e) => e.inert) };
   sw = await sweep3d();
   check(applied.model.join() === "R,G" && applied.label === "Edited colors" && !applied.inert && sw.wrong.length === 0, `Done makes the edited position the start, drawn as the model has it (${applied.model.join(" ")}, "${applied.label}")`);
@@ -766,7 +772,8 @@ try {
   check(/^Not possible on the puzzle: Fx\.U .*can't be turned this way; its red side always faces outward/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
   await page.click("#edit-cancel");
   sw = await sweep3d();
-  check((await probe("state")) === editedState && sw.wrong.length === 0, "Cancel leaves the position, and its drawing, as they were");
+  const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");
+  check((await probe("state")) === editedState && sw.wrong.length === 0 && cancelGlow === "W R", `Cancel leaves the position, and its drawing and glow, as they were (glow ${cancelGlow})`);
 
   // Every section collapses from its heading.
   const sections = await page.$$eval("[data-sec]", (els) => els.map((e) => e.getAttribute("data-sec")));

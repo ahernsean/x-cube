@@ -184,7 +184,7 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   The Gloss switch turns it off.
 - **Color editing:** Edit colors under the 3D view. Pick a color, then tap stickers to paint
   them; drags tumble the view, and the other controls are set aside. The shape stays as it
-  is. Each paint is refit to real cubelets (`fitColors` in `src/core/edit.ts`), and a line
+  is. A painted sticker's edge glow takes the paint too. Each paint is refit to real cubelets (`fitColors` in `src/core/edit.ts`), and a line
   says "Valid" (real cubelets, each facing a way the puzzle allows), "Not possible on the
   puzzle" (real cubelets, but one breaks the outward-color rule) or "Not valid" (with the
   spot and the reason). Done, available only when valid, makes the fitted position the start
