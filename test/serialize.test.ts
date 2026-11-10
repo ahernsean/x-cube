@@ -56,7 +56,7 @@ const refused = (code: string) => {
   }
 };
 
-test("X2: 44 letters in groups of 4, and every scrambled position comes back exactly", () => {
+test("state codes: X2 is 44 letters in groups of 4, and every scrambled position comes back exactly", () => {
   const rand = rng(11);
   for (let i = 0; i < 150; i++) {
     const st = scrambled(rand, 1 + pick(rand, 300));
@@ -66,7 +66,7 @@ test("X2: 44 letters in groups of 4, and every scrambled position comes back exa
   }
 });
 
-test("X2: the index is a one-to-one numbering of positions, solved is 0", () => {
+test("state codes: the X2 index is a one-to-one numbering of positions, solved is 0", () => {
   assert.equal(positionIndex(State.solved()), 0n);
   assert.ok(positionAt(0n).equals(State.solved()));
   const rand = rng(12);
@@ -77,7 +77,7 @@ test("X2: the index is a one-to-one numbering of positions, solved is 0", () => 
   assert.throws(() => positionAt(X2_POSITIONS), RangeError);
 });
 
-test("X2: twins and center spins that look the same get different codes", () => {
+test("state codes: in X2, twins and center spins that look the same get different codes", () => {
   // The up center turned half way and everything else home: looks solved.
   const spun = after("(U R L U2 R' L')2");
   assert.equal(spun.appearanceKey(), State.solved().appearanceKey());
@@ -147,7 +147,7 @@ function groupOrder(deg: number, gens: Int32Array[]): bigint {
   return levels.reduce((o, L) => o * BigInt(L.orbit.length), 1n);
 }
 
-test("X2: the number of indexes is exactly the number of reachable positions", () => {
+test("state codes: the number of X2 indexes is exactly the number of reachable positions", () => {
   // Reachable positions = core positions (inner turns, slices, rotations) times the
   // arrangements of outer cubelets on their sites (outer turns), since inner turns leave
   // sites alone. Both groups are built from the engine's own turns.
@@ -215,7 +215,7 @@ test("X2: the number of indexes is exactly the number of reachable positions", (
 });
 
 
-test("X2 check: the prime is the largest that fits, and its guarantees hold", () => {
+test("state codes: the X2 check's prime is the largest that fits, and its guarantees hold", () => {
   const isPrime = (n: bigint) => {
     for (let d = 2n; d * d <= n; d++) if (n % d === 0n) return false;
     return n > 1n;
@@ -234,7 +234,7 @@ test("X2 check: the prime is the largest that fits, and its guarantees hold", ()
   }
 });
 
-test("X2 check: typos are refused", () => {
+test("state codes: the X2 check refuses typos", () => {
   const rand = rng(14);
   const code = letters(encodeState(scrambled(rand, 80)));
   for (let i = 0; i < 44; i++)
@@ -256,7 +256,7 @@ test("X2 check: typos are refused", () => {
   assert.ok(refused(code.slice(1)) && refused(code + "A"), "a missing or extra letter");
 });
 
-test("X2 input: case, spaces, dashes and an X2: prefix are ignored; other errors say what is wrong", () => {
+test("state codes: X2 input ignores case, spaces, dashes and an X2: prefix; other errors say what is wrong", () => {
   const st = after("F f U R");
   const code = encodeState(st);
   for (const form of [code.toLowerCase(), letters(code), code.replace(/ /g, "-"), "X2: " + code, `\n  ${code}  \n`])
@@ -268,7 +268,7 @@ test("X2 input: case, spaces, dashes and an X2: prefix are ignored; other errors
   assert.throws(() => decodeState("Y1:" + code), /not an X-Cube state code/);
 });
 
-test("X1 codes still read, and convert to X2 when turns can reach them", () => {
+test("state codes: X1 codes still read, and convert to X2 when turns can reach them", () => {
   // The owner's saved position "One edge flipped".
   const owner = decodeState(
     "X1:7k4qIb6h5hYwwc2kTc......qhphZcMaNalsskthukFm0hzhkrWaXa............chbhaaor8pgefeendsDjVrjcihhh........vb..GvnaLdKh1rOkPkQqRcHfAjUryaxr3p......9e..CoBqEhScmmruJm",
@@ -280,7 +280,7 @@ test("X1 codes still read, and convert to X2 when turns can reach them", () => {
   assert.equal(encodeState(decodeState(encodeX1(st))), encodeX2(st));
 });
 
-test("positions turns can't reach: refused by X2 with a reason, kept as X1", () => {
+test("state codes: positions turns can't reach are refused by X2 with a reason, kept as X1", () => {
   const swapTwins = State.solved();
   const [a, b] = CUBELETS.filter((c) => c.kind === "coreCorner" && c.stickers[2]).slice(0, 2).map((c) => swapTwins.occ.indexOf(c.id));
   [swapTwins.occ[a], swapTwins.occ[b]] = [swapTwins.occ[b], swapTwins.occ[a]];
@@ -307,6 +307,6 @@ function positionsMatchTo(r: number, p: readonly number[], q: readonly number[])
 }
 const positionsMatch = (r: number, s: number) => positionsMatchTo(r, SLOT_POS[s], SLOT_POS[s]);
 
-test("every known algorithm starts from a position turns can reach, so it has an X2 code", () => {
+test("state codes: every known algorithm starts from a position turns can reach, so it has an X2 code", () => {
   for (const a of KNOWN_ALGORITHMS) assert.equal(unreachableReason(a.start()), null, a.name);
 });

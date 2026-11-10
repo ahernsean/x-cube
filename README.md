@@ -131,8 +131,18 @@ npm test                                           # unit tests
 npm run test:coverage                              # unit tests, with a coverage table
 npm install --no-save playwright@1.64.1            # browser tests need Playwright...
 npx playwright install --with-deps chromium webkit # ...and its browsers
-node scripts/browser-tests.mjs chromium
-node scripts/browser-tests.mjs webkit              # WebKit is Safari's engine
+node scripts/build-web.ts                          # the browser tests test the build
+node --test scripts/browser-tests.mjs              # browser tests in Chromium
+BROWSER=webkit node --test scripts/browser-tests.mjs  # WebKit is Safari's engine
+```
+
+Every test, unit or browser, is named `<topic>: <what it checks>`, and each browser test
+opens the Lab afresh, so any test or topic can run alone:
+
+```
+node --test --test-name-pattern="^notation:" test/*.test.ts
+node --test --test-name-pattern="^playback:" scripts/browser-tests.mjs
+BROWSER=webkit node --test --test-name-pattern="^gestures:" scripts/browser-tests.mjs
 ```
 
 The browser tests check that the Lab loads; that turns, undo, playback, Shuffle, saving,
@@ -148,7 +158,7 @@ the browser tests' full report, line by line, is attached to the run as
 ```
 node scripts/build-web.ts --sourcemap
 npm install --no-save monocart-coverage-reports@2.13.2
-COVERAGE_DIR=coverage/browser node scripts/browser-tests.mjs chromium   # open coverage/browser/index.html
+COVERAGE_DIR=coverage/browser node --test scripts/browser-tests.mjs   # open coverage/browser/index.html
 ```
 
 ## Commands
@@ -163,7 +173,8 @@ node src/cli/xc.ts order  "R U"                   # repetitions until it looks t
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
 node src/cli/xc.ts show "U" --state "VLTM DWOP ..."        # start from a saved state code
 node scripts/build-web.ts                         # build dist/index.html and dist/x-cube-lab.html
-node scripts/browser-tests.mjs [chromium|webkit]  # browser tests of the built Lab (needs Playwright)
+node --test scripts/browser-tests.mjs             # browser tests of the built Lab (needs Playwright;
+                                                  # BROWSER=webkit for WebKit)
 ```
 
 In cycle output, `A -> B` means the cubelet that was in slot A is now in slot B. Slot names:

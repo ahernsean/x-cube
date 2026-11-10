@@ -267,13 +267,18 @@ Never do any of these without an explicit instruction from the owner:
 
 - One commit per change, so the owner can back out any single step.
 - Write or extend a test for every new or changed behavior.
+- Name every test `<topic>: <what it checks>`, with a short lowercase topic shared by the
+  tests of one area (`edit:`, `notation:`, `playback:`), so `--test-name-pattern="^topic:"`
+  selects that area.
 - **Test locally only what you changed; let CI test the rest.** The full browser run takes
   10 to 15 minutes for both engines, which stalls iterating with the owner. So:
   - Before committing, run `npx tsc --noEmit` (fast) and only the tests that cover the code
     you changed: one unit test file (`node --test test/edit.test.ts`), or one test by name
     (`node --test --test-name-pattern="^edit:" test/*.test.ts`). For a Lab change, build
-    (`node scripts/build-web.ts`) and check the changed behavior with a short Playwright
-    script in your scratch space, at phone width (390 px) where layout is involved.
+    (`node scripts/build-web.ts`) and run the browser tests of the area you changed
+    (`node --test --test-name-pattern="^playback:" scripts/browser-tests.mjs`, with
+    `BROWSER=webkit` for WebKit), or check a behavior they don't cover yet with a short
+    Playwright script in your scratch space, at phone width (390 px) where layout is involved.
   - Don't run the full `npm test` or `scripts/browser-tests.mjs` locally as a matter of
     course, and never for code you didn't change, or after a merge from `main` with no
     conflicts. Push, and let CI run everything.
@@ -284,7 +289,9 @@ Never do any of these without an explicit instruction from the owner:
   browser tests in Chromium and WebKit, each as its own check, all on Node 24 (the version
   `package.json` requires). Keep it green. It reports coverage (unit tests, and browser
   tests in Chromium) on each run's summary page; no minimum is enforced. When you add
-  a Lab behavior, test it in `scripts/browser-tests.mjs`, through the probe if it draws. The `all checks` job is the
+  a Lab behavior, test it in `scripts/browser-tests.mjs`, through the probe if it draws.
+  Each browser test (`labTest`) opens the Lab in its own browser context, so it must set
+  up everything it needs itself and can run alone. The `all checks` job is the
   one a branch rule on `main` requires; renaming it means changing the rule.
 - **Publish the Lab early.** When your work includes publishing the Lab, publish as soon
   as the change builds and its focused check passes. Don't wait for a commit, a pull
@@ -301,6 +308,15 @@ that covers only Chromium has not tested the main engine; CI's WebKit check cove
 every push. Run WebKit locally only to reproduce a WebKit failure or to check a change
 that touches something engines differ on (layout, gestures, WebGL): install it with
 `npx playwright install --with-deps webkit`, then point your focused check at `webkit`.
+
+In a container without a GPU, Mesa's EGL and llvmpipe must be installed before you run
+the browser tests, as CI installs them: without them Chromium quietly draws with
+SwiftShader, and every test runs about ten times slower. In Claude Code cloud sessions
+`.claude/hooks/session-start.sh` installs them at the start of each session. Any other
+agent installs them when its container is created:
+`apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri`.
+Run Chromium tests with `EXPECT_RENDERER=llvmpipe`, so the startup test fails if Chromium
+fell back anyway.
 
 ### A screenshot is not evidence about width
 

@@ -9,7 +9,7 @@ import { CUBELETS, applyTurns } from "../src/core/puzzle.ts";
 const WHITE_TOP = [".WWW.", "WWWWW", "WWWWW", "WWWWW", ".WWW."];
 
 for (const a of KNOWN_ALGORITHMS) {
-  test(`known algorithm "${a.name}": ${a.alg} gives ${a.result}`, () => {
+  test(`algorithms: "${a.name}", ${a.alg}, gives ${a.result}`, () => {
     const start = a.start();
     const st = start.clone();
     const r = applyTurns(st, parseAlg(a.alg));
@@ -29,7 +29,7 @@ for (const a of KNOWN_ALGORITHMS) {
   });
 }
 
-test("known algorithms: the corner 3-cycle moves X-face corners, the edge 3-cycle outer edges", () => {
+test("algorithms: the corner 3-cycle moves X-face corners, the edge 3-cycle outer edges", () => {
   const kinds = (id: string) => {
     const a = KNOWN_ALGORITHMS.find((k) => k.id === id)!;
     const st = a.start().clone();
