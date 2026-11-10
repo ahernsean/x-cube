@@ -188,7 +188,7 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
   wrong: no cubelet of that kind can have a color (core corners are only white or
   yellow), two stickers of one color or opposite colors, a corner's colors going around it
-  in mirrored order (two stickers swapped), one cubelet needed in two spots, or an outer
+  in mirrored order ("Invalid color ordering"), one cubelet needed in two spots, or an outer
   cubelet turned against the outward-color rule (a sign of a sticker
   painted wrong; the physical cube can't do that). It says what, not where ("A
   cubelet shows yellow, red, and orange, but red and orange are opposite colors, never on

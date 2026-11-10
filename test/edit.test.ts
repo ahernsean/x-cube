@@ -81,7 +81,7 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
   const swapped = visibleColors(st);
   swapped[at(-1, -1, -2) * 6 + 5] = "O";
   swapped[at(-1, -1, -2) * 6 + 1] = "B";
-  assert.equal(fitColors(st, swapped).problems[0].text, "A cubelet shows yellow, blue, and orange, but both cubelets with these colors have them in the other order around the corner. Two of these stickers are probably swapped");
+  assert.equal(fitColors(st, swapped).problems[0].text, "Invalid color ordering");
   // Look-alike core cubelets: more painted than the puzzle has.
   assert.deepEqual(say(1, 1, 1, U, "Y"), { text: "A cubelet shows yellow, but the puzzle's 4 cubelets like that are all in other spots", slots: [at(1, 1, 1)] });
 });

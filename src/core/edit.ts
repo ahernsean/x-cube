@@ -75,8 +75,8 @@ function shownColors(colors: FaceColors, s: number): Color[] {
   return out.sort((a, b) => COLOR_ORDER.indexOf(a) - COLOR_ORDER.indexOf(b));
 }
 
-/** Why no cubelet shows these colors, when there's a simple reason. */
-function noCubelet(kind: string, cs: Color[]): string {
+/** Why no cubelet of this kind shows these colors, or null for a corner whose colors go around it in mirrored order. */
+function noCubelet(kind: string, cs: Color[]): string | null {
   const sameKind = CUBELETS.filter((c) => c.kind === kind);
   const can = new Set(sameKind.flatMap((c) => c.stickers.filter((x): x is Color => !!x)));
   const cannot = [...new Set(cs)].filter((c) => !can.has(c));
@@ -89,8 +89,7 @@ function noCubelet(kind: string, cs: Color[]): string {
   // The colors are on a cubelet of this kind, but not in this arrangement: on a corner,
   // the three colors go around it in a fixed order that no turn can mirror.
   const holders = sameKind.filter((c) => cs.every((x) => c.stickers.includes(x))).length;
-  if (holders && cs.length === 3)
-    return `${holders === 1 ? "the cubelet with these colors has" : holders === 2 ? "both cubelets with these colors have" : `the ${holders} cubelets with these colors have`} them in the other order around the corner. Two of these stickers are probably swapped`;
+  if (holders && cs.length === 3) return null;
   if (holders) return "no cubelet in that position can show them this way";
   return `no cubelet in that position has ${cs.length === 1 ? "that color" : "these colors"}`;
 }
@@ -178,7 +177,8 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
   for (const s of loose.slots)
     if (loose.cand.get(s)!.length === 0) {
       const cs = shownColors(colors, s);
-      problems.push(problem(`A cubelet shows ${listColors(cs)}, but ${noCubelet(CUBELETS[shape.occ[s]].kind, cs)}`, [s]));
+      const why = noCubelet(CUBELETS[shape.occ[s]].kind, cs);
+      problems.push(problem(why === null ? "Invalid color ordering" : `A cubelet shows ${listColors(cs)}, but ${why}`, [s]));
     }
   if (!problems.length) {
     // Every slot has candidates, but some cubelet would be needed twice.
