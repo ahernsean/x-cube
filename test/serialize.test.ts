@@ -2,6 +2,7 @@
 // and written for positions turns can't reach).
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { KNOWN_ALGORITHMS } from "../src/core/algorithms.ts";
 import { axisRotation, NUM_ROT, ROT_DIR, ROT_INV, ROT_MUL, ROTATIONS } from "../src/core/geometry.ts";
 import { parseAlg } from "../src/core/notation.ts";
 import { CUBELETS, MOVE_DEFS, NUM_SLOTS, SLOT_NEIGHBOR, SLOT_POS, State, applyTurn, applyTurns, blockedReason } from "../src/core/puzzle.ts";
@@ -305,3 +306,7 @@ function positionsMatchTo(r: number, p: readonly number[], q: readonly number[])
   return [0, 1, 2].every((i) => m[i * 3] * p[0] + m[i * 3 + 1] * p[1] + m[i * 3 + 2] * p[2] === q[i]);
 }
 const positionsMatch = (r: number, s: number) => positionsMatchTo(r, SLOT_POS[s], SLOT_POS[s]);
+
+test("every known algorithm starts from a position turns can reach, so it has an X2 code", () => {
+  for (const a of KNOWN_ALGORITHMS) assert.equal(unreachableReason(a.start()), null, a.name);
+});
