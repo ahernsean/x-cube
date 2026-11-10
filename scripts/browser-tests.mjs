@@ -440,19 +440,30 @@ try {
     el.dispatchEvent(new Event("input"));
   });
 
+  // ---- The hold line names the centers up, toward you and on your right, as they are now:
+  // the H slice carries the side centers around.
+  const hold = () => page.$eval("#hold", (e) => e.textContent);
+  await startFresh();
+  const holdSolved = await hold();
+  await page.fill("#alg", "H");
+  await page.click("#run");
+  await settle();
+  const holdAfterH = await hold();
+  check(holdSolved === "Hold: white up, green front, red right" && holdAfterH === "Hold: white up, red front, blue right", `the hold line follows the centers ("${holdSolved}", then after H "${holdAfterH}")`);
+
   // ---- Known algorithms: Load sets up the position and the turns; playing them does what
   // the entry says (here: back in shape with the white top kept).
   await startFresh();
   await page.locator("summary", { hasText: "Known algorithms" }).click();
   await page.click('[data-known="flip-df-white-top"]');
-  const known = { base: await page.$eval("#base-label", (e) => e.textContent), alg: await page.$eval("#alg", (e) => e.value), counter: await counter(), shape: await status() };
+  const known = { base: await page.$eval("#base-label", (e) => e.textContent), alg: await page.$eval("#alg", (e) => e.value), counter: await counter(), hold: await hold(), shape: await status() };
   await page.click("#last");
   await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "7/7", null, { timeout: 60000 });
   await settle();
   const played = { shape: await status(), top: (await page.evaluate(() => window.xcubeProbe.flatFace("U").flat().filter((h) => h && h.color === "W").length)) };
   check(
-    known.base === "Flipped bottom edge, white top solved" && known.alg === "R F H2 F2 H F R'" && known.counter === "0/7" && /Out of shape/.test(known.shape) && /X shape/.test(played.shape) && played.top === 21,
-    `a known algorithm loads its position and turns, and playing them works (start "${known.base}"; then ${played.top} white on top)`,
+    known.base === "Flipped bottom edge, white top solved" && known.alg === "R F H2 F2 H F R'" && known.counter === "0/7" && known.hold === "Hold: white up, blue front, orange right" && /Out of shape/.test(known.shape) && /X shape/.test(played.shape) && played.top === 21,
+    `a known algorithm loads its position and turns, and playing them works (start "${known.base}", ${known.hold}; then ${played.top} white on top)`,
   );
 
   // ---- "Make current position the start", and state codes out and in.

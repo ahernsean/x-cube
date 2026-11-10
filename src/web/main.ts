@@ -5,6 +5,7 @@ import { isHomeX, isSolved, isXShape, isExposed, outerAvailability, effect } fro
 import { DIRS, ROT_DIR, ROT_INV, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
+  COLOR_NAME,
   CUBELETS,
   FACE_COLOR,
   MOVE_BY_NAME,
@@ -1985,6 +1986,14 @@ function render() {
     .join("");
   $("status").innerHTML = `${shape}${solved}<span class="outer-label">Outer turns</span>${outer}`;
 
+  // hold: which center colors face up, toward you and to your right, as they are now
+  const side = (d: number) => {
+    const c = faceCenterColor(st, d);
+    return c ? COLOR_NAME[c] : "?";
+  };
+  $("hold").textContent = `Hold: ${side(2)} up, ${side(4)} front, ${side(0)} right`;
+  $("hold").title = "Up, toward you, and on your right, by the center colors as they are now";
+
   // message
   const msg = $("message");
   msg.textContent = app.message;
@@ -2407,7 +2416,7 @@ function drawEdit() {
 
 function renderEdit() {
   $("edit-bar").hidden = !edit;
-  $("edit-start").parentElement!.hidden = !!edit;
+  $("edit-start").hidden = !!edit;
   if (!edit) return;
   drawEdit();
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) b.setAttribute("aria-checked", String(b.dataset.paint === edit.paint));

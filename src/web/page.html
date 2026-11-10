@@ -61,7 +61,11 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .views > .btn.small { flex: 1 1 auto; min-width: 0; padding: 4px 3px; font-size: 13px; letter-spacing: -0.01em; white-space: nowrap; }
 @media (max-width: 440px) { .views > .btn.small { font-size: 12px; padding: 4px 4px; } }
 @media (max-width: 380px) { .views { gap: 2px; } .views > .btn.small { padding: 4px 2px; letter-spacing: -0.02em; } }
-.view-toggles-row { display: flex; justify-content: flex-end; margin-top: 6px; }
+.view-toggles-row { display: flex; margin-top: 4px; }
+.hold-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
+.btn.edit-btn { border-radius: 999px; border-color: var(--accent); color: var(--accent); min-height: 32px; padding: 4px 12px; white-space: nowrap; flex-shrink: 0; }
+.btn.edit-btn[hidden] { display: none; }
+.hold { margin: 0; font-size: 13px; min-width: 0; }
 /* Orientation labels around the 3D view: the face pointing each way. */
 .compass { position: absolute; inset: 0; pointer-events: none; font: 700 13px var(--f-display); letter-spacing: 0.05em; color: var(--muted); }
 .cmp { position: absolute; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 0; border-radius: 999px; font: inherit; color: inherit; letter-spacing: inherit; background: color-mix(in srgb, var(--panel) 75%, transparent); pointer-events: auto; cursor: pointer; }
@@ -76,9 +80,8 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 /* Long presses on the 3D view are gestures: no text selection, magnifier or callout. */
 .stage-col, .stage, #scene { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .view-toggles { display: flex; gap: 12px; }
-.edit-row { margin-top: 8px; }
 .edit-bar { margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); display: grid; gap: 8px; }
-.edit-bar[hidden], .edit-row[hidden] { display: none; }
+.edit-bar[hidden] { display: none; }
 .palette { display: flex; gap: 8px; flex-wrap: wrap; }
 .swatch { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--tile-edge); cursor: pointer; padding: 0; }
 .swatch[aria-checked="true"] { outline: 3px solid var(--accent); outline-offset: 2px; }
@@ -216,13 +219,16 @@ details[open] summary { margin-bottom: 8px; }
       <button class="btn small" data-view="top">Up</button>
       <button class="btn small" data-view="bottom">Down</button>
     </div>
+    <div class="hold-row">
+      <p class="hold" id="hold" aria-live="polite"></p>
+      <button class="btn small edit-btn" id="edit-start"><span aria-hidden="true">✎</span> Edit colors</button>
+    </div>
     <div class="view-toggles-row">
       <span class="view-toggles" title="Applies to the 3D view and the flat view"><label class="hint keep" for="glow"><input type="checkbox" id="glow"> Edge glow</label>
       <label class="hint keep" for="shade"><input type="checkbox" id="shade"> Shading</label>
       <label class="hint keep" for="shadows"><input type="checkbox" id="shadows"> Shadows</label>
       <label class="hint keep" for="gloss"><input type="checkbox" id="gloss"> Gloss</label></span>
     </div>
-    <div class="edit-row"><button class="btn small" id="edit-start">Edit colors</button></div>
     <div class="edit-bar" id="edit-bar" hidden>
       <div class="palette" role="radiogroup" aria-label="Paint color">
         <button class="swatch" role="radio" data-paint="W" aria-label="White"></button><button class="swatch" role="radio" data-paint="Y" aria-label="Yellow"></button><button class="swatch" role="radio" data-paint="G" aria-label="Green"></button><button class="swatch" role="radio" data-paint="B" aria-label="Blue"></button><button class="swatch" role="radio" data-paint="R" aria-label="Red"></button><button class="swatch" role="radio" data-paint="O" aria-label="Orange"></button>
@@ -231,7 +237,7 @@ details[open] summary { margin-bottom: 8px; }
       <div class="edit-actions"><button class="btn small primary" id="edit-done">Done</button><button class="btn small" id="edit-cancel">Cancel</button></div>
       <p class="hint">Pick a color, then tap stickers on the cube to paint them. Drag to turn the view. The shape stays as it is.</p>
     </div>
-    <p class="hint gesture-hint">Swipe on the cube to turn the layer under your finger. To tumble the view, drag the background, or long press on the cube and then drag. Use two fingers to spin it. Double tap to undo the last turn.</p>
+    <p class="hint gesture-hint">Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes.</p>
     <div class="status" id="status" aria-live="polite"></div>
     <p class="message" id="message" hidden></p>
   </div>
