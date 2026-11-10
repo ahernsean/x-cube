@@ -195,13 +195,13 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   them; drags tumble the view, and the other controls are set aside. The shape stays as it
   is. A painted sticker's edge glow takes the paint too. Each paint is refit to cubelets
   (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
-  wrong: no cubelet of that kind can have a color ("A cubelet in this position must be
-  white or yellow, never blue"), two stickers of one color or opposite colors, a corner's colors going around it
-  in mirrored order ("Wrong color order"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three cubelets of this type are green and orange, but only two can be colored this way"; the halo marks every competing spot), or an outer
+  wrong: no cubelet of that kind can have a color ("A core corner must be white or
+  yellow, never blue"), two stickers of one color or opposite colors, a corner's colors going around it
+  in mirrored order ("Wrong color order"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two"; the halo marks every competing spot), or an outer
   cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
   physical cube can't do that). Outward-rule problems name only what the owner can check on
   the cube: "White can't point straight out from the core on an extension cubelet" (no
-  extension cubelet's outward sticker is white or yellow), or "Two cubelets of this type
+  extension cubelet's outward sticker is white or yellow), or "Two extension edges
   have red pointing straight out from the core, but only one with green and red does". Each names the problem
   itself ("Red and orange can never be on the same cubelet"), not "a cubelet" (the halo
   marks it), and says what, not where: words for a spot proved unreliable (center colors move with

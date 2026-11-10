@@ -15,7 +15,7 @@
 
 import { NUM_ROT, ROT_DIR, ROT_INV } from "./geometry.ts";
 import { isExposed } from "./analyze.ts";
-import { COLOR_NAME, CUBELETS, FACE_COLOR, NUM_SLOTS, SLOT_POS, State, type Color } from "./puzzle.ts";
+import { COLOR_NAME, CUBELETS, FACE_COLOR, NUM_SLOTS, SLOT_POS, State, type Color, type Kind } from "./puzzle.ts";
 
 /**
  * Colors indexed by slot * 6 + direction: a color for a visible sticker, null for a
@@ -76,12 +76,12 @@ function shownColors(colors: FaceColors, s: number): Color[] {
 }
 
 /** Why no cubelet of this kind can show these colors, as the problem's text. */
-function noCubelet(kind: string, cs: Color[]): string {
+function noCubelet(kind: Kind, cs: Color[]): string {
   const sameKind = CUBELETS.filter((c) => c.kind === kind);
   const can = new Set(sameKind.flatMap((c) => c.stickers.filter((x): x is Color => !!x)));
   const cannot = [...new Set(cs)].filter((c) => !can.has(c));
   if (cannot.length)
-    return `A cubelet in this position must be ${listColors(COLOR_ORDER.filter((c) => can.has(c)), "or")}, never ${listColors(cannot, "or")}`;
+    return `${/^[aeiouX]/.test(KIND_NAME[kind][0]) ? "An" : "A"} ${KIND_NAME[kind][0]} must be ${listColors(COLOR_ORDER.filter((c) => can.has(c)), "or")}, never ${listColors(cannot, "or")}`;
   const dup = cs.find((c, i) => cs.indexOf(c) !== i);
   if (dup) return `No cubelet has two ${COLOR_NAME[dup]} stickers`;
   for (let k = 0; k < 6; k += 2)
@@ -94,6 +94,18 @@ function noCubelet(kind: string, cs: Color[]): string {
   if (holders) return `No cubelet in this position can show ${listColors(cs)} this way`;
   return `No cubelet in this position has ${listColors(cs)}`;
 }
+
+/** The owner's names for the kinds of cubelet (AGENTS.md), singular and plural. */
+const KIND_NAME: Record<Kind, [string, string]> = {
+  center: ["core center", "core centers"],
+  extCenter: ["extension center", "extension centers"],
+  coreCorner: ["core corner", "core corners"],
+  singleEdge: ["core single edge", "core single edges"],
+  doubleEdge: ["core double edge", "core double edges"],
+  outerCorner: ["X-face corner", "X-face corners"],
+  outerEdge: ["extension edge", "extension edges"],
+};
+const kindOf = (shape: State, s: number) => CUBELETS[shape.occ[s]].kind;
 
 const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
 
@@ -223,8 +235,8 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         problems.push(
           problem(
             out.size === 1 && o && shown.size === 1
-              ? `${cap(n)} cubelets of this type have ${COLOR_NAME[o]} pointing straight out from the core, but only ${k} with ${[...shown][0]} ${g.ids.size === 1 ? "does" : "do"}`
-              : `${cap(n)} cubelets of this type can't all be turned this way at once. A sticker is probably painted wrong`,
+              ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} have ${COLOR_NAME[o]} pointing straight out from the core, but only ${k} with ${[...shown][0]} ${g.ids.size === 1 ? "does" : "do"}`
+              : `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be turned this way at once. A sticker is probably painted wrong`,
             spots,
           ),
         );
@@ -247,8 +259,8 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
       problems.push(
         problem(
           shown.size === 1
-            ? `${cap(n)} cubelets of this type are ${[...shown][0]}, but only ${k} can be colored this way`
-            : `${cap(n)} cubelets of this type can only be filled by ${k} ${g.ids.size === 1 ? "cubelet" : "cubelets"} on the puzzle`,
+            ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k}`
+            : `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} can only be filled by ${k} ${g.ids.size === 1 ? "cubelet" : "cubelets"} on the puzzle`,
           spots,
         ),
       );

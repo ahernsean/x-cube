@@ -896,7 +896,7 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   check(/^Valid/.test(entered.line) && entered.done && entered.inert, `edit mode starts valid, with the other controls set aside ("${entered.line}")`);
   await paint("R", "Fx.U", "F");
   const half = { line: await editLine(), off: await doneOff(), drawn: (await probe("at3d", ...Object.values(await probe("sticker", "Fx.U", "F"))))?.color };
-  check(/^Not valid: Two cubelets of this type are white and red, but only one can be colored this way\. Show Hide$/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
+  check(/^Not valid: Two extension edges are white and red, but there can be only one\. Show Hide$/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
   // The edge glow around a painted sticker shows the paint too (the glow is the only sign
   // of a sticker's color where that face is hidden).
   const paintedGlow = (await probe("glowColors", "Fx.U", "F")).join();
