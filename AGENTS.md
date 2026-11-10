@@ -152,7 +152,7 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
   which sees only one side of a corner.
 - **Shading:** grid-based ambient occlusion. Each face corner is darkened by filled grid
   spots in front of it (three near, five farther with less weight), blended across the
-  face. Applied to stickers, flat tiles and plastic (the flat view at 45% strength, since
+  face. Applied to stickers, flat tiles and plastic (the flat view at 70% strength, since
   unlit tiles seen straight on read darker); recomputed every frame during turns.
 - **Shadows:** soft shadows from the single key light.
 - **Lighting:** a studio-room environment map supplies most of the light; one key light gives

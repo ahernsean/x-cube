@@ -617,7 +617,7 @@ const aoFaces: AoFace[][] = [];
 const AO_LEVELS = [0.39, 0.575, 0.765, 1];
 // The flat view shows only how much of each corner's darkening (0 none, 1 full): seen
 // straight on and unlit, it reads much darker there than in the 3D view.
-const FLAT_AO_STRENGTH = 0.45;
+const FLAT_AO_STRENGTH = 0.7;
 // The four corners of a face, as (x, y) signs in the plane's own coordinates.
 const CORNER_SIGNS: [number, number][] = [
   [-1, 1],
