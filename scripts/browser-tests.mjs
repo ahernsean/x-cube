@@ -963,7 +963,9 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   const stepped = { line: await editLine(), lit: (await probe("highlighted")).join(), still: JSON.stringify(await probe("view")) === viewBefore };
   await page.click('[data-halo="next"]');
   const wrapped = (await probe("highlighted")).join();
-  check(/‹1\/2›/.test(navLine) && /‹2\/2›/.test(stepped.line) && stepped.lit !== firstLit && stepped.still && wrapped === firstLit, `‹ and › step through the problems, moving the halo, not the view (${firstLit}, then ${stepped.lit}, then ${wrapped})`);
+  // The line stays on the problem it showed (Rx.U's) when the new one sorts ahead of it.
+  const at = (line) => line.match(/‹(\d)\/(\d)›/)?.slice(1).join("/");
+  check(firstLit === "Rx.U" && at(navLine) === "2/2" && at(stepped.line) === "1/2" && stepped.lit === "Fx.UR" && stepped.still && wrapped === firstLit, `the line stays on its problem when another appears; ‹ and › step through them, moving the halo, not the view (${at(navLine)} ${firstLit}, then ${at(stepped.line)} ${stepped.lit}, then ${wrapped})`);
   await page.click("#edit-cancel");
   sw = await sweep3d();
   const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");
