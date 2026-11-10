@@ -489,6 +489,35 @@ try {
   for (const [i, id] of ["glow", "shade", "shadows"].entries()) await flip(id, initial[i]);
   check(offOk && on.glow3d && on.glowFlat && on.shadows && on.shading, `Edge glow, Shading and Shadows switch their effects off and on (off: ${JSON.stringify(off)})`);
 
+  // The edge glow of a hidden sticker wraps around the corner where two of the
+  // cubelet's visible faces meet, rounded like the sticker. Solved, from the Home view,
+  // Rx.UB shows its U and R faces and hides its blue B sticker. Along the rounded corner
+  // the glow is about as strong as along either edge (no gap, and no brighter seam where
+  // pieces meet), and it does not reach the square corner the two bands would make if
+  // they met in a sharp fold. Rx.B, below it, has no exposed face beside the R-B edge's
+  // ends, so its glow fades out at the corner. The flat view sees only one side of a
+  // corner, so there it fades out too.
+  await startFresh();
+  const glowAt = (slot, view, pts) => probe("glowAt", slot, view, pts);
+  const { depth, round } = await probe("glowShape");
+  const arc = [0, 22.5, 45, 67.5, 90].map((deg) => (deg * Math.PI) / 180);
+  const wrap = [];
+  for (const out of [0.55, 0.65]) {
+    const [u, r, square, ...corner] = await glowAt("Rx.UB", "3d", [
+      [["U", depth], ["B", out]],
+      [["R", depth], ["B", out]],
+      [["U", 0.5], ["R", 0.5], ["B", out]],
+      ...arc.map((t) => [["U", depth - round + round * Math.cos(t)], ["R", depth - round + round * Math.sin(t)], ["B", out]]),
+    ]);
+    const ok = Math.min(...corner) >= 0.6 * Math.min(u, r) && Math.max(...corner) <= 1.25 * Math.max(u, r) && square < 0.35 * Math.min(u, r);
+    wrap.push({ out, edges: [u, r], corner, square, ok });
+  }
+  const fmt = (v) => v.map((x) => x.toFixed(2)).join(" ");
+  check(wrap.every((w) => w.ok), `edge glow wraps around a cubelet's corner, rounded, without a gap or seam (${wrap.map((w) => `${w.out}: edges ${fmt(w.edges)}, around the corner ${fmt(w.corner)}, square corner ${w.square.toFixed(2)}`).join("; ")})`);
+  const [closedMid, closedEnd] = await glowAt("Rx.B", "3d", [[["R", 0.47], ["B", 0.55]], [["R", 0.47], ["U", 0.45], ["B", 0.55]]]);
+  const [flatMid, flatEnd] = await glowAt("Rx.UB", "U", [[["U", 0.47], ["B", 0.6]], [["U", 0.47], ["R", 0.45], ["B", 0.6]]]);
+  check(closedEnd < 0.3 * closedMid && flatEnd < 0.3 * flatMid, `edge glow fades out at a corner with no glow around it (3D ${fmt([closedMid, closedEnd])}), and in the flat view (${fmt([flatMid, flatEnd])})`);
+
   // Live shading computed at the very start of a turn matches the shading at rest.
   const restError = await probe("shadeRestError");
   check(restError < 1e-6, `live shading at the start of every turn matches the rest shading (largest difference ${restError})`);
