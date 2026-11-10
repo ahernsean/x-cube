@@ -629,6 +629,17 @@ try {
   const [closedMid, closedEnd] = await glowAt("Rx.B", "3d", [[["R", 0.47], ["B", 0.55]], [["R", 0.47], ["U", 0.45], ["B", 0.55]]]);
   const [flatMid, flatEnd] = await glowAt("Rx.UB", "U", [[["U", 0.47], ["B", 0.6]], [["U", 0.47], ["R", 0.45], ["B", 0.6]]]);
   check(closedEnd < 0.3 * closedMid && flatEnd < 0.3 * flatMid, `edge glow fades out at a corner with no glow around it (3D ${fmt([closedMid, closedEnd])}), and in the flat view (${fmt([flatMid, flatEnd])})`);
+  // Flat-view shading: each nearer neighbor casts a band along the shared edge, at full
+  // darkness at the edge and gone past the ramp. Checked in a scrambled position, which
+  // has recesses between two walls: those show two bands with a clean middle, and no
+  // overlap (an inner corner) is darker than one band.
+  await page.fill("#alg", "R U' F2 D B' L2 R' H S' M");
+  await page.click("#load");
+  await page.click("#last");
+  await settle();
+  const prof = await probe("flatShadeProfile");
+  await startFresh();
+  check(prof.shaded > 0 && prof.channels > 0 && prof.edgeErr < 1e-6 && prof.middle > 1 - 1e-6 && prof.darkest >= prof.oneBand - 1e-6, `flat view shading is bands from nearer neighbors (${prof.shaded} shaded tiles, ${prof.channels} between two walls; edge error ${prof.edgeErr}; lightest-middle check ${prof.middle.toFixed(6)}; darkest ${prof.darkest.toFixed(3)}, one band ${prof.oneBand.toFixed(3)})`);
 
   // Live shading computed at the very start of a turn matches the shading at rest.
   const restError = await probe("shadeRestError");
