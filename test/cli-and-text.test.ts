@@ -8,7 +8,7 @@ import { all, looksLike, shapeLike } from "../src/core/goals.ts";
 import { formatAlg, parseAlg, simplify } from "../src/core/notation.ts";
 import { CUBELETS, NUM_SLOTS, State, applyTurns } from "../src/core/puzzle.ts";
 import { search } from "../src/core/search.ts";
-import { decodeState, encodeState } from "../src/core/serialize.ts";
+import { decodeState, encodeState, encodeX1 } from "../src/core/serialize.ts";
 
 const after = (alg: string, from = State.solved()) => {
   const st = from.clone();
@@ -135,8 +135,8 @@ test("appearanceKey: look-alike twins compare equal, other cubelets don't", () =
   assert.notEqual(swapped("outerEdge", false).appearanceKey(), solved.appearanceKey());
 });
 
-test("state codes: malformed codes are refused with a reason", () => {
-  const good = encodeState(State.solved());
+test("X1 state codes: malformed codes are refused with a reason", () => {
+  const good = encodeX1(State.solved());
   assert.throws(() => decodeState("Y1:" + good.slice(3)), /not an X-Cube state code/);
   assert.throws(() => decodeState(good.slice(0, -2)), /wrong length/);
   assert.throws(() => decodeState(good.slice(0, 3) + "!a" + good.slice(5)), /bad entry at slot 0/);
@@ -147,5 +147,5 @@ test("state codes: malformed codes are refused with a reason", () => {
   assert.throws(() => decodeState(dup), /appears twice/);
   const missing = good.slice(0, 3 + 2 * firstFilled) + ".." + good.slice(5 + 2 * firstFilled);
   assert.throws(() => decodeState(missing), /state has 61 cubelets, expected 62/);
-  assert.equal(encodeState(decodeState("  " + good + "\n")), good, "surrounding whitespace is ignored");
+  assert.equal(encodeX1(decodeState("  " + good + "\n")), good, "surrounding whitespace is ignored");
 });
