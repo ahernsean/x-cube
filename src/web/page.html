@@ -63,7 +63,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 @media (max-width: 380px) { .views { gap: 2px; } .views > .btn.small { padding: 4px 2px; letter-spacing: -0.02em; } }
 .view-toggles-row { display: flex; margin-top: 4px; }
 .hold-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
-.btn.edit-btn { border-radius: 999px; border-color: var(--accent); color: var(--accent); min-height: 32px; padding: 4px 12px; white-space: nowrap; flex-shrink: 0; }
+.btn.edit-btn { border-radius: 999px; border-color: var(--line); color: var(--accent); min-height: 32px; padding: 4px 12px; white-space: nowrap; flex-shrink: 0; }
 .btn.edit-btn[hidden] { display: none; }
 .hold { margin: 0; font-size: 13px; min-width: 0; }
 /* Orientation labels around the 3D view: the face pointing each way. */
@@ -266,7 +266,7 @@ details[open] summary { margin-bottom: 8px; }
         <summary>Algorithms</summary>
         <p class="hint" style="margin:6px 0 0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turns in the box above with the current start position.</p>
         <div class="alg-row" style="margin-top:8px">
-          <input type="text" id="alg-name" placeholder="Name these turns" autocomplete="off">
+          <input type="text" id="alg-name" placeholder="Name algorithm" autocomplete="off">
           <button class="btn" id="alg-save">Save</button>
         </div>
         <ul class="saved" id="known-list"></ul>
