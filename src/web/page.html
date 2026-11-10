@@ -131,6 +131,8 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 /* A short note in the free columns to the right of a three-button row. */
 .pad-note { grid-column: 4 / -1; align-self: center; font-size: 12px; line-height: 1.3; color: var(--muted); }
 .pad-note code { font-family: var(--f-mono); color: var(--ink); }
+/* Each unit ("M like L,") stays on one line; lines break only between units. */
+.pad-note > span { white-space: nowrap; }
 .mv { font: 600 16px var(--f-mono); min-height: 42px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; padding: 0; }
 .mv:active { transform: translateY(1px); }
 .mv.outer { border-style: dashed; }
@@ -314,11 +316,11 @@ details[open] summary { margin-bottom: 8px; }
         </div></div>
         <div class="pad-group"><span class="pad-label">Slices</span><div class="pad-keys">
           <button class="mv" data-move="H">H</button><button class="mv" data-move="M">M</button><button class="mv" data-move="S">S</button>
-          <span class="pad-note" id="slice-note"><code>H</code> turns like <code>U</code>, <code>M</code> like <code>L</code>, <code>S</code> like <code>F</code></span>
+          <span class="pad-note" id="slice-note"><span><code>H</code> turns like <code>U</code>,</span> <span><code>M</code> like <code>L</code>,</span> <span><code>S</code> like <code>F</code></span></span>
         </div></div>
         <div class="pad-group"><span class="pad-label">Rotate</span><div class="pad-keys">
           <button class="mv" data-move="x">x</button><button class="mv" data-move="y">y</button><button class="mv" data-move="z">z</button>
-          <span class="pad-note" id="rotate-note">The whole puzzle: <code>x</code> like <code>R</code>, <code>y</code> like <code>U</code>, <code>z</code> like <code>F</code></span>
+          <span class="pad-note" id="rotate-note">The whole puzzle: <span><code>x</code> like <code>R</code>,</span> <span><code>y</code> like <code>U</code>,</span> <span><code>z</code> like <code>F</code></span></span>
         </div></div>
       </div>
     </section>

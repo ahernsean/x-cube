@@ -152,6 +152,8 @@ try {
       return note.left >= last.right && note.top >= last.top - 1 && note.bottom <= last.bottom + 1;
     }),
   );
+  const unitsWhole = await page.$$eval(".pad-note > span", (els) => els.length === 6 && els.every((e) => e.getClientRects().length === 1));
+  check(unitsWhole, "the notes break lines only between units like \"M like L,\", never inside one");
   check(notes.every(Boolean) && (await page.$$eval("[data-sec=turn] .legend", (els) => els.length)) === 0, `the H/M/S and x/y/z notes sit beside their buttons (${notes})`);
   check(runOrder, "the algorithm panel shows the turn list and playback first, then Clear/Reset/Shuffle, then typing and the algorithms list");
 
