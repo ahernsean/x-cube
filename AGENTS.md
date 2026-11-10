@@ -139,7 +139,16 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   screen, meets the edge of the 3D view; tapping one turns the view to that face.
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
-  two fingers spin it; double tap (cube or background) undoes the last turn.
+  two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ button
+  beside the 3D view's heading shows this help.
+- **Display panel:** the Display button beside the 3D view's heading opens the Edge glow,
+  Shading, Shadows and Gloss switches, over the view.
+- **Layout rule:** on a phone, nothing appears or disappears in the page's flow except
+  through a disclosure triangle (and the turn list, which grows with the turns). Help and
+  switches open in panels over the view; messages float near the bottom of the screen and
+  fade after 4 seconds (8 for errors) or a tap. The browser tests check the page height.
+- **Playback:** ⏮ back to the start, ◀ play backward to the start, ◀1 back one turn, ▶1
+  forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
 - **Shuffle:** 30 random legal turns (inner, slices, outer when complete; never the same
   layer twice in a row; no rotations) played at 70 ms per quarter turn; the result becomes
   the new start ("Shuffled") and the message shows the scramble.
