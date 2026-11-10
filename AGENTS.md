@@ -186,8 +186,10 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   them; drags tumble the view, and the other controls are set aside. The shape stays as it
   is. A painted sticker's edge glow takes the paint too. Each paint is refit to cubelets
   (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
-  wrong: no cubelet has those colors, one cubelet would be needed in two
-  spots, or an outer cubelet is turned against the outward-color rule (a sign of a sticker
+  wrong: no cubelet of that kind can have a color (core corners are only white or
+  yellow), two stickers of one color or opposite colors, a corner's colors going around it
+  in mirrored order (two stickers swapped), one cubelet needed in two spots, or an outer
+  cubelet turned against the outward-color rule (a sign of a sticker
   painted wrong; the physical cube can't do that). It says what, not where ("A
   cubelet shows yellow, red, and orange, but red and orange are opposite colors, never on
   one cubelet"), not where: words for a spot proved unreliable (center colors move with

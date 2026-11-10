@@ -52,7 +52,7 @@ test("edit: one cubelet needed in two places is refused", () => {
   const fit = fitColors(st, colors);
   assert.equal(fit.level, null);
   assert.equal(fit.problems.length, 1);
-  assert.equal(fit.problems[0].text, "Two cubelets both show red. There is only one cubelet with those colors");
+  assert.equal(fit.problems[0].text, "Two cubelets of this type are red, but only one can be colored this way");
   assert.deepEqual([...fit.problems[0].slots].sort(), [at(0, 0, 2), at(2, 0, 0)].sort());
 });
 
@@ -75,6 +75,13 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
   };
   assert.deepEqual(say(1, -1, -2, 5, "O"), { text: "A cubelet shows yellow, red, and orange, but red and orange are opposite colors, never on one cubelet", slots: [at(1, -1, -2)] });
   assert.equal(say(-1, 1, 2, F, "O").text, "A cubelet shows white, orange, and orange, but no cubelet has two orange stickers");
+  // A color no cubelet of that kind has: core corners are only white or yellow.
+  assert.equal(say(1, -1, 1, 3, "B").text, "A cubelet shows blue, but no cubelet in that position can be blue");
+  // Two stickers of a corner swapped: its colors exist, but go around it the other way.
+  const swapped = visibleColors(st);
+  swapped[at(-1, -1, -2) * 6 + 5] = "O";
+  swapped[at(-1, -1, -2) * 6 + 1] = "B";
+  assert.equal(fitColors(st, swapped).problems[0].text, "A cubelet shows yellow, blue, and orange, but both cubelets with these colors have them in the other order around the corner. Two of these stickers are probably swapped");
   // Look-alike core cubelets: more painted than the puzzle has.
   assert.deepEqual(say(1, 1, 1, U, "Y"), { text: "A cubelet shows yellow, but the puzzle's 4 cubelets like that are all in other spots", slots: [at(1, 1, 1)] });
 });
