@@ -615,6 +615,9 @@ interface AoFace {
 const aoFaces: AoFace[][] = [];
 // Brightness by number of open spots around a corner (0 = boxed in, 3 = open).
 const AO_LEVELS = [0.39, 0.575, 0.765, 1];
+// The flat view shows only how much of each corner's darkening (0 none, 1 full): seen
+// straight on and unlit, it reads much darker there than in the 3D view.
+const FLAT_AO_STRENGTH = 0.45;
 // The four corners of a face, as (x, y) signs in the plane's own coordinates.
 const CORNER_SIGNS: [number, number][] = [
   [-1, 1],
@@ -715,6 +718,7 @@ function filledAt(st: State, p: Vec3): boolean {
 /** Write four corner brightness values onto a face, blended across it (any vertex layout). */
 function applyCorners(f: AoFace, corner: number[]) {
   f.cur = corner.slice();
+  const k = f.view === "flat" ? FLAT_AO_STRENGTH : 1;
   const col = f.mesh.geometry.attributes.color;
   const arr = col.array as Float32Array;
   const pos = f.mesh.geometry.attributes.position;
@@ -723,7 +727,7 @@ function applyCorners(f: AoFace, corner: number[]) {
     const w = ease(Math.max(0, Math.min(1, pos.getY(i) / f.extent + 0.5))); // 0 at -y, 1 at +y
     const top = corner[0] * (1 - u) + corner[1] * u;
     const bottom = corner[2] * (1 - u) + corner[3] * u;
-    const v = bottom * (1 - w) + top * w;
+    const v = 1 - k * (1 - (bottom * (1 - w) + top * w));
     arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = v;
   }
   col.needsUpdate = true;
@@ -2460,6 +2464,16 @@ function installProbe() {
       });
     },
     shadeRestError,
+    /** Darkest shading drawn on 3D stickers and on flat tiles, and the flat view's strength. */
+    shadeDepth() {
+      const least = { "3d": 1, flat: 1 };
+      for (const list of aoFaces)
+        for (const f of list ?? []) {
+          const a = f.mesh.geometry.attributes.color.array as Float32Array;
+          for (let i = 0; i < a.length; i++) least[f.view] = Math.min(least[f.view], a[i]);
+        }
+      return { min3d: least["3d"], minFlat: least.flat, flatStrength: FLAT_AO_STRENGTH };
+    },
     /** What the effect switches currently control: glow layers, the key light's shadows, grid shading. */
     effects: () => ({ glow3d: camera.layers.isEnabled(GLOW3D_LAYER), glowFlat: netCams.every((c) => c.cam.layers.isEnabled(GLOWNET_LAYER)), shadows: !!keyLight?.castShadow, shading: aoOn["3d"] && aoOn.flat }),
     /** The color the model says the sticker in slot shows toward face (null: none). */
