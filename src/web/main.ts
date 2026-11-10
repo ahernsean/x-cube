@@ -23,6 +23,7 @@ import {
 } from "../core/puzzle.ts";
 import { decodeState, encodeState } from "../core/serialize.ts";
 import { fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
+import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 
 declare const THREE: any;
 
@@ -2176,7 +2177,28 @@ function setupCollapsibles() {
   }
 }
 
+/** Known algorithms: each Load sets up the algorithm's position as the start and its turns, unplayed. */
+function setupKnownAlgorithms() {
+  const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  $("known-list").innerHTML = KNOWN_ALGORITHMS.map(
+    (a) =>
+      `<li><div class="saved-main"><span class="saved-name">${esc(a.name)}</span><span class="known-alg">${esc(a.alg)}</span><span class="hint">${esc(a.situation)}</span></div>` +
+      `<div class="saved-actions"><button class="btn small" data-known="${a.id}">Load</button></div></li>`,
+  ).join("");
+  $("known-list").addEventListener("click", (e) => {
+    const id = (e.target as HTMLElement).closest<HTMLElement>("[data-known]")?.dataset.known;
+    const a = KNOWN_ALGORITHMS.find((k) => k.id === id);
+    if (!a) return;
+    setBase(a.start(), a.name);
+    ($("alg") as HTMLInputElement).value = a.alg;
+    runAlg(a.alg, false);
+    setMessage(`Loaded "${a.name}". Play it with ▶ or step with ▶1.`, "ok");
+    render();
+  });
+}
+
 function bindUI() {
+  setupKnownAlgorithms();
   $("edit-start").addEventListener("click", () => startEdit());
   $("edit-done").addEventListener("click", () => endEdit(true));
   $("edit-cancel").addEventListener("click", () => endEdit(false));

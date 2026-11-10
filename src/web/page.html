@@ -160,6 +160,11 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .netface i.ring b.bl, .netface i.ring b.br { width: 75%; }
 /* The label sits in the top-left corner of the ring, which never shows a cubelet or a rim bar. */
 .netlabel { position: absolute; left: 0; top: -2px; font: 700 12px var(--f-display); color: var(--muted); letter-spacing: 0.04em; pointer-events: none; }
+.base-actions { display: flex; gap: 6px; margin-top: 6px; }
+.base-actions .btn { flex: 1 1 auto; white-space: nowrap; padding-left: 8px; padding-right: 8px; }
+.known { margin-top: 10px; }
+.known summary { cursor: pointer; font-weight: 600; }
+.known-alg { font: 13px var(--f-mono); overflow-wrap: anywhere; }
 .saved { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .saved li { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
 .saved-main { display: grid; min-width: 0; }
@@ -248,10 +253,17 @@ details[open] summary { margin-bottom: 8px; }
         <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="42"></label>
         <span class="counter" id="counter">0 / 0</span>
       </div>
-      <p class="hint" style="margin:8px 0 0">Start: <strong id="base-label">Solved</strong>.
-        Runs start from the current step. <button class="btn small ghost" id="rebase">Make current position the start</button>
+      <p class="hint" style="margin:8px 0 0">Start: <strong id="base-label">Solved</strong>. Runs start from the current step.</p>
+      <div class="base-actions">
+        <button class="btn small ghost" id="rebase" title="Make the current position the start">Start here</button>
         <button class="btn small ghost" id="reset">Reset to solved</button>
-        <button class="btn small" id="shuffle">Shuffle</button></p>
+        <button class="btn small" id="shuffle">Shuffle</button>
+      </div>
+      <details class="known">
+        <summary>Known algorithms</summary>
+        <p class="hint" style="margin:6px 0 0">Load sets up a position where the algorithm applies and its turns, ready to play.</p>
+        <ul class="saved" id="known-list"></ul>
+      </details>
     </section>
 
     <section class="panel" data-sec="turn">
