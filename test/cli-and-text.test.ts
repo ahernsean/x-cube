@@ -22,7 +22,7 @@ const xc = (...args: string[]) => {
   return { status: r.status, out: r.stdout, err: r.stderr };
 };
 
-test("cli show: status, flat view and effect of Baum's edge 3-cycle", () => {
+test("cli: show prints the status, flat view and effect of Baum's edge 3-cycle", () => {
   const r = xc("show", "R' S' R b R' S R b'");
   assert.equal(r.status, 0, r.err);
   assert.match(r.out, /^alg: R' S' R b R' S R b' {2}\(8 turns\)$/m);
@@ -32,7 +32,7 @@ test("cli show: status, flat view and effect of Baum's edge 3-cycle", () => {
   assert.equal((r.out.match(/^ {2}cycle: /gm) ?? []).length, 1);
 });
 
-test("cli steps: a status line per turn, stopping at a refused turn", () => {
+test("cli: steps prints a status line per turn, stopping at a refused turn", () => {
   const r = xc("steps", "R f U");
   assert.equal(r.status, 0, r.err);
   const lines = r.out.trimEnd().split("\n");
@@ -41,14 +41,14 @@ test("cli steps: a status line per turn, stopping at a refused turn", () => {
   assert.match(lines[1], /^ {2}2 f {3}BLOCKED: .*6\/9/);
 });
 
-test("cli effect: the corner 3-cycle moves 3 cubelets and prints no flat view", () => {
+test("cli: effect says the corner 3-cycle moves 3 cubelets and prints no flat view", () => {
   const r = xc("effect", "[R' F' R, b]");
   assert.equal(r.status, 0, r.err);
   assert.match(r.out, /^cubelets moved: 3$/m);
   assert.ok(!r.out.includes("    L          F"), "effect has no flat view");
 });
 
-test("cli order: R U looks like the start again after 105 repetitions, and not before", () => {
+test("cli: order says R U looks like the start again after 105 repetitions, and not before", () => {
   const r = xc("order", "R U");
   assert.equal(r.status, 0, r.err);
   const n = Number(/after (\d+) repetitions/.exec(r.out)?.[1]);
@@ -58,7 +58,7 @@ test("cli order: R U looks like the start again after 105 repetitions, and not b
   assert.notEqual(after(`(R U)${n - 1}`).appearanceKey(), start);
 });
 
-test("cli encode, then show --state, matches show --from", () => {
+test("cli: encode, then show --state, matches show --from", () => {
   const enc = xc("encode", "R U");
   assert.equal(enc.status, 0, enc.err);
   const [code, shape] = enc.out.trim().split("\n");
@@ -94,7 +94,7 @@ test("text views: face rows, the whole net, and the status line", () => {
   assert.equal(statusLine(after("x")), "X shape (rotated) | SOLVED | outer turns: r l u d f(0/9) b(0/9)");
 });
 
-test("simplify merges and cancels neighboring turns of the same move", () => {
+test("notation: simplify merges and cancels neighboring turns of the same move", () => {
   const s = (alg: string) => formatAlg(simplify(parseAlg(alg)));
   assert.equal(s("R R"), "R2");
   assert.equal(s("R R R"), "R'");
@@ -111,7 +111,7 @@ test("goals: shapeLike compares only the shape; all needs every goal", () => {
   assert.ok(!all(shapeLike(solved), looksLike(solved))(after("U")), "same shape, different look");
 });
 
-test("search stops at its node limit and says the search was incomplete", () => {
+test("search: stops at its node limit and says the search was incomplete", () => {
   const target = after("R U R' U' F");
   const r = search(State.solved(), looksLike(target), { maxDepth: 6, nodeLimit: 50 });
   assert.equal(r.complete, false);
@@ -119,7 +119,7 @@ test("search stops at its node limit and says the search was incomplete", () => 
   assert.ok(r.nodes <= 51);
 });
 
-test("appearanceKey: look-alike twins compare equal, other cubelets don't", () => {
+test("state: appearanceKey makes look-alike twins compare equal, other cubelets don't", () => {
   const solved = State.solved();
   const swapped = (kind: string, sameColor: boolean) => {
     const st = solved.clone();

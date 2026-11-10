@@ -258,6 +258,9 @@ Never do any of these without an explicit instruction from the owner:
 
 - One commit per change, so the owner can back out any single step.
 - Write or extend a test for every new or changed behavior.
+- Name every test `<topic>: <what it checks>`, with a short lowercase topic shared by the
+  tests of one area (`edit:`, `notation:`, `playback:`), so `--test-name-pattern="^topic:"`
+  selects that area.
 - **Test locally only what you changed; let CI test the rest.** The full browser run takes
   10 to 15 minutes for both engines, which stalls iterating with the owner. So:
   - Before committing, run `npx tsc --noEmit` (fast) and only the tests that cover the code
