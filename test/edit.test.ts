@@ -1,9 +1,9 @@
 // The color editor's fitting: edited sticker colors to real cubelets (src/core/edit.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fitColors, visibleColors } from "../src/core/edit.ts";
+import { fitColors, sideWords, visibleColors } from "../src/core/edit.ts";
 import { parseAlg } from "../src/core/notation.ts";
-import { State, applyTurns, slotAt } from "../src/core/puzzle.ts";
+import { CUBELETS, FACE_COLOR, State, applyTurns, slotAt } from "../src/core/puzzle.ts";
 
 const [R, U, F] = [0, 2, 4];
 const after = (alg: string) => {
@@ -42,7 +42,7 @@ test("edit: colors no cubelet has are refused, naming the spot", () => {
   const fit = fitColors(st, colors);
   assert.equal(fit.level, null);
   assert.equal(fit.state, null);
-  assert.deepEqual(fit.problems, ["Fx.U (U white, F yellow): no cubelet has these colors"]);
+  assert.deepEqual(fit.problems, [{ text: "Top edge of the green extension shows white and yellow: white and yellow are opposite colors, never on one cubelet", slots: [at(0, 1, 2)] }]);
 });
 
 test("edit: one cubelet needed in two places is refused", () => {
@@ -52,7 +52,9 @@ test("edit: one cubelet needed in two places is refused", () => {
   const fit = fitColors(st, colors);
   assert.equal(fit.level, null);
   assert.equal(fit.problems.length, 1);
-  assert.match(fit.problems[0], /^(Rx|Fx) .* and (Rx|Fx) .* would need the same cubelet$/);
+  // Red now shows on two centers, so the sides are named by their place instead.
+  assert.equal(fit.problems[0].text, "Center of the right extension and the center of the front extension would both need the red cubelet (sides named as in the Front view)");
+  assert.deepEqual([...fit.problems[0].slots].sort(), [at(0, 0, 2), at(2, 0, 0)].sort());
 });
 
 test("edit: an outer cubelet turned against the outward-color rule is real cubelets, but not possible", () => {
@@ -62,5 +64,27 @@ test("edit: an outer cubelet turned against the outward-color rule is real cubel
   colors[at(0, 1, 2) * 6 + U] = "G";
   const fit = fitColors(st, colors);
   assert.equal(fit.level, "cubelets");
-  assert.deepEqual(fit.problems, ["Fx.U (U green, F white): that cubelet can't be turned this way; its green side always faces outward"]);
+  assert.deepEqual(fit.problems, [{ text: "Top edge of the green extension can't be turned this way: that cubelet's green sticker always faces away from the core", slots: [at(0, 1, 2)] }]);
+});
+
+test("edit: problems name spots by where they are and sides by their center colors now", () => {
+  const st = State.solved();
+  const colors = visibleColors(st);
+  colors[at(1, -1, -2) * 6 + 5] = "O"; // Bx.DR: red, yellow and orange
+  assert.deepEqual(fitColors(st, colors).problems, [{ text: "Bottom corner of the blue extension on the red side shows red, yellow and orange: red and orange are opposite colors, never on one cubelet", slots: [at(1, -1, -2)] }]);
+  // After a slice turn the side centers move, and the words follow them.
+  const h = after("H");
+  assert.deepEqual(sideWords(h, visibleColors(h)).word, ["blue", "green", "top", "bottom", "red", "orange"]);
+  const twoReds = visibleColors(st);
+  twoReds[at(1, 0, 2) * 6 + F] = "R";
+  twoReds[at(1, 0, 2) * 6 + R] = "R";
+  assert.match(fitColors(st, twoReds).problems[0].text, /^Edge of the green extension on the red side shows red and red: no cubelet has two red stickers$/);
+});
+
+test("edit: no cubelet has opposite colors or two of one color (the reasons problems give)", () => {
+  for (const c of CUBELETS) {
+    const cs = c.stickers.filter((x) => x);
+    assert.equal(new Set(cs).size, cs.length);
+    for (let k = 0; k < 6; k += 2) assert.ok(!(cs.includes(FACE_COLOR[k]) && cs.includes(FACE_COLOR[k + 1])), `${c.name} has opposite colors`);
+  }
 });
