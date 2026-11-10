@@ -61,7 +61,10 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .views > .btn.small { flex: 1 1 auto; min-width: 0; padding: 4px 3px; font-size: 13px; letter-spacing: -0.01em; white-space: nowrap; }
 @media (max-width: 440px) { .views > .btn.small { font-size: 12px; padding: 4px 4px; } }
 @media (max-width: 380px) { .views { gap: 2px; } .views > .btn.small { padding: 4px 2px; letter-spacing: -0.02em; } }
-.view-toggles-row { display: flex; justify-content: flex-end; margin-top: 6px; }
+.hold-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
+.btn.edit-btn { border-radius: 999px; border-color: var(--line); color: var(--accent); min-height: 32px; padding: 4px 12px; white-space: nowrap; flex-shrink: 0; }
+.btn.edit-btn[hidden] { display: none; }
+.hold { margin: 0; font-size: 13px; min-width: 0; }
 /* Orientation labels around the 3D view: the face pointing each way. */
 .compass { position: absolute; inset: 0; pointer-events: none; font: 700 13px var(--f-display); letter-spacing: 0.05em; color: var(--muted); }
 .cmp { position: absolute; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 0; border-radius: 999px; font: inherit; color: inherit; letter-spacing: inherit; background: color-mix(in srgb, var(--panel) 75%, transparent); pointer-events: auto; cursor: pointer; }
@@ -71,11 +74,32 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 /* Positioned each frame where the face's axis meets the edge of the view. */
 .cmp { left: 0; top: 0; will-change: transform; transition: opacity 0.15s; }
 .cmp.away { background: transparent; box-shadow: inset 0 0 0 1px var(--muted); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--muted) 60%, transparent); }
-.gesture-hint { margin: 8px 0 0; }
+.view-head { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.view-head .sec-title, .view-head h2 { margin: 0; }
+.view-tools { display: flex; gap: 6px; }
+.btn.tool-btn { min-height: 32px; padding: 4px 10px; color: var(--muted); }
+.btn.tool-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--muted); }
+/* The ⓘ is its own sign that it can be tapped: no button edge or fill. */
+.btn.tool-btn.info { border-color: transparent; background: transparent; box-shadow: none; padding: 4px 6px; min-width: 32px; font-size: 20px; line-height: 1; }
+.btn.tool-btn.info[aria-expanded="true"] { border-color: transparent; color: var(--accent); }
+.pop { position: absolute; top: calc(100% + 4px); right: 0; z-index: 15; max-width: min(300px, 100%); padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); display: grid; gap: 8px; }
+.pop[hidden] { display: none; }
+.pop p { margin: 0; }
+.pop label { display: flex; align-items: center; gap: 8px; font-size: 15px; }
 .stage.tumbling { box-shadow: 0 0 0 2px var(--accent); }
 /* Long presses on the 3D view are gestures: no text selection, magnifier or callout. */
 .stage-col, .stage, #scene { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-.view-toggles { display: flex; gap: 12px; }
+.edit-bar { margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); display: grid; gap: 8px; }
+.edit-bar[hidden] { display: none; }
+.palette { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--tile-edge); cursor: pointer; padding: 0; }
+.swatch[aria-checked="true"] { outline: 3px solid var(--accent); outline-offset: 2px; }
+.edit-status { margin: 0; padding: 6px 8px; border-radius: 8px; font-size: 14px; }
+.edit-status.good { background: var(--good-bg); color: var(--good); }
+.edit-status.bad { background: var(--bad-bg); color: var(--bad); }
+.edit-status.warn { background: var(--warn-bg); color: var(--warn); }
+.edit-actions { display: flex; gap: 8px; }
+.edit-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }
 .chip { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--off-bg); color: var(--muted); white-space: nowrap; }
@@ -83,7 +107,8 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .chip.warn { background: var(--warn-bg); color: var(--warn); font-family: var(--f-body); font-weight: 700; }
 .chip.on { background: var(--good-bg); color: var(--good); font-weight: 600; }
 .chip.off { text-decoration: line-through; text-decoration-thickness: 1px; }
-.message { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; font-size: 14px; }
+.message { position: fixed; z-index: 30; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); margin: 0; padding: 10px 14px; border-radius: 10px; font-size: 14px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22); cursor: pointer; }
+.message[hidden] { display: none; }
 .message.error { background: var(--bad-bg); color: var(--bad); }
 .message.ok { background: var(--good-bg); color: var(--good); }
 .message.info { background: var(--off-bg); color: var(--ink); }
@@ -106,6 +131,11 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .pad-group { display: grid; grid-template-columns: 74px 1fr; gap: 8px; align-items: center; }
 .pad-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); }
 .pad-keys { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+/* A short note in the free columns to the right of a three-button row. */
+.pad-note { grid-column: 4 / -1; align-self: center; font-size: 12px; line-height: 1.3; color: var(--muted); }
+.pad-note code { font-family: var(--f-mono); color: var(--ink); }
+/* Each unit ("M like L,") stays on one line; lines break only between units. */
+.pad-note > span { white-space: nowrap; }
 .mv { font: 600 16px var(--f-mono); min-height: 42px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; padding: 0; }
 .mv:active { transform: translateY(1px); }
 .mv.outer { border-style: dashed; }
@@ -121,16 +151,13 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .tp { min-width: 44px; font-size: 15px; }
 .tp sub { font-size: 9px; margin-left: 1px; }
 .tp.stop { background: var(--ink); color: var(--panel); border-color: var(--ink); }
-.history { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
+.history { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
 .tok { font: 13px var(--f-mono); border: 0; background: var(--off-bg); color: var(--muted); border-radius: 5px; padding: 3px 6px; cursor: pointer; }
 .tok.done { background: var(--good-bg); color: var(--good); }
-.tok.cur { outline: 2px solid var(--good); }
+.tok.cur { box-shadow: inset 0 0 0 2px var(--good); } /* inside the chip: .history clips anything drawn outside */
 .transport { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .counter { font: 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
 .hint { color: var(--muted); font-size: 13px; }
-.effect p { margin: 0; }
-.cycles { margin: 8px 0 0; padding-left: 18px; font-size: 12px; }
-.cycles code { font-family: var(--f-mono); word-break: break-word; }
 .net { display: grid; grid-template-columns: repeat(4, minmax(0, 100px)); grid-template-rows: repeat(3, auto); gap: 6px; justify-content: start; }
 .net-wrap { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 .net-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -147,6 +174,13 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .netface i.ring b.bl, .netface i.ring b.br { width: 75%; }
 /* The label sits in the top-left corner of the ring, which never shows a cubelet or a rim bar. */
 .netlabel { position: absolute; left: 0; top: -2px; font: 700 12px var(--f-display); color: var(--muted); letter-spacing: 0.04em; pointer-events: none; }
+.base-line { margin: 8px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.base-actions { display: flex; gap: 6px; margin-top: 6px; }
+.base-actions .btn { flex: 1 1 auto; white-space: nowrap; padding-left: 8px; padding-right: 8px; }
+.add-turns { margin-top: 10px; }
+.known { margin-top: 10px; }
+.known summary { cursor: pointer; font-weight: 600; }
+.known-alg { font: 13px var(--f-mono); overflow-wrap: anywhere; }
 .saved { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .saved li { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
 .saved-main { display: grid; min-width: 0; }
@@ -167,7 +201,8 @@ details summary { cursor: pointer; font-family: var(--f-display); text-transform
 details[open] summary { margin-bottom: 8px; }
 .legend { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
 .legend code { font-family: var(--f-mono); color: var(--ink); }
-.speed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.speed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); flex: 1 1 auto; min-width: 0; }
+.speed input { flex: 1 1 auto; min-width: 0; }
 @media (prefers-reduced-motion: reduce) { .mv:active { transform: none; } }
 </style>
 
@@ -177,7 +212,22 @@ details[open] summary { margin-bottom: 8px; }
 
 <div class="wrap">
   <div class="stage-col" data-sec="view3d">
-    <h2 class="sec-title">3D view</h2>
+    <div class="view-head">
+      <h2 class="sec-title">3D view</h2>
+      <div class="view-tools">
+        <button class="btn small tool-btn info" id="info-btn" aria-label="How to use the 3D view" aria-expanded="false" aria-controls="info-pop">ⓘ</button>
+        <button class="btn small tool-btn" id="render-btn" aria-expanded="false" aria-controls="render-pop">Display ▾</button>
+      </div>
+      <div class="pop" id="info-pop" hidden>
+        <p class="hint">Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes.</p>
+      </div>
+      <div class="pop" id="render-pop" hidden title="Applies to the 3D view and the flat view">
+        <label class="keep" for="glow"><input type="checkbox" id="glow"> Edge glow</label>
+        <label class="keep" for="shade"><input type="checkbox" id="shade"> Shading</label>
+        <label class="keep" for="shadows"><input type="checkbox" id="shadows"> Shadows</label>
+        <label class="keep" for="gloss"><input type="checkbox" id="gloss"> Gloss</label>
+      </div>
+    </div>
     <div class="stage">
       <canvas id="scene" aria-label="3D view of the X-Cube"></canvas>
       <div class="compass" role="group" aria-label="Look at a face">
@@ -198,43 +248,60 @@ details[open] summary { margin-bottom: 8px; }
       <button class="btn small" data-view="top">Up</button>
       <button class="btn small" data-view="bottom">Down</button>
     </div>
-    <div class="view-toggles-row">
-      <span class="view-toggles" title="Applies to the 3D view and the flat view"><label class="hint keep" for="glow"><input type="checkbox" id="glow"> Edge glow</label>
-      <label class="hint keep" for="shade"><input type="checkbox" id="shade"> Shading</label>
-      <label class="hint keep" for="shadows"><input type="checkbox" id="shadows"> Shadows</label>
-      <label class="hint keep" for="gloss"><input type="checkbox" id="gloss"> Gloss</label></span>
+    <div class="hold-row">
+      <p class="hold" id="hold" aria-live="polite"></p>
+      <button class="btn small edit-btn" id="edit-start"><span aria-hidden="true">✎</span> Edit colors</button>
     </div>
-    <p class="hint gesture-hint">Swipe on the cube to turn the layer under your finger. To tumble the view, drag the background, or long press on the cube and then drag. Use two fingers to spin it. Double tap to undo the last turn.</p>
+    <div class="edit-bar" id="edit-bar" hidden>
+      <div class="palette" role="radiogroup" aria-label="Paint color">
+        <button class="swatch" role="radio" data-paint="W" aria-label="White"></button><button class="swatch" role="radio" data-paint="Y" aria-label="Yellow"></button><button class="swatch" role="radio" data-paint="G" aria-label="Green"></button><button class="swatch" role="radio" data-paint="B" aria-label="Blue"></button><button class="swatch" role="radio" data-paint="R" aria-label="Red"></button><button class="swatch" role="radio" data-paint="O" aria-label="Orange"></button>
+      </div>
+      <p class="edit-status" id="edit-status" aria-live="polite"></p>
+      <div class="edit-actions"><button class="btn small primary" id="edit-done">Done</button><button class="btn small" id="edit-cancel">Cancel</button></div>
+      <p class="hint">Pick a color, then tap stickers on the cube to paint them. Drag to turn the view.</p>
+    </div>
     <div class="status" id="status" aria-live="polite"></div>
     <p class="message" id="message" hidden></p>
   </div>
 
-  <div class="stack">
+  <div class="stack" id="stack-col">
     <section class="panel" data-sec="run">
       <h2>Run an algorithm</h2>
-      <div class="alg-row">
-        <input type="text" id="alg" placeholder="(R U2)5   or   [R' S' R, b]" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <button class="btn primary" id="run">Run</button>
-        <button class="btn" id="load" title="Load without animating">Load</button>
-      </div>
       <div class="history" id="history"></div>
       <div class="transport">
         <button class="btn small tp" id="first" aria-label="Back to the start" title="Back to the start">⏮</button>
+        <button class="btn small tp" id="rewind" aria-label="Play backward to the start" title="Play backward / stop">◀</button>
         <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
         <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
         <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
-        <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="42"></label>
+        <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
         <span class="counter" id="counter">0 / 0</span>
       </div>
-      <p class="hint" style="margin:8px 0 0">Start: <strong id="base-label">Solved</strong>.
-        Runs start from the current step. <button class="btn small ghost" id="rebase">Make current position the start</button>
+      <p class="hint base-line" title="The position the turn list starts from">Start: <strong id="base-label">Solved</strong></p>
+      <div class="base-actions">
+        <button class="btn small ghost" id="clear" title="Clear the turn list; the position shown becomes the start">Clear</button>
         <button class="btn small ghost" id="reset">Reset to solved</button>
-        <button class="btn small" id="shuffle">Shuffle</button></p>
+        <button class="btn small" id="shuffle">Shuffle</button>
+      </div>
+      <div class="alg-row add-turns">
+        <input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Turns to add">
+        <button class="btn primary" id="load" title="Add the turns at the current step, then play them with ▶ or step through them">Load</button>
+        <button class="btn" id="alg-edit" title="Edit the whole turn list here">Edit</button>
+      </div>
+      <details class="known">
+        <summary>Algorithms</summary>
+        <p class="hint" style="margin:6px 0 0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turn list with its start position.</p>
+        <div class="alg-row" style="margin-top:8px">
+          <input type="text" id="alg-name" placeholder="Name algorithm" autocomplete="off">
+          <button class="btn" id="alg-save">Save</button>
+        </div>
+        <ul class="saved" id="known-list"></ul>
+      </details>
     </section>
 
     <section class="panel" data-sec="turn">
       <div class="turn-head">
-        <h2>Turn</h2>
+        <h2>Turn the puzzle</h2>
         <button class="btn small" id="undo">Undo last turn</button>
         <div class="mod-col">
           <div class="mods" role="group" aria-label="Turn amount">
@@ -252,23 +319,26 @@ details[open] summary { margin-bottom: 8px; }
         </div></div>
         <div class="pad-group"><span class="pad-label">Slices</span><div class="pad-keys">
           <button class="mv" data-move="H">H</button><button class="mv" data-move="M">M</button><button class="mv" data-move="S">S</button>
+          <span class="pad-note" id="slice-note"><span><code>H</code> turns like <code>U</code>,</span> <span><code>M</code> like <code>L</code>,</span> <span><code>S</code> like <code>F</code></span></span>
         </div></div>
         <div class="pad-group"><span class="pad-label">Rotate</span><div class="pad-keys">
           <button class="mv" data-move="x">x</button><button class="mv" data-move="y">y</button><button class="mv" data-move="z">z</button>
+          <span class="pad-note" id="rotate-note">The whole puzzle: <span><code>x</code> like <code>R</code>,</span> <span><code>y</code> like <code>U</code>,</span> <span><code>z</code> like <code>F</code></span></span>
         </div></div>
       </div>
-      <p class="legend"><code>H</code> turns the middle layer like <code>U</code>. <code>M</code> turns like <code>L</code>, <code>S</code> like <code>F</code>. Rotate turns the whole puzzle: <code>x</code> like <code>R</code>, <code>y</code> like <code>U</code>, <code>z</code> like <code>F</code>.</p>
-    </section>
-
-    <section class="panel effect" data-sec="effect">
-      <h2>What changed since the start</h2>
-      <div id="effect"></div>
     </section>
 
     <section class="panel" data-sec="flat">
-      <h2>Flat view</h2>
+      <div class="view-head">
+        <h2>Flat view</h2>
+        <div class="view-tools">
+          <button class="btn small tool-btn info" id="flat-info-btn" aria-label="How to read the flat view" aria-expanded="false" aria-controls="flat-info-pop">ⓘ</button>
+        </div>
+        <div class="pop" id="flat-info-pop" hidden>
+          <p class="hint">The first face you'd see looking straight at each side. Dark squares are cubelet faces with no sticker. A glow along an edge shows the sticker color around the corner. No glow there means that side has no sticker.</p>
+        </div>
+      </div>
       <div class="net-wrap"><div class="net" id="net"></div><canvas id="net-canvas" class="net-canvas" aria-hidden="true"></canvas></div>
-      <p class="legend">The first face you'd see looking straight at each side. Dark squares are cubelet faces with no sticker. A glow along an edge shows the sticker color around the corner. No glow there means that side has no sticker.</p>
     </section>
 
     <section class="panel" data-sec="saved">

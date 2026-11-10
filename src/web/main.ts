@@ -1,10 +1,11 @@
 // X-Cube Lab: browser viewer. Uses the same engine as the CLI.
 // three.js r128 is loaded as a global from cdnjs by the page.
 
-import { isHomeX, isSolved, isXShape, isExposed, outerAvailability, effect } from "../core/analyze.ts";
-import { DIRS, ROT_DIR, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
+import { isHomeX, isSolved, isXShape, isExposed, outerAvailability } from "../core/analyze.ts";
+import { DIRS, ROT_DIR, ROT_INV, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
+  COLOR_NAME,
   CUBELETS,
   FACE_COLOR,
   MOVE_BY_NAME,
@@ -22,6 +23,8 @@ import {
   type Turn,
 } from "../core/puzzle.ts";
 import { decodeState, encodeState } from "../core/serialize.ts";
+import { fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
+import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 
 declare const THREE: any;
 
@@ -361,6 +364,7 @@ function initScene(canvas: HTMLCanvasElement) {
     }
     return mats.get(c);
   };
+  paintMaterial = { sticker: matFor, tile: netMatFor, glow: (c: Color) => [0, 1, 2, 3].map((open) => glowMatFor(c, open)) };
   // local face d -> plane placement
   const faceXform: [number, number, number, number, number][] = [
     // [px, py, pz, rotX, rotY]
@@ -391,6 +395,7 @@ function initScene(canvas: HTMLCanvasElement) {
       const m = new THREE.Mesh(varyFilm(withAoColors(plane), c.id * 6 + d), matFor(col));
       m.receiveShadow = true;
       probeInfo.set(m, { id: c.id, d });
+      stickerMesh3d[c.id * 6 + d] = m;
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px, py, pz);
       m.rotation.set(rx, ry, 0);
@@ -408,6 +413,7 @@ function initScene(canvas: HTMLCanvasElement) {
       const col = c.stickers[d];
       const m = new THREE.Mesh(withAoColors(netPlane), col ? netMatFor(col) : netDarkMat);
       probeInfo.set(m, { id: c.id, d });
+      if (col) tileMesh[c.id * 6 + d] = m;
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px / 0.4945 * 0.5, py / 0.4945 * 0.5, pz / 0.4945 * 0.5);
       m.rotation.set(rx, ry, 0);
@@ -483,7 +489,8 @@ function syncMeshes(st: State) {
     const exposed = [0, 1, 2, 3, 4, 5].map((d) => isExposed(st, s, ROT_DIR[o * 6 + d]));
     for (const gl of glows[id] ?? []) {
       gl.mesh.visible = exposed[gl.a] && exposed[gl.b];
-      gl.mesh.material = gl.mats[(exposed[gl.lo] ? 1 : 0) | (exposed[gl.hi] ? 2 : 0)];
+      gl.mesh.material = (gl.paint ?? gl.mats)[(exposed[gl.lo] ? 1 : 0) | (exposed[gl.hi] ? 2 : 0)];
+      if (gl.corner.material !== (gl.paint ?? gl.mats)[0]) gl.corner.material = (gl.paint ?? gl.mats)[0];
       gl.corner.visible = gl.mesh.visible && exposed[gl.hi];
     }
     shadeCubelet(st, s, o, id);
@@ -939,7 +946,8 @@ function shadeRestError() {
 }
 
 function applyShadingSettings() {
-  syncMeshes(app.current);
+  if (edit) drawEdit(); // the edited position, with its paint
+  else syncMeshes(app.current);
   try {
     localStorage.setItem(AO_KEY, JSON.stringify(aoOn));
   } catch {
@@ -967,7 +975,7 @@ const GLOW_ROUND = 0.25;
 const GLOW_CUT = GLOW_DEPTH - GLOW_ROUND;
 const GLOW_TAPER = 0.22; // fraction of the band's length over which a closed end fades out
 /** One glow band: faces a (its plane) and b (its color), the faces beside its two ends, and its material for each combination of open ends. */
-type GlowBand = { mesh: any; a: number; b: number; lo: number; hi: number; mats: any[]; corner: any };
+type GlowBand = { mesh: any; a: number; b: number; lo: number; hi: number; mats: any[]; corner: any; paint?: any[] };
 const glows: GlowBand[][] = [];
 const GLOW_KEY = "xcube-lab-glow";
 const glowOn = (() => {
@@ -1513,7 +1521,8 @@ function bindOrbit(el: HTMLElement) {
     if (pts.size === 1) {
       ignore = false;
       const busy = anim || queue.length || settle;
-      const hit = busy ? null : pickCube(el, e.clientX, e.clientY);
+      // While editing colors, a drag anywhere tumbles the view and a tap paints (below).
+      const hit = busy || edit ? null : pickCube(el, e.clientX, e.clientY);
       if (hit) {
         const id = e.pointerId;
         pending = {
@@ -1610,7 +1619,10 @@ function bindOrbit(el: HTMLElement) {
       const now = e.timeStamp;
       const isTap =
         tap && tap.ok && e.type === "pointerup" && now - tap.t < TAP_MS && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < SWIPE_PX;
-      if (isTap) {
+      if (isTap && edit) {
+        const h = pickCube(el, e.clientX, e.clientY);
+        if (h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
+      } else if (isTap) {
         if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DOUBLE_TAP_PX) {
           lastTap = null;
           undoLast();
@@ -1646,10 +1658,13 @@ let anim: Anim | null = null;
 const queue: { turn: Turn; forward: boolean; from?: State }[] = [];
 const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 // Speed slider 0..100 maps logarithmically from 800 ms (slowest) to 30 ms (fastest) per quarter turn.
-const speedFromSlider = (v: number) => 800 * Math.pow(30 / 800, v / 100);
-let speedMs = speedFromSlider(42);
+// Milliseconds per quarter turn: 1600 at the slow end, 30 at the fast end; the default
+// (52) is about 200.
+const speedFromSlider = (v: number) => 1600 * Math.pow(30 / 1600, v / 100);
+let speedMs = speedFromSlider(52);
 /** True while "play" is running through the remaining turns. */
 let playing = false;
+let playingBack = false; // playing toward the start (◀) rather than the end (▶)
 
 function enqueue(turn: Turn, forward: boolean) {
   queue.push({ turn, forward });
@@ -1801,9 +1816,20 @@ function flushAnimations() {
 
 // ------------------------------------------------------------------ actions
 
+// Messages float over the page near the bottom (they never move the layout) and fade
+// after a few seconds, longer for errors; tapping one dismisses it.
+let messageSeq = 0;
+let messageShown = 0;
+let messageTimer: ReturnType<typeof setTimeout> | undefined;
 function setMessage(text: string, kind: "info" | "error" | "ok" = "info") {
   app.message = text;
   app.messageKind = kind;
+  messageSeq++;
+}
+function dismissMessage() {
+  clearTimeout(messageTimer);
+  app.message = "";
+  $("message").hidden = true;
 }
 
 /** Tap a move button: add the turn at the cursor (discarding any "redo" turns). */
@@ -1821,8 +1847,75 @@ function doTurn(turn: Turn) {
   enqueue(turn, true);
 }
 
-/** Run an algorithm from the current position: replaces any turns after the cursor. */
-function runAlg(src: string, play: boolean) {
+/** Typed or edited turns, checked from `from`: how many can be made before one is refused, and why. */
+function legalPrefix(from: State, turns: Turn[]): { ok: number; why: string | null } {
+  const probe = from.clone();
+  for (let i = 0; i < turns.length; i++) {
+    const why = blockedReason(probe, turns[i]);
+    if (why) return { ok: i, why };
+    applyTurn(probe, turns[i]);
+  }
+  return { ok: turns.length, why: null };
+}
+
+const stopsAt = (turns: Turn[], ok: number, why: string) => `Stops at turn ${ok + 1} of ${turns.length} (${turnName(turns[ok])}): ${why.replace(/^\w+ blocked: /, "")}`;
+
+/**
+ * While true, the turn field holds the whole turn list for editing (after Edit), and Load
+ * reads Update: it replaces the list rather than adding at the current step.
+ */
+let editingTurns = false;
+const algField = () => $("alg") as HTMLInputElement;
+
+/** The Load button: adds the typed turns at the current step, or, while editing, replaces the list. */
+function loadField() {
+  if (editingTurns) updateTurns(algField().value);
+  else if (runAlg(algField().value, false)) algField().value = "";
+}
+
+/** Starts or cancels editing the turn list in the field. */
+function toggleEditTurns() {
+  if (editingTurns) {
+    editingTurns = false;
+    algField().value = "";
+  } else if (app.history.length) {
+    editingTurns = true;
+    algField().value = formatAlg(app.history);
+    algField().focus();
+  }
+  render();
+}
+
+/** Replaces the turn list with the edited one. The position stays where the two lists agree. */
+function updateTurns(src: string) {
+  flushAnimations();
+  let turns: Turn[];
+  try {
+    turns = parseAlg(src);
+  } catch (e) {
+    setMessage(e instanceof ParseError ? e.message : String(e), "error");
+    return render();
+  }
+  const { ok, why } = legalPrefix(app.base, turns);
+  const next = turns.slice(0, ok);
+  let same = 0;
+  while (same < Math.min(next.length, app.history.length) && turnName(next[same]) === turnName(app.history[same])) same++;
+  app.history = next;
+  app.cursor = Math.min(app.cursor, same);
+  editingTurns = false;
+  algField().value = "";
+  recompute();
+  syncMeshes(app.current);
+  if (why) setMessage(stopsAt(turns, ok, why), "error");
+  else setMessage(`Turn list updated: ${next.length} turns`, "ok");
+  render();
+}
+
+/**
+ * Adds an algorithm's turns at the current step, replacing any turns after it. Returns
+ * whether any turns were added.
+ */
+function runAlg(src: string, play: boolean): boolean {
   flushAnimations();
   let turns: Turn[];
   try {
@@ -1830,32 +1923,23 @@ function runAlg(src: string, play: boolean) {
   } catch (e) {
     setMessage(e instanceof ParseError ? e.message : String(e), "error");
     render();
-    return;
+    return false;
   }
   if (!turns.length) {
     setMessage("Type some moves first, for example (R U2)5", "error");
     render();
-    return;
+    return false;
   }
   // Check legality up front so the stop point is known.
-  const probe = app.current.clone();
-  let ok = turns.length;
-  let why: string | null = null;
-  for (let i = 0; i < turns.length; i++) {
-    why = blockedReason(probe, turns[i]);
-    if (why) {
-      ok = i;
-      break;
-    }
-    applyTurn(probe, turns[i]);
-  }
+  const { ok, why } = legalPrefix(app.current, turns);
   const startCursor = app.cursor;
   app.history = app.history.slice(0, app.cursor).concat(turns.slice(0, ok));
-  if (why) setMessage(`Stops at turn ${ok + 1} of ${turns.length} (${turnName(turns[ok])}): ${why.replace(/^\w+ blocked: /, "")}`, "error");
+  if (why) setMessage(stopsAt(turns, ok, why), "error");
   else setMessage(`${turns.length} turns loaded`, "ok");
   if (play) for (let i = startCursor; i < app.history.length; i++) enqueue(app.history[i], true);
   playing = play && queue.length > 0;
   render();
+  return ok > 0;
 }
 
 function step(dir: 1 | -1) {
@@ -1880,6 +1964,14 @@ function playToEnd() {
 }
 
 /** Stop playing: the turn in progress finishes, the rest wait. */
+/** Plays the turns before the cursor backward, undoing each one, back to the start. */
+function playToStart() {
+  flushAnimations();
+  for (let i = app.cursor - 1; i >= 0; i--) enqueue(app.history[i], false);
+  playing = queue.length > 0;
+  playingBack = playing;
+  render();
+}
 function stopPlaying() {
   queue.length = 0;
   playing = false;
@@ -1893,6 +1985,10 @@ function setBase(st: State, label: string) {
   app.baseLabel = label;
   app.history = [];
   app.cursor = 0;
+  if (editingTurns) {
+    editingTurns = false;
+    algField().value = "";
+  }
   recompute();
   syncMeshes(app.current);
   render();
@@ -1941,11 +2037,13 @@ async function initStore() {
   if (!ns) {
     storeKind = "device";
     saved = readDevice();
+    watchAlgorithms();
     render();
     return;
   }
   db = ns;
   storeKind = "shared";
+  watchAlgorithms();
   const timer = setTimeout(() => {
     if (!saved.length) setMessage("Saved states can't be reached yet.", "info");
     render();
@@ -2012,6 +2110,152 @@ async function deleteSaved(id: string) {
   render();
 }
 
+// Algorithms: named turns with the position they apply to, kept like saved states (the
+// shared database's "algorithms" collection, or this device). On a device the list starts
+// as the known algorithms (src/core/algorithms.ts); the shared collection is seeded with
+// them by Claude. Any of them can be deleted.
+interface SavedAlg {
+  id: string;
+  name: string;
+  alg: string;
+  code: string; // the start position, a state code
+  note?: string;
+  savedAt: number;
+  source?: string;
+}
+let algs: SavedAlg[] = [];
+const ALG_LS_KEY = "xcube-lab-algorithms";
+let pendingAlgDelete: string | null = null;
+
+function readDeviceAlgs(): SavedAlg[] {
+  try {
+    const raw = localStorage.getItem(ALG_LS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    /* unreadable: start from the known algorithms */
+  }
+  return KNOWN_ALGORITHMS.map((a, i) => ({ id: a.id, name: a.name, alg: a.alg, code: encodeState(a.start()), note: a.situation, savedAt: i + 1, source: "claude" }));
+}
+function writeDeviceAlgs(list: SavedAlg[]): string | null {
+  try {
+    localStorage.setItem(ALG_LS_KEY, JSON.stringify(list));
+    return null;
+  } catch (e: any) {
+    return e?.name === "QuotaExceededError" ? "this device's storage is full" : "this browser isn't allowing storage";
+  }
+}
+
+function watchAlgorithms() {
+  if (!db) {
+    algs = readDeviceAlgs();
+    return;
+  }
+  db.collection("algorithms").onSnapshot(
+    (snap: any) => {
+      algs = snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as object) }) as SavedAlg).sort((a: SavedAlg, b: SavedAlg) => (a.savedAt || 0) - (b.savedAt || 0));
+      render();
+    },
+    (err: any) => {
+      setMessage(`Algorithms unavailable (${err.code}).`, "error");
+      render();
+    },
+  );
+}
+
+/** Saves the turn list, with the current start position, under `name`. */
+async function saveAlgorithm(name: string) {
+  const turns = app.history;
+  if (!turns.length) {
+    setMessage("Make or load some turns first, then save them.", "error");
+    return render();
+  }
+  const entry = { name: name || formatAlg(turns), alg: formatAlg(turns), code: encodeState(app.base), note: `From ${app.baseLabel}`, savedAt: Date.now(), source: "page" };
+  if (db) {
+    try {
+      await db.collection("algorithms").add(entry);
+      setMessage(`Saved "${entry.name}"`, "ok");
+    } catch (e: any) {
+      setMessage(`Could not save: ${e?.message ?? e}`, "error");
+    }
+  } else {
+    const list = [...algs, { id: String(Date.now()), ...entry }];
+    const why = writeDeviceAlgs(list);
+    if (why) setMessage(`Could not save: ${why}`, "error");
+    else {
+      algs = list;
+      setMessage(`Saved "${entry.name}" on this device`, "ok");
+    }
+  }
+  render();
+}
+
+async function deleteAlgorithm(id: string) {
+  if (db) {
+    try {
+      await db.collection("algorithms").doc(id).delete();
+    } catch (e: any) {
+      setMessage(`Could not delete: ${e?.message ?? e}`, "error");
+    }
+  } else {
+    const list = algs.filter((a) => a.id !== id);
+    const why = writeDeviceAlgs(list);
+    if (why) setMessage(`Could not delete: ${why}`, "error");
+    else algs = list;
+  }
+  pendingAlgDelete = null;
+  render();
+}
+
+function loadAlgorithm(id: string) {
+  const a = algs.find((x) => x.id === id);
+  if (!a) return;
+  let start: State;
+  try {
+    start = decodeState(a.code);
+  } catch (e) {
+    setMessage(`Couldn't load "${a.name}": ${(e as Error).message}`, "error");
+    return render();
+  }
+  setBase(start, a.name);
+  runAlg(a.alg, false);
+  setMessage(`Loaded "${a.name}". Play it with ▶ or step with ▶1.`, "ok");
+  render();
+}
+
+function renderAlgorithms() {
+  $("known-list").innerHTML = algs.length
+    ? algs
+        .map(
+          (a) => `<li><div class="saved-main"><span class="saved-name">${escapeHtml(a.name)}</span><span class="known-alg">${escapeHtml(a.alg)}</span>${a.note ? `<span class="hint">${escapeHtml(a.note)}</span>` : ""}</div>
+        <div class="saved-actions"><button class="btn small" data-alg-load="${a.id}">Load</button>
+        ${pendingAlgDelete === a.id ? `<button class="btn small danger" data-alg-del-yes="${a.id}">Delete</button><button class="btn small" data-alg-del-no="1">Keep</button>` : `<button class="btn small ghost" data-alg-del="${a.id}" aria-label="Delete ${escapeHtml(a.name)}">✕</button>`}</div></li>`,
+        )
+        .join("")
+    : `<li class="hint">${storeKind === "loading" ? "Loading algorithms…" : "No algorithms yet. Type turns above, name them, and save them."}</li>`;
+}
+
+function bindAlgorithms() {
+  $("known-list").addEventListener("click", (e) => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>("button");
+    const ds = el?.dataset;
+    if (!ds) return;
+    if (ds.algLoad) loadAlgorithm(ds.algLoad);
+    else if (ds.algDel) {
+      pendingAlgDelete = ds.algDel;
+      render();
+    } else if (ds.algDelYes) deleteAlgorithm(ds.algDelYes);
+    else if (ds.algDelNo) {
+      pendingAlgDelete = null;
+      render();
+    }
+  });
+  $("alg-save").addEventListener("click", () => {
+    const n = $("alg-name") as HTMLInputElement;
+    saveAlgorithm(n.value.trim());
+    n.value = "";
+  });
+}
+
 function formatAlgSummary(): string {
   const done = app.history.slice(0, app.cursor);
   return `${app.baseLabel}${done.length ? " + " + formatAlg(done) : ""}`;
@@ -2039,22 +2283,43 @@ function render() {
     .join("");
   $("status").innerHTML = `${shape}${solved}<span class="outer-label">Outer turns</span>${outer}`;
 
+  // hold: which center colors face up, toward you and to your right, as they are now
+  const side = (d: number) => {
+    const c = faceCenterColor(st, d);
+    return c ? COLOR_NAME[c] : "?";
+  };
+  $("hold").textContent = `Hold: ${side(2)} up, ${side(4)} front, ${side(0)} right`;
+  $("hold").title = "Up, toward you, and on your right, by the center colors as they are now";
+
   // message
   const msg = $("message");
   msg.textContent = app.message;
   msg.className = `message ${app.messageKind}`;
   msg.hidden = !app.message;
+  if (app.message && messageShown !== messageSeq) {
+    messageShown = messageSeq;
+    clearTimeout(messageTimer);
+    messageTimer = setTimeout(dismissMessage, app.messageKind === "error" ? 8000 : 4000);
+  }
 
   // history strip
   const hist = app.history
     .map((t, i) => `<button class="tok ${i < app.cursor ? "done" : ""} ${i === app.cursor - 1 ? "cur" : ""}" data-jump="${i + 1}">${turnName(t)}</button>`)
     .join("");
-  $("history").innerHTML = hist || `<span class="hint">Turns you make or run appear here. Tap one to jump to it.</span>`;
+  $("history").innerHTML = hist || `<span class="hint">Turns you make or load appear here. Tap one to jump to it.</span>`;
   $("counter").textContent = `${app.cursor} / ${app.history.length}`;
+  $("load").textContent = editingTurns ? "Update" : "Load";
+  $("alg-edit").textContent = editingTurns ? "Cancel" : "Edit";
+  ($("alg-edit") as HTMLButtonElement).disabled = !editingTurns && !app.history.length;
+  if (!playing) playingBack = false;
   const play = $("last");
-  play.textContent = playing ? "■" : "▶";
-  play.setAttribute("aria-label", playing ? "Stop" : "Play to the end");
-  play.classList.toggle("stop", playing);
+  play.textContent = playing && !playingBack ? "■" : "▶";
+  play.setAttribute("aria-label", playing && !playingBack ? "Stop" : "Play to the end");
+  play.classList.toggle("stop", playing && !playingBack);
+  const back = $("rewind");
+  back.textContent = playing && playingBack ? "■" : "◀";
+  back.setAttribute("aria-label", playing && playingBack ? "Stop" : "Play backward to the start");
+  back.classList.toggle("stop", playing && playingBack);
   $("base-label").textContent = app.baseLabel;
 
   // modifier buttons
@@ -2067,15 +2332,6 @@ function render() {
     const held = b.classList.contains("inverted");
     b.textContent = b.dataset.move! + suffixFor(held ? invertAmount(app.modifier) : app.modifier);
   }
-
-  // effect vs base
-  const eff = effect(app.base, st);
-  $("effect").innerHTML = app.cursor
-    ? `<p><strong>${eff.moved.length}</strong> cubelets moved, <strong>${eff.twisted.length}</strong> turned in place, <strong>${eff.visibleChanges}</strong> visible faces changed${eff.shapeSame ? "" : ", shape changed"}.</p>` +
-      (eff.cycles.length && eff.moved.length <= 12
-        ? `<ul class="cycles">${eff.cycles.map((c) => `<li><code>${escapeHtml(c)}</code></li>`).join("")}</ul>`
-        : "")
-    : `<p class="hint">Make some turns to see what they did, compared with the start position.</p>`;
 
   // flat view
   renderNet(st);
@@ -2090,13 +2346,14 @@ function render() {
         <div class="saved-main"><span class="saved-name">${escapeHtml(s.name)}</span>
         <span class="saved-note">${escapeHtml(s.note ?? "")}${s.source === "claude" ? " · from Claude" : ""}</span></div>
         <div class="saved-actions">
-          <button class="btn small" data-load="${s.id}">Start here</button>
+          <button class="btn small" data-load="${s.id}" title="Make this position the start">Load</button>
           ${pendingDelete === s.id ? `<button class="btn small danger" data-del-yes="${s.id}">Delete</button><button class="btn small" data-del-no="1">Keep</button>` : `<button class="btn small ghost" data-del="${s.id}" aria-label="Delete ${escapeHtml(s.name)}">✕</button>`}
         </div></li>`,
         )
         .join("")
     : `<li class="hint">No saved states yet. Save the current position to come back to it later.</li>`;
   ($("code-out") as HTMLTextAreaElement).value = encodeState(st);
+  renderAlgorithms();
 }
 
 const NET_COLOR: Record<string, string> = { W: "#f3f3ee", Y: "#f5d00f", G: "#17a34a", B: "#1d5fd6", R: "#c8202b", O: "#f47a12", "#": "var(--unstickered)" };
@@ -2231,7 +2488,52 @@ function setupCollapsibles() {
   }
 }
 
+/** The ⓘ and Display buttons beside the 3D and flat views' headings each open a small panel over the view. */
+function bindViewTools() {
+  const pairs: [string, string][] = [
+    ["info-btn", "info-pop"],
+    ["render-btn", "render-pop"],
+    ["flat-info-btn", "flat-info-pop"],
+  ];
+  const close = (except?: string) => {
+    for (const [b, p] of pairs)
+      if (p !== except) {
+        $(p).hidden = true;
+        $(b).setAttribute("aria-expanded", "false");
+      }
+  };
+  for (const [b, p] of pairs)
+    $(b).addEventListener("click", () => {
+      const open = $(p).hidden;
+      close(p);
+      $(p).hidden = !open;
+      $(b).setAttribute("aria-expanded", String(open));
+    });
+  // A tap anywhere else, or Escape, closes them.
+  document.addEventListener("pointerdown", (e) => {
+    const t = e.target as HTMLElement;
+    if (!t.closest(".pop") && !t.closest(".tool-btn")) close();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") close();
+  });
+  $("message").addEventListener("click", dismissMessage);
+}
+
 function bindUI() {
+  bindAlgorithms();
+  bindViewTools();
+  $("edit-start").addEventListener("click", () => startEdit());
+  $("edit-done").addEventListener("click", () => endEdit(true));
+  $("edit-cancel").addEventListener("click", () => endEdit(false));
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) {
+    b.style.background = NET_COLOR[b.dataset.paint!];
+    b.addEventListener("click", () => {
+      if (!edit) return;
+      edit.paint = b.dataset.paint as Color;
+      renderEdit();
+    });
+  }
   setupCollapsibles();
   document.addEventListener("click", async (e) => {
     const t = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null;
@@ -2261,15 +2563,16 @@ function bindUI() {
       render();
     }
   });
-  $("run").addEventListener("click", () => runAlg(($("alg") as HTMLInputElement).value, true));
-  $("load").addEventListener("click", () => runAlg(($("alg") as HTMLInputElement).value, false));
+  $("load").addEventListener("click", loadField);
+  $("alg-edit").addEventListener("click", toggleEditTurns);
   $("alg").addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key === "Enter") runAlg(($("alg") as HTMLInputElement).value, true);
+    if ((e as KeyboardEvent).key === "Enter") loadField();
   });
   $("back").addEventListener("click", () => step(-1));
   $("fwd").addEventListener("click", () => step(1));
   $("first").addEventListener("click", () => jump(0));
   $("last").addEventListener("click", () => (playing ? stopPlaying() : playToEnd()));
+  $("rewind").addEventListener("click", () => (playing ? stopPlaying() : playToStart()));
   $("undo").addEventListener("click", () => undoLast());
   $("shuffle").addEventListener("click", () => shuffle());
   $("reset").addEventListener("click", () => {
@@ -2277,9 +2580,9 @@ function bindUI() {
     setMessage("Reset to solved", "ok");
     render();
   });
-  $("rebase").addEventListener("click", () => {
+  $("clear").addEventListener("click", () => {
     setBase(app.current, "Current position");
-    setMessage("This position is now the start", "ok");
+    setMessage("Turns cleared. This position is now the start", "ok");
     render();
   });
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-view]"))
@@ -2358,6 +2661,120 @@ function bindUI() {
     }
     render();
   });
+}
+
+// ------------------------------------------------------------------ color editing
+
+// Edit colors: the owner repaints visible stickers to match a real cube, on the current
+// shape. Each paint refits the colors to real cubelets (src/core/edit.ts). While they fit,
+// the view shows the fitted state; while they don't, it shows the last fitted state with
+// the differing stickers repainted on top. Done makes the fitted state the new start; the
+// rest of the controls are inert while editing.
+
+/** Sticker and flat-tile meshes by cubelet id * 6 + face (in the cubelet's own frame). */
+const stickerMesh3d: any[] = [];
+const tileMesh: any[] = [];
+let paintMaterial: { sticker: (c: Color) => any; tile: (c: Color) => any; glow: (c: Color) => any[] } | null = null;
+
+interface Edit {
+  shape: State; // the position editing started from; its shape is kept
+  colors: FaceColors; // what the owner has painted
+  fit: Fit;
+  shown: State; // the last state that fit, drawn underneath the paint
+  paint: Color;
+  painted: any[]; // meshes currently drawn in a color other than their own
+}
+let edit: Edit | null = null;
+
+function startEdit() {
+  if (edit) return;
+  flushAnimations();
+  const st = app.current.clone();
+  edit = { shape: st, colors: visibleColors(st), fit: { level: "possible", state: st.clone(), problems: [] }, shown: st.clone(), paint: "W", painted: [] };
+  document.body.classList.add("editing");
+  ($("stack-col") as HTMLElement & { inert: boolean }).inert = true;
+  renderEdit();
+}
+
+/** Paints the sticker on the face of `slot` facing world direction `dir`, if one is visible there. */
+function paintSticker(slot: number, dir: number) {
+  if (!edit) return;
+  const i = slot * 6 + dir;
+  if (!edit.colors[i]) return; // hidden, or bare plastic
+  if (edit.colors[i] === edit.paint) return;
+  edit.colors[i] = edit.paint;
+  edit.fit = fitColors(edit.shape, edit.colors);
+  if (edit.fit.state) edit.shown = edit.fit.state;
+  renderEdit();
+}
+
+/** Draws the shown state, with every face that differs from the paint repainted on top. */
+function drawEdit() {
+  if (!edit || !paintMaterial) return;
+  for (const m of edit.painted) m.material = m.userData.ownMaterial;
+  edit.painted = [];
+  clearGlowPaint();
+  const shown = visibleColors(edit.shown);
+  for (let i = 0; i < edit.colors.length; i++) {
+    const want = edit.colors[i];
+    if (!want || shown[i] === want) continue;
+    const s = Math.floor(i / 6), dir = i % 6;
+    const id = edit.shown.occ[s];
+    const local = ROT_DIR[ROT_INV[edit.shown.ori[s]] * 6 + dir];
+    for (const [mesh, mat] of [[stickerMesh3d[id * 6 + local], paintMaterial.sticker(want)], [tileMesh[id * 6 + local], paintMaterial.tile(want)]]) {
+      if (!mesh) continue;
+      mesh.userData.ownMaterial ??= mesh.material;
+      mesh.material = mat;
+      edit.painted.push(mesh);
+    }
+    // The glow bands around the edge show this sticker's color too.
+    for (const gl of glows[id] ?? []) if (gl.b === local) gl.paint = paintMaterial.glow(want);
+  }
+  syncMeshes(edit.shown);
+}
+
+/** Returns every glow band to its own sticker's color. */
+function clearGlowPaint() {
+  for (const list of glows) for (const gl of list ?? []) gl.paint = undefined;
+}
+
+function renderEdit() {
+  $("edit-bar").hidden = !edit;
+  $("edit-start").hidden = !!edit;
+  if (!edit) return;
+  drawEdit();
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) b.setAttribute("aria-checked", String(b.dataset.paint === edit.paint));
+  const st = $("edit-status");
+  const { level, problems } = edit.fit;
+  const more = problems.length > 1 ? ` (and ${problems.length - 1} more)` : "";
+  if (level === "possible") {
+    st.className = "edit-status good";
+    st.textContent = "Valid: real cubelets, each facing a way the puzzle allows.";
+  } else if (level === "cubelets") {
+    st.className = "edit-status warn";
+    st.textContent = `Not possible on the puzzle: ${problems[0]}${more}`;
+  } else {
+    st.className = "edit-status bad";
+    st.textContent = `Not valid: ${problems[0]}${more}`;
+  }
+  ($("edit-done") as HTMLButtonElement).disabled = level !== "possible";
+}
+
+function endEdit(apply: boolean) {
+  if (!edit) return;
+  const e = edit;
+  for (const m of e.painted) m.material = m.userData.ownMaterial;
+  clearGlowPaint();
+  edit = null;
+  document.body.classList.remove("editing");
+  ($("stack-col") as HTMLElement & { inert: boolean }).inert = false;
+  if (apply && e.fit.level === "possible" && e.fit.state) {
+    const changed = !e.fit.state.equals(app.current);
+    if (changed) setBase(e.fit.state, "Edited colors");
+    setMessage(changed ? "The edited position is now the start" : "No colors changed", "ok");
+  } else syncMeshes(app.current);
+  renderEdit();
+  render();
 }
 
 // ------------------------------------------------------------------ probe for browser tests
@@ -2492,11 +2909,24 @@ function installProbe() {
       g.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(a[0], a[1], a[2]), HALF));
     },
     resync: () => syncMeshes(app.current),
+    /** Milliseconds per quarter turn, as the speed slider sets it. */
+    speed: () => speedMs,
+    /** While editing colors: how the painted colors fit, and the color of a painted face. */
+    editing: () => edit && { level: edit.fit.level, problems: edit.fit.problems, paint: edit.paint },
+    painted: (slot: string, face: string) => edit?.colors[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)] ?? null,
     /**
      * The edge glow of the cubelet in slot alone, as drawn by the 3D view (view "3d") or
      * a face's flat-view camera (view "U", "F", ...): its opacity (0-1) at the point
      * offset from the slot's center by each [face, distance], in the puzzle's frame.
      */
+    /** The colors the glow bands showing the sticker in slot, facing face, are drawn in. */
+    glowColors(slot: string, face: string) {
+      const s = slotByName(slot);
+      const st = edit?.shown ?? app.current;
+      const local = ROT_DIR[ROT_INV[st.ori[s]] * 6 + COMPASS_FACES.indexOf(face)];
+      const byHex = new Map(Object.entries(STICKER).map(([c, h]) => [h, c]));
+      return [...new Set(glows[st.occ[s]].filter((g) => g.b === local).flatMap((g) => [g.mesh, g.corner]).map((m) => byHex.get(m.material.uniforms.color.value.getHex())))].sort();
+    },
     /** Where the glow lies: depth of a band below its face, and the radius of a rounded corner. */
     glowShape: () => ({ depth: GLOW_DEPTH, round: GLOW_ROUND }),
     glowAt(slot: string, view: string, points: [string, number][][]) {
@@ -2563,10 +2993,11 @@ function installProbe() {
     },
     sticker(slot: string, face: string) {
       const s = slotByName(slot);
-      const id = app.current.occ[s];
+      const drawn = edit?.shown ?? app.current; // while editing colors, the state drawn underneath
+      const id = drawn.occ[s];
       const dir = COMPASS_FACES.indexOf(face);
       if (id < 0 || dir < 0) return null;
-      const o = app.current.ori[s];
+      const o = drawn.ori[s];
       const d = [0, 1, 2, 3, 4, 5].find((k) => ROT_DIR[o * 6 + k] === dir)!;
       if (!CUBELETS[id].stickers[d]) return null;
       const p = meshes[id].localToWorld(new THREE.Vector3(DIRS[d][0] * 0.4945, DIRS[d][1] * 0.4945, DIRS[d][2] * 0.4945)).project(camera);

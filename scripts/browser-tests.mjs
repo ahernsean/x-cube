@@ -109,17 +109,86 @@ try {
   const [scrollW, clientW] = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
   check(scrollW <= clientW, `no sideways scrolling at 390 px (page ${scrollW} px wide)`);
 
+  // The ⓘ and Display buttons open panels over the view, and messages float over the page:
+  // none of them changes the layout. A tap elsewhere closes a panel; a tap dismisses a message.
+  const pageHeight = () => page.evaluate(() => document.documentElement.scrollHeight);
+  const isShown = (id) => page.$eval(`#${id}`, (e) => !e.hidden && getComputedStyle(e).display !== "none");
+  const h0 = await pageHeight();
+  await page.click("#render-btn");
+  const renderOpen = { shown: await isShown("render-pop"), boxes: await page.$$eval("#render-pop input[type=checkbox]", (els) => els.length), height: await pageHeight() };
+  await page.click("#info-btn");
+  const infoOpen = { shown: await isShown("info-pop"), renderClosed: !(await isShown("render-pop")), height: await pageHeight() };
+  await page.click("#flat-info-btn");
+  const flatOpen = { shown: await isShown("flat-info-pop"), infoClosed: !(await isShown("info-pop")), height: await pageHeight(), text: await page.$eval("#flat-info-pop", (e) => e.textContent) };
+  await page.mouse.click(5, h0 - 5 > 600 ? 600 : 300);
+  const allClosed = !(await isShown("info-pop")) && !(await isShown("render-pop")) && !(await isShown("flat-info-pop"));
+  const flatLegendInFlow = await page.$$eval("[data-sec=flat] .legend", (els) => els.length);
+  check(
+    renderOpen.shown && renderOpen.boxes === 4 && infoOpen.shown && infoOpen.renderClosed && flatOpen.shown && flatOpen.infoClosed && /no sticker/.test(flatOpen.text) && flatLegendInFlow === 0 && allClosed && renderOpen.height === h0 && infoOpen.height === h0 && flatOpen.height === h0,
+    `the Display panel and both ⓘ panels (3D and flat view) open over the views without moving the page (height ${h0} px), one at a time, and close on a tap elsewhere`,
+  );
+  await page.fill("#alg", "");
+  await page.click("#load"); // nothing to load: only a message changes
+  const floating = { shown: await isShown("message"), fixed: await page.$eval("#message", (e) => getComputedStyle(e).position), height: await pageHeight() };
+  await page.click("#message");
+  const msgGone = !(await isShown("message"));
+  check(floating.shown && floating.fixed === "fixed" && floating.height === h0 && msgGone, `a message floats over the page (${floating.fixed}) without moving it, and a tap dismisses it`);
+
+  // The algorithm panel reads top to bottom: the turn list and playback, then Clear, Reset
+  // and Shuffle, then the ways to add turns (typing, and the algorithms list).
+  const runOrder = await page.evaluate(() => {
+    const sec = document.querySelector("[data-sec=run]");
+    const ids = ["#history", ".transport", ".base-actions", "#alg", "details.known"];
+    const els = ids.map((q) => sec.querySelector(q));
+    return els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  check((await page.$eval("[data-sec=turn] h2", (h) => h.textContent)) === "Turn the puzzle", 'the turn buttons\' panel is "Turn the puzzle"');
+  // The slice and rotate notes sit to the right of their buttons, on the same row, no taller than it.
+  const notes = await page.evaluate(() =>
+    ["slice-note", "rotate-note"].map((id) => {
+      const note = document.getElementById(id).getBoundingClientRect();
+      const keys = [...document.getElementById(id).parentElement.querySelectorAll(".mv")].map((b) => b.getBoundingClientRect());
+      const last = keys.at(-1);
+      return note.left >= last.right && note.top >= last.top - 1 && note.bottom <= last.bottom + 1;
+    }),
+  );
+  const unitsWhole = await page.$$eval(".pad-note > span", (els) => els.length === 6 && els.every((e) => e.getClientRects().length === 1));
+  const infoLook = await page.$$eval(".tool-btn.info", (els) =>
+    els.map((e) => { const cs = getComputedStyle(e); return [cs.borderTopColor, cs.backgroundColor].join("/"); }),
+  );
+  check(infoLook.length === 2 && infoLook.every((v) => v === "rgba(0, 0, 0, 0)/rgba(0, 0, 0, 0)"), "both ⓘ buttons show just the ⓘ, with no button edge or fill");
+  check(unitsWhole, "the notes break lines only between units like \"M like L,\", never inside one");
+  check(notes.every(Boolean) && (await page.$$eval("[data-sec=turn] .legend", (els) => els.length)) === 0, `the H/M/S and x/y/z notes sit beside their buttons (${notes})`);
+  check(runOrder, "the algorithm panel shows the turn list and playback first, then Clear/Reset/Shuffle, then typing and the algorithms list");
+
+  // The turn field's example text fits inside it at phone width.
+  const hintFit = await page.evaluate(() => {
+    const el = document.getElementById("alg");
+    const cs = getComputedStyle(el);
+    const g = document.createElement("canvas").getContext("2d");
+    g.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const room = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    return [Math.ceil(g.measureText(el.placeholder).width), Math.floor(room)];
+  });
+  check(hintFit[0] <= hintFit[1], `the turn field's example fits (${hintFit[0]} of ${hintFit[1]} px)`);
+
   const status = () => page.$eval("#status", (s) => s.textContent ?? "");
   check((await status()).includes("Solved"), "starts solved and in X shape");
 
   // Run an algorithm and wait for it to finish playing.
   await page.fill("#alg", "R U");
-  await page.click("#run");
+  await page.click("#load");
+  await page.click("#last"); // play
   await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "2/2", null, { timeout: 30000 });
   await page.waitForFunction(() => document.getElementById("last")?.textContent === "▶", null, { timeout: 30000 });
   const tokens = await page.$$eval("#history .tok", (els) => els.map((e) => e.textContent).join(" "));
   check(tokens === "R U", `turn list shows "R U" (got "${tokens}")`);
   check((await status()).includes("Out of shape"), "R U leaves the puzzle out of shape");
+  const cur = await page.$eval("#history .tok.cur", (e) => {
+    const c = getComputedStyle(e), h = document.getElementById("history").getBoundingClientRect(), r = e.getBoundingClientRect();
+    return { outline: c.outlineStyle, shadow: c.boxShadow, inside: r.left >= h.left && r.right <= h.right && r.top >= h.top };
+  });
+  check(cur.outline === "none" && cur.shadow.includes("inset") && cur.inside, `current turn is marked inside its chip, so the list can't clip it (outline ${cur.outline}, shadow "${cur.shadow}")`);
 
   // A blocked outer turn is refused with a reason.
   await page.click("#reset");
@@ -206,7 +275,8 @@ try {
   let sw = await sweep3d();
   check(sw.stickers >= 45 && sw.wrong.length === 0, `3D view, solved: ${sw.stickers} stickers each drawn in place and in the model's color${sw.wrong.length ? ": " + sw.wrong.slice(0, 4).join("; ") : ""}`);
   await page.fill("#alg", MIXED);
-  await page.click("#run");
+  await page.click("#load");
+  await page.click("#last"); // play
   await settle();
   sw = await sweep3d();
   const mixedTurns = await probe("turns");
@@ -278,7 +348,8 @@ try {
   });
   check(layout === "Fx.UL Rx.F Bx.UL Fx.U Bx.UR Fx.D", `flat view layout (F up-left, F right edge, U top row from the back, U bottom edge, R right edge, D top edge: ${layout})`);
   await page.fill("#alg", MIXED);
-  await page.click("#run");
+  await page.click("#load");
+  await page.click("#last"); // play
   await settle();
   fl = await sweepFlat();
   check((await probe("turns")) === MIXED && fl.wrong.length === 0, `flat view after ${MIXED}: every cell in the model's color (${JSON.stringify(fl.counts)})${fl.wrong.length ? ": " + fl.wrong.slice(0, 4).join("; ") : ""}`);
@@ -424,9 +495,10 @@ try {
   // them): no queued turn may play afterward. The slowest speed gives a broken stop
   // plenty of time to show.
   await page.$eval("#speed", (el) => {
-    el.value = "0"; // about 800 ms a turn
+    el.value = "0"; // about 1600 ms a turn
     el.dispatchEvent(new Event("input"));
   });
+  const slowest = await probe("speed");
   await page.evaluate(() => {
     document.getElementById("last").click(); // play
     document.getElementById("last").click(); // the same button stops
@@ -436,19 +508,126 @@ try {
   const stoppedAt = await counter();
   check(stoppedAt === "0/3", `play, then stop, plays none of the queued turns (${stoppedAt})`);
   await page.$eval("#speed", (el) => {
-    el.value = "42";
+    el.value = "52";
     el.dispatchEvent(new Event("input"));
   });
+  const usual = await probe("speed");
+  const sliderWidth = await page.$eval("#speed", (el) => el.getBoundingClientRect().width);
+  check(Math.round(slowest) === 1600 && Math.round(usual) === 202 && sliderWidth >= 150, `the speed slider runs from 1600 ms a turn, default 202 ms, and is ${Math.round(sliderWidth)} px wide`);
 
-  // ---- "Make current position the start", and state codes out and in.
+  // ---- The hold line names the centers up, toward you and on your right, as they are now:
+  // the H slice carries the side centers around.
+  const hold = () => page.$eval("#hold", (e) => e.textContent);
+  await startFresh();
+  const holdSolved = await hold();
+  await page.fill("#alg", "H");
+  await page.click("#load");
+  await page.click("#last"); // play
+  await settle();
+  const holdAfterH = await hold();
+  check(holdSolved === "Hold: white up, green front, red right" && holdAfterH === "Hold: white up, red front, blue right", `the hold line follows the centers ("${holdSolved}", then after H "${holdAfterH}")`);
+
+  // ---- Known algorithms: Load sets up the position and the turns; playing them does what
+  // the entry says (here: back in shape with the white top kept).
+  await startFresh();
+  await page.locator("summary", { hasText: "Algorithms" }).click();
+  await page.click('[data-alg-load="flip-df-white-top"]');
+  const baseLine = await page.$eval(".base-line", (e) => [e.scrollHeight, e.clientHeight, Math.round(e.getBoundingClientRect().height)]);
+  check(baseLine[2] <= 24 && baseLine[0] <= baseLine[1] + 1, `a long start name stays on one line (${baseLine[2]} px tall)`);
+  const turnList = () => page.$$eval("#history .tok", (els) => els.map((e) => e.textContent).join(" "));
+  const known = { base: await page.$eval("#base-label", (e) => e.textContent), alg: await turnList(), field: await page.$eval("#alg", (e) => e.value), counter: await counter(), hold: await hold(), shape: await status() };
+  await page.click("#last");
+  await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "7/7", null, { timeout: 60000 });
+  await settle();
+  const played = { shape: await status(), top: (await page.evaluate(() => window.xcubeProbe.flatFace("U").flat().filter((h) => h && h.color === "W").length)) };
+  check(
+    known.base === "Flipped bottom edge, white top solved" && known.alg === "R F H2 F2 H F R'" && known.field === "" && known.counter === "0/7" && known.hold === "Hold: white up, blue front, orange right" && /Out of shape/.test(known.shape) && /X shape/.test(played.shape) && played.top === 21,
+    `a known algorithm loads its position and turns, and playing them works (start "${known.base}", ${known.hold}; then ${played.top} white on top)`,
+  );
+
+  // Algorithms can be saved (the turn list, with the start position) and deleted
+  // (after a confirmation), like saved states; on this device the list starts as the known ones.
+  const algNames = () => page.$$eval("#known-list .saved-name", (els) => els.map((e) => e.textContent));
+  const algsBefore = await algNames();
+  await page.click('[data-alg-del="baum-corner"]');
+  await page.click("[data-alg-del-yes]");
+  const afterDelete = await algNames();
+  await startFresh();
+  await page.fill("#alg", "R U R' U'");
+  await page.click("#load");
+  const fieldAfterLoad = await page.$eval("#alg", (e) => e.value);
+  await page.fill("#alg-name", "Sexy move");
+  await page.click("#alg-save");
+  const afterSave = await algNames();
+  await page.click("#reset");
+  const mine = await page.evaluate(() => [...document.querySelectorAll("#known-list li")].find((li) => li.textContent.includes("Sexy move"))?.querySelector("[data-alg-load]")?.dataset.algLoad);
+  await page.click(`[data-alg-load="${mine}"]`);
+  const loadedMine = { base: await page.$eval("#base-label", (e) => e.textContent), alg: await turnList(), counter: await counter() };
+  check(
+    algsBefore.length === 5 && algsBefore.includes("Corner 3-cycle (Baum)") && !afterDelete.includes("Corner 3-cycle (Baum)") && afterDelete.length === 4 && fieldAfterLoad === "" && afterSave.at(-1) === "Sexy move" && loadedMine.base === "Sexy move" && loadedMine.alg === "R U R' U'" && loadedMine.counter === "0/4",
+    `algorithms: delete one (${algsBefore.length} -> ${afterDelete.length}), save one ("${afterSave.at(-1)}"), and load it back ("${loadedMine.alg}", ${loadedMine.counter})`,
+  );
+
+  // Edit puts the whole turn list in the field and Load becomes Update, which replaces the
+  // list; the position stays where the old and new lists agree. Cancel leaves the list alone.
+  await startFresh();
+  await page.fill("#alg", "R U F");
+  await page.click("#load");
+  await page.click("#fwd");
+  await page.click("#fwd");
+  await settle();
+  const editIdle = await page.$eval("#alg-edit", (b) => [b.textContent, b.disabled]);
+  await page.click("#alg-edit");
+  const editing = { field: await page.$eval("#alg", (e) => e.value), load: await page.$eval("#load", (b) => b.textContent), edit: await page.$eval("#alg-edit", (b) => b.textContent) };
+  await page.fill("#alg", "R U2 F");
+  await page.click("#load");
+  await settle();
+  const updated = { list: await turnList(), counter: await counter(), field: await page.$eval("#alg", (e) => e.value), load: await page.$eval("#load", (b) => b.textContent) };
+  const atR = await page.evaluate(() => window.xcubeProbe.turns());
+  await page.click("#alg-edit");
+  await page.fill("#alg", "L");
+  await page.click("#alg-edit"); // Cancel
+  const cancelled = { list: await turnList(), field: await page.$eval("#alg", (e) => e.value), load: await page.$eval("#load", (b) => b.textContent) };
+  await page.click("#clear");
+  const editEmpty = await page.$eval("#alg-edit", (b) => b.disabled);
+  check(
+    editIdle[0] === "Edit" && !editIdle[1] && editing.field === "R U F" && editing.load === "Update" && editing.edit === "Cancel" &&
+      updated.list === "R U2 F" && updated.counter === "1/3" && atR === "R" && updated.field === "" && updated.load === "Load" &&
+      cancelled.list === "R U2 F" && cancelled.field === "" && cancelled.load === "Load" && editEmpty,
+    `Edit: the list goes in the field ("${editing.field}"), Update replaces it ("${updated.list}", at ${updated.counter} where the lists agree), Cancel keeps it, and Edit needs turns`,
+  );
+
+  // ◀ plays the turns backward to the start, undoing each one; the turns stay listed.
+  await startFresh();
+  await page.fill("#alg", "R U F");
+  await page.click("#load");
+  await page.click("#last");
+  await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "3/3", null, { timeout: 60000 });
+  await settle();
+  const playedState = await probe("state");
+  await page.click("#rewind");
+  const rewindLabel = await page.$eval("#rewind", (b) => b.textContent);
+  await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "0/3", null, { timeout: 60000 });
+  await settle();
+  const rewound = { solved: (await status()).includes("Solved"), label: await page.$eval("#rewind", (b) => b.textContent), turns: await page.$$eval("#history .tok", (els) => els.length) };
+  await page.click("#last");
+  await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "3/3", null, { timeout: 60000 });
+  await settle();
+  check(
+    rewindLabel === "■" && rewound.solved && rewound.label === "◀" && rewound.turns === 3 && (await probe("state")) === playedState,
+    `◀ plays back to the start (shows ■ while playing), keeps the 3 turns, and ▶ plays them again`,
+  );
+
+  // ---- Clear (the position shown becomes the start), and state codes out and in.
   await startFresh();
   await page.fill("#alg", "R U");
-  await page.click("#run");
+  await page.click("#load");
+  await page.click("#last"); // play
   await settle();
   const ruState = await probe("state");
-  await page.click("#rebase");
-  const rebased = { counter: await counter(), state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent) };
-  check(rebased.counter === "0/0" && rebased.state === ruState && /now the start/.test(rebased.msg), `making the current position the start keeps it and clears the turns (${rebased.counter})`);
+  await page.click("#clear");
+  const cleared = { counter: await counter(), state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent) };
+  check(cleared.counter === "0/0" && cleared.state === ruState && /^Turns cleared/.test(cleared.msg) && (await page.$eval("#clear", (b) => b.textContent)) === "Clear", `Clear empties the turn list and keeps the position shown as the start (${cleared.counter})`);
   await page.locator("summary", { hasText: "State code" }).click(); // the codes sit in a closed disclosure
   const shown = await page.$eval("#code-out", (t) => t.value);
   check(shown === ruState, "the state code shown is the current position's");
@@ -533,6 +712,69 @@ try {
   const restError = await probe("shadeRestError");
   check(restError < 1e-6, `live shading at the start of every turn matches the rest shading (largest difference ${restError})`);
 
+  // ---- Color editing: tap stickers to repaint them; the line says whether the colors are
+  // real cubelets that can face those ways, and Done makes the result the start.
+  const editLine = () => page.$eval("#edit-status", (e) => e.textContent);
+  const doneOff = () => page.$eval("#edit-done", (e) => e.disabled);
+  const paint = async (color, slot, face) => {
+    await page.click(`[data-paint="${color}"]`);
+    await page.locator("#scene").scrollIntoViewIfNeeded();
+    const at = await probe("sticker", slot, face);
+    // The tap must land on that sticker (it can be hidden after the view turns).
+    const there = await probe("at3d", at.x, at.y);
+    if (there?.slot !== slot || there?.face !== face) throw new Error(`can't tap ${slot}/${face}: ${JSON.stringify(there)} is drawn there`);
+    await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+  };
+  await startFresh();
+  await page.click("#edit-start");
+  const entered = { line: await editLine(), done: !(await doneOff()), inert: await page.$eval("#stack-col", (e) => e.inert) };
+  check(/^Valid/.test(entered.line) && entered.done && entered.inert, `edit mode starts valid, with the other controls set aside ("${entered.line}")`);
+  await paint("R", "Fx.U", "F");
+  const half = { line: await editLine(), off: await doneOff(), drawn: (await probe("at3d", ...Object.values(await probe("sticker", "Fx.U", "F"))))?.color };
+  check(/^Not valid: .*would need the same cubelet/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
+  // The edge glow around a painted sticker shows the paint too (the glow is the only sign
+  // of a sticker's color where that face is hidden).
+  const paintedGlow = (await probe("glowColors", "Fx.U", "F")).join();
+  check(paintedGlow === "R", `the edge glow of a painted sticker takes the paint (${paintedGlow})`);
+  await paint("G", "Rx.U", "R");
+  const swapped = { line: await editLine(), off: await doneOff() };
+  check(/^Valid/.test(swapped.line) && !swapped.off, `painting the other edge to match makes it valid again ("${swapped.line}")`);
+  // The effect switches stay usable while editing; Shading must redraw the edited position.
+  const shadeBox = (on) =>
+    page.evaluate((on) => {
+      const el = document.getElementById("shade");
+      el.checked = on;
+      el.dispatchEvent(new Event("change"));
+    }, on);
+  await shadeBox(false);
+  await shadeBox(true);
+  await page.locator("#scene").scrollIntoViewIfNeeded();
+  const shadeHit = await probe("at3d", ...Object.values(await probe("sticker", "Fx.U", "F")));
+  const afterShade = `${shadeHit?.slot}/${shadeHit?.face} ${shadeHit?.color}`;
+  check(afterShade === "Fx.U/F R", `turning Shading off and on while editing keeps the edited drawing (drawn: ${afterShade})`);
+  const swipeAt = await probe("sticker", "Fx", "F");
+  await swipe(swipeAt, 0, -70);
+  check((await probe("turns")) === "", "a swipe while editing doesn't turn a layer");
+  await page.click('[data-view="home"]'); // the swipe tumbled the view
+  await settle();
+  await page.click("#edit-done");
+  const appliedGlow = [(await probe("glowColors", "Fx.U", "F")).join(), (await probe("glowColors", "Rx.U", "R")).join()].join(" ");
+  check(appliedGlow === "R G", `after Done, the moved cubelets' glow shows their own colors (${appliedGlow})`);
+  const applied = { model: [await probe("model", "Fx.U", "F"), await probe("model", "Rx.U", "R")], label: await page.$eval("#base-label", (e) => e.textContent), inert: await page.$eval("#stack-col", (e) => e.inert) };
+  sw = await sweep3d();
+  check(applied.model.join() === "R,G" && applied.label === "Edited colors" && !applied.inert && sw.wrong.length === 0, `Done makes the edited position the start, drawn as the model has it (${applied.model.join(" ")}, "${applied.label}")`);
+  const editedState = await probe("state");
+  await page.locator("#scene").scrollIntoViewIfNeeded();
+  await page.click("#edit-start");
+  await paint("R", "Fx.U", "U"); // flip the white-red edge now at Fx.U in place
+  await paint("W", "Fx.U", "F");
+  const flipped = await editLine();
+  check(/^Not possible on the puzzle: Fx\.U .*can't be turned this way; its red side always faces outward/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  await page.click("#edit-cancel");
+  sw = await sweep3d();
+  const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");
+  check((await probe("state")) === editedState && sw.wrong.length === 0 && cancelGlow === "W R", `Cancel leaves the position, and its drawing and glow, as they were (glow ${cancelGlow})`);
+
   // Every section collapses from its heading.
   const sections = await page.$$eval("[data-sec]", (els) => els.map((e) => e.getAttribute("data-sec")));
   for (const s of sections) await page.click(`[data-sec=${s}] h2`);
@@ -583,12 +825,19 @@ try {
       message: await p.$eval("#message", (m) => m.textContent ?? ""),
       listed: await p.$eval("#saved-list", (l) => (l.textContent ?? "").includes("Test save")),
     };
+    if (result.listed) {
+      // Its Load button makes the saved position the start.
+      result.button = await p.$eval("#saved-list [data-load]", (b) => b.textContent);
+      await p.click("#saved-list [data-load]");
+      result.base = await p.$eval("#base-label", (e) => e.textContent);
+    }
     await collect(p);
     await ctx.close();
     return result;
   };
   const good = await savePage(false);
   check(good.listed && good.message.startsWith('Saved "Test save"'), `a device save is listed and confirmed ("${good.message}")`);
+  check(good.button === "Load" && good.base === "Test save", `a saved position's Load button makes it the start ("${good.button}", start "${good.base}")`);
   const full = await savePage(true);
   check(!full.listed && full.message.startsWith("Could not save"), `a failed device save is reported, not listed ("${full.message}")`);
 } finally {
