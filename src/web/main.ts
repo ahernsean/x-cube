@@ -2530,9 +2530,11 @@ function bindUI() {
   $("edit-start").addEventListener("click", () => startEdit());
   $("edit-done").addEventListener("click", () => endEdit(true));
   $("edit-cancel").addEventListener("click", () => endEdit(false));
-  $("edit-status").addEventListener("click", () => $("edit-status").classList.contains("tappable") && toggleHighlight());
-  $("edit-status").addEventListener("keydown", (e) => {
-    if ((e.key === "Enter" || e.key === " ") && $("edit-status").classList.contains("tappable")) (e.preventDefault(), toggleHighlight());
+  $("edit-status").addEventListener("click", (e) => {
+    if (!edit || !$("edit-status").classList.contains("tappable")) return;
+    const act = (e.target as HTMLElement).closest<HTMLElement>("[data-halo]")?.dataset.halo ?? (edit.highlight ? "turn" : "show");
+    if (act === "turn") showHighlighted(true);
+    else toggleHighlight();
   });
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) {
     b.style.background = NET_COLOR[b.dataset.paint!];
@@ -2838,50 +2840,73 @@ function placeHalos() {
   }
 }
 
-/** How many of slot s's exposed faces the 3D view shows now, unblocked (shown state). */
-function facesSeen(st: State, s: number): number {
+/** How well the 3D view shows face d of slot s now: the cosine toward the camera, or -1 if it faces away, is edge-on or is blocked. */
+function faceView(st: State, s: number, d: number): number {
   const id = st.occ[s];
-  if (id < 0) return 0;
+  if (id < 0 || !isExposed(st, s, d)) return -1;
   pivot.updateMatrixWorld(true);
-  const ray = new THREE.Raycaster();
+  const p = SLOT_POS[s], v = DIRS[d];
+  const target = pivot.localToWorld(new THREE.Vector3(p[0] + v[0] * 0.45, p[1] + v[1] * 0.45, p[2] + v[2] * 0.45));
+  const cos = new THREE.Vector3(...v).applyQuaternion(pivot.quaternion).dot(camera.position.clone().sub(target).normalize());
+  if (cos < 0.2) return -1;
+  const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize());
   ray.layers.set(0);
+  let o = ray.intersectObjects(pivot.children, true)[0]?.object;
+  while (o && o.parent && o.parent !== pivot) o = o.parent;
+  return o === meshes[id] ? cos : -1;
+}
+
+/** How many of slot s's exposed faces the 3D view shows now, unblocked. */
+function facesSeen(st: State, s: number): number {
   let n = 0;
-  for (let d = 0; d < 6; d++) {
-    if (!isExposed(st, s, d)) continue;
-    const p = SLOT_POS[s], v = DIRS[d];
-    const target = pivot.localToWorld(new THREE.Vector3(p[0] + v[0] * 0.45, p[1] + v[1] * 0.45, p[2] + v[2] * 0.45));
-    const normal = new THREE.Vector3(...v).applyQuaternion(pivot.quaternion);
-    const toCam = camera.position.clone().sub(target).normalize();
-    if (normal.dot(toCam) < 0.2) continue; // faces away or nearly edge-on
-    ray.set(camera.position, target.clone().sub(camera.position).normalize());
-    const hit = ray.intersectObjects(pivot.children, true)[0];
-    let o = hit?.object;
-    while (o && o.parent && o.parent !== pivot) o = o.parent;
-    if (o === meshes[id]) n++;
-  }
+  for (let d = 0; d < 6; d++) if (faceView(st, s, d) > 0) n++;
   return n;
 }
 
-/** If the 3D view shows none of a highlighted cubelet, turns to the view that shows the most. */
-function showHighlighted() {
+/** The pivot rotation that looks at the puzzle from direction v (puzzle frame), keeping up up (or front or back, looking from above or below). */
+function lookFrom(v: any): any {
+  const z = v.clone().normalize();
+  const up = Math.abs(z.y) > 0.9 ? new THREE.Vector3(0, 0, z.y > 0 ? -1 : 1) : new THREE.Vector3(0, 1, 0);
+  const x = new THREE.Vector3().crossVectors(up, z).normalize();
+  const y = new THREE.Vector3().crossVectors(z, x);
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z)).invert();
+}
+
+/**
+ * Turns the 3D view to show the highlighted cubelets' stickers best: the most of them
+ * unblocked, then each as squarely as possible. Tries the preset views and looking from
+ * between the stickers' directions. Unless `always`, stays put if every sticker shows.
+ */
+function showHighlighted(always = false) {
   if (!edit?.highlight) return;
-  const st = edit.shown, slots = edit.highlight;
-  const score = () => {
-    const seen = slots.map((s) => facesSeen(st, s));
-    return seen.filter((n) => n > 0).length * 100 + seen.reduce((a, b) => a + b, 0);
-  };
-  if (slots.every((s) => facesSeen(st, s) > 0)) return;
+  const st = edit.shown;
+  const faces: [number, number][] = [];
+  for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d) && edit.colors[s * 6 + d]) faces.push([s, d]);
+  if (!faces.length) for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d)) faces.push([s, d]);
+  if (!faces.length) return;
   if (tween) (pivot.quaternion.copy(tween.to), (tween = null));
+  const score = () => {
+    const seen = faces.map(([s, d]) => faceView(st, s, d)).filter((c) => c > 0);
+    return seen.length * 10 + seen.reduce((a, b) => a + b, 0) / faces.length;
+  };
+  if (!always && score() >= faces.length * 10) return;
+  const dirs = [...new Set(faces.map(([, d]) => d))];
+  const candidates: any[] = Object.values(VIEWS).map((q) => new THREE.Quaternion(q[0], q[1], q[2], q[3]));
+  for (let m = 1; m < 1 << dirs.length; m++) {
+    const v = new THREE.Vector3();
+    dirs.forEach((d, i) => m & (1 << i) && v.add(new THREE.Vector3(...DIRS[d])));
+    if (v.lengthSq() > 1e-6) candidates.push(lookFrom(v));
+  }
   const own = pivot.quaternion.clone();
-  let best: Quat | null = null, bestScore = -1;
-  for (const q of Object.values(VIEWS)) {
-    pivot.quaternion.set(q[0], q[1], q[2], q[3]);
+  let best = own, bestScore = -1;
+  for (const q of candidates) {
+    pivot.quaternion.copy(q);
     const sc = score();
-    if (sc > bestScore) (best = q), (bestScore = sc);
+    if (sc > bestScore + 1e-6) (best = q), (bestScore = sc);
   }
   pivot.quaternion.copy(own);
   pivot.updateMatrixWorld(true);
-  if (best) goToView(best);
+  goToView([best.x, best.y, best.z, best.w]);
 }
 
 function toggleHighlight() {
@@ -2908,29 +2933,24 @@ function renderEdit() {
   const more = problems.length > 1 ? ` (and ${problems.length - 1} more)` : "";
   if (level === "possible") {
     st.className = "edit-status good";
-    st.textContent = "Valid: real cubelets, each facing a way the puzzle allows.";
-  } else if (level === "cubelets") {
-    st.className = "edit-status warn";
-    st.textContent = `Not possible on the puzzle: ${problems[0].text}${more}.`;
+    st.textContent = "Valid";
   } else {
     st.className = "edit-status bad";
     st.textContent = `Not valid: ${problems[0].text}${more}.`;
   }
-  // A problem about particular spots can be tapped to show them.
+  // A problem about particular spots can show them with a halo (tapping the line does
+  // the same as its first button), and turn the view back to them.
   const tappable = level !== "possible" && problems[0].slots.length > 0;
   st.classList.toggle("tappable", tappable);
   if (tappable) {
-    st.setAttribute("role", "button");
-    st.tabIndex = 0;
-    st.setAttribute("aria-pressed", String(!!edit.highlight));
-    const show = document.createElement("span");
-    show.className = "edit-show";
-    show.textContent = edit.highlight ? "Hide" : "Show";
-    st.append(" ", show);
-  } else {
-    st.removeAttribute("role");
-    st.removeAttribute("tabindex");
-    st.removeAttribute("aria-pressed");
+    const actions: [string, string][] = edit.highlight ? [["turn", "Turn to it"], ["hide", "Hide"]] : [["show", "Show"]];
+    for (const [act, label] of actions) {
+      const b = document.createElement("button");
+      b.className = "edit-show";
+      b.dataset.halo = act;
+      b.textContent = label;
+      st.append(" ", b);
+    }
   }
   ($("edit-done") as HTMLButtonElement).disabled = level !== "possible";
 }

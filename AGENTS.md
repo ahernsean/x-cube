@@ -184,18 +184,25 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   The Gloss switch turns it off.
 - **Color editing:** Edit colors under the 3D view. Pick a color, then tap stickers to paint
   them; drags tumble the view, and the other controls are set aside. The shape stays as it
-  is. A painted sticker's edge glow takes the paint too. Each paint is refit to real cubelets (`fitColors` in `src/core/edit.ts`), and a line
-  says "Valid" (real cubelets, each facing a way the puzzle allows), "Not possible on the
-  puzzle" (real cubelets, but one breaks the outward-color rule) or "Not valid" (with the
-  spot and the reason). Problems name spots in words ("bottom corner of the blue extension
-  on the red side"), not slot names: "top" and "bottom", and each side by the color its
-  center shows now, painted colors included; when that color is missing or on two centers,
-  by its place in the Front view ("the right side"), with a note saying so. Tapping a line
-  that names spots puts a **halo** on those cubelets: a purple glow around the whole
-  cubelet, drawn over everything (so it shows a cubelet behind others), in the 3D view and
-  on each flat-view face where the cubelet shows. If the 3D view shows none of it, the view
-  turns to the one that shows the most. Tapping again, or a paint that changes which spots
-  the first problem names, removes it. Done, available only when valid, makes the fitted position the start
+  is. A painted sticker's edge glow takes the paint too. Each paint is refit to cubelets
+  (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with the
+  spot and what's wrong: no cubelet has those colors, one cubelet would be needed in two
+  spots, or an outer cubelet is turned against the outward-color rule (a sign of a sticker
+  painted wrong; the physical cube can't do that). Spots are named in words, not slot
+  names: an extension spot as seen looking straight at that extension, as in the flat view,
+  with the neighboring side's color as a check ("blue extension, bottom-left corner (next
+  to red)"); the up and down extensions and the core by neighboring colors ("core, top
+  corner between red and green"). Sides are named by the color their center shows now,
+  painted colors included; when that color is missing or on two centers, by place in the
+  Front view ("front extension"), with a note saying so. Lists of three colors use the
+  serial comma. A line that names spots has **Show**, which puts a **halo** on those
+  cubelets: a purple glow around the whole cubelet, drawn over everything (so it shows a
+  cubelet behind others), in the 3D view and on each flat-view face where the cubelet
+  shows. Show also tumbles the 3D view to show all their stickers best (the most unblocked,
+  then each as squarely as possible, from the preset views and the directions between
+  the stickers), unless every sticker already shows. While shown, **Turn to it** tumbles
+  back there and **Hide** removes the halo; tapping the line does what its first button
+  does. A paint that changes which spots the first problem names removes it. Done, available only when valid, makes the fitted position the start
   ("Edited colors"). Whether a valid position can be reached by turning is not checked yet.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side

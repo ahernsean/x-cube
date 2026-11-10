@@ -97,9 +97,8 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .edit-status { margin: 0; padding: 6px 8px; border-radius: 8px; font-size: 14px; }
 .edit-status.good { background: var(--good-bg); color: var(--good); }
 .edit-status.bad { background: var(--bad-bg); color: var(--bad); }
-.edit-status.warn { background: var(--warn-bg); color: var(--warn); }
 .edit-status.tappable { cursor: pointer; }
-.edit-show { font-weight: 600; text-decoration: underline; white-space: nowrap; }
+.edit-show { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 2px 0; margin-left: 6px; text-decoration: underline; white-space: nowrap; cursor: pointer; }
 .edit-actions { display: flex; gap: 8px; }
 .edit-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
