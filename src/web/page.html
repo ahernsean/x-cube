@@ -166,6 +166,7 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .netface i.ring b.bl, .netface i.ring b.br { width: 75%; }
 /* The label sits in the top-left corner of the ring, which never shows a cubelet or a rim bar. */
 .netlabel { position: absolute; left: 0; top: -2px; font: 700 12px var(--f-display); color: var(--muted); letter-spacing: 0.04em; pointer-events: none; }
+.base-line { margin: 8px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .base-actions { display: flex; gap: 6px; margin-top: 6px; }
 .base-actions .btn { flex: 1 1 auto; white-space: nowrap; padding-left: 8px; padding-right: 8px; }
 .known { margin-top: 10px; }
@@ -271,7 +272,7 @@ details[open] summary { margin-bottom: 8px; }
         <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
         <span class="counter" id="counter">0 / 0</span>
       </div>
-      <p class="hint" style="margin:8px 0 0">Start: <strong id="base-label">Solved</strong>. Loaded turns start from the current step.</p>
+      <p class="hint base-line" title="Loaded turns start from the current step">Start: <strong id="base-label">Solved</strong></p>
       <div class="base-actions">
         <button class="btn small ghost" id="rebase" title="Make the current position the start">Start here</button>
         <button class="btn small ghost" id="reset">Reset to solved</button>

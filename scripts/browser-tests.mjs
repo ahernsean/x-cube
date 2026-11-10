@@ -497,6 +497,8 @@ try {
   await startFresh();
   await page.locator("summary", { hasText: "Algorithms" }).click();
   await page.click('[data-alg-load="flip-df-white-top"]');
+  const baseLine = await page.$eval(".base-line", (e) => [e.scrollHeight, e.clientHeight, Math.round(e.getBoundingClientRect().height)]);
+  check(baseLine[2] <= 24 && baseLine[0] <= baseLine[1] + 1, `a long start name stays on one line (${baseLine[2]} px tall)`);
   const known = { base: await page.$eval("#base-label", (e) => e.textContent), alg: await page.$eval("#alg", (e) => e.value), counter: await counter(), hold: await hold(), shape: await status() };
   await page.click("#last");
   await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "7/7", null, { timeout: 60000 });
