@@ -1751,9 +1751,20 @@ function flushAnimations() {
 
 // ------------------------------------------------------------------ actions
 
+// Messages float over the page near the bottom (they never move the layout) and fade
+// after a few seconds, longer for errors; tapping one dismisses it.
+let messageSeq = 0;
+let messageShown = 0;
+let messageTimer: ReturnType<typeof setTimeout> | undefined;
 function setMessage(text: string, kind: "info" | "error" | "ok" = "info") {
   app.message = text;
   app.messageKind = kind;
+  messageSeq++;
+}
+function dismissMessage() {
+  clearTimeout(messageTimer);
+  app.message = "";
+  $("message").hidden = true;
 }
 
 /** Tap a move button: add the turn at the cursor (discarding any "redo" turns). */
@@ -2166,6 +2177,11 @@ function render() {
   msg.textContent = app.message;
   msg.className = `message ${app.messageKind}`;
   msg.hidden = !app.message;
+  if (app.message && messageShown !== messageSeq) {
+    messageShown = messageSeq;
+    clearTimeout(messageTimer);
+    messageTimer = setTimeout(dismissMessage, app.messageKind === "error" ? 8000 : 4000);
+  }
 
   // history strip
   const hist = app.history
@@ -2350,8 +2366,40 @@ function setupCollapsibles() {
   }
 }
 
+/** The ⓘ and Display buttons beside the 3D view's heading each open a small panel over the view. */
+function bindViewTools() {
+  const pairs: [string, string][] = [
+    ["info-btn", "info-pop"],
+    ["render-btn", "render-pop"],
+  ];
+  const close = (except?: string) => {
+    for (const [b, p] of pairs)
+      if (p !== except) {
+        $(p).hidden = true;
+        $(b).setAttribute("aria-expanded", "false");
+      }
+  };
+  for (const [b, p] of pairs)
+    $(b).addEventListener("click", () => {
+      const open = $(p).hidden;
+      close(p);
+      $(p).hidden = !open;
+      $(b).setAttribute("aria-expanded", String(open));
+    });
+  // A tap anywhere else, or Escape, closes them.
+  document.addEventListener("pointerdown", (e) => {
+    const t = e.target as HTMLElement;
+    if (!t.closest(".pop") && !t.closest(".tool-btn")) close();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") close();
+  });
+  $("message").addEventListener("click", dismissMessage);
+}
+
 function bindUI() {
   bindAlgorithms();
+  bindViewTools();
   $("edit-start").addEventListener("click", () => startEdit());
   $("edit-done").addEventListener("click", () => endEdit(true));
   $("edit-cancel").addEventListener("click", () => endEdit(false));

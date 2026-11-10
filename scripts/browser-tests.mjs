@@ -109,6 +109,28 @@ try {
   const [scrollW, clientW] = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
   check(scrollW <= clientW, `no sideways scrolling at 390 px (page ${scrollW} px wide)`);
 
+  // The ⓘ and Display buttons open panels over the view, and messages float over the page:
+  // none of them changes the layout. A tap elsewhere closes a panel; a tap dismisses a message.
+  const pageHeight = () => page.evaluate(() => document.documentElement.scrollHeight);
+  const isShown = (id) => page.$eval(`#${id}`, (e) => !e.hidden && getComputedStyle(e).display !== "none");
+  const h0 = await pageHeight();
+  await page.click("#render-btn");
+  const renderOpen = { shown: await isShown("render-pop"), boxes: await page.$$eval("#render-pop input[type=checkbox]", (els) => els.length), height: await pageHeight() };
+  await page.click("#info-btn");
+  const infoOpen = { shown: await isShown("info-pop"), renderClosed: !(await isShown("render-pop")), height: await pageHeight() };
+  await page.mouse.click(5, h0 - 5 > 600 ? 600 : 300);
+  const allClosed = !(await isShown("info-pop")) && !(await isShown("render-pop"));
+  check(
+    renderOpen.shown && renderOpen.boxes === 4 && infoOpen.shown && infoOpen.renderClosed && allClosed && renderOpen.height === h0 && infoOpen.height === h0,
+    `the Display and ⓘ panels open over the view without moving the page (height ${h0} px), one at a time, and close on a tap elsewhere`,
+  );
+  await page.fill("#alg", "");
+  await page.click("#load"); // nothing to load: only a message changes
+  const floating = { shown: await isShown("message"), fixed: await page.$eval("#message", (e) => getComputedStyle(e).position), height: await pageHeight() };
+  await page.click("#message");
+  const msgGone = !(await isShown("message"));
+  check(floating.shown && floating.fixed === "fixed" && floating.height === h0 && msgGone, `a message floats over the page (${floating.fixed}) without moving it, and a tap dismisses it`);
+
   // The turn field's example text fits inside it at phone width.
   const hintFit = await page.evaluate(() => {
     const el = document.getElementById("alg");
