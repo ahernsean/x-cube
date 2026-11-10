@@ -2004,7 +2004,7 @@ function render() {
   const hist = app.history
     .map((t, i) => `<button class="tok ${i < app.cursor ? "done" : ""} ${i === app.cursor - 1 ? "cur" : ""}" data-jump="${i + 1}">${turnName(t)}</button>`)
     .join("");
-  $("history").innerHTML = hist || `<span class="hint">Turns you make or run appear here. Tap one to jump to it.</span>`;
+  $("history").innerHTML = hist || `<span class="hint">Turns you make or load appear here. Tap one to jump to it.</span>`;
   $("counter").textContent = `${app.cursor} / ${app.history.length}`;
   const play = $("last");
   play.textContent = playing ? "■" : "▶";
@@ -2248,10 +2248,9 @@ function bindUI() {
       render();
     }
   });
-  $("run").addEventListener("click", () => runAlg(($("alg") as HTMLInputElement).value, true));
   $("load").addEventListener("click", () => runAlg(($("alg") as HTMLInputElement).value, false));
   $("alg").addEventListener("keydown", (e) => {
-    if ((e as KeyboardEvent).key === "Enter") runAlg(($("alg") as HTMLInputElement).value, true);
+    if ((e as KeyboardEvent).key === "Enter") runAlg(($("alg") as HTMLInputElement).value, false);
   });
   $("back").addEventListener("click", () => step(-1));
   $("fwd").addEventListener("click", () => step(1));

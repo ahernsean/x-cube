@@ -246,9 +246,8 @@ details[open] summary { margin-bottom: 8px; }
     <section class="panel" data-sec="run">
       <h2>Run an algorithm</h2>
       <div class="alg-row">
-        <input type="text" id="alg" placeholder="(R U2)5   or   [R' S' R, b]" autocomplete="off" autocapitalize="off" spellcheck="false">
-        <button class="btn primary" id="run">Run</button>
-        <button class="btn" id="load" title="Load without animating">Load</button>
+        <input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button class="btn primary" id="load" title="Load the turns, then play them with ▶ or step through them">Load</button>
       </div>
       <div class="history" id="history"></div>
       <div class="transport">
@@ -259,7 +258,7 @@ details[open] summary { margin-bottom: 8px; }
         <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="42"></label>
         <span class="counter" id="counter">0 / 0</span>
       </div>
-      <p class="hint" style="margin:8px 0 0">Start: <strong id="base-label">Solved</strong>. Runs start from the current step.</p>
+      <p class="hint" style="margin:8px 0 0">Start: <strong id="base-label">Solved</strong>. Loaded turns start from the current step.</p>
       <div class="base-actions">
         <button class="btn small ghost" id="rebase" title="Make the current position the start">Start here</button>
         <button class="btn small ghost" id="reset">Reset to solved</button>

@@ -109,12 +109,24 @@ try {
   const [scrollW, clientW] = await page.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
   check(scrollW <= clientW, `no sideways scrolling at 390 px (page ${scrollW} px wide)`);
 
+  // The turn field's example text fits inside it at phone width.
+  const hintFit = await page.evaluate(() => {
+    const el = document.getElementById("alg");
+    const cs = getComputedStyle(el);
+    const g = document.createElement("canvas").getContext("2d");
+    g.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const room = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    return [Math.ceil(g.measureText(el.placeholder).width), Math.floor(room)];
+  });
+  check(hintFit[0] <= hintFit[1], `the turn field's example fits (${hintFit[0]} of ${hintFit[1]} px)`);
+
   const status = () => page.$eval("#status", (s) => s.textContent ?? "");
   check((await status()).includes("Solved"), "starts solved and in X shape");
 
   // Run an algorithm and wait for it to finish playing.
   await page.fill("#alg", "R U");
-  await page.click("#run");
+  await page.click("#load");
+  await page.click("#last"); // play
   await page.waitForFunction(() => document.getElementById("counter")?.textContent?.replace(/\s/g, "") === "2/2", null, { timeout: 30000 });
   await page.waitForFunction(() => document.getElementById("last")?.textContent === "▶", null, { timeout: 30000 });
   const tokens = await page.$$eval("#history .tok", (els) => els.map((e) => e.textContent).join(" "));
@@ -206,7 +218,8 @@ try {
   let sw = await sweep3d();
   check(sw.stickers >= 45 && sw.wrong.length === 0, `3D view, solved: ${sw.stickers} stickers each drawn in place and in the model's color${sw.wrong.length ? ": " + sw.wrong.slice(0, 4).join("; ") : ""}`);
   await page.fill("#alg", MIXED);
-  await page.click("#run");
+  await page.click("#load");
+  await page.click("#last"); // play
   await settle();
   sw = await sweep3d();
   const mixedTurns = await probe("turns");
@@ -278,7 +291,8 @@ try {
   });
   check(layout === "Fx.UL Rx.F Bx.UL Fx.U Bx.UR Fx.D", `flat view layout (F up-left, F right edge, U top row from the back, U bottom edge, R right edge, D top edge: ${layout})`);
   await page.fill("#alg", MIXED);
-  await page.click("#run");
+  await page.click("#load");
+  await page.click("#last"); // play
   await settle();
   fl = await sweepFlat();
   check((await probe("turns")) === MIXED && fl.wrong.length === 0, `flat view after ${MIXED}: every cell in the model's color (${JSON.stringify(fl.counts)})${fl.wrong.length ? ": " + fl.wrong.slice(0, 4).join("; ") : ""}`);
@@ -446,7 +460,8 @@ try {
   await startFresh();
   const holdSolved = await hold();
   await page.fill("#alg", "H");
-  await page.click("#run");
+  await page.click("#load");
+  await page.click("#last"); // play
   await settle();
   const holdAfterH = await hold();
   check(holdSolved === "Hold: white up, green front, red right" && holdAfterH === "Hold: white up, red front, blue right", `the hold line follows the centers ("${holdSolved}", then after H "${holdAfterH}")`);
@@ -469,7 +484,8 @@ try {
   // ---- "Make current position the start", and state codes out and in.
   await startFresh();
   await page.fill("#alg", "R U");
-  await page.click("#run");
+  await page.click("#load");
+  await page.click("#last"); // play
   await settle();
   const ruState = await probe("state");
   await page.click("#rebase");
