@@ -2917,7 +2917,8 @@ function showHighlighted() {
 function updateHighlight() {
   if (!edit) return;
   const slots = edit.fit.level === "possible" ? [] : (edit.fit.problems[0]?.slots ?? []);
-  edit.highlight = slots.length && edit.hidden !== slots.join() ? [...slots] : null;
+  if (edit.hidden !== slots.join()) edit.hidden = null; // Hide lasts until other cubelets are named
+  edit.highlight = slots.length && edit.hidden === null ? [...slots] : null;
 }
 
 /** Returns every glow band to its own sticker's color. */

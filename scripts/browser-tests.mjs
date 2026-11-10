@@ -922,6 +922,11 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await paint("G", "Rx.U", "R");
   const swapped = { line: await editLine(), off: await doneOff() };
   check(swapped.line === "Valid" && !swapped.off && (await probe("highlighted")).length === 0, `painting the other edge to match makes it valid again, with no halo ("${swapped.line}")`);
+  // Hide lasts only until the problem changes: painting back to the hidden problem shows its halo.
+  await paint("R", "Rx.U", "R");
+  const relit = (await probe("highlighted")).sort().join();
+  await paint("G", "Rx.U", "R");
+  check(relit === "Fx.U,Rx.U", `a hidden halo comes back when its problem returns after another (${relit})`);
   // The effect switches stay usable while editing; Shading must redraw the edited position.
   await flip("shade", false);
   await flip("shade", true);
