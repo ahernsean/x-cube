@@ -2943,7 +2943,7 @@ function renderEdit() {
   const tappable = level !== "possible" && problems[0].slots.length > 0;
   st.classList.toggle("tappable", tappable);
   if (tappable) {
-    const actions: [string, string][] = edit.highlight ? [["turn", "Turn to it"], ["hide", "Hide"]] : [["show", "Show"]];
+    const actions: [string, string][] = edit.highlight ? [["turn", "Show"], ["hide", "Hide"]] : [["show", "Show"]];
     for (const [act, label] of actions) {
       const b = document.createElement("button");
       b.className = "edit-show";

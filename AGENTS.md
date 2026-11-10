@@ -200,7 +200,7 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   cubelet behind others), in the 3D view and on each flat-view face where the cubelet
   shows. Show also tumbles the 3D view to show all their stickers best (the most unblocked,
   then each as squarely as possible, from the preset views and the directions between
-  the stickers), unless every sticker already shows. While shown, **Turn to it** tumbles
+  the stickers), unless every sticker already shows. While shown, **Show** again tumbles
   back there and **Hide** removes the halo; tapping the line does what its first button
   does. A paint that changes which spots the first problem names removes it. Done, available only when valid, makes the fitted position the start
   ("Edited colors"). Whether a valid position can be reached by turning is not checked yet.

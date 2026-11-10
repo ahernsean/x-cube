@@ -738,7 +738,7 @@ try {
   check(paintedGlow === "R", `the edge glow of a painted sticker takes the paint (${paintedGlow})`);
   // Tapping the line puts a purple halo on the cubelets it names, in the 3D view and on
   // the flat view's faces where they show, and turns the 3D view to show all their
-  // stickers; Turn to it turns back there after the view is tumbled.
+  // stickers; Show again turns back there after the view is tumbled.
   await page.click('[data-view="bottom"]');
   await settle();
   const unseen = await probe("facesSeen", "Fx.U");
@@ -746,13 +746,13 @@ try {
   await settle();
   const seenBoth = async () => `${await probe("facesSeen", "Fx.U")},${await probe("facesSeen", "Rx.U")}`;
   const lit = { slots: (await probe("highlighted")).sort().join(), seen: await seenBoth(), px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), flatD: await probe("haloPixels", "D"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
-  check(unseen === 0 && lit.slots === "Fx.U,Rx.U" && lit.seen === "2,2" && lit.px3d > 0 && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Turn to it,Hide", `tapping the line haloes the spots it names and turns the view to show all their stickers (${JSON.stringify({ unseen, ...lit })})`);
+  check(unseen === 0 && lit.slots === "Fx.U,Rx.U" && lit.seen === "2,2" && lit.px3d > 0 && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `tapping the line haloes the spots it names and turns the view to show all their stickers (${JSON.stringify({ unseen, ...lit })})`);
   await page.click('[data-view="bottom"]');
   await settle();
   await page.click('[data-halo="turn"]');
   await settle();
   const back = await seenBoth();
-  check(back === "2,2", `Turn to it turns the tumbled view back to the stickers (faces seen ${back})`);
+  check(back === "2,2", `Show again turns the tumbled view back to the stickers (faces seen ${back})`);
   await page.click('[data-halo="hide"]');
   const unlit = { slots: (await probe("highlighted")).length, px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U") };
   check(unlit.slots === 0 && unlit.px3d === 0 && unlit.flatU === 0, `tapping it again removes the halo (${JSON.stringify(unlit)})`);
