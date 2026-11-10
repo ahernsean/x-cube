@@ -79,6 +79,9 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .view-tools { display: flex; gap: 6px; }
 .btn.tool-btn { min-height: 32px; padding: 4px 10px; color: var(--muted); }
 .btn.tool-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--muted); }
+/* The ⓘ is its own sign that it can be tapped: no button edge or fill. */
+.btn.tool-btn.info { border-color: transparent; background: transparent; box-shadow: none; padding: 4px 6px; min-width: 32px; font-size: 20px; line-height: 1; }
+.btn.tool-btn.info[aria-expanded="true"] { border-color: transparent; color: var(--accent); }
 .pop { position: absolute; top: calc(100% + 4px); right: 0; z-index: 15; max-width: min(300px, 100%); padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); display: grid; gap: 8px; }
 .pop[hidden] { display: none; }
 .pop p { margin: 0; }
@@ -212,7 +215,7 @@ details[open] summary { margin-bottom: 8px; }
     <div class="view-head">
       <h2 class="sec-title">3D view</h2>
       <div class="view-tools">
-        <button class="btn small tool-btn" id="info-btn" aria-label="How to use the 3D view" aria-expanded="false" aria-controls="info-pop">ⓘ</button>
+        <button class="btn small tool-btn info" id="info-btn" aria-label="How to use the 3D view" aria-expanded="false" aria-controls="info-pop">ⓘ</button>
         <button class="btn small tool-btn" id="render-btn" aria-expanded="false" aria-controls="render-pop">Display ▾</button>
       </div>
       <div class="pop" id="info-pop" hidden>
@@ -329,7 +332,7 @@ details[open] summary { margin-bottom: 8px; }
       <div class="view-head">
         <h2>Flat view</h2>
         <div class="view-tools">
-          <button class="btn small tool-btn" id="flat-info-btn" aria-label="How to read the flat view" aria-expanded="false" aria-controls="flat-info-pop">ⓘ</button>
+          <button class="btn small tool-btn info" id="flat-info-btn" aria-label="How to read the flat view" aria-expanded="false" aria-controls="flat-info-pop">ⓘ</button>
         </div>
         <div class="pop" id="flat-info-pop" hidden>
           <p class="hint">The first face you'd see looking straight at each side. Dark squares are cubelet faces with no sticker. A glow along an edge shows the sticker color around the corner. No glow there means that side has no sticker.</p>
