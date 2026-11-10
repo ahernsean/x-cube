@@ -731,11 +731,25 @@ try {
   check(/^Valid/.test(entered.line) && entered.done && entered.inert, `edit mode starts valid, with the other controls set aside ("${entered.line}")`);
   await paint("R", "Fx.U", "F");
   const half = { line: await editLine(), off: await doneOff(), drawn: (await probe("at3d", ...Object.values(await probe("sticker", "Fx.U", "F"))))?.color };
-  check(/^Not valid: .*would need the same cubelet/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
+  check(/^Not valid: .*would both need the white and red cubelet\. Show$/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
   // The edge glow around a painted sticker shows the paint too (the glow is the only sign
   // of a sticker's color where that face is hidden).
   const paintedGlow = (await probe("glowColors", "Fx.U", "F")).join();
   check(paintedGlow === "R", `the edge glow of a painted sticker takes the paint (${paintedGlow})`);
+  // Tapping the line puts a purple halo on the cubelets it names, in the 3D view and on
+  // the flat view's faces where they show, turning the 3D view if it shows neither.
+  await page.click('[data-view="bottom"]');
+  await settle();
+  const unseen = await probe("facesSeen", "Fx.U");
+  await page.click("#edit-status");
+  await settle();
+  const lit = { slots: (await probe("highlighted")).sort().join(), seen: await probe("facesSeen", "Fx.U"), px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), flatD: await probe("haloPixels", "D"), label: await page.$eval("#edit-status .edit-show", (e) => e.textContent) };
+  check(unseen === 0 && lit.slots === "Fx.U,Rx.U" && lit.seen > 0 && lit.px3d > 0 && lit.flatU > 0 && lit.flatD === 0 && lit.label === "Hide", `tapping the line haloes the spots it names and turns the view to them (${JSON.stringify({ unseen, ...lit })})`);
+  await page.click("#edit-status");
+  const unlit = { slots: (await probe("highlighted")).length, px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U") };
+  check(unlit.slots === 0 && unlit.px3d === 0 && unlit.flatU === 0, `tapping it again removes the halo (${JSON.stringify(unlit)})`);
+  await page.click('[data-view="home"]');
+  await settle();
   await paint("G", "Rx.U", "R");
   const swapped = { line: await editLine(), off: await doneOff() };
   check(/^Valid/.test(swapped.line) && !swapped.off, `painting the other edge to match makes it valid again ("${swapped.line}")`);
@@ -769,7 +783,7 @@ try {
   await paint("R", "Fx.U", "U"); // flip the white-red edge now at Fx.U in place
   await paint("W", "Fx.U", "F");
   const flipped = await editLine();
-  check(/^Not possible on the puzzle: Fx\.U .*can't be turned this way; its red side always faces outward/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  check(/^Not possible on the puzzle: Top edge of the green extension can't be turned this way: that cubelet's red sticker always faces away from the core\. Show$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
   await page.click("#edit-cancel");
   sw = await sweep3d();
   const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");

@@ -187,7 +187,15 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   is. A painted sticker's edge glow takes the paint too. Each paint is refit to real cubelets (`fitColors` in `src/core/edit.ts`), and a line
   says "Valid" (real cubelets, each facing a way the puzzle allows), "Not possible on the
   puzzle" (real cubelets, but one breaks the outward-color rule) or "Not valid" (with the
-  spot and the reason). Done, available only when valid, makes the fitted position the start
+  spot and the reason). Problems name spots in words ("bottom corner of the blue extension
+  on the red side"), not slot names: "top" and "bottom", and each side by the color its
+  center shows now, painted colors included; when that color is missing or on two centers,
+  by its place in the Front view ("the right side"), with a note saying so. Tapping a line
+  that names spots puts a **halo** on those cubelets: a purple glow around the whole
+  cubelet, drawn over everything (so it shows a cubelet behind others), in the 3D view and
+  on each flat-view face where the cubelet shows. If the 3D view shows none of it, the view
+  turns to the one that shows the most. Tapping again, or a paint that changes which spots
+  the first problem names, removes it. Done, available only when valid, makes the fitted position the start
   ("Edited colors"). Whether a valid position can be reached by turning is not checked yet.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
