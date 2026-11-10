@@ -184,6 +184,11 @@ try {
   const tokens = await page.$$eval("#history .tok", (els) => els.map((e) => e.textContent).join(" "));
   check(tokens === "R U", `turn list shows "R U" (got "${tokens}")`);
   check((await status()).includes("Out of shape"), "R U leaves the puzzle out of shape");
+  const cur = await page.$eval("#history .tok.cur", (e) => {
+    const c = getComputedStyle(e), h = document.getElementById("history").getBoundingClientRect(), r = e.getBoundingClientRect();
+    return { outline: c.outlineStyle, shadow: c.boxShadow, inside: r.left >= h.left && r.right <= h.right && r.top >= h.top };
+  });
+  check(cur.outline === "none" && cur.shadow.includes("inset") && cur.inside, `current turn is marked inside its chip, so the list can't clip it (outline ${cur.outline}, shadow "${cur.shadow}")`);
 
   // A blocked outer turn is refused with a reason.
   await page.click("#reset");

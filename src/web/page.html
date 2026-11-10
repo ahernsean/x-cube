@@ -151,10 +151,10 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .tp { min-width: 44px; font-size: 15px; }
 .tp sub { font-size: 9px; margin-left: 1px; }
 .tp.stop { background: var(--ink); color: var(--panel); border-color: var(--ink); }
-.history { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
+.history { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
 .tok { font: 13px var(--f-mono); border: 0; background: var(--off-bg); color: var(--muted); border-radius: 5px; padding: 3px 6px; cursor: pointer; }
 .tok.done { background: var(--good-bg); color: var(--good); }
-.tok.cur { outline: 2px solid var(--good); }
+.tok.cur { box-shadow: inset 0 0 0 2px var(--good); } /* inside the chip: .history clips anything drawn outside */
 .transport { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .counter { font: 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
 .hint { color: var(--muted); font-size: 13px; }
