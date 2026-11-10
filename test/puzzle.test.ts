@@ -78,13 +78,13 @@ test("inventory: 80 slots, 62 cubelets, counts by kind match the agreed inventor
   assert.equal(core.reduce((n, c) => n + c.stickers.filter(Boolean).length, 0), 18);
 });
 
-test("solved state is an X and solved", () => {
+test("shape: the solved state is an X and solved", () => {
   const st = State.solved();
   assert.ok(isHomeX(st));
   assert.ok(isSolved(st));
 });
 
-test("every move, four times, is the identity; every move then its inverse is the identity", () => {
+test("moves: every move, four times, is the identity; every move then its inverse is the identity", () => {
   const rand = rng(1);
   const st = State.solved();
   randomLegalScramble(st, 40, rand);
@@ -157,7 +157,7 @@ test("outer cubelets: the outward-facing color never changes (so look-alike twin
   }
 });
 
-test("outer turns never change the shape", () => {
+test("shape: outer turns never change the shape", () => {
   const rand = rng(11);
   const st = State.solved();
   for (let i = 0; i < 300; i++) {
@@ -174,7 +174,7 @@ test("outer turns never change the shape", () => {
   }
 });
 
-test("Baum's 3-cycles, translated to the white-up grip, keep the X shape and move exactly 3 cubelets", () => {
+test("algorithms: Baum's 3-cycles, translated to the white-up grip, keep the X shape and move exactly 3 cubelets", () => {
   for (const alg of ["R' S' R b R' S R b'", "R' F' R b R' F R b'"]) {
     const { st, r } = run(alg);
     assert.ok(r.ok, alg);
@@ -200,14 +200,14 @@ test("notation: commutators, conjugates, repeats, inverses", () => {
   assert.throws(() => parseAlg("Q"));
 });
 
-test("state codes round-trip", () => {
+test("state codes: a state code round-trips", () => {
   const rand = rng(5);
   const st = State.solved();
   randomLegalScramble(st, 50, rand);
   assert.ok(decodeState(encodeState(st)).equals(st));
 });
 
-test("x/y/z rotations keep the puzzle looking solved", () => {
+test("moves: x, y and z rotations keep the puzzle looking solved", () => {
   for (const a of ["x", "y", "z", "x y", "z2 y'"]) {
     const { st } = run(a);
     assert.ok(isXShape(st), a);

@@ -22,7 +22,7 @@ import {
   type Color,
   type Turn,
 } from "../core/puzzle.ts";
-import { decodeState, encodeState } from "../core/serialize.ts";
+import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
 import { fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 
@@ -2357,6 +2357,12 @@ function render() {
         .join("")
     : `<li class="hint">No saved states yet. Save the current position to come back to it later.</li>`;
   ($("code-out") as HTMLTextAreaElement).value = encodeState(st);
+  // Only a position turns can't reach (from an X1 code or edited colors) has no letter
+  // code. The note keeps its line either way, so the page doesn't shift.
+  const why = unreachableReason(st);
+  const note = $("code-note");
+  note.textContent = why === null ? "" : "No letter code: turns can't reach this position.";
+  note.title = why ?? "";
   renderAlgorithms();
 }
 

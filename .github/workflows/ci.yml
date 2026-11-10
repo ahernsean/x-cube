@@ -122,8 +122,9 @@ jobs:
           echo "Keeping ${#packages[@]} packages"
           if (( ${#packages[@]} )); then cp "${packages[@]}" ~/webkit-packages/; fi
 
-      - run: node scripts/browser-tests.mjs ${{ matrix.browser }}
+      - run: node --test scripts/browser-tests.mjs
         env:
+          BROWSER: ${{ matrix.browser }}
           COVERAGE_DIR: ${{ matrix.browser == 'chromium' && 'coverage/browser' || '' }}
           EXPECT_RENDERER: ${{ matrix.browser == 'chromium' && 'llvmpipe' || '' }}
       - name: Add browser test coverage to the summary

@@ -351,10 +351,11 @@ details[open] summary { margin-bottom: 8px; }
       <ul class="saved" id="saved-list"></ul>
       <details style="margin-top:12px">
         <summary>State code</summary>
-        <p class="hint" style="margin:0 0 6px">A text copy of the current position. Paste it into a chat with Claude, or import one here.</p>
+        <p class="hint" style="margin:0 0 6px">A text copy of the current position: 44 letters, short enough to type on another device. Paste it into a chat with Claude, or import one here.</p>
         <textarea id="code-out" readonly aria-label="Current state code"></textarea>
+        <p class="hint" id="code-note" style="margin:4px 0 0; height:1.5em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></p>
         <div class="row" style="margin:6px 0 10px"><button class="btn small" id="copy-code">Copy</button></div>
-        <textarea id="code-in" placeholder="Paste a state code (starts with X1:)" aria-label="State code to import"></textarea>
+        <textarea id="code-in" placeholder="Type or paste a state code (case, spaces and dashes don't matter)" aria-label="State code to import"></textarea>
         <div class="row" style="margin-top:6px"><button class="btn small" id="import">Import as start</button></div>
       </details>
     </section>
