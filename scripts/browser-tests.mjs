@@ -517,10 +517,9 @@ try {
   const [closedMid, closedEnd] = await glowAt("Rx.B", "3d", [[["R", 0.47], ["B", 0.55]], [["R", 0.47], ["U", 0.45], ["B", 0.55]]]);
   const [flatMid, flatEnd] = await glowAt("Rx.UB", "U", [[["U", 0.47], ["B", 0.6]], [["U", 0.47], ["R", 0.45], ["B", 0.6]]]);
   check(closedEnd < 0.3 * closedMid && flatEnd < 0.3 * flatMid, `edge glow fades out at a corner with no glow around it (3D ${fmt([closedMid, closedEnd])}), and in the flat view (${fmt([flatMid, flatEnd])})`);
-  // The flat view shows a reduced share of the 3D view's corner darkening.
-  const depth = await probe("shadeDepth");
-  const wantFlat = 1 - depth.flatStrength * (1 - depth.min3d);
-  check(depth.min3d < 0.6 && depth.flatStrength < 1 && Math.abs(depth.minFlat - wantFlat) < 0.02, `flat view shading is softer than the 3D view's (darkest 3D ${depth.min3d.toFixed(3)}, flat ${depth.minFlat.toFixed(3)}, expected ${wantFlat.toFixed(3)})`);
+  // Flat-view shading: full corner darkness at the tile's edge, gone past the ramp.
+  const prof = await probe("flatShadeProfile");
+  check(prof.shaded > 0 && prof.edge < 1e-6 && prof.beyond < 1e-6 && prof.ramp < 0.5, `flat view shading is a narrow band at the edge (${prof.shaded} shaded tiles, edge error ${prof.edge}, past-ramp error ${prof.beyond}, ramp ${prof.ramp})`);
 
   // Live shading computed at the very start of a turn matches the shading at rest.
   const restError = await probe("shadeRestError");

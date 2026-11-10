@@ -324,7 +324,8 @@ function initScene(canvas: HTMLCanvasElement) {
   const plane = roundedSquare(0.82, 0.07);
   const mats = new Map<Color, any>();
   const dark = getComputedStyle(document.documentElement).getPropertyValue("--unstickered").trim() || "#2b2f2e";
-  const netPlane = new THREE.PlaneGeometry(0.92, 0.92);
+  // Subdivided so the flat view's narrow shading ramp has vertices to fall across.
+  const netPlane = new THREE.PlaneGeometry(0.92, 0.92, 16, 16);
   // Columns of vertices at the ends and where an open end is cut back to (GLOW_CUT).
   const glowPlane = new THREE.PlaneGeometry(1.0, GLOW_WIDTH, 3, 1);
   const gp = glowPlane.attributes.position;
@@ -615,9 +616,10 @@ interface AoFace {
 const aoFaces: AoFace[][] = [];
 // Brightness by number of open spots around a corner (0 = boxed in, 3 = open).
 const AO_LEVELS = [0.39, 0.575, 0.765, 1];
-// The flat view shows only how much of each corner's darkening (0 none, 1 full): seen
-// straight on and unlit, it reads much darker there than in the 3D view.
-const FLAT_AO_STRENGTH = 0.7;
+// The flat view keeps each corner's full darkness at the tile's edge but fades it out
+// within this fraction of the tile, so it reads as a narrow band next to the cubelet
+// that casts it rather than a gradient across the whole tile.
+const FLAT_AO_RAMP = 0.3;
 // The four corners of a face, as (x, y) signs in the plane's own coordinates.
 const CORNER_SIGNS: [number, number][] = [
   [-1, 1],
@@ -715,19 +717,36 @@ function filledAt(st: State, p: Vec3): boolean {
   return s >= 0 && st.occ[s] >= 0;
 }
 
+/** How much of the darker end's darkness remains at distance t (0..1) from it, in the flat view. */
+const flatFalloff = (t: number) => (t >= FLAT_AO_RAMP ? 0 : 1 - ease(t / FLAT_AO_RAMP));
+
+/**
+ * Brightness at t (0..1) between end values a (t = 0) and b (t = 1), flat view: the
+ * lighter value everywhere except within the ramp next to the darker end.
+ */
+function flatBetween(a: number, b: number, t: number) {
+  return a < b ? b + (a - b) * flatFalloff(t) : a + (b - a) * flatFalloff(1 - t);
+}
+
 /** Write four corner brightness values onto a face, blended across it (any vertex layout). */
 function applyCorners(f: AoFace, corner: number[]) {
   f.cur = corner.slice();
-  const k = f.view === "flat" ? FLAT_AO_STRENGTH : 1;
+  const flat = f.view === "flat";
   const col = f.mesh.geometry.attributes.color;
   const arr = col.array as Float32Array;
   const pos = f.mesh.geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) {
-    const u = ease(Math.max(0, Math.min(1, pos.getX(i) / f.extent + 0.5))); // 0 at -x, 1 at +x
-    const w = ease(Math.max(0, Math.min(1, pos.getY(i) / f.extent + 0.5))); // 0 at -y, 1 at +y
-    const top = corner[0] * (1 - u) + corner[1] * u;
-    const bottom = corner[2] * (1 - u) + corner[3] * u;
-    const v = 1 - k * (1 - (bottom * (1 - w) + top * w));
+    const x = Math.max(0, Math.min(1, pos.getX(i) / f.extent + 0.5)); // 0 at -x, 1 at +x
+    const y = Math.max(0, Math.min(1, pos.getY(i) / f.extent + 0.5)); // 0 at -y, 1 at +y
+    let v: number;
+    if (flat) {
+      v = flatBetween(flatBetween(corner[2], corner[3], x), flatBetween(corner[0], corner[1], x), y);
+    } else {
+      const u = ease(x), w = ease(y);
+      const top = corner[0] * (1 - u) + corner[1] * u;
+      const bottom = corner[2] * (1 - u) + corner[3] * u;
+      v = bottom * (1 - w) + top * w;
+    }
     arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = v;
   }
   col.needsUpdate = true;
@@ -2464,15 +2483,30 @@ function installProbe() {
       });
     },
     shadeRestError,
-    /** Darkest shading drawn on 3D stickers and on flat tiles, and the flat view's strength. */
-    shadeDepth() {
-      const least = { "3d": 1, flat: 1 };
+    /**
+     * Flat-view shading profile over every flat tile: the largest gap between a tile
+     * corner's drawn value and its computed corner value, and the largest gap between the
+     * drawn values past the ramp and the tile's lightest corner (both should be ~0).
+     */
+    flatShadeProfile() {
+      let edge = 0, beyond = 0, shaded = 0;
       for (const list of aoFaces)
         for (const f of list ?? []) {
+          if (f.view !== "flat" || !f.cur) continue;
+          if (f.cur.some((c) => c < 1)) shaded++;
           const a = f.mesh.geometry.attributes.color.array as Float32Array;
-          for (let i = 0; i < a.length; i++) least[f.view] = Math.min(least[f.view], a[i]);
+          const pos = f.mesh.geometry.attributes.position;
+          const lightest = Math.max(...f.cur);
+          for (let i = 0; i < pos.count; i++) {
+            const x = pos.getX(i) / f.extent + 0.5, y = pos.getY(i) / f.extent + 0.5;
+            const near = (t: number) => Math.min(t, 1 - t);
+            if (near(x) < 1e-6 && near(y) < 1e-6) {
+              const c = (y > 0.5 ? 0 : 2) + (x > 0.5 ? 1 : 0);
+              edge = Math.max(edge, Math.abs(a[i * 3] - f.cur[c]));
+            } else if (near(x) >= FLAT_AO_RAMP && near(y) >= FLAT_AO_RAMP) beyond = Math.max(beyond, Math.abs(a[i * 3] - lightest));
+          }
         }
-      return { min3d: least["3d"], minFlat: least.flat, flatStrength: FLAT_AO_STRENGTH };
+      return { edge, beyond, shaded, ramp: FLAT_AO_RAMP };
     },
     /** What the effect switches currently control: glow layers, the key light's shadows, grid shading. */
     effects: () => ({ glow3d: camera.layers.isEnabled(GLOW3D_LAYER), glowFlat: netCams.every((c) => c.cam.layers.isEnabled(GLOWNET_LAYER)), shadows: !!keyLight?.castShadow, shading: aoOn["3d"] && aoOn.flat }),
