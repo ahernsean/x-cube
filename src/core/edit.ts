@@ -56,10 +56,10 @@ function outwardDir(s: number): number {
   return axis < 0 ? -1 : axis * 2 + (p[axis] > 0 ? 0 : 1);
 }
 
-/** "red, yellow and orange". */
+/** "red, yellow, and orange". */
 function listColors(cs: Color[]): string {
   const n = cs.map((c) => COLOR_NAME[c]);
-  return n.length < 2 ? n.join("") : `${n.slice(0, -1).join(", ")} and ${n[n.length - 1]}`;
+  return n.length < 3 ? n.join(" and ") : `${n.slice(0, -1).join(", ")}, and ${n[n.length - 1]}`;
 }
 
 /** The colors showing on slot s, in direction order. */

@@ -71,7 +71,7 @@ test("edit: problems name spots by where they are and sides by their center colo
   const st = State.solved();
   const colors = visibleColors(st);
   colors[at(1, -1, -2) * 6 + 5] = "O"; // Bx.DR: red, yellow and orange
-  assert.deepEqual(fitColors(st, colors).problems, [{ text: "Bottom corner of the blue extension on the red side shows red, yellow and orange: red and orange are opposite colors, never on one cubelet", slots: [at(1, -1, -2)] }]);
+  assert.deepEqual(fitColors(st, colors).problems, [{ text: "Bottom corner of the blue extension on the red side shows red, yellow, and orange: red and orange are opposite colors, never on one cubelet", slots: [at(1, -1, -2)] }]);
   // After a slice turn the side centers move, and the words follow them.
   const h = after("H");
   assert.deepEqual(sideWords(h, visibleColors(h)).word, ["blue", "green", "top", "bottom", "red", "orange"]);
