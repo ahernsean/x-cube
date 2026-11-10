@@ -2532,9 +2532,10 @@ function bindUI() {
   $("edit-cancel").addEventListener("click", () => endEdit(false));
   $("edit-status").addEventListener("click", (e) => {
     if (!edit || !$("edit-status").classList.contains("tappable")) return;
-    const act = (e.target as HTMLElement).closest<HTMLElement>("[data-halo]")?.dataset.halo ?? (edit.highlight ? "turn" : "show");
-    if (act === "turn") showHighlighted(true);
-    else toggleHighlight();
+    const act = (e.target as HTMLElement).closest<HTMLElement>("[data-halo]")?.dataset.halo ?? "show";
+    edit.hidden = act === "hide" ? (edit.fit.problems[0]?.slots ?? []).join() : null;
+    renderEdit();
+    if (act === "show") showHighlighted();
   });
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) {
     b.style.background = NET_COLOR[b.dataset.paint!];
@@ -2693,7 +2694,8 @@ interface Edit {
   shown: State; // the last state that fit, drawn underneath the paint
   paint: Color;
   painted: any[]; // meshes currently drawn in a color other than their own
-  highlight: number[] | null; // slots shown with a halo, from tapping the status line
+  highlight: number[] | null; // slots shown with a halo: the first problem's, unless hidden
+  hidden: string | null; // the slots (joined) whose halo was hidden with Hide
 }
 let edit: Edit | null = null;
 
@@ -2701,7 +2703,7 @@ function startEdit() {
   if (edit) return;
   flushAnimations();
   const st = app.current.clone();
-  edit = { shape: st, colors: visibleColors(st), fit: { level: "possible", state: st.clone(), problems: [] }, shown: st.clone(), paint: "W", painted: [], highlight: null };
+  edit = { shape: st, colors: visibleColors(st), fit: { level: "possible", state: st.clone(), problems: [] }, shown: st.clone(), paint: "W", painted: [], highlight: null, hidden: null };
   document.body.classList.add("editing");
   ($("stack-col") as HTMLElement & { inert: boolean }).inert = true;
   renderEdit();
@@ -2716,9 +2718,6 @@ function paintSticker(slot: number, dir: number) {
   edit.colors[i] = edit.paint;
   edit.fit = fitColors(edit.shape, edit.colors);
   if (edit.fit.state) edit.shown = edit.fit.state;
-  // The halo stays while the first problem is still about the same spots.
-  const first = edit.fit.problems[0]?.slots ?? [];
-  if (edit.highlight && first.join() !== edit.highlight.join()) edit.highlight = null;
   renderEdit();
 }
 
@@ -2875,9 +2874,9 @@ function lookFrom(v: any): any {
 /**
  * Turns the 3D view to show the highlighted cubelets' stickers best: the most of them
  * unblocked, then each as squarely as possible. Tries the preset views and looking from
- * between the stickers' directions. Unless `always`, stays put if every sticker shows.
+ * between the stickers' directions. Only on the owner's tap: a halo appearing never moves the view.
  */
-function showHighlighted(always = false) {
+function showHighlighted() {
   if (!edit?.highlight) return;
   const st = edit.shown;
   const faces: [number, number][] = [];
@@ -2889,7 +2888,6 @@ function showHighlighted(always = false) {
     const seen = faces.map(([s, d]) => faceView(st, s, d)).filter((c) => c > 0);
     return seen.length * 10 + seen.reduce((a, b) => a + b, 0) / faces.length;
   };
-  if (!always && score() >= faces.length * 10) return;
   const dirs = [...new Set(faces.map(([, d]) => d))];
   const candidates: any[] = Object.values(VIEWS).map((q) => new THREE.Quaternion(q[0], q[1], q[2], q[3]));
   for (let m = 1; m < 1 << dirs.length; m++) {
@@ -2909,12 +2907,11 @@ function showHighlighted(always = false) {
   goToView([best.x, best.y, best.z, best.w]);
 }
 
-function toggleHighlight() {
+/** The halo shows the first problem's slots, unless Hide was used on those same slots. */
+function updateHighlight() {
   if (!edit) return;
-  const slots = edit.fit.problems[0]?.slots ?? [];
-  edit.highlight = edit.highlight || !slots.length ? null : [...slots];
-  renderEdit();
-  showHighlighted();
+  const slots = edit.fit.level === "possible" ? [] : (edit.fit.problems[0]?.slots ?? []);
+  edit.highlight = slots.length && edit.hidden !== slots.join() ? [...slots] : null;
 }
 
 /** Returns every glow band to its own sticker's color. */
@@ -2926,6 +2923,7 @@ function renderEdit() {
   $("edit-bar").hidden = !edit;
   $("edit-start").hidden = !!edit;
   if (!edit) return;
+  updateHighlight();
   drawEdit();
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) b.setAttribute("aria-checked", String(b.dataset.paint === edit.paint));
   const st = $("edit-status");
@@ -2938,12 +2936,12 @@ function renderEdit() {
     st.className = "edit-status bad";
     st.textContent = `Not valid: ${problems[0].text}${more}.`;
   }
-  // A problem about particular spots can show them with a halo (tapping the line does
-  // the same as its first button), and turn the view back to them.
+  // A problem about particular spots shows them with a halo by itself. Show (or tapping
+  // the line) also tumbles the view to them; Hide removes the halo until the spots change.
   const tappable = level !== "possible" && problems[0].slots.length > 0;
   st.classList.toggle("tappable", tappable);
   if (tappable) {
-    const actions: [string, string][] = edit.highlight ? [["turn", "Show"], ["hide", "Hide"]] : [["show", "Show"]];
+    const actions: [string, string][] = edit.highlight ? [["show", "Show"], ["hide", "Hide"]] : [["show", "Show"]];
     for (const [act, label] of actions) {
       const b = document.createElement("button");
       b.className = "edit-show";

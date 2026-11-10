@@ -185,25 +185,21 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
 - **Color editing:** Edit colors under the 3D view. Pick a color, then tap stickers to paint
   them; drags tumble the view, and the other controls are set aside. The shape stays as it
   is. A painted sticker's edge glow takes the paint too. Each paint is refit to cubelets
-  (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with the
-  spot and what's wrong: no cubelet has those colors, one cubelet would be needed in two
+  (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
+  wrong: no cubelet has those colors, one cubelet would be needed in two
   spots, or an outer cubelet is turned against the outward-color rule (a sign of a sticker
-  painted wrong; the physical cube can't do that). Spots are named in words, not slot
-  names: an extension spot as seen looking straight at that extension, as in the flat view,
-  ("blue extension, bottom-left corner"); the up and down extensions and the core by the
-  sides they are on ("core, top corner between the red and green sides"). "Next to" is only
-  for things that are actually near each other; a side's center color says nothing about
-  what's near a spot. Sides are named by the color their center shows now,
-  painted colors included; when that color is missing or on two centers, by place in the
-  Front view ("front extension"), with a note saying so. Lists of three colors use the
-  serial comma. A line that names spots has **Show**, which puts a **halo** on those
-  cubelets: a purple glow around the whole cubelet, drawn over everything (so it shows a
-  cubelet behind others), in the 3D view and on each flat-view face where the cubelet
-  shows. Show also tumbles the 3D view to show all their stickers best (the most unblocked,
-  then each as squarely as possible, from the preset views and the directions between
-  the stickers), unless every sticker already shows. While shown, **Show** again tumbles
-  back there and **Hide** removes the halo; tapping the line does what its first button
-  does. A paint that changes which spots the first problem names removes it. Done, available only when valid, makes the fitted position the start
+  painted wrong; the physical cube can't do that). It says what, not where ("A
+  cubelet shows yellow, red, and orange, but red and orange are opposite colors, never on
+  one cubelet"), not where: words for a spot proved unreliable (center colors move with
+  slices, extensions leave their sides, left depends on the viewpoint), so the Lab points
+  the spot out instead. Lists of three colors use the serial comma. The first problem's
+  cubelets get a **halo** by themselves: a purple glow around the whole cubelet, drawn
+  over everything (so it shows a cubelet behind others), in the 3D view and on each
+  flat-view face where the cubelet shows. A halo appearing never moves the view. **Show**
+  (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
+  most unblocked, then each as squarely as possible, from the preset views and the
+  directions between the stickers), again each time it is tapped. **Hide** removes the
+  halo until the problem names other cubelets. Done, available only when valid, makes the fitted position the start
   ("Edited colors"). Whether a valid position can be reached by turning is not checked yet.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side

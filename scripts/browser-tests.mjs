@@ -731,36 +731,37 @@ try {
   check(/^Valid/.test(entered.line) && entered.done && entered.inert, `edit mode starts valid, with the other controls set aside ("${entered.line}")`);
   await paint("R", "Fx.U", "F");
   const half = { line: await editLine(), off: await doneOff(), drawn: (await probe("at3d", ...Object.values(await probe("sticker", "Fx.U", "F"))))?.color };
-  check(/^Not valid: .*both show white and red\. There is only one cubelet with those colors\. Show$/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
+  check(/^Not valid: Two cubelets both show white and red\. There is only one cubelet with those colors\. Show Hide$/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
   // The edge glow around a painted sticker shows the paint too (the glow is the only sign
   // of a sticker's color where that face is hidden).
   const paintedGlow = (await probe("glowColors", "Fx.U", "F")).join();
   check(paintedGlow === "R", `the edge glow of a painted sticker takes the paint (${paintedGlow})`);
-  // Tapping the line puts a purple halo on the cubelets it names, in the 3D view and on
-  // the flat view's faces where they show, and turns the 3D view to show all their
-  // stickers; Show again turns back there after the view is tumbled.
+  // A problem puts a purple halo on the cubelets it names by itself, in the 3D view and
+  // on the flat view's faces where they show, without moving the view. Show (or tapping
+  // the line) tumbles the 3D view to show all their stickers, again after any tumble;
+  // Hide removes the halo.
+  const seenBoth = async () => `${await probe("facesSeen", "Fx.U")},${await probe("facesSeen", "Rx.U")}`;
   await page.click('[data-view="bottom"]');
   await settle();
-  const unseen = await probe("facesSeen", "Fx.U");
+  const lit = { slots: (await probe("highlighted")).sort().join(), seen: await seenBoth(), px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), flatD: await probe("haloPixels", "D"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
+  check(lit.slots === "Fx.U,Rx.U" && lit.seen === "0,0" && lit.px3d > 0 && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `a problem haloes the cubelets it names by itself, without turning the view (${JSON.stringify(lit)})`);
   await page.click("#edit-status");
   await settle();
-  const seenBoth = async () => `${await probe("facesSeen", "Fx.U")},${await probe("facesSeen", "Rx.U")}`;
-  const lit = { slots: (await probe("highlighted")).sort().join(), seen: await seenBoth(), px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), flatD: await probe("haloPixels", "D"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
-  check(unseen === 0 && lit.slots === "Fx.U,Rx.U" && lit.seen === "2,2" && lit.px3d > 0 && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `tapping the line haloes the spots it names and turns the view to show all their stickers (${JSON.stringify({ unseen, ...lit })})`);
+  const shownAt = await seenBoth();
   await page.click('[data-view="bottom"]');
   await settle();
-  await page.click('[data-halo="turn"]');
+  await page.click('[data-halo="show"]');
   await settle();
   const back = await seenBoth();
-  check(back === "2,2", `Show again turns the tumbled view back to the stickers (faces seen ${back})`);
+  check(shownAt === "2,2" && back === "2,2", `tapping the line, or Show after a tumble, turns the view to show all their stickers (faces seen ${shownAt}, then ${back})`);
   await page.click('[data-halo="hide"]');
-  const unlit = { slots: (await probe("highlighted")).length, px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U") };
-  check(unlit.slots === 0 && unlit.px3d === 0 && unlit.flatU === 0, `tapping it again removes the halo (${JSON.stringify(unlit)})`);
+  const unlit = { slots: (await probe("highlighted")).length, px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
+  check(unlit.slots === 0 && unlit.px3d === 0 && unlit.flatU === 0 && unlit.buttons === "Show", `Hide removes the halo (${JSON.stringify(unlit)})`);
   await page.click('[data-view="home"]');
   await settle();
   await paint("G", "Rx.U", "R");
   const swapped = { line: await editLine(), off: await doneOff() };
-  check(/^Valid/.test(swapped.line) && !swapped.off, `painting the other edge to match makes it valid again ("${swapped.line}")`);
+  check(swapped.line === "Valid" && !swapped.off && (await probe("highlighted")).length === 0, `painting the other edge to match makes it valid again, with no halo ("${swapped.line}")`);
   // The effect switches stay usable while editing; Shading must redraw the edited position.
   const shadeBox = (on) =>
     page.evaluate((on) => {
@@ -791,7 +792,7 @@ try {
   await paint("R", "Fx.U", "U"); // flip the white-red edge now at Fx.U in place
   await paint("W", "Fx.U", "F");
   const flipped = await editLine();
-  check(/^Not valid: Green extension, top edge: that cubelet's red sticker always faces out from the core\. One of its stickers is probably painted wrong\. Show$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  check(/^Not valid: A cubelet's red sticker always faces out from the core\. One of its stickers is probably painted wrong\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
   await page.click("#edit-cancel");
   sw = await sweep3d();
   const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");
