@@ -76,6 +76,19 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 /* Long presses on the 3D view are gestures: no text selection, magnifier or callout. */
 .stage-col, .stage, #scene { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .view-toggles { display: flex; gap: 12px; }
+.edit-row { margin-top: 8px; }
+.edit-bar { margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); display: grid; gap: 8px; }
+.edit-bar[hidden], .edit-row[hidden] { display: none; }
+.palette { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--tile-edge); cursor: pointer; padding: 0; }
+.swatch[aria-checked="true"] { outline: 3px solid var(--accent); outline-offset: 2px; }
+.edit-status { margin: 0; padding: 6px 8px; border-radius: 8px; font-size: 14px; }
+.edit-status.good { background: var(--good-bg); color: var(--good); }
+.edit-status.bad { background: var(--bad-bg); color: var(--bad); }
+.edit-status.warn { background: var(--warn-bg); color: var(--warn); }
+.edit-actions { display: flex; gap: 8px; }
+.edit-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.editing .gesture-hint { display: none; }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
 .outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }
 .chip { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--off-bg); color: var(--muted); white-space: nowrap; }
@@ -204,12 +217,21 @@ details[open] summary { margin-bottom: 8px; }
       <label class="hint keep" for="shadows"><input type="checkbox" id="shadows"> Shadows</label>
       <label class="hint keep" for="gloss"><input type="checkbox" id="gloss"> Gloss</label></span>
     </div>
+    <div class="edit-row"><button class="btn small" id="edit-start">Edit colors</button></div>
+    <div class="edit-bar" id="edit-bar" hidden>
+      <div class="palette" role="radiogroup" aria-label="Paint color">
+        <button class="swatch" role="radio" data-paint="W" aria-label="White"></button><button class="swatch" role="radio" data-paint="Y" aria-label="Yellow"></button><button class="swatch" role="radio" data-paint="G" aria-label="Green"></button><button class="swatch" role="radio" data-paint="B" aria-label="Blue"></button><button class="swatch" role="radio" data-paint="R" aria-label="Red"></button><button class="swatch" role="radio" data-paint="O" aria-label="Orange"></button>
+      </div>
+      <p class="edit-status" id="edit-status" aria-live="polite"></p>
+      <div class="edit-actions"><button class="btn small primary" id="edit-done">Done</button><button class="btn small" id="edit-cancel">Cancel</button></div>
+      <p class="hint">Pick a color, then tap stickers on the cube to paint them. Drag to turn the view. The shape stays as it is.</p>
+    </div>
     <p class="hint gesture-hint">Swipe on the cube to turn the layer under your finger. To tumble the view, drag the background, or long press on the cube and then drag. Use two fingers to spin it. Double tap to undo the last turn.</p>
     <div class="status" id="status" aria-live="polite"></div>
     <p class="message" id="message" hidden></p>
   </div>
 
-  <div class="stack">
+  <div class="stack" id="stack-col">
     <section class="panel" data-sec="run">
       <h2>Run an algorithm</h2>
       <div class="alg-row">

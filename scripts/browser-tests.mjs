@@ -493,6 +493,49 @@ try {
   const restError = await probe("shadeRestError");
   check(restError < 1e-6, `live shading at the start of every turn matches the rest shading (largest difference ${restError})`);
 
+  // ---- Color editing: tap stickers to repaint them; the line says whether the colors are
+  // real cubelets that can face those ways, and Done makes the result the start.
+  const editLine = () => page.$eval("#edit-status", (e) => e.textContent);
+  const doneOff = () => page.$eval("#edit-done", (e) => e.disabled);
+  const paint = async (color, slot, face) => {
+    await page.click(`[data-paint="${color}"]`);
+    await page.locator("#scene").scrollIntoViewIfNeeded();
+    const at = await probe("sticker", slot, face);
+    // The tap must land on that sticker (it can be hidden after the view turns).
+    const there = await probe("at3d", at.x, at.y);
+    if (there?.slot !== slot || there?.face !== face) throw new Error(`can't tap ${slot}/${face}: ${JSON.stringify(there)} is drawn there`);
+    await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+  };
+  await startFresh();
+  await page.click("#edit-start");
+  const entered = { line: await editLine(), done: !(await doneOff()), inert: await page.$eval("#stack-col", (e) => e.inert) };
+  check(/^Valid/.test(entered.line) && entered.done && entered.inert, `edit mode starts valid, with the other controls set aside ("${entered.line}")`);
+  await paint("R", "Fx.U", "F");
+  const half = { line: await editLine(), off: await doneOff(), drawn: (await probe("at3d", ...Object.values(await probe("sticker", "Fx.U", "F"))))?.color };
+  check(/^Not valid: .*would need the same cubelet/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
+  await paint("G", "Rx.U", "R");
+  const swapped = { line: await editLine(), off: await doneOff() };
+  check(/^Valid/.test(swapped.line) && !swapped.off, `painting the other edge to match makes it valid again ("${swapped.line}")`);
+  const swipeAt = await probe("sticker", "Fx", "F");
+  await swipe(swipeAt, 0, -70);
+  check((await probe("turns")) === "", "a swipe while editing doesn't turn a layer");
+  await page.click('[data-view="home"]'); // the swipe tumbled the view
+  await settle();
+  await page.click("#edit-done");
+  const applied = { model: [await probe("model", "Fx.U", "F"), await probe("model", "Rx.U", "R")], label: await page.$eval("#base-label", (e) => e.textContent), inert: await page.$eval("#stack-col", (e) => e.inert) };
+  sw = await sweep3d();
+  check(applied.model.join() === "R,G" && applied.label === "Edited colors" && !applied.inert && sw.wrong.length === 0, `Done makes the edited position the start, drawn as the model has it (${applied.model.join(" ")}, "${applied.label}")`);
+  const editedState = await probe("state");
+  await page.locator("#scene").scrollIntoViewIfNeeded();
+  await page.click("#edit-start");
+  await paint("R", "Fx.U", "U"); // flip the white-red edge now at Fx.U in place
+  await paint("W", "Fx.U", "F");
+  const flipped = await editLine();
+  check(/^Not possible on the puzzle: Fx\.U .*can't be turned this way; its red side always faces outward/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  await page.click("#edit-cancel");
+  sw = await sweep3d();
+  check((await probe("state")) === editedState && sw.wrong.length === 0, "Cancel leaves the position, and its drawing, as they were");
+
   // Every section collapses from its heading.
   const sections = await page.$$eval("[data-sec]", (els) => els.map((e) => e.getAttribute("data-sec")));
   for (const s of sections) await page.click(`[data-sec=${s}] h2`);

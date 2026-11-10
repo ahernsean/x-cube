@@ -2,7 +2,7 @@
 // three.js r128 is loaded as a global from cdnjs by the page.
 
 import { isHomeX, isSolved, isXShape, isExposed, outerAvailability, effect } from "../core/analyze.ts";
-import { DIRS, ROT_DIR, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
+import { DIRS, ROT_DIR, ROT_INV, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
   CUBELETS,
@@ -22,6 +22,7 @@ import {
   type Turn,
 } from "../core/puzzle.ts";
 import { decodeState, encodeState } from "../core/serialize.ts";
+import { fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 
 declare const THREE: any;
 
@@ -354,6 +355,7 @@ function initScene(canvas: HTMLCanvasElement) {
     }
     return mats.get(c);
   };
+  paintMaterial = { sticker: matFor, tile: netMatFor };
   // local face d -> plane placement
   const faceXform: [number, number, number, number, number][] = [
     // [px, py, pz, rotX, rotY]
@@ -384,6 +386,7 @@ function initScene(canvas: HTMLCanvasElement) {
       const m = new THREE.Mesh(varyFilm(withAoColors(plane), c.id * 6 + d), matFor(col));
       m.receiveShadow = true;
       probeInfo.set(m, { id: c.id, d });
+      stickerMesh3d[c.id * 6 + d] = m;
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px, py, pz);
       m.rotation.set(rx, ry, 0);
@@ -401,6 +404,7 @@ function initScene(canvas: HTMLCanvasElement) {
       const col = c.stickers[d];
       const m = new THREE.Mesh(withAoColors(netPlane), col ? netMatFor(col) : netDarkMat);
       probeInfo.set(m, { id: c.id, d });
+      if (col) tileMesh[c.id * 6 + d] = m;
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px / 0.4945 * 0.5, py / 0.4945 * 0.5, pz / 0.4945 * 0.5);
       m.rotation.set(rx, ry, 0);
@@ -1376,7 +1380,8 @@ function bindOrbit(el: HTMLElement) {
     if (pts.size === 1) {
       ignore = false;
       const busy = anim || queue.length || settle;
-      const hit = busy ? null : pickCube(el, e.clientX, e.clientY);
+      // While editing colors, a drag anywhere tumbles the view and a tap paints (below).
+      const hit = busy || edit ? null : pickCube(el, e.clientX, e.clientY);
       if (hit) {
         const id = e.pointerId;
         pending = {
@@ -1473,7 +1478,10 @@ function bindOrbit(el: HTMLElement) {
       const now = e.timeStamp;
       const isTap =
         tap && tap.ok && e.type === "pointerup" && now - tap.t < TAP_MS && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < SWIPE_PX;
-      if (isTap) {
+      if (isTap && edit) {
+        const h = pickCube(el, e.clientX, e.clientY);
+        if (h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
+      } else if (isTap) {
         if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DOUBLE_TAP_PX) {
           lastTap = null;
           undoLast();
@@ -2095,6 +2103,17 @@ function setupCollapsibles() {
 }
 
 function bindUI() {
+  $("edit-start").addEventListener("click", () => startEdit());
+  $("edit-done").addEventListener("click", () => endEdit(true));
+  $("edit-cancel").addEventListener("click", () => endEdit(false));
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) {
+    b.style.background = NET_COLOR[b.dataset.paint!];
+    b.addEventListener("click", () => {
+      if (!edit) return;
+      edit.paint = b.dataset.paint as Color;
+      renderEdit();
+    });
+  }
   setupCollapsibles();
   document.addEventListener("click", async (e) => {
     const t = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null;
@@ -2221,6 +2240,111 @@ function bindUI() {
     }
     render();
   });
+}
+
+// ------------------------------------------------------------------ color editing
+
+// Edit colors: the owner repaints visible stickers to match a real cube, on the current
+// shape. Each paint refits the colors to real cubelets (src/core/edit.ts). While they fit,
+// the view shows the fitted state; while they don't, it shows the last fitted state with
+// the differing stickers repainted on top. Done makes the fitted state the new start; the
+// rest of the controls are inert while editing.
+
+/** Sticker and flat-tile meshes by cubelet id * 6 + face (in the cubelet's own frame). */
+const stickerMesh3d: any[] = [];
+const tileMesh: any[] = [];
+let paintMaterial: { sticker: (c: Color) => any; tile: (c: Color) => any } | null = null;
+
+interface Edit {
+  shape: State; // the position editing started from; its shape is kept
+  colors: FaceColors; // what the owner has painted
+  fit: Fit;
+  shown: State; // the last state that fit, drawn underneath the paint
+  paint: Color;
+  painted: any[]; // meshes currently drawn in a color other than their own
+}
+let edit: Edit | null = null;
+
+function startEdit() {
+  if (edit) return;
+  flushAnimations();
+  const st = app.current.clone();
+  edit = { shape: st, colors: visibleColors(st), fit: { level: "possible", state: st.clone(), problems: [] }, shown: st.clone(), paint: "W", painted: [] };
+  document.body.classList.add("editing");
+  ($("stack-col") as HTMLElement & { inert: boolean }).inert = true;
+  renderEdit();
+}
+
+/** Paints the sticker on the face of `slot` facing world direction `dir`, if one is visible there. */
+function paintSticker(slot: number, dir: number) {
+  if (!edit) return;
+  const i = slot * 6 + dir;
+  if (!edit.colors[i]) return; // hidden, or bare plastic
+  if (edit.colors[i] === edit.paint) return;
+  edit.colors[i] = edit.paint;
+  edit.fit = fitColors(edit.shape, edit.colors);
+  if (edit.fit.state) edit.shown = edit.fit.state;
+  renderEdit();
+}
+
+/** Draws the shown state, with every face that differs from the paint repainted on top. */
+function drawEdit() {
+  if (!edit || !paintMaterial) return;
+  for (const m of edit.painted) m.material = m.userData.ownMaterial;
+  edit.painted = [];
+  syncMeshes(edit.shown);
+  const shown = visibleColors(edit.shown);
+  for (let i = 0; i < edit.colors.length; i++) {
+    const want = edit.colors[i];
+    if (!want || shown[i] === want) continue;
+    const s = Math.floor(i / 6), dir = i % 6;
+    const id = edit.shown.occ[s];
+    const local = ROT_DIR[ROT_INV[edit.shown.ori[s]] * 6 + dir];
+    for (const [mesh, mat] of [[stickerMesh3d[id * 6 + local], paintMaterial.sticker(want)], [tileMesh[id * 6 + local], paintMaterial.tile(want)]]) {
+      if (!mesh) continue;
+      mesh.userData.ownMaterial ??= mesh.material;
+      mesh.material = mat;
+      edit.painted.push(mesh);
+    }
+  }
+}
+
+function renderEdit() {
+  $("edit-bar").hidden = !edit;
+  $("edit-start").parentElement!.hidden = !!edit;
+  if (!edit) return;
+  drawEdit();
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) b.setAttribute("aria-checked", String(b.dataset.paint === edit.paint));
+  const st = $("edit-status");
+  const { level, problems } = edit.fit;
+  const more = problems.length > 1 ? ` (and ${problems.length - 1} more)` : "";
+  if (level === "possible") {
+    st.className = "edit-status good";
+    st.textContent = "Valid: real cubelets, each facing a way the puzzle allows.";
+  } else if (level === "cubelets") {
+    st.className = "edit-status warn";
+    st.textContent = `Not possible on the puzzle: ${problems[0]}${more}`;
+  } else {
+    st.className = "edit-status bad";
+    st.textContent = `Not valid: ${problems[0]}${more}`;
+  }
+  ($("edit-done") as HTMLButtonElement).disabled = level !== "possible";
+}
+
+function endEdit(apply: boolean) {
+  if (!edit) return;
+  const e = edit;
+  for (const m of e.painted) m.material = m.userData.ownMaterial;
+  edit = null;
+  document.body.classList.remove("editing");
+  ($("stack-col") as HTMLElement & { inert: boolean }).inert = false;
+  if (apply && e.fit.level === "possible" && e.fit.state) {
+    const changed = !e.fit.state.equals(app.current);
+    if (changed) setBase(e.fit.state, "Edited colors");
+    setMessage(changed ? "The edited position is now the start" : "No colors changed", "ok");
+  } else syncMeshes(app.current);
+  renderEdit();
+  render();
 }
 
 // ------------------------------------------------------------------ probe for browser tests
@@ -2355,6 +2479,9 @@ function installProbe() {
       g.quaternion.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(a[0], a[1], a[2]), HALF));
     },
     resync: () => syncMeshes(app.current),
+    /** While editing colors: how the painted colors fit, and the color of a painted face. */
+    editing: () => edit && { level: edit.fit.level, problems: edit.fit.problems, paint: edit.paint },
+    painted: (slot: string, face: string) => edit?.colors[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)] ?? null,
     shadeRestError,
     /** What the effect switches currently control: glow layers, the key light's shadows, grid shading. */
     effects: () => ({ glow3d: camera.layers.isEnabled(GLOW3D_LAYER), glowFlat: netCams.every((c) => c.cam.layers.isEnabled(GLOWNET_LAYER)), shadows: !!keyLight?.castShadow, shading: aoOn["3d"] && aoOn.flat }),
@@ -2365,10 +2492,11 @@ function installProbe() {
     },
     sticker(slot: string, face: string) {
       const s = slotByName(slot);
-      const id = app.current.occ[s];
+      const drawn = edit?.shown ?? app.current; // while editing colors, the state drawn underneath
+      const id = drawn.occ[s];
       const dir = COMPASS_FACES.indexOf(face);
       if (id < 0 || dir < 0) return null;
-      const o = app.current.ori[s];
+      const o = drawn.ori[s];
       const d = [0, 1, 2, 3, 4, 5].find((k) => ROT_DIR[o * 6 + k] === dir)!;
       if (!CUBELETS[id].stickers[d]) return null;
       const p = meshes[id].localToWorld(new THREE.Vector3(DIRS[d][0] * 0.4945, DIRS[d][1] * 0.4945, DIRS[d][2] * 0.4945)).project(camera);
