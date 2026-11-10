@@ -52,11 +52,8 @@ export const KNOWN_ALGORITHMS: readonly KnownAlgorithm[] = [
     situation:
       "The white top is solved and one core edge at bottom front (DF) is flipped: its yellow faces you. Keeps the white top. Hold as the hold line says, and don't regrip by a center mid-way: the H turns move the side centers.",
     alg: "R F H2 F2 H F R'",
-    // The owner's saved position "Confusing edge".
-    start: () =>
-      decodeState(
-        "X1:mcBaAlDa5hOcwchcTc......qhMrohKcNaSeskthuk4pIrzhkrWaXa..........vjYaZaarLu..gefeends8cVrjcihHc............Cjpcbcnr1rFpPkQqRc2j9cUryaxr7r......Jrrx3a6eEhcw0clcGh",
-      ),
+    // The owner's saved position "Confusing edge", reached on the real cube.
+    start: () => decodeState("DSJA IIRV YOOL JKWR JHSF JKCF UPIK VOSU AIVY ZFOB UFZC"),
     result: "x-shape, white top kept",
   },
   {

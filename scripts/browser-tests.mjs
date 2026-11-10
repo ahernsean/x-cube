@@ -768,6 +768,7 @@ labTest("state codes: the current position's code is shown and copied, and a cod
   await page.locator("summary", { hasText: "State code" }).click(); // the codes sit in a closed disclosure
   const shown = await page.$eval("#code-out", (t) => t.value);
   check(shown === ruState, "the state code shown is the current position's");
+  check(/^[A-Z]{4}( [A-Z]{4}){10}$/.test(shown) && (await page.$eval("#code-note", (n) => n.textContent === "")), `the code is 44 letters in groups of 4, with no note (${shown})`);
   await page.click("#copy-code");
   // Copying is asynchronous (the clipboard may ask for permission); wait for its message.
   const copyMsg = await page
@@ -784,6 +785,25 @@ labTest("state codes: the current position's code is shown and copied, and a cod
   await page.click("#import");
   const refused = { state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent) };
   check(refused.state === ruState && /^Couldn't import: /.test(refused.msg), `a malformed code is refused and changes nothing ("${refused.msg}")`);
+  await startFresh();
+  await page.fill("#code-in", ruState.toLowerCase().replace(/ /g, "-"));
+  await page.click("#import");
+  check((await probe("state")) === ruState, "a code typed in lower case with dashes imports the same position");
+  const typo = (ruState[0] === "A" ? "B" : "A") + ruState.slice(1);
+  await page.fill("#code-in", typo);
+  await page.click("#import");
+  const typoMsg = await page.$eval("#message", (m) => m.textContent);
+  check((await probe("state")) === ruState && /typo/.test(typoMsg), `a code with a typo is refused and changes nothing ("${typoMsg}")`);
+  // A position turns can't reach (solved, with the right extension center turned a quarter
+  // by hand) has no letter code: it keeps its X1 code, with a note saying why.
+  const turnedCenter =
+    "X1:AaBaCaDaEaFaGaHaIa......JaKaLaMaNaOaPaQaRaSaTaUaVaWaXa............YaZaaabacadaeafagahaiajakala............manaoapaqarasatauavawaxayaza0a......1a2a3a4a5b6a7a8a9a";
+  await page.fill("#code-in", turnedCenter);
+  await page.click("#import");
+  const kept = { code: await page.$eval("#code-out", (t) => t.value), note: await page.$eval("#code-note", (n) => n.textContent + " (" + n.title + ")") };
+  check(kept.code === turnedCenter && /extension center is turned/.test(kept.note), `a position turns can't reach keeps its X1 code, with a note ("${kept.note}")`);
+  await page.fill("#code-in", ruState);
+  await page.click("#import");
   const sw = await sweep3d();
   check(sw.wrong.length === 0, `the imported position is drawn as the model has it${sw.wrong.length ? ": " + sw.wrong.slice(0, 3).join("; ") : ""}`);
 });

@@ -68,7 +68,8 @@ X-Cube Lab runs in three places. The command-line tools run wherever Node.js doe
 | **Your own copy** | In that browser only | Trying changes to the code |
 
 Outside the artifact the Saved states badge reads "This device only". To move a position
-between places, copy its state code (`X1:...`) and paste it where you need it.
+between places, copy its state code (44 letters, short enough to type by hand) and paste
+or type it where you need it.
 
 ### GitHub Pages
 
@@ -119,7 +120,7 @@ From the `x-cube` folder (examples are under [Commands](#commands)):
 
 ```
 node src/cli/xc.ts show "R U R' U'"
-node src/cli/xc.ts show "U" --state X1:...   # start from a state code copied from the Lab
+node src/cli/xc.ts show "U" --state "VLTM DWOP ..."   # start from a state code copied from the Lab
 ```
 
 ### The checks CI runs
@@ -170,7 +171,7 @@ node src/cli/xc.ts steps  "R U R' U'"             # status after every turn
 node src/cli/xc.ts effect "[R' F' R, b]"          # which cubelets moved
 node src/cli/xc.ts order  "R U"                   # repetitions until it looks the same
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
-node src/cli/xc.ts show "U" --state X1:...        # start from a saved state code
+node src/cli/xc.ts show "U" --state "VLTM DWOP ..."        # start from a saved state code
 node scripts/build-web.ts                         # build dist/index.html and dist/x-cube-lab.html
 node --test scripts/browser-tests.mjs             # browser tests of the built Lab (needs Playwright;
                                                   # BROWSER=webkit for WebKit)
