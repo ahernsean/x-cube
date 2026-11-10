@@ -23,6 +23,19 @@ esac
 echo '{"async": true, "asyncTimeout": 300000}'
 
 cd "${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
+
+# Mesa's EGL and llvmpipe, as CI installs them. Without them headless Chromium draws
+# WebGL with SwiftShader, which makes the browser tests about ten times slower.
+mesa="libegl1 libegl-mesa0 libgl1-mesa-dri"
+missing=""
+for p in $mesa; do dpkg -s "$p" >/dev/null 2>&1 || missing="$missing $p"; done
+if [ -n "$missing" ]; then
+  export DEBIAN_FRONTEND=noninteractive
+  # The image's package lists may be stale; refresh them only if the install needs it.
+  apt-get install -y --no-install-recommends $missing >/dev/null 2>&1 ||
+    { apt-get update >/dev/null && apt-get install -y --no-install-recommends $missing >/dev/null; }
+fi
+
 npm ci --no-audit --no-fund --loglevel=error
 
 # Chromium for the browser tests is already in the image. WebKit is not; install it

@@ -296,9 +296,15 @@ that covers only Chromium has not tested the main engine; CI's WebKit check cove
 every push. Run WebKit locally only to reproduce a WebKit failure or to check a change
 that touches something engines differ on (layout, gestures, WebGL): install it with
 `npx playwright install --with-deps webkit`, then point your focused check at `webkit`.
-Chromium in a container without a GPU falls back to SwiftShader, which made each test here
-about ten times slower than Mesa's llvmpipe, which CI uses; install Mesa's EGL as CI does
-(`apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri`).
+
+In a container without a GPU, Mesa's EGL and llvmpipe must be installed before you run
+the browser tests, as CI installs them: without them Chromium quietly draws with
+SwiftShader, and every test runs about ten times slower. In Claude Code cloud sessions
+`.claude/hooks/session-start.sh` installs them at the start of each session. Any other
+agent installs them when its container is created:
+`apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri`.
+Run Chromium tests with `EXPECT_RENDERER=llvmpipe`, so the startup test fails if Chromium
+fell back anyway.
 
 ### A screenshot is not evidence about width
 
