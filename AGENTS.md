@@ -116,6 +116,7 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
 - `src/core/notation.ts`: parser and formatter.
 - `src/core/analyze.ts`: shape and solved tests, effect (cycles and twists), text face views,
   flat-view rim data (`faceRimView`).
+- `src/core/edit.ts`: fitting edited sticker colors to real cubelets (the Lab's color editor).
 - `src/core/search.ts`, `src/core/goals.ts`: iterative-deepening search with goal masks
   based on appearance (look-alike twins compare equal).
 - `src/cli/xc.ts`: command-line driver (see `README.md`).
@@ -161,6 +162,13 @@ situation it solves, how to recognize it, and the test that checks it. Add new o
   dents, patches of more and less shine), turned and offset differently on each sticker. Only the
   coat carries the crinkles, so they show in reflections while the color stays smooth.
   The Gloss switch turns it off.
+- **Color editing:** Edit colors under the 3D view. Pick a color, then tap stickers to paint
+  them; drags tumble the view, and the other controls are set aside. The shape stays as it
+  is. Each paint is refit to real cubelets (`fitColors` in `src/core/edit.ts`), and a line
+  says "Valid" (real cubelets, each facing a way the puzzle allows), "Not possible on the
+  puzzle" (real cubelets, but one breaks the outward-color rule) or "Not valid" (with the
+  spot and the reason). Done, available only when valid, makes the fitted position the start
+  ("Edited colors"). Whether a valid position can be reached by turning is not checked yet.
 - **Saved states:** stored in the artifact's shared database, collection `states`, with
   fields `name`, `code` (a state code), `note`, `savedAt`, `source` (`page` or `claude`).
 

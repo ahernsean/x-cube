@@ -135,7 +135,7 @@ node scripts/browser-tests.mjs webkit              # WebKit is Safari's engine
 ```
 
 The browser tests check that the Lab loads; that turns, undo, playback, Shuffle, saving,
-state codes and the effect switches work; that swipes, taps and long presses do what they
+state codes, color editing and the effect switches work; that swipes, taps and long presses do what they
 should; and that the 3D and flat views draw every sticker where the puzzle model puts it,
 in its color.
 
