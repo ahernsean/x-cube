@@ -135,7 +135,7 @@ test("state: appearanceKey makes look-alike twins compare equal, other cubelets 
   assert.notEqual(swapped("outerEdge", false).appearanceKey(), solved.appearanceKey());
 });
 
-test("X1 state codes: malformed codes are refused with a reason", () => {
+test("state codes: malformed X1 codes are refused with a reason", () => {
   const good = encodeX1(State.solved());
   assert.throws(() => decodeState("Y1:" + good.slice(3)), /not an X-Cube state code/);
   assert.throws(() => decodeState(good.slice(0, -2)), /wrong length/);
