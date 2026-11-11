@@ -3104,7 +3104,10 @@ function makeArrows(paths: StickerPath[]) {
   const group = new THREE.Group();
   group.userData.count = paths.length;
   group.userData.runners = [];
+  group.userData.drawn = 0; // meshes making up the paths themselves
   const flat = (color: number, opacity: number) => new THREE.MeshBasicMaterial({ color, depthTest: false, depthWrite: false, transparent: true, opacity, side: THREE.DoubleSide });
+  // Marked transparent, though opaque, so that it is drawn in order with the paths and after them.
+  const solid = (color: number) => new THREE.MeshBasicMaterial({ color, depthTest: false, depthWrite: false, transparent: true });
   const dir = (d: number) => new THREE.Vector3(...DIRS[d]);
   for (const p of paths) {
     const n0 = dir(p.fromDir), n1 = dir(p.toDir);
@@ -3126,18 +3129,35 @@ function makeArrows(paths: StickerPath[]) {
       [new THREE.ConeGeometry(radius * 2.6, 0.44, 14), paint, 5],
     ];
     if (p.lands) parts.push([new THREE.RingGeometry(0.3, 0.42, 24), ink, 4], [new THREE.RingGeometry(0.33, 0.39, 24), paint, 5]);
+    parts.forEach(([geo, mat, order], k) => {
+      const m = new THREE.Mesh(geo, mat);
+      if (k === 2 || k === 3) m.position.copy(a);
+      if (k === 4 || k === 5) {
+        const base = curve.getPoint(headAt);
+        m.position.copy(base.clone().add(b).multiplyScalar(0.5));
+        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(base).normalize());
+      }
+      if (k >= 6) {
+        m.position.copy(b);
+        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n1);
+      }
+      m.renderOrder = order;
+      m.layers.set(HALO_LAYER);
+      group.add(m);
+      group.userData.drawn++;
+    });
     // A small copy of the cubelet flies along the path, over and over, turning as the
     // cubelet will turn: it leaves showing its stickers as they are and arrives showing
     // them as they will be. Each face is drawn only from its front, so the copy looks
     // solid although, like the path, it is drawn over everything.
     if (!reduceMotion) {
       const copy = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.46, 0.46), new THREE.MeshBasicMaterial({ color: 0x101214, depthTest: false, depthWrite: false }));
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.46, 0.46), solid(0x3a4042));
       body.renderOrder = 6;
       copy.add(body);
       CUBELETS[p.cubelet].stickers.forEach((color, d) => {
         if (!color) return;
-        const face = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.36), new THREE.MeshBasicMaterial({ color: STICKER[color], depthTest: false, depthWrite: false }));
+        const face = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.36), solid(STICKER[color]));
         face.position.copy(dir(d).multiplyScalar(0.232));
         face.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir(d));
         face.renderOrder = 7;
@@ -3586,6 +3606,8 @@ function installProbe() {
         paths: guide.arrows.map((p) => `${p.color} ${slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " home" : ""}`),
         mode: guideMode,
         runners: guideArrows?.visible ? guideArrows.userData.runners.length : 0,
+        /** How many meshes the paths are drawn with (a shaft, a start and a head, each cased; and a ring for a cubelet reaching home). */
+        pathMeshes: guideArrows?.visible ? guideArrows.userData.drawn : 0,
       };
     },
     view: () => pivot.quaternion.toArray(),
