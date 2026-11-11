@@ -487,13 +487,18 @@ function syncMeshes(st: State) {
     placeMesh(meshes[id], s, st.ori[s]);
     const o = st.ori[s];
     const exposed = [0, 1, 2, 3, 4, 5].map((d) => isExposed(st, s, ROT_DIR[o * 6 + d]));
-    for (const gl of glows[id] ?? []) {
-      gl.mesh.visible = exposed[gl.a] && exposed[gl.b];
-      gl.mesh.material = (gl.paint ?? gl.mats)[(exposed[gl.lo] ? 1 : 0) | (exposed[gl.hi] ? 2 : 0)];
-      if (gl.corner.material !== (gl.paint ?? gl.mats)[0]) gl.corner.material = (gl.paint ?? gl.mats)[0];
-      gl.corner.visible = gl.mesh.visible && exposed[gl.hi];
-    }
+    showGlow(id, exposed);
     shadeCubelet(st, s, o, id);
+  }
+}
+
+/** Shows a cubelet's glow bands for the faces of it that are exposed (index = face direction in the cubelet's frame). */
+function showGlow(id: number, exposed: boolean[]) {
+  for (const gl of glows[id] ?? []) {
+    gl.mesh.visible = exposed[gl.a] && exposed[gl.b];
+    gl.mesh.material = (gl.paint ?? gl.mats)[(exposed[gl.lo] ? 1 : 0) | (exposed[gl.hi] ? 2 : 0)];
+    if (gl.corner.material !== (gl.paint ?? gl.mats)[0]) gl.corner.material = (gl.paint ?? gl.mats)[0];
+    gl.corner.visible = gl.mesh.visible && exposed[gl.hi];
   }
 }
 
@@ -931,6 +936,67 @@ function shadeDuringTurn(pose: TurnPose) {
   }
 }
 
+// A face counts as covered during a turn while a cubelet's center is within this distance
+// of the spot in front of it, so the faces between a turning layer and its neighbors
+// are exposed from just after the turn starts until just before it ends.
+const GLOW_COVER = 0.1;
+
+/**
+ * Edge glow while a layer turns: each cubelet's bands, from the faces exposed where the
+ * cubelets are right now. At angle 0 this matches the glow at rest.
+ */
+function glowDuringTurn(pose: TurnPose) {
+  const d = MOVE_DEFS[pose.def];
+  const axis = d.axis;
+  const c = Math.cos(pose.angle), sn = Math.sin(pose.angle);
+  const st = pose.before;
+  const turning = new Uint8Array(NUM_SLOTS);
+  for (const sl of d.slots) turning[sl] = 1;
+  // Is a cubelet of the group (turning or not) at p, given in that group's own frame?
+  const groupHas = (p: number[], group: number) => {
+    const x = Math.round(p[0]), y = Math.round(p[1]), z = Math.round(p[2]);
+    if (Math.hypot(p[0] - x, p[1] - y, p[2] - z) > GLOW_COVER) return false;
+    if (x === 0 && y === 0 && z === 0) return true; // the solid center
+    const slot = slotAtXYZ(x, y, z);
+    return slot >= 0 && st.occ[slot] >= 0 && turning[slot] === group;
+  };
+  for (let slot = 0; slot < NUM_SLOTS; slot++) {
+    const id = st.occ[slot];
+    if (id < 0) continue;
+    const p = SLOT_POS[slot];
+    const mine = turning[slot];
+    const exposed: boolean[] = [];
+    for (let fd = 0; fd < 6; fd++) {
+      const n = DIRS[ROT_DIR[st.ori[slot] * 6 + fd]];
+      // The spot in front of the face, in this cubelet's group's frame, then in the other's.
+      const own = [p[0] + n[0], p[1] + n[1], p[2] + n[2]];
+      const other = mine ? rotAxis(axis, c, sn, own) : rotAxis(axis, c, -sn, own);
+      exposed.push(!groupHas(own, mine) && !groupHas(other, 1 - mine));
+    }
+    showGlow(id, exposed);
+  }
+}
+
+/** Glow and shading for a layer part-way through a turn. */
+function drawDuringTurn(pose: TurnPose) {
+  glowDuringTurn(pose);
+  shadeDuringTurn(pose);
+}
+
+/** How many glow bands differ from the rest glow at the start of a turn, over every turnable layer (should be 0). */
+function glowRestError() {
+  const bands = () => glows.flatMap((list) => (list ?? []).map((g) => `${g.mesh.visible}${g.corner.visible}${g.mesh.material.uuid}`));
+  const rest = bands();
+  let wrong = 0;
+  for (let def = 0; def < MOVE_DEFS.length; def++) {
+    if (MOVE_DEFS[def].kind === "rotation") continue;
+    glowDuringTurn({ def, angle: 0, before: app.current });
+    wrong += bands().filter((b, i) => b !== rest[i]).length;
+    syncMeshes(app.current);
+  }
+  return wrong;
+}
+
 /** Largest change live shading makes to a puzzle at rest, over every turnable layer (should be ~0). */
 function shadeRestError() {
   let worst = 0;
@@ -1358,7 +1424,7 @@ function updateLiveTurn(l: Live, x: number, y: number) {
   const along = (x - l.x0) * l.dirX + (y - l.y0) * l.dirY; // pixels along the swipe direction
   l.theta = (l.sign * (along / l.pxPerUnit)) / l.radius;
   l.group.quaternion.setFromAxisAngle(l.axisVec, l.theta);
-  shadeDuringTurn({ def: l.def, angle: l.theta, before: app.current });
+  drawDuringTurn({ def: l.def, angle: l.theta, before: app.current });
 }
 
 /** Finger lifted: settle to the nearest quarter turn (27 degrees is enough; a quick flick counts). */
@@ -1378,7 +1444,7 @@ function tickSettle() {
   const t = ms ? Math.min(1, (performance.now() - start) / ms) : 1;
   const e = 1 - Math.pow(1 - t, 3);
   l.group.quaternion.setFromAxisAngle(l.axisVec, from + (to - from) * e);
-  shadeDuringTurn({ def: l.def, angle: from + (to - from) * e, before: app.current });
+  drawDuringTurn({ def: l.def, angle: from + (to - from) * e, before: app.current });
   if (t < 1) return;
   settle = null;
   finishLiveTurn(l, Math.round(to / (Math.PI / 2)));
@@ -1797,7 +1863,7 @@ function tickAnimation() {
   const t = anim.duration ? Math.min(1, (performance.now() - anim.start) / anim.duration) : 1;
   const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   anim.group.quaternion.setFromAxisAngle(anim.axis, anim.angle * e);
-  shadeDuringTurn({ def: anim.turn.def, angle: anim.angle * e, before: anim.before });
+  drawDuringTurn({ def: anim.turn.def, angle: anim.angle * e, before: anim.before });
   if (t >= 1) {
     finishAnim();
     if (playing && !queue.length) {
@@ -3195,6 +3261,19 @@ function installProbe() {
       });
     },
     shadeRestError,
+    glowRestError,
+    /**
+     * Whether the glow band lying in the plane of one face of the cubelet in slot, showing
+     * the sticker of another, is drawn now (also part-way through a turn), and whether its
+     * ends are open; faces as they are in the position shown at rest.
+     */
+    glowBand(slot: string, plane: string, sticker: string) {
+      const s = slotByName(slot);
+      const st = app.current;
+      const local = (f: string) => ROT_DIR[ROT_INV[st.ori[s]] * 6 + COMPASS_FACES.indexOf(f)];
+      const g = glows[st.occ[s]].find((g) => g.a === local(plane) && g.b === local(sticker));
+      return g ? { shown: g.mesh.visible, open: g.mats.indexOf(g.mesh.material) } : null;
+    },
     /**
      * Flat-view shading over every flat tile: how many tiles are shaded and how many have
      * bands on two opposite edges (a recess between two walls); the largest gap between
