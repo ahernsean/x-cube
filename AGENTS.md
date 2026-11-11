@@ -87,6 +87,9 @@ corner 3-cycle is `R' F' R b R' F R b'` (both verified by tests).
   (away from the core). Inner turns carry it rigidly with the core cubelet it touches;
   outer turns spin it about its outward axis.
 - **Fused centers** never separate.
+- **No sticker is ever covered.** In every position, in or out of shape, the spot a
+  sticker faces is empty or outside the puzzle. (The spot a sticker *will* face after some
+  turns may be filled now.)
 - **The shape depends only on the core.** Each core cubelet always has the same number of
   outer cubelets against it (2 per corner, 1 per single edge, 2 per double edge). The X
   shape returns exactly when the core corners have white/yellow facing up or down, the

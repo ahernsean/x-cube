@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NUM_ROT, ROT_DIR, ROT_MUL } from "../src/core/geometry.ts";
-import { effect, isHomeX, isSolved, isXShape, outerAvailability } from "../src/core/analyze.ts";
+import { effect, isExposed, isHomeX, isSolved, isXShape, outerAvailability } from "../src/core/analyze.ts";
 import { formatAlg, parseAlg } from "../src/core/notation.ts";
 import {
   CUBELETS,
@@ -118,6 +118,16 @@ test("owner-confirmed: U and R2 keep the X shape", () => {
   assert.ok(isHomeX(run("R2").st));
   assert.ok(isHomeX(run("U R2 D' F2 H").st));
   assert.ok(!isHomeX(run("R").st));
+});
+
+test("stickers: no sticker is ever covered by another cubelet, in or out of shape", () => {
+  const rand = rng(23);
+  const st = State.solved();
+  for (let i = 0; i < 2000; i++) {
+    randomLegalScramble(st, 1, rand);
+    for (let s = 0; s < st.occ.length; s++)
+      for (let d = 0; d < 6; d++) if (st.occ[s] >= 0 && st.colorAt(s, d)) assert.ok(isExposed(st, s, d), `after ${i + 1} turns the ${st.colorAt(s, d)} sticker in slot ${s} facing ${d} is covered`);
+  }
 });
 
 test("fused centers: an extension center always stays next to its core face center", () => {
