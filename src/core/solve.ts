@@ -59,7 +59,7 @@ export interface SolveStep {
    * optional regrip, the setup, the cycle, and the setup undone; any other step is one part.
    */
   parts: { name: "regrip" | "setup" | "cycle" | "undo" | "turns"; turns: number }[];
-  /** In a cycle step: the slots, before the step, of the moved cubelets that end in their own spots. The others are only passing through. */
+  /** In a cycle step: the slots, before the step, of the moved cubelets that end up solved. The others are only passing through. */
   lands: number[];
   /**
    * Quarter turns of the whole puzzle (y) the step begins with, 0 to 3. `moved` gives
@@ -484,7 +484,7 @@ function cycleStep(st: State, group: Group): SolveStep | null {
   const alg = `${formatAlg(REGRIP[best.regrip])} ${best.setup.length ? `[${formatAlg(best.setup)}: ${cycle}]` : cycle}`.trim();
   return {
     stage: group.stage,
-    goal: `${group.name ? `For ${group.name}: cycle` : "Cycle"} three ${OUTER_NAME[kind][0]}. ${landing === 3 ? "All three reach their own spots" : landing === 2 ? "Two reach their own spots" : "One reaches its own spot"}`,
+    goal: `${group.name ? `For ${group.name}: cycle` : "Cycle"} three ${OUTER_NAME[kind][0]}. ${landing === 3 ? "All three end up solved" : landing === 2 ? "Two end up solved" : "One ends up solved"}`,
     alg,
     turns: parseAlg(alg),
     parts: ([["regrip", REGRIP[best.regrip].length], ["setup", best.setup.length], ["cycle", 8], ["undo", best.setup.length]] as const).filter(([, n]) => n).map(([name, turns]) => ({ name, turns })),

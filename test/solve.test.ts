@@ -76,7 +76,7 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
       assert.equal(setup?.turns, undo?.turns);
       if (setup) assert.deepEqual(step.turns.slice(-setup.turns), parseAlg(`(${step.alg.slice(step.alg.indexOf("[") + 1, step.alg.indexOf(":"))})'`), `${step.alg} ends by undoing its setup`);
       assert.ok(step.lands.length >= 1, `${step.alg} brings a cubelet home`);
-      assert.match(step.goal, [/One reaches its own spot$/, /Two reach their own spots$/, /All three reach their own spots$/][step.lands.length - 1]);
+      assert.match(step.goal, [/One ends up solved$/, /Two end up solved$/, /All three end up solved$/][step.lands.length - 1]);
       for (const [from, to] of step.moved) assert.equal(atHome(seen, to), step.lands.includes(from), `${step.alg} says which cubelets end at home`);
     }
   }
@@ -163,7 +163,7 @@ test("solve: the stages come as needed", () => {
   const cycle = nextStep(after("(F' L' F) r (F' L F) r'"))!;
   assert.equal(cycle.stage, "corners");
   assert.equal(cycle.alg, "r (F' L' F) r' (F' L F)", "one 3-cycle is undone by its inverse, with no setup, written as a commutator");
-  assert.match(cycle.goal, /All three reach their own spots/);
+  assert.match(cycle.goal, /All three end up solved/);
   assert.equal(cycle.lands.length, 3);
   // The hold step only brings white up; whichever side is in front then is the grip, and
   // the rest is solved from there. Later steps turn the whole puzzle only about its
