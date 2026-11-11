@@ -1023,13 +1023,13 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
     await page.click("#next-step");
     await settle();
   };
-  // One corner 3-cycle away from solved: the step is that cycle undone.
-  await play("R' F' R b R' F R b'");
+  // One corner 3-cycle away from solved: the step is that cycle undone, written as a commutator.
+  await play("(F' L' F) r (F' L F) r'");
   await next();
   const g = await probe("guide");
   const loaded = { counter: await counter(), line: await line(), wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(
-    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners: all three go home\. Turns: b R' F' R b' R' F R Step 1 of 1 to solved\.$/.test(loaded.line) && loaded.wide <= 0,
+    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners: all three go home\. Turns: r \(F' L' F\) r' \(F' L F\) Step 1 of 1 to solved\.$/.test(loaded.line) && loaded.wide <= 0,
     `Next step loads the step's turns unplayed and says what it applies to ("${loaded.line}", ${loaded.counter})`,
   );
   // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
@@ -1052,33 +1052,51 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
     grayDrawn > 0 && played.wrong === 0 && played.g?.gray === 0 && played.g.arrows === 0 && /Solved/.test(played.status) && /^Corners \(done\)/.test(played.line),
     `playing the step solves the puzzle and returns every sticker's color (${grayDrawn} gray stickers seen before, ${played.wrong} wrong after; ${played.status}; "${played.line}")`,
   );
+  // The step is boxed in the turn list behind a tag. Step start, and the tag, go back to
+  // where the step begins, with its grays and arrows.
+  const box = await page.$$eval("#history .step-box", (els) => els.map((e) => `${e.querySelector(".step-tag").textContent}:${e.querySelectorAll(".tok").length}:${e.classList.contains("on")}`).join());
+  await page.click("#guide-start");
+  await settle();
+  const backAtStart = { counter: await counter(), g: await probe("guide"), off: await page.$eval("#guide-start", (b) => b.disabled) };
+  await page.click("#last");
+  await settle();
+  await page.click("#history .step-tag");
+  await settle();
+  const byTag = { counter: await counter(), arrows: (await probe("guide")).arrows };
+  check(
+    box === "1 Corners:8:true" && backAtStart.counter === "8/16" && backAtStart.g.arrows === 3 && backAtStart.g.gray === 93 && backAtStart.off && byTag.counter === "8/16" && byTag.arrows === 3,
+    `the step is boxed in the turn list (${box}); Step start and its tag go back to its start (${backAtStart.counter}, ${byTag.counter})`,
+  );
+  await page.click("#last");
+  await settle();
   await next();
   check((await probe("guide")) === null && /^Solved/.test(await line()), `from solved there is no step ("${await line()}")`);
-  // A puzzle held another way gets a hold step, which grays nothing: the center colors are what it goes by.
+  // A puzzle tipped over gets a Regrip step, which grays nothing: the center colors are what it goes by.
   await startFresh();
-  await play("y");
+  await play("x");
   await next();
   const holdStep = { g: await probe("guide"), line: await line() };
   check(
-    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Regrip: Turn the whole puzzle so the white center is up and the green center is in front \(now white is up and (red|orange) is in front\)\. Nothing else moves\. Turns: y' Step 1 of 1 to solved\.$/.test(holdStep.line),
-    `a hold step says to turn the whole puzzle, and keeps every color ("${holdStep.line}")`,
+    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Regrip: Turn the whole puzzle so the white center is up \(now \w+ is up\)\. Nothing else moves\. Turns: x' Step 1 of 1 to solved\.$/.test(holdStep.line),
+    `a Regrip step says to turn the whole puzzle, and keeps every color ("${holdStep.line}")`,
   );
-  // Out of shape, the step is for the core cubelets that are wrong; it may leave the rest
-  // anywhere, so they are the darker gray, and nothing has an arrow.
+  // Out of shape, the step applies to the core cubelets that are wrong; it may leave the
+  // rest anywhere, so they are the darker gray, and nothing has an arrow.
   await startFresh();
   await play("R U");
   await next();
   const shape = await probe("guide");
   check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.arrows === 0 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere (${JSON.stringify(shape)})`);
-  // Playing the step and asking again carries the count on: step 2 of the same total.
+  // Playing the step and asking again carries the count on: step 2 of the same total, in its own box.
   const total = shape.after + 1;
   await page.click("#last");
   await settle();
   await next();
   const second = await probe("guide");
-  check(second?.index === 2 && second.index + second.after === total && new RegExp(`Step 2 of ${total} to solved\\.$`).test(await line()), `the next step after a played one is step 2 of the same ${total} ("${await line()}")`);
-  // Stop drops the step, its grays and its line, and leaves the turn list alone; so does
-  // closing the section. Next step starts again from the position shown, counting from 1.
+  const boxes = await page.$$eval("#history .step-box", (els) => els.map((e) => e.classList.contains("on")).join());
+  check(second?.index === 2 && second.index + second.after === total && new RegExp(`Step 2 of ${total} to solved\\.$`).test(await line()) && boxes === "false,true", `the next step after a played one is step 2 of the same ${total}, boxed after the first ("${await line()}", boxes ${boxes})`);
+  // Stop drops the step's grays and line, and leaves the turn list and its boxes alone; so
+  // does closing the section. Next step starts again from the position shown, counting on.
   const before = await turnList();
   await page.click("#guide-stop");
   const stopped = { g: await probe("guide"), line: await line(), list: await turnList(), off: await page.$eval("#guide-stop", (b) => b.disabled) };
@@ -1087,18 +1105,18 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await page.evaluate(() => (document.getElementById("guide").open = false));
   await settle();
   const closed = await probe("guide");
-  check(stopped.g === null && stopped.line === "" && stopped.list === before && stopped.off && again?.index === 1 && again.alg === second.alg && closed === null, `Stop and closing the section end the guide without touching the turn list; Next step starts it again (${JSON.stringify({ stopped: stopped.g, again: again?.index, closed })})`);
+  check(stopped.g === null && stopped.line === "" && stopped.list === before && stopped.off && again?.index === 2 && again.alg === second.alg && closed === null, `Stop and closing the section end the guide without touching the turn list; Next step starts it again (${JSON.stringify({ stopped: stopped.g, again: again?.index, closed })})`);
+  // Editing a turn before a step changes the position it starts from, so the step no
+  // longer applies, though its own turns are still in the list.
   await startFresh();
   await play("R U");
   await next();
-  // Editing a turn before the step changes the position it starts from, so the step no
-  // longer applies, though its own turns are still in the list.
   const listed = await turnList();
   await page.click("#alg-edit");
   await page.fill("#alg", listed.replace(/^R /, "R2 "));
   await page.click("#load");
   await settle();
-  check(listed.startsWith("R U ") && (await probe("guide")) === null && (await line()) === "", "editing a turn before the step drops the step");
+  check(listed.startsWith("R U ") && (await probe("guide")) === null && (await line()) === "" && (await page.$$("#history .step-box")).length === 0, "editing a turn before the step drops the step and its box");
   await page.click("#last");
   await settle();
   await next();

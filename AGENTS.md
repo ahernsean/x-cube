@@ -123,29 +123,42 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
 
 `src/core/solve.ts` solves any position turns can reach as a list of steps a person could
 follow (`nextStep`, `solveSteps`; `xc solve` prints them). It is not the shortest solution
-(about 180 turns on average, 240 at most in 300 sampled positions). Each step has a stage,
+(about 175 turns on average, 242 at most in 200 sampled positions). Each step has a stage,
 a goal in words, its turns, the cubelets it applies to (`moved`: slot before, slot after) and
 the cubelets it may leave anywhere (`free`); every other cubelet looks the same after the
 step. Stages, in order:
 
-1. **hold**: turn the whole puzzle so white is up and green in front. No later step turns
-   the whole puzzle or leaves a center moved (the edge 3-cycle's two S turns undo each
-   other), so the centers stay put.
-2. **shape**: back to the X shape with face turns (at most 12; a table-driven search finds
-   the fewest). Free: every outer cubelet.
+1. **hold**: turn the whole puzzle so white is up.
+2. **shape**: back to the X shape with face turns. Free: every outer cubelet.
 3. **core**: white core cubelets up, yellow down, with the shape-keeping turns. Free: every
    outer cubelet.
 4. **parity**: when the outer corners or the outer edges need an odd number of swaps, `r`
    (both odd), `U` (edges only: it moves the four edges in one ring and the eight corners
    in two) or `U r` (corners only) makes both even.
-5. **corners**, 6. **edges**: three at a time. Each step is one fixed 3-cycle (`CYCLES`:
-   Baum's two, or its inverse) inside setup turns that keep the shape, written
-   `[setup: cycle]`. An outer cubelet is turned one way in each spot, so placing it is all
-   there is to do. Setups are at most 7 turns for edges and 5 for corners.
+5. **corners**, 6. **edges**: three at a time. Each step is one fixed 3-cycle (`CYCLES`,
+   or its inverse) inside setup turns that keep the shape, written `[setup: cycle]`. An
+   outer cubelet is turned one way in each spot, so placing it is all there is to do.
 
-The 3-cycles are the method's whole repertoire for the outer cubelets, and
-`test/solve.test.ts` shows they are enough: it solves scrambled positions and positions
-from the color editor, and checks each step changes only what it says.
+**Ease, the owner's priorities for turns** (`EASE` in `solve.ts`), most important first:
+avoid the back (`B`, `b`); then the bottom (`D`); then `H` and `S`; `M` is fine (a person
+does it as `L' R x'`); and regular, repeating patterns are easier to memorize. So:
+
+- Turns are chosen by ease, not by number: setups and the core stage take the easiest
+  way, and the shape stage weighs every way with the fewest turns, and with one more.
+  In 200 sampled solves `B` was 0.1% of turns and `D` 1.1%, with no `b`, `S` or `H`.
+- **Regrips.** A step may begin with a turn of the whole puzzle about its vertical axis
+  (`y`, `y'`, `y2`) when that makes the rest easier; a regrip is never in the middle of a
+  step. So only white stays put: the **grip** is how many quarter turns the puzzle is from
+  green in front, and each outer cubelet's home turns with it. A step's `regrip` says how
+  it begins, and its `moved` places are as the puzzle is held before it.
+- **The cycles are commutators, written grouped:** corners `(F' L' F) r (F' L F) r'`,
+  edges `(F' M' F) r (F' M F) r'` (inverses: `r (F' L' F) r' (F' L F)` and likewise).
+  They are Baum's two turned a quarter around the puzzle, which takes out `b` and `S`.
+  The edge cycle's two `M` turns undo each other, but between them the side centers are moved.
+- Setups reach every one of the 3,360 ordered triples of spots for each kind, which with
+  the parity fixes makes the outer stages complete; `test/solve.test.ts` solves scrambled
+  positions and positions from the color editor, and checks each step changes only what
+  it says.
 
 ## Code map
 
@@ -158,7 +171,7 @@ from the color editor, and checks each step changes only what it says.
 - `src/core/edit.ts`: fitting edited sticker colors to real cubelets (the Lab's color editor).
 - `src/core/search.ts`, `src/core/goals.ts`: iterative-deepening search with goal masks
   based on appearance (look-alike twins compare equal).
-- `src/core/solve.ts`: the step-by-step solver (see "Solving method" below).
+- `src/core/solve.ts`: the step-by-step solver (see "Solving method" above).
 - `src/cli/xc.ts`: command-line driver (see `README.md`).
 - `src/web/`: **X-Cube Lab**, the browser viewer, built by `scripts/build-web.ts` into
   `dist/x-cube-lab.html` (published as a claude.ai artifact, which supplies the document
@@ -267,8 +280,10 @@ from the color editor, and checks each step changes only what it says.
   of its color's lightness). Before the step's first turn, purple arrows in the 3D view
   show where each cubelet it moves will go; parity steps, which turn whole layers, have
   none. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
-  guide calls it **Regrip**, and it names the centers as they are ("now white is up and
-  orange is in front"), so it can't be read as contradicting the hold line.
+  guide calls it **Regrip**, and it names the center that is up now ("now blue is up").
+  Each step the guide has loaded stays in the turn list in a rounded box behind a tag
+  ("3 Corners"), the shown step's box outlined; tapping a tag, or **Step start**, shows
+  that step again at the position it begins from.
   **Stop**, or closing the disclosure, drops the step, its grays and its line and leaves
   the turn list alone; Next step starts again from the position shown. Playing the step returns the colors and the line reads "(done)". Any change that
   takes the step's turns out of the turn list (a turn by hand, Clear, Edit) drops the step,

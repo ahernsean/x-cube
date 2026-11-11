@@ -154,8 +154,12 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .tp { min-width: 44px; font-size: 15px; }
 .tp sub { font-size: 9px; margin-left: 1px; }
 .tp.stop { background: var(--ink); color: var(--panel); border-color: var(--ink); }
-.history { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
+.history { position: relative; display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
 .tok { font: 13px var(--f-mono); border: 0; background: var(--off-bg); color: var(--muted); border-radius: 5px; padding: 3px 6px; cursor: pointer; }
+/* A step the guide loaded: its turns in a box, behind a tag that goes to the step's start. */
+.step-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
+.step-box.on { border-color: var(--accent); }
+.step-tag { font: 700 11px var(--f-body); border: 0; background: none; color: var(--accent); padding: 3px 4px; cursor: pointer; white-space: nowrap; }
 .tok.done { background: var(--good-bg); color: var(--good); }
 .tok.cur { box-shadow: inset 0 0 0 2px var(--good); } /* inside the chip: .history clips anything drawn outside */
 .transport { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -295,8 +299,8 @@ details[open] summary { margin-bottom: 8px; }
       </div>
       <details class="known" id="guide">
         <summary>Solve step by step</summary>
-        <p class="hint" style="margin:6px 0 0">Next step loads the turns for one step toward solved, ready to play. Until it is played, the cubelets it applies to keep their colors, the ones it leaves alone are gray, and the ones it may leave anywhere are darker. Arrows show where cubelets go. Stop, or closing this section, ends it; Next step starts again from the position shown.</p>
-        <div class="row" style="margin-top:8px"><button class="btn primary" id="next-step">Next step</button><button class="btn" id="guide-stop" title="Drop the step and its grays; the turn list stays as it is">Stop</button></div>
+        <p class="hint" style="margin:6px 0 0">Next step loads the turns for one step toward solved, ready to play. Until it is played, the cubelets it applies to keep their colors, the ones it leaves alone are gray, and the ones it may leave anywhere are darker. Arrows show where cubelets go. Each step is boxed in the turn list; its tag, or Step start, goes back to where it begins. Stop, or closing this section, ends it; Next step starts again from the position shown.</p>
+        <div class="row" style="margin-top:8px"><button class="btn primary" id="next-step">Next step</button><button class="btn" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn" id="guide-stop" title="Drop the step and its grays; the turn list stays as it is">Stop</button></div>
         <p class="guide-line" id="guide-line" aria-live="polite"></p>
       </details>
       <details class="known">

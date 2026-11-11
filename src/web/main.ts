@@ -2330,10 +2330,12 @@ function render() {
   }
 
   // history strip
-  const hist = app.history
-    .map((t, i) => `<button class="tok ${i < app.cursor ? "done" : ""} ${i === app.cursor - 1 ? "cur" : ""}" data-jump="${i + 1}">${turnName(t)}</button>`)
-    .join("");
+  const hist = turnListHtml();
   $("history").innerHTML = hist || `<span class="hint">Turns you make or load appear here. Tap one to jump to it.</span>`;
+  // Keep the shown step's box, or else the current turn, in sight within the list.
+  const list = $("history");
+  const shown = list.querySelector<HTMLElement>(".step-box.on") ?? list.querySelector<HTMLElement>(".tok.cur");
+  if (shown && (shown.offsetTop < list.scrollTop || shown.offsetTop + shown.offsetHeight > list.scrollTop + list.clientHeight)) list.scrollTop = shown.offsetTop;
   $("counter").textContent = `${app.cursor} / ${app.history.length}`;
   $("load").textContent = editingTurns ? "Update" : "Load";
   $("alg-edit").textContent = editingTurns ? "Cancel" : "Edit";
@@ -2557,6 +2559,7 @@ function bindUI() {
   bindAlgorithms();
   $("next-step").addEventListener("click", () => nextStep());
   $("guide-stop").addEventListener("click", () => stopGuide());
+  $("guide-start").addEventListener("click", () => goToStep(guide ?? undefined));
   $("guide").addEventListener("toggle", () => {
     if (!($("guide") as HTMLDetailsElement).open) stopGuide();
   });
@@ -2592,6 +2595,7 @@ function bindUI() {
       app.modifier = Number(ds.mod) as 1 | 2 | 3;
       render();
     } else if (ds.jump) jump(Number(ds.jump));
+    else if (ds.step) goToStep(trail.find((g) => g.start === Number(ds.step)));
     else if (ds.load) {
       const s = saved.find((x) => x.id === ds.load);
       if (s) {
@@ -2795,7 +2799,8 @@ function drawEdit() {
 // puts its turns in the turn list, unplayed, and says what the step is for. Until the
 // step has been played through, the cubelets it applies to keep their colors, the cubelets it
 // leaves alone are gray, and the ones it may leave anywhere are darker gray; before its
-// first turn, arrows show where the cubelets it moves will go.
+// first turn, arrows show where the cubelets it moves will go. Each step stays boxed in the
+// turn list behind a tag; the tag, or Step start, goes back to where the step begins.
 
 const STAGE_NAME: Record<SolveStep["stage"], string> = { hold: "Regrip", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges" };
 
@@ -2813,6 +2818,8 @@ interface Guide {
   /** Where each moved cubelet goes, as slots. */
   arrows: [number, number][];
 }
+/** Every step the guide has put in the turn list that is still there, in order; `guide` is the one being shown, if any. */
+let trail: Guide[] = [];
 let guide: Guide | null = null;
 let guideLine = "";
 let guideDimmed: any[] = []; // meshes drawn gray
@@ -2830,9 +2837,10 @@ function nextStep() {
     setMessage(`Can't solve from here: ${(e as Error).message}`, "error");
     return render();
   }
-  // Carrying on from a step just played, the count carries on too.
-  const prev = guide;
-  const index = prev && guideHolds(prev) && app.cursor === prev.start + prev.step.turns.length ? prev.index + 1 : 1;
+  // Carrying on from the end of a step, the count carries on too.
+  trail = trail.filter((g) => guideHolds(g) && g.start + g.step.turns.length <= app.cursor);
+  const prev = trail.find((g) => g.start + g.step.turns.length === app.cursor);
+  const index = prev ? prev.index + 1 : 1;
   clearGuide();
   if (!steps.length) {
     guideLine = "Solved. Nothing left to do.";
@@ -2851,6 +2859,7 @@ function nextStep() {
     // A parity step turns whole layers: arrows for every cubelet in them would only tangle.
     arrows: step.stage === "parity" ? [] : step.moved.filter(([from, to]) => from !== to),
   };
+  trail.push(guide);
   app.history = app.history.slice(0, app.cursor).concat(step.turns);
   setMessage(`${step.turns.length} turns loaded`, "ok");
   render();
@@ -2870,7 +2879,7 @@ function clearGuide() {
   drawGuide();
 }
 
-/** Stop, or closing the disclosure: drops the step, its grays and its line. The turn list keeps its turns. */
+/** Stop, or closing the disclosure: drops the shown step's grays, arrows and line. The turn list keeps its turns and its step boxes. */
 function stopGuide() {
   if (!guide && !guideLine) return;
   clearGuide();
@@ -2878,14 +2887,41 @@ function stopGuide() {
   render();
 }
 
+/** Step start, or a step's tag in the turn list: shows that step again, at the position it starts from. */
+function goToStep(g: Guide | undefined) {
+  if (!g || edit) return;
+  guide = g;
+  jump(g.start);
+}
+
+/** The turn list's chips, with each step the guide put there in a box behind a tag that goes to its start. */
+function turnListHtml(): string {
+  const chip = (t: Turn, i: number) => `<button class="tok ${i < app.cursor ? "done" : ""} ${i === app.cursor - 1 ? "cur" : ""}" data-jump="${i + 1}">${turnName(t)}</button>`;
+  let out = "";
+  for (let i = 0; i < app.history.length; ) {
+    const g = trail.find((x) => x.start === i);
+    if (!g) {
+      out += chip(app.history[i], i++);
+      continue;
+    }
+    const end = i + g.step.turns.length;
+    out += `<span class="step-box ${g === guide ? "on" : ""}"><button class="step-tag" data-step="${i}" title="Go to the start of this step">${g.index} ${STAGE_NAME[g.step.stage]}</button>`;
+    for (; i < end; i++) out += chip(app.history[i], i);
+    out += "</span>";
+  }
+  return out;
+}
+
 /** Drops the guide when its turns are gone from the list, redraws its grays and arrows, and writes its line. */
 function refreshGuide() {
-  if (guide && !guideHolds(guide)) {
+  trail = trail.filter(guideHolds);
+  if (guide && !trail.includes(guide)) {
     guide = null;
     guideLine = "";
   }
   drawGuide();
   ($("guide-stop") as HTMLButtonElement).disabled = !guide && !guideLine;
+  ($("guide-start") as HTMLButtonElement).disabled = !guide || app.cursor === guide.start;
   const line = $("guide-line");
   line.textContent = "";
   if (guide) {
@@ -3343,6 +3379,7 @@ function installProbe() {
         turns: guide.step.turns.length,
         after: guide.after,
         index: guide.index,
+        start: guide.start,
         focus: [...guide.focus].map((id) => slotName(app.current.occ.indexOf(id))).sort(),
         gray: grays[0],
         darkGray: grays[1],
