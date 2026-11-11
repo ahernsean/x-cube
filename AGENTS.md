@@ -139,8 +139,18 @@ step. Stages, in order:
    or its inverse) inside setup turns that keep the shape, written `[setup: cycle]`. An
    outer cubelet is turned one way in each spot, so placing it is all there is to do.
 
-**Modes** (`Mode`): the order of the outer cubelets, with the same two cycles either way.
-`kinds` is as above. `layers` goes top to bottom, as a 3x3x3 is often solved: the white
+**Modes** (`Mode`). `kinds` is as above. `layers` goes top to bottom, as a 3x3x3 is often
+solved. Its core comes first, a cubelet at a time, in place of the shape and core stages:
+the white core single edges into the top layer, white up (`coreTop`), then the white core
+corners (`coreTopC`), the double edges into the middle layer (`coreMiddle`), the yellow
+single edges into the bottom layer, yellow down (`coreBottom`), and the yellow corners
+(`coreBottomC`). Each step brings at least one more of its kind where it belongs and keeps
+the earlier kinds; look-alikes are interchangeable, so each kind is tracked as a set of
+four (slot, sticker axis) codes, with a table per kind and count of the fewest face
+turns, and a step is the easiest of the shortest ways an iterative deepening search finds
+(about 4.5 turns, 9 at most, over 60 sampled positions). When the five are done the
+puzzle is in the X shape with its core solved. Then the outer cubelets, with the same two
+cycles as `kinds`, top to bottom: the white
 X-face's edges (`topEdges`), its corners (`topCorners`), the extension side edges
 (`sideEdges`), then the yellow X-face's corners and edges (`bottomCorners`,
 `bottomEdges`). A cycle never moves a cubelet that is already home, in either mode; it
