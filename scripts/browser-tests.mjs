@@ -1029,7 +1029,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   const g = await probe("guide");
   const loaded = { counter: await counter(), line: await line(), wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(
-    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners: all three go home\. Turns: b R' F' R b' R' F R This is the last step\.$/.test(loaded.line) && loaded.wide <= 0,
+    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners: all three go home\. Turns: b R' F' R b' R' F R Step 1 of 1 to solved\.$/.test(loaded.line) && loaded.wide <= 0,
     `Next step loads the step's turns unplayed and says what it applies to ("${loaded.line}", ${loaded.counter})`,
   );
   // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
@@ -1060,7 +1060,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await next();
   const holdStep = { g: await probe("guide"), line: await line() };
   check(
-    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Hold: Turn the whole puzzle so the white center is up and the green center is in front\. Nothing else moves\. Turns: y' This is the last step\.$/.test(holdStep.line),
+    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Regrip: Turn the whole puzzle so the white center is up and the green center is in front \(now white is up and (red|orange) is in front\)\. Nothing else moves\. Turns: y' Step 1 of 1 to solved\.$/.test(holdStep.line),
     `a hold step says to turn the whole puzzle, and keeps every color ("${holdStep.line}")`,
   );
   // Out of shape, the step is for the core cubelets that are wrong; it may leave the rest
@@ -1070,6 +1070,27 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await next();
   const shape = await probe("guide");
   check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.arrows === 0 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere (${JSON.stringify(shape)})`);
+  // Playing the step and asking again carries the count on: step 2 of the same total.
+  const total = shape.after + 1;
+  await page.click("#last");
+  await settle();
+  await next();
+  const second = await probe("guide");
+  check(second?.index === 2 && second.index + second.after === total && new RegExp(`Step 2 of ${total} to solved\\.$`).test(await line()), `the next step after a played one is step 2 of the same ${total} ("${await line()}")`);
+  // Stop drops the step, its grays and its line, and leaves the turn list alone; so does
+  // closing the section. Next step starts again from the position shown, counting from 1.
+  const before = await turnList();
+  await page.click("#guide-stop");
+  const stopped = { g: await probe("guide"), line: await line(), list: await turnList(), off: await page.$eval("#guide-stop", (b) => b.disabled) };
+  await next();
+  const again = await probe("guide");
+  await page.evaluate(() => (document.getElementById("guide").open = false));
+  await settle();
+  const closed = await probe("guide");
+  check(stopped.g === null && stopped.line === "" && stopped.list === before && stopped.off && again?.index === 1 && again.alg === second.alg && closed === null, `Stop and closing the section end the guide without touching the turn list; Next step starts it again (${JSON.stringify({ stopped: stopped.g, again: again?.index, closed })})`);
+  await startFresh();
+  await play("R U");
+  await next();
   // Editing a turn before the step changes the position it starts from, so the step no
   // longer applies, though its own turns are still in the list.
   const listed = await turnList();

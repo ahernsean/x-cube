@@ -260,12 +260,17 @@ from the color editor, and checks each step changes only what it says.
   step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
   the position shown, adds its turns at the current step, unplayed, and a line under the
   button gives the stage and goal, then "Turns:" with the turns as the solver writes them
-  (`[setup: cycle]`), then how many steps follow, each on its own line. Until the step has
+  (`[setup: cycle]`), then "Step 2 of 9 to solved" (counted from when the guide was started; a step taken
+  from anywhere but the end of the one before starts the count again), each on its own line. Until the step has
   been played through, the cubelets it applies to keep their colors, the cubelets it leaves alone are gray, and the ones it may leave
   anywhere are darker gray (stickers, flat-view tiles and edge glow; each gray keeps some
   of its color's lightness). Before the step's first turn, purple arrows in the 3D view
   show where each cubelet it moves will go; parity steps, which turn whole layers, have
-  none. A hold step grays nothing: it only turns the whole puzzle, by the center colors. Playing the step returns the colors and the line reads "(done)". Any change that
+  none. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
+  guide calls it **Regrip**, and it names the centers as they are ("now white is up and
+  orange is in front"), so it can't be read as contradicting the hold line.
+  **Stop**, or closing the disclosure, drops the step, its grays and its line and leaves
+  the turn list alone; Next step starts again from the position shown. Playing the step returns the colors and the line reads "(done)". Any change that
   takes the step's turns out of the turn list (a turn by hand, Clear, Edit) drops the step,
   its grays and its line; so does Edit colors. The line has a fixed height (layout rule).
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the

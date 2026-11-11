@@ -295,8 +295,8 @@ details[open] summary { margin-bottom: 8px; }
       </div>
       <details class="known" id="guide">
         <summary>Solve step by step</summary>
-        <p class="hint" style="margin:6px 0 0">Next step loads the turns for one step toward solved, ready to play. Until it is played, the cubelets it applies to keep their colors, the ones it leaves alone are gray, and the ones it may leave anywhere are darker. Arrows show where cubelets go.</p>
-        <div class="row" style="margin-top:8px"><button class="btn primary" id="next-step">Next step</button></div>
+        <p class="hint" style="margin:6px 0 0">Next step loads the turns for one step toward solved, ready to play. Until it is played, the cubelets it applies to keep their colors, the ones it leaves alone are gray, and the ones it may leave anywhere are darker. Arrows show where cubelets go. Stop, or closing this section, ends it; Next step starts again from the position shown.</p>
+        <div class="row" style="margin-top:8px"><button class="btn primary" id="next-step">Next step</button><button class="btn" id="guide-stop" title="Drop the step and its grays; the turn list stays as it is">Stop</button></div>
         <p class="guide-line" id="guide-line" aria-live="polite"></p>
       </details>
       <details class="known">

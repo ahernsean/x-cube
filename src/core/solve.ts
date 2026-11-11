@@ -17,9 +17,9 @@
 // cubelets they name.
 
 import { isHomeX, isSolved } from "./analyze.ts";
-import { ROT_DIR, ROTATIONS, axisRotation, matVec } from "./geometry.ts";
+import { DIRS, ROT_DIR, ROTATIONS, axisRotation, matVec } from "./geometry.ts";
 import { formatAlg, parseAlg } from "./notation.ts";
-import { CUBELETS, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, type Kind, type Turn } from "./puzzle.ts";
+import { COLOR_NAME, CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, type Kind, type Turn } from "./puzzle.ts";
 import { unreachableReason } from "./serialize.ts";
 
 export type Stage = "hold" | "shape" | "core" | "parity" | "corners" | "edges";
@@ -405,7 +405,10 @@ export function nextStep(st: State): SolveStep | null {
   if (why) throw new Error(`turns can't reach this position (${why})`);
   if (!held(st)) {
     const turns = holdTurns(st);
-    return { stage: "hold", goal: "Turn the whole puzzle so the white center is up and the green center is in front. Nothing else moves", alg: formatAlg(turns), turns, moved: [], free: [] };
+    // The color a center shows is the color of the face its core center cubelet came from.
+    const shows = (slot: number) => COLOR_NAME[FACE_COLOR[[0, 1, 2, 3, 4, 5].find((d) => slotAt(DIRS[d]) === CUBELETS[st.occ[slot]].home)!]];
+    const goal = `Turn the whole puzzle so the white center is up and the green center is in front (now ${shows(UP)} is up and ${shows(FRONT)} is in front). Nothing else moves`;
+    return { stage: "hold", goal, alg: formatAlg(turns), turns, moved: [], free: [] };
   }
   if (!isHomeX(st)) {
     const turns = shapeTurns(st);

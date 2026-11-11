@@ -2556,6 +2556,10 @@ function bindViewTools() {
 function bindUI() {
   bindAlgorithms();
   $("next-step").addEventListener("click", () => nextStep());
+  $("guide-stop").addEventListener("click", () => stopGuide());
+  $("guide").addEventListener("toggle", () => {
+    if (!($("guide") as HTMLDetailsElement).open) stopGuide();
+  });
   bindViewTools();
   $("edit-start").addEventListener("click", () => startEdit());
   $("edit-done").addEventListener("click", () => endEdit(true));
@@ -2793,12 +2797,13 @@ function drawEdit() {
 // leaves alone are gray, and the ones it may leave anywhere are darker gray; before its
 // first turn, arrows show where the cubelets it moves will go.
 
-const STAGE_NAME: Record<SolveStep["stage"], string> = { hold: "Hold", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges" };
+const STAGE_NAME: Record<SolveStep["stage"], string> = { hold: "Regrip", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges" };
 
 interface Guide {
   step: SolveStep;
-  /** Steps left after this one. */
+  /** Steps left after this one, and this step's number since the guide was last started. */
   after: number;
+  index: number;
   /** Where in the turn list the step's turns begin, and the position there. */
   start: number;
   from: State;
@@ -2825,6 +2830,9 @@ function nextStep() {
     setMessage(`Can't solve from here: ${(e as Error).message}`, "error");
     return render();
   }
+  // Carrying on from a step just played, the count carries on too.
+  const prev = guide;
+  const index = prev && guideHolds(prev) && app.cursor === prev.start + prev.step.turns.length ? prev.index + 1 : 1;
   clearGuide();
   if (!steps.length) {
     guideLine = "Solved. Nothing left to do.";
@@ -2835,6 +2843,7 @@ function nextStep() {
   guide = {
     step,
     after: steps.length - 1,
+    index,
     start: app.cursor,
     from: st.clone(),
     focus: new Set(step.moved.map(([from]) => st.occ[from])),
@@ -2861,6 +2870,14 @@ function clearGuide() {
   drawGuide();
 }
 
+/** Stop, or closing the disclosure: drops the step, its grays and its line. The turn list keeps its turns. */
+function stopGuide() {
+  if (!guide && !guideLine) return;
+  clearGuide();
+  guideLine = "";
+  render();
+}
+
 /** Drops the guide when its turns are gone from the list, redraws its grays and arrows, and writes its line. */
 function refreshGuide() {
   if (guide && !guideHolds(guide)) {
@@ -2868,10 +2885,11 @@ function refreshGuide() {
     guideLine = "";
   }
   drawGuide();
+  ($("guide-stop") as HTMLButtonElement).disabled = !guide && !guideLine;
   const line = $("guide-line");
   line.textContent = "";
   if (guide) {
-    const { step, after, start } = guide;
+    const { step, after, index, start } = guide;
     const done = app.cursor >= start + step.turns.length;
     const head = document.createElement("strong");
     head.textContent = `${STAGE_NAME[step.stage]}${done ? " (done)" : ""}: `;
@@ -2879,7 +2897,7 @@ function refreshGuide() {
     alg.className = "known-alg";
     alg.textContent = step.alg;
     // Three lines: what the step does, its turns, and how far there is to go.
-    line.append(head, `${step.goal}. `, document.createElement("br"), "Turns: ", alg, " ", document.createElement("br"), after ? `${after} more ${after === 1 ? "step" : "steps"} after this.` : "This is the last step.");
+    line.append(head, `${step.goal}. `, document.createElement("br"), "Turns: ", alg, " ", document.createElement("br"), `Step ${index} of ${index + after} to solved.`);
   } else line.textContent = guideLine;
 }
 
@@ -3324,6 +3342,7 @@ function installProbe() {
         alg: guide.step.alg,
         turns: guide.step.turns.length,
         after: guide.after,
+        index: guide.index,
         focus: [...guide.focus].map((id) => slotName(app.current.occ.indexOf(id))).sort(),
         gray: grays[0],
         darkGray: grays[1],
