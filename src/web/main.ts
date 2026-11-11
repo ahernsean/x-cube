@@ -21,11 +21,12 @@ import {
   turnName,
   type Color,
   type Turn,
+  applyTurns,
 } from "../core/puzzle.ts";
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
 import { fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
-import { solveSteps, type SolveStep } from "../core/solve.ts";
+import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 
 declare const THREE: any;
 
@@ -2596,6 +2597,7 @@ function bindUI() {
       render();
     } else if (ds.jump) jump(Number(ds.jump));
     else if (ds.step) goToStep(trail.find((g) => g.start === Number(ds.step)));
+    else if (ds.guideMode) setGuideMode(ds.guideMode as Mode);
     else if (ds.load) {
       const s = saved.find((x) => x.id === ds.load);
       if (s) {
@@ -2818,13 +2820,32 @@ interface Guide {
   /** Cubelet ids: the ones the step is for, and the ones it may leave anywhere. */
   focus: Set<number>;
   free: Set<number>;
-  /** Where each moved cubelet goes, as slots. */
-  arrows: [number, number][];
+  /** A path for each cubelet the step moves to another spot. */
+  arrows: StickerPath[];
 }
 /** Every step the guide has put in the turn list that is still there, in order; `guide` is the one being shown, if any. */
 let trail: Guide[] = [];
 let guide: Guide | null = null;
 let guideLine = "";
+const GUIDE_MODE_KEY = "xcube.guideMode";
+/** The order Next step solves the outer cubelets in, kept on this device. */
+let guideMode: Mode = (() => {
+  try {
+    return localStorage.getItem(GUIDE_MODE_KEY) === "layers" ? "layers" : "kinds";
+  } catch {
+    return "kinds";
+  }
+})();
+
+function setGuideMode(mode: Mode) {
+  guideMode = mode;
+  try {
+    localStorage.setItem(GUIDE_MODE_KEY, mode);
+  } catch {
+    // The choice then lasts only for this visit.
+  }
+  render();
+}
 let guideDimmed: any[] = []; // meshes drawn gray
 let guideArrows: any = null;
 
@@ -2833,7 +2854,7 @@ function nextStep() {
   flushAnimations();
   let steps: SolveStep[];
   try {
-    steps = solveSteps(app.current);
+    steps = solveSteps(app.current, guideMode);
   } catch (e) {
     clearGuide();
     guideLine = "";
@@ -2859,8 +2880,7 @@ function nextStep() {
     from: st.clone(),
     focus: new Set(step.moved.map(([from]) => st.occ[from])),
     free: new Set(step.free.map((s) => st.occ[s])),
-    // A parity step turns whole layers: arrows for every cubelet in them would only tangle.
-    arrows: step.stage === "parity" ? [] : step.moved.filter(([from, to]) => from !== to),
+    arrows: stickerPaths(st, step),
   };
   trail.push(guide);
   app.history = app.history.slice(0, app.cursor).concat(step.turns);
@@ -2923,6 +2943,7 @@ function refreshGuide() {
     guideLine = "";
   }
   drawGuide();
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-guide-mode]")) b.classList.toggle("sel", b.dataset.guideMode === guideMode);
   ($("guide-stop") as HTMLButtonElement).disabled = !guide && !guideLine;
   ($("guide-start") as HTMLButtonElement).disabled = !guide || app.cursor === guide.start;
   const line = $("guide-line");
@@ -2982,32 +3003,96 @@ function drawGuide() {
 }
 drawGuide.key = "";
 
-/** Arrows from slot to slot, arched out from the puzzle and drawn over it, in the 3D view only. */
-function makeArrows(pairs: [number, number][]) {
+/**
+ * The paths of a step, in the 3D view only, drawn over the puzzle. Each follows one
+ * sticker of a moved cubelet, in that sticker's color: it rises straight out of the
+ * sticker, arches over, and comes straight down onto the face the sticker will be on. So a
+ * path shows where the cubelet goes and how it is turned when it gets there. A cubelet
+ * that ends at home has a full path and a ring where its sticker lands; one that is only
+ * passing through has a thin, fainter path.
+ */
+function makeArrows(paths: StickerPath[]) {
   const group = new THREE.Group();
-  const mat = new THREE.MeshBasicMaterial({ color: HALO.color, depthTest: false, depthWrite: false, transparent: true, opacity: 0.92 });
-  for (const [from, to] of pairs) {
-    const a = new THREE.Vector3(...SLOT_POS[from]).multiplyScalar(1.12);
-    const b = new THREE.Vector3(...SLOT_POS[to]).multiplyScalar(1.12);
-    const mid = a.clone().add(b).multiplyScalar(0.5);
-    // Arch away from the center; two spots straight across the puzzle arch upward.
-    const out = mid.lengthSq() > 0.01 ? mid.clone().normalize() : new THREE.Vector3(0, 1, 0);
-    const control = mid.clone().add(out.multiplyScalar(0.9 + 0.35 * a.distanceTo(b)));
-    const curve = new THREE.QuadraticBezierCurve3(a, control, b);
-    const headAt = 0.86;
-    const pts = [...Array(21).keys()].map((i) => curve.getPoint((i / 20) * headAt));
-    const shaft = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.07, 8), mat);
-    const head = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 14), mat);
-    const tip = curve.getPoint(1), base = curve.getPoint(headAt);
-    head.position.copy(base.clone().add(tip).multiplyScalar(0.5));
-    head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tip.clone().sub(base).normalize());
-    for (const m of [shaft, head]) {
-      m.renderOrder = 4;
+  group.userData.count = paths.length;
+  const flat = (color: number, opacity: number) => new THREE.MeshBasicMaterial({ color, depthTest: false, depthWrite: false, transparent: true, opacity, side: THREE.DoubleSide });
+  const dir = (d: number) => new THREE.Vector3(...DIRS[d]);
+  for (const p of paths) {
+    const n0 = dir(p.fromDir), n1 = dir(p.toDir);
+    const a = new THREE.Vector3(...SLOT_POS[p.from]).addScaledVector(n0, 0.52);
+    const b = new THREE.Vector3(...SLOT_POS[p.to]).addScaledVector(n1, 0.52);
+    const rise = 1.0 + 0.3 * a.distanceTo(b);
+    const curve = new THREE.CubicBezierCurve3(a, a.clone().addScaledVector(n0, rise), b.clone().addScaledVector(n1, rise), b);
+    const headAt = 0.88;
+    const shaftCurve = new THREE.CatmullRomCurve3([...Array(25).keys()].map((k) => curve.getPoint((k / 24) * headAt)));
+    const radius = p.lands ? 0.075 : 0.045, opacity = p.lands ? 1 : 0.6;
+    const ink = flat(0x101214, opacity), paint = flat(STICKER[p.color], opacity);
+    const parts: [any, any, number][] = [
+      // A dark casing under the color keeps a white or yellow path readable on any background.
+      [new THREE.TubeGeometry(shaftCurve, 32, radius + 0.035, 8), ink, 4],
+      [new THREE.TubeGeometry(shaftCurve, 32, radius, 8), paint, 5],
+      [new THREE.SphereGeometry(radius + 0.075, 12, 8), ink, 4],
+      [new THREE.SphereGeometry(radius + 0.04, 12, 8), paint, 5],
+      [new THREE.ConeGeometry(radius * 2.6 + 0.04, 0.5, 14), ink, 4],
+      [new THREE.ConeGeometry(radius * 2.6, 0.44, 14), paint, 5],
+    ];
+    if (p.lands) parts.push([new THREE.RingGeometry(0.3, 0.42, 24), ink, 4], [new THREE.RingGeometry(0.33, 0.39, 24), paint, 5]);
+    parts.forEach(([geo, mat, order], k) => {
+      const m = new THREE.Mesh(geo, mat);
+      if (k === 2 || k === 3) m.position.copy(a);
+      if (k === 4 || k === 5) {
+        const base = curve.getPoint(headAt);
+        m.position.copy(base.clone().add(b).multiplyScalar(0.5));
+        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(base).normalize());
+      }
+      if (k >= 6) {
+        m.position.copy(b);
+        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n1);
+      }
+      m.renderOrder = order;
       m.layers.set(HALO_LAYER);
       group.add(m);
-    }
+    });
   }
   return group;
+}
+
+/** One sticker's path through a step: from a slot and the direction it faces there, to a slot and facing. */
+interface StickerPath {
+  from: number;
+  fromDir: number;
+  to: number;
+  toDir: number;
+  color: Color;
+  /** Whether the cubelet ends at home. */
+  lands: boolean;
+}
+
+/**
+ * The sticker to follow for each cubelet a step moves. Of a cubelet's stickers, the one
+ * that starts and ends on the faces the Home view shows (up, front, right) is preferred.
+ */
+function stickerPaths(st: State, step: SolveStep): StickerPath[] {
+  // A parity step turns whole layers: paths for every cubelet in them would only tangle.
+  if (step.stage === "parity") return [];
+  // Where everything ends, as the puzzle is held before the step: the regrip undone.
+  const after = st.clone();
+  applyTurns(after, step.turns);
+  applyTurns(after, parseAlg(["", "y'", "y2", "y"][step.regrip]));
+  const shown = [2, 4, 0];
+  const out: StickerPath[] = [];
+  for (const [from, to] of step.moved) {
+    if (from === to) continue;
+    const c = CUBELETS[st.occ[from]];
+    let best: StickerPath | null = null, bestScore = -1;
+    c.stickers.forEach((color, d) => {
+      if (!color) return;
+      const fromDir = ROT_DIR[st.ori[from] * 6 + d], toDir = ROT_DIR[after.ori[to] * 6 + d];
+      const score = (shown.includes(fromDir) ? 2 : 0) + (shown.includes(toDir) ? 1 : 0);
+      if (score > bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from) }, score];
+    });
+    if (best) out.push(best);
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ highlight halo
@@ -3386,7 +3471,10 @@ function installProbe() {
         focus: [...guide.focus].map((id) => slotName(app.current.occ.indexOf(id))).sort(),
         gray: grays[0],
         darkGray: grays[1],
-        arrows: guideArrows?.visible ? guideArrows.children.length / 2 : 0,
+        arrows: guideArrows?.visible ? guideArrows.userData.count : 0,
+        /** Each path: the sticker it follows, from where and facing which way, to where and facing which way. */
+        paths: guide.arrows.map((p) => `${p.color} ${slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " home" : ""}`),
+        mode: guideMode,
       };
     },
     view: () => pivot.quaternion.toArray(),

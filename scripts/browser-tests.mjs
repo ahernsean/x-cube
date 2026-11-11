@@ -1035,6 +1035,10 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
   // darker, since a 3-cycle leaves every other cubelet alone. One arrow per corner.
   check(g?.focus.length === 3 && g.gray === 93 && g.darkGray === 0 && g.arrows === 3, `the cubelets the step applies to keep their colors, the rest are gray, and arrows show the cycle (${JSON.stringify(g)})`);
+  // Each path follows one sticker, in its color, from the face it is on to the face it will
+  // be on; all three of these cubelets end at home.
+  const pathForm = /^[WYGBRO] [\w.]+\/[RLUDFB] > [\w.]+\/[RLUDFB] home$/;
+  check(g?.paths.length === 3 && g.paths.every((t) => pathForm.test(t)) && new Set(g.paths.map((t) => t.split(" ")[1])).size === 3, `each moved cubelet has a path from one of its stickers to where that sticker will be (${g?.paths.join("; ")})`);
   // One turn forward hides the arrows; one turn back, to the step's start, shows them again.
   await page.click("#fwd");
   await settle();
@@ -1119,6 +1123,21 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   check(listed.startsWith("R U ") && (await probe("guide")) === null && (await line()) === "" && (await page.$$("#history .step-box")).length === 0, "editing a turn before the step drops the step and its box");
   await page.click("#last");
   await settle();
+  await next();
+  // The order: "Top to bottom" solves the white X-face first, so the same corner cycle is a
+  // top-corners step there. The choice is kept on this device.
+  await startFresh();
+  await play("(F' L' F) r (F' L F) r'");
+  await next();
+  const byKind = (await probe("guide")).stage;
+  await page.click('[data-guide-mode="layers"]');
+  await next();
+  const byLayer = await probe("guide");
+  const kept = await page.evaluate(() => localStorage.getItem("xcube.guideMode"));
+  check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Top corners: For the white X-face's corners: cycle three X-face corners\. All three go home\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
+  await page.click('[data-guide-mode="kinds"]');
+  await startFresh();
+  await play("R U");
   await next();
   // Turning the puzzle by hand takes the step out of the turn list, and the guide goes with it.
   await page.click('[data-move="D"]');

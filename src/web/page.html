@@ -188,6 +188,7 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .known { margin-top: 10px; }
 .known summary { cursor: pointer; font-weight: 600; }
 /* A fixed height, so a step's text never moves what is below it. */
+.guide-modes button { font: 600 13px var(--f-body); padding: 6px 10px; min-height: 34px; }
 .guide-line { margin: 8px 0 0; height: 7.4em; overflow-y: auto; font-size: 14px; }
 .known-alg { font: 13px var(--f-mono); overflow-wrap: anywhere; }
 .saved { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
@@ -299,8 +300,9 @@ details[open] summary { margin-bottom: 8px; }
       </div>
       <details class="known" id="guide">
         <summary>Solve step by step</summary>
-        <p class="hint" style="margin:6px 0 0">Next step loads the turns for one step toward solved, ready to play. Until it is played, the cubelets it applies to keep their colors, the ones it leaves alone are gray, and the ones it may leave anywhere are darker. Arrows show where cubelets go. Each step is boxed in the turn list; its tag, or Step start, goes back to where it begins. Stop, or closing this section, ends it; Next step starts again from the position shown.</p>
+        <p class="hint" style="margin:6px 0 0">Next step loads the turns for one step toward solved, ready to play. Until it is played, the cubelets it applies to keep their colors, the ones it leaves alone are gray, and the ones it may leave anywhere are darker. Each moved cubelet has a path in the color of one of its stickers, from that sticker to where it will be; a ring marks a cubelet reaching its home, and a thin path one that is only passing through. Each step is boxed in the turn list; its tag, or Step start, goes back to where it begins. Stop, or closing this section, ends it; Next step starts again from the position shown.</p>
         <div class="row" style="margin-top:8px"><button class="btn primary" id="next-step">Next step</button><button class="btn" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn" id="guide-stop" title="Drop the step and its grays; the turn list stays as it is">Stop</button></div>
+        <div class="row" style="margin-top:8px"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
         <p class="guide-line" id="guide-line" aria-live="polite"></p>
       </details>
       <details class="known">

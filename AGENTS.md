@@ -286,9 +286,15 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   from anywhere but the end of the one before starts the count again), each on its own line. Until the step has
   been played through, the cubelets it applies to keep their colors, the cubelets it leaves alone are gray, and the ones it may leave
   anywhere are darker gray (stickers, flat-view tiles and edge glow; each gray keeps some
-  of its color's lightness). Before the step's first turn, purple arrows in the 3D view
-  show where each cubelet it moves will go; parity steps, which turn whole layers, have
-  none. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
+  of its color's lightness). Before the step's first turn, **paths** in the 3D view
+  show where each cubelet it moves will go and how it will be turned: a path follows one of
+  the cubelet's stickers, in that sticker's color with a dark casing, rising straight out
+  of the sticker and coming straight down onto the face the sticker will be on. A
+  cubelet that ends at home has a full path and a ring where its sticker lands; one only
+  passing through has a thin, fainter path. The sticker followed is one that starts and
+  ends on the faces the Home view shows, where there is one. Parity steps, which turn
+  whole layers, have no paths. **Order** switches between the solver's modes, "Corners,
+  then edges" and "Top to bottom", and is kept on the device. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
   guide calls it **Regrip**, and it names the center that is up now ("now blue is up").
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag
   ("3 Corners"), the shown step's box outlined; tapping a tag, or **Step start**, shows
