@@ -3115,6 +3115,7 @@ function makeArrows(paths: StickerPath[]) {
   group.userData.runners = [];
   group.userData.drawn = 0; // meshes making up the paths themselves
   group.userData.through = 0; // sampled points of the paths that are inside the puzzle
+  group.userData.headGap = 0; // the worst miss between a shaft and its head
   // Everything here is drawn twice: plainly where it is in front of the puzzle, and as a
   // faint ghost where the puzzle is in the way (the same shape, passing only where
   // something nearer has already been drawn). Neither writes depth, so the parts of a
@@ -3141,8 +3142,21 @@ function makeArrows(paths: StickerPath[]) {
     const { curve } = p;
     const a = curve.getPoint(0), b = curve.getPoint(1);
     group.userData.through += p.hits;
-    const headAt = 0.88;
-    const shaftCurve = new THREE.CatmullRomCurve3([...Array(25).keys()].map((k) => curve.getPoint((k / 24) * headAt)));
+    // The head is a cone whose tip is on the sticker's new face. The shaft runs, by arc
+    // length, to a little inside the head's base, so the two always join; and the head
+    // points along the line from there to the tip.
+    const HEAD = 0.44;
+    const length = curve.getLength();
+    const headAt = Math.max(0.5, 1 - HEAD / length);
+    const shaftEnd = Math.min(1, headAt + 0.06 / length);
+    const base = curve.getPointAt(headAt);
+    const pointing = b.clone().sub(base).normalize();
+    const shaftCurve = new THREE.CatmullRomCurve3([...Array(25).keys()].map((k) => curve.getPointAt((k / 24) * shaftEnd)));
+    // How far the shaft's end is from the axis of the head, inside its base (0 when they join).
+    const end = shaftCurve.getPoint(1), headBase = b.clone().addScaledVector(pointing, -HEAD);
+    const along = end.clone().sub(headBase).dot(pointing);
+    const offAxis = end.clone().sub(headBase).addScaledVector(pointing, -along).length();
+    group.userData.headGap = Math.max(group.userData.headGap, along < -0.01 || along > HEAD ? 1 : offAxis);
     const radius = p.dashed ? 0.055 : 0.075, opacity = p.dashed ? 0.75 : 1;
     // The dark casing is left out of the faint drawing: behind the puzzle it would only
     // outline where the path goes in.
@@ -3155,8 +3169,8 @@ function makeArrows(paths: StickerPath[]) {
       ...shafts.flatMap((c) => [[new THREE.TubeGeometry(c, p.dashed ? 6 : 32, radius + 0.035, 8), ink, 4], [new THREE.TubeGeometry(c, p.dashed ? 6 : 32, radius, 8), paint, 5]] as [any, any, number][]),
       [new THREE.SphereGeometry(radius + 0.075, 12, 8), ink, 4],
       [new THREE.SphereGeometry(radius + 0.04, 12, 8), paint, 5],
-      [new THREE.ConeGeometry(radius * 2.6 + 0.04, 0.5, 14), ink, 4],
-      [new THREE.ConeGeometry(radius * 2.6, 0.44, 14), paint, 5],
+      [new THREE.ConeGeometry(radius * 2.6 + 0.04, HEAD + 0.06, 14), ink, 4],
+      [new THREE.ConeGeometry(radius * 2.6, HEAD, 14), paint, 5],
     ];
     if (p.lands) parts.push([new THREE.RingGeometry(0.3, 0.42, 24), ink, 4], [new THREE.RingGeometry(0.33, 0.39, 24), paint, 5]);
     parts.forEach(([geo, mats, order], index) => {
@@ -3164,9 +3178,10 @@ function makeArrows(paths: StickerPath[]) {
       both(group, geo, mats, order, (m) => {
         if (k === 2 || k === 3) m.position.copy(a);
         if (k === 4 || k === 5) {
-          const base = curve.getPoint(headAt);
-          m.position.copy(base.clone().add(b).multiplyScalar(0.5));
-          m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(base).normalize());
+          // Each cone (the casing a little longer than the color) is placed with its tip at b.
+          const h = k === 4 ? HEAD + 0.06 : HEAD;
+          m.position.copy(b).addScaledVector(pointing, -h / 2);
+          m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pointing);
         }
         if (k >= 6) {
           m.position.copy(b);
@@ -3704,6 +3719,8 @@ function installProbe() {
         focusGlow: [...guide.focus].flatMap((id) => glows[id] ?? []).reduce((n, gl) => n + (gl.paint ? 0 : 1), 0),
         /** How many meshes the paths are drawn with (a shaft, a start and a head, each cased; and a ring for a cubelet reaching home). */
         pathMeshes: guideArrows?.visible ? guideArrows.userData.drawn : 0,
+        /** The worst miss between a path's shaft and its head: how far off the head's axis the shaft ends, inside the head's base (1 if outside it). */
+        headGap: guideArrows?.visible ? guideArrows.userData.headGap : -1,
         /** How many sampled points of the paths, away from their ends, are inside the puzzle. */
         pathsThrough: guideArrows?.visible ? guideArrows.userData.through : -1,
       };
