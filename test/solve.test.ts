@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { isHomeX, isSolved } from "../src/core/analyze.ts";
 import { fitColors, visibleColors } from "../src/core/edit.ts";
 import { parseAlg } from "../src/core/notation.ts";
-import { CUBELETS, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, type Kind } from "../src/core/puzzle.ts";
+import { CUBELETS, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, turnName, type Kind } from "../src/core/puzzle.ts";
 import { rotsTo, unreachableReason } from "../src/core/serialize.ts";
 import { nextStep, solveSteps, type SolveStep } from "../src/core/solve.ts";
 
@@ -28,6 +28,7 @@ const look = (st: State, except: Set<number>) => {
   }
   return out;
 };
+const usage = { turns: 0, back: 0 };
 /** Plays the steps from st, checking each does what it reports; returns the final state. */
 function play(start: State, steps: SolveStep[]): State {
   const st = start.clone();
@@ -40,14 +41,23 @@ function play(start: State, steps: SolveStep[]): State {
     assert.ok(applyTurns(st, step.turns).ok, `every turn of ${step.alg} is allowed`);
     assert.deepEqual(parseAlg(step.alg), step.turns, "the notation is the turns");
     if (step.stage === "hold") continue;
+    // A regrip comes first or not at all, and what a step reports is as the puzzle was held before it.
+    const rotations = step.turns.filter((t) => MOVE_DEFS[t.def].kind === "rotation");
+    assert.equal(rotations.length, step.regrip ? 1 : 0, `${step.alg} regrips only as it says`);
+    if (step.regrip) assert.equal(turnName(step.turns[0]), ["", "y", "y2", "y'"][step.regrip], `${step.alg} begins with its regrip`);
+    const seen = st.clone(); // the result, turned back to the grip the step reports in
+    applyTurns(seen, parseAlg(["", "y'", "y2", "y"][step.regrip]));
+    usage.turns += step.turns.length;
+    for (const t of step.turns) if (/^[Bb]/.test(turnName(t))) usage.back++;
+    if (["corners", "edges"].includes(step.stage)) assert.ok(!/[bBSH]/.test(step.alg.slice(step.alg.indexOf(":") + 1)), `the cycle in ${step.alg} has no back turn and no S or H`);
     // Every cubelet the step doesn't name, or free, shows the same in the same slot.
     const named = new Set([...step.moved.map(([from]) => before.occ[from]), ...step.free.map((s) => before.occ[s])]);
-    assert.equal(look(st, named), look(before, named), `${step.alg} changes only what it names`);
-    assert.ok(isHomeX(st), `${step.alg} ends in the X shape`);
+    assert.equal(look(seen, named), look(before, named), `${step.alg} changes only what it names`);
+    assert.ok(isHomeX(seen), `${step.alg} ends in the X shape`);
     if (step.stage === "shape") continue;
     for (let s = 0; s < NUM_SLOTS; s++)
-      if (["coreCorner", "singleEdge"].includes(CUBELETS[st.occ[s]]?.kind)) assert.equal(st.colorAt(s, SLOT_POS[s][1] > 0 ? 2 : 3), SLOT_POS[s][1] > 0 ? "W" : "Y", `after ${step.alg}, white core cubelets are up`);
-    if (step.stage !== "core") for (const [from, to] of step.moved) assert.equal(st.occ[to], before.occ[from], `${step.alg} moves the cubelet it says where it says`);
+      if (["coreCorner", "singleEdge"].includes(CUBELETS[seen.occ[s]]?.kind)) assert.equal(seen.colorAt(s, SLOT_POS[s][1] > 0 ? 2 : 3), SLOT_POS[s][1] > 0 ? "W" : "Y", `after ${step.alg}, white core cubelets are up`);
+    if (step.stage !== "core") for (const [from, to] of step.moved) assert.equal(seen.occ[to], before.occ[from], `${step.alg} moves the cubelet it says where it says`);
   }
   return st;
 }
@@ -66,6 +76,8 @@ test("solve: scrambled positions are solved, each step changing only what it rep
     assert.ok(!shape || shape.turns.length <= 12, "the shape step is at most 12 turns");
   }
   assert.ok(most <= 300 && turns / 60 <= 220, `solutions stay learnable in length (average ${turns / 60}, most ${most})`);
+  // Ease: the back face and back extension are the hardest to turn, so they are rare.
+  assert.ok(usage.back / usage.turns < 0.03, `back turns are rare (${usage.back} of ${usage.turns})`);
 });
 
 test("solve: positions from the color editor are solved, whichever parity they need", () => {
@@ -112,25 +124,20 @@ test("solve: the stages come as needed", () => {
   assert.equal(nextStep(after("R"))!.stage, "shape");
   assert.equal(nextStep(after("R"))!.turns.length, 1, "one turn undoes one turn");
   assert.equal(nextStep(after("R2"))!.stage, "core");
-  const cycle = nextStep(after("R' F' R b R' F R b'"))!;
+  const cycle = nextStep(after("(F' L' F) r (F' L F) r'"))!;
   assert.equal(cycle.stage, "corners");
-  assert.equal(cycle.turns.length, 8, "one 3-cycle is undone by its inverse, with no setup");
+  assert.equal(cycle.alg, "r (F' L' F) r' (F' L F)", "one 3-cycle is undone by its inverse, with no setup, written as a commutator");
   assert.match(cycle.goal, /all three/);
-  // A slice moves the centers; the hold step turns the puzzle, and every later step leaves
-  // the centers where it found them (the edge cycle's own slice turns undo each other).
-  const start = after("M U S' R");
-  const sliced = solveSteps(start);
-  assert.equal(sliced[0].stage, "hold");
-  const st = start.clone();
-  const centers = () => [0, 1, 2, 3, 4, 5].map((d) => st.occ[CUBELETS.find((c) => c.kind === "center" && c.outward === null && SLOT_POS[c.home][d >> 1] === (d & 1 ? -1 : 1))!.home]).join();
-  applyTurns(st, sliced[0].turns);
-  const held = centers();
-  assert.equal(held, [0, 1, 2, 3, 4, 5].map((d) => State.solved().occ[CUBELETS.find((c) => c.kind === "center" && SLOT_POS[c.home][d >> 1] === (d & 1 ? -1 : 1))!.home]).join(), "white up, green front");
-  for (const step of sliced.slice(1)) {
-    applyTurns(st, step.turns);
-    assert.equal(centers(), held, `${step.alg} leaves the centers in place`);
-    assert.ok(step.turns.every((t) => MOVE_DEFS[t.def].kind !== "rotation"));
-  }
+  // The hold step only brings white up; whichever side is in front then is the grip, and
+  // the rest is solved from there. Later steps turn the whole puzzle only about its
+  // vertical axis, so white stays up.
+  const start = after("R U F' x");
+  const tipped = solveSteps(start);
+  assert.equal(tipped[0].stage, "hold");
+  assert.match(tipped[0].goal, /so the white center is up \(now \w+ is up\)/);
+  assert.ok(tipped.slice(1).every((s) => s.turns.every((t) => !/^[xz]/.test(turnName(t)))));
+  assert.ok(isSolved(play(start, tipped)));
+  assert.deepEqual(solveSteps(after("y")), [], "a solved puzzle is solved in any grip");
 });
 
 test("solve: a position no turns reach is refused", () => {
