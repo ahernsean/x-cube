@@ -2789,7 +2789,7 @@ function drawEdit() {
 //
 // Next step asks the solver (src/core/solve.ts) for one step from the position shown,
 // puts its turns in the turn list, unplayed, and says what the step is for. Until the
-// step has been played through, the cubelets it is for keep their colors, the cubelets it
+// step has been played through, the cubelets it applies to keep their colors, the cubelets it
 // leaves alone are gray, and the ones it may leave anywhere are darker gray; before its
 // first turn, arrows show where the cubelets it moves will go.
 
@@ -2878,7 +2878,8 @@ function refreshGuide() {
     const alg = document.createElement("span");
     alg.className = "known-alg";
     alg.textContent = step.alg;
-    line.append(head, `${step.goal}. `, alg, ` ${after ? `${after} more ${after === 1 ? "step" : "steps"} after this.` : "This is the last step."}`);
+    // Three lines: what the step does, its turns, and how far there is to go.
+    line.append(head, `${step.goal}. `, document.createElement("br"), "Turns: ", alg, " ", document.createElement("br"), after ? `${after} more ${after === 1 ? "step" : "steps"} after this.` : "This is the last step.");
   } else line.textContent = guideLine;
 }
 
@@ -2887,7 +2888,8 @@ function drawGuide() {
   const g = guide;
   // During a turn the cursor is already past it; the grays go by the position the turn started from.
   const at = anim ? app.cursor + (anim.forward ? -1 : 1) : app.cursor;
-  const within = !!g && at >= g.start && at < g.start + g.step.turns.length;
+  // A hold step only turns the whole puzzle, and the center colors are what it goes by: no grays.
+  const within = !!g && g.step.stage !== "hold" && at >= g.start && at < g.start + g.step.turns.length;
   const key = within ? `${g!.start}/${g!.step.alg}` : "";
   if (guideArrows) guideArrows.visible = !!g && app.cursor === g.start && !anim && !queue.length;
   if (drawGuide.key === key) return;
@@ -3313,7 +3315,7 @@ function installProbe() {
     idle: () => !anim && !queue.length && !settle && !live && !tween,
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
-    /** The step guide: its step, the slots (now) of the cubelets it is for, how many stickers are drawn gray at each level, and the arrows showing. */
+    /** The step guide: its step, the slots (now) of the cubelets it applies to, how many stickers are drawn gray at each level, and the arrows showing. */
     guide: () => {
       if (!guide) return null;
       const grays = [1, 2].map((level) => guideDimmed.filter((m) => stickerMesh3d.includes(m) && CUBELETS.some((c) => c.stickers.some((col) => col && grayMaterial!(col, level as 1 | 2).sticker === m.material))).length);

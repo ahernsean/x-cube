@@ -405,7 +405,7 @@ export function nextStep(st: State): SolveStep | null {
   if (why) throw new Error(`turns can't reach this position (${why})`);
   if (!held(st)) {
     const turns = holdTurns(st);
-    return { stage: "hold", goal: "Hold the puzzle with the white center up and the green center in front", alg: formatAlg(turns), turns, moved: [], free: [] };
+    return { stage: "hold", goal: "Turn the whole puzzle so the white center is up and the green center is in front. Nothing else moves", alg: formatAlg(turns), turns, moved: [], free: [] };
   }
   if (!isHomeX(st)) {
     const turns = shapeTurns(st);

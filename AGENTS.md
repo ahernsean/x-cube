@@ -124,7 +124,7 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
 `src/core/solve.ts` solves any position turns can reach as a list of steps a person could
 follow (`nextStep`, `solveSteps`; `xc solve` prints them). It is not the shortest solution
 (about 180 turns on average, 240 at most in 300 sampled positions). Each step has a stage,
-a goal in words, its turns, the cubelets it is for (`moved`: slot before, slot after) and
+a goal in words, its turns, the cubelets it applies to (`moved`: slot before, slot after) and
 the cubelets it may leave anywhere (`free`); every other cubelet looks the same after the
 step. Stages, in order:
 
@@ -259,13 +259,13 @@ from the color editor, and checks each step changes only what it says.
 - **Step guide:** "Solve step by step", a disclosure in the Run an algorithm panel. **Next
   step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
   the position shown, adds its turns at the current step, unplayed, and a line under the
-  button gives the stage, the goal, the turns as the solver writes them (`[setup: cycle]`)
-  and how many steps follow. Until the step has been played through, the cubelets it is
-  for keep their colors, the cubelets it leaves alone are gray, and the ones it may leave
+  button gives the stage and goal, then "Turns:" with the turns as the solver writes them
+  (`[setup: cycle]`), then how many steps follow, each on its own line. Until the step has
+  been played through, the cubelets it applies to keep their colors, the cubelets it leaves alone are gray, and the ones it may leave
   anywhere are darker gray (stickers, flat-view tiles and edge glow; each gray keeps some
   of its color's lightness). Before the step's first turn, purple arrows in the 3D view
   show where each cubelet it moves will go; parity steps, which turn whole layers, have
-  none. Playing the step returns the colors and the line reads "(done)". Any change that
+  none. A hold step grays nothing: it only turns the whole puzzle, by the center colors. Playing the step returns the colors and the line reads "(done)". Any change that
   takes the step's turns out of the turn list (a turn by hand, Clear, Edit) drops the step,
   its grays and its line; so does Edit colors. The line has a fixed height (layout rule).
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the

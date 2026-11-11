@@ -1029,12 +1029,12 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   const g = await probe("guide");
   const loaded = { counter: await counter(), line: await line(), wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(
-    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners: all three go home\. .+ This is the last step\.$/.test(loaded.line) && loaded.wide <= 0,
-    `Next step loads the step's turns unplayed and says what it is for ("${loaded.line}", ${loaded.counter})`,
+    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners: all three go home\. Turns: b R' F' R b' R' F R This is the last step\.$/.test(loaded.line) && loaded.wide <= 0,
+    `Next step loads the step's turns unplayed and says what it applies to ("${loaded.line}", ${loaded.counter})`,
   );
   // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
   // darker, since a 3-cycle leaves every other cubelet alone. One arrow per corner.
-  check(g?.focus.length === 3 && g.gray === 93 && g.darkGray === 0 && g.arrows === 3, `the cubelets the step is for keep their colors, the rest are gray, and arrows show the cycle (${JSON.stringify(g)})`);
+  check(g?.focus.length === 3 && g.gray === 93 && g.darkGray === 0 && g.arrows === 3, `the cubelets the step applies to keep their colors, the rest are gray, and arrows show the cycle (${JSON.stringify(g)})`);
   // One turn forward hides the arrows; one turn back, to the step's start, shows them again.
   await page.click("#fwd");
   await settle();
@@ -1054,6 +1054,15 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   );
   await next();
   check((await probe("guide")) === null && /^Solved/.test(await line()), `from solved there is no step ("${await line()}")`);
+  // A puzzle held another way gets a hold step, which grays nothing: the center colors are what it goes by.
+  await startFresh();
+  await play("y");
+  await next();
+  const holdStep = { g: await probe("guide"), line: await line() };
+  check(
+    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Hold: Turn the whole puzzle so the white center is up and the green center is in front\. Nothing else moves\. Turns: y' This is the last step\.$/.test(holdStep.line),
+    `a hold step says to turn the whole puzzle, and keeps every color ("${holdStep.line}")`,
+  );
   // Out of shape, the step is for the core cubelets that are wrong; it may leave the rest
   // anywhere, so they are the darker gray, and nothing has an arrow.
   await startFresh();
