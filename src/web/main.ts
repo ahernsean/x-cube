@@ -1305,22 +1305,17 @@ function frame() {
   tickAnimation();
   tickSettle();
   if (guideArrows?.visible) {
-    // One loop: the real cubelets pulse while the copies wait on them; the copies travel
-    // (eased at both ends); they rest where they arrive; they vanish; a short gap; again.
-    const { PULSE, TRAVEL, REST, GAP } = GUIDE_LOOP;
-    const at = performance.now() % (PULSE + TRAVEL + REST + GAP);
-    const t = Math.min(1, Math.max(0, (at - PULSE) / TRAVEL));
+    // One loop: the copies travel (eased at both ends), rest where they arrive, vanish, and
+    // after a short gap start again.
+    const { TRAVEL, REST, GAP } = GUIDE_LOOP;
+    const at = performance.now() % (TRAVEL + REST + GAP);
+    const t = Math.min(1, at / TRAVEL);
     const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-    const shown = at < PULSE + TRAVEL + REST;
+    const shown = at < TRAVEL + REST;
     for (const r of guideArrows.userData.runners) {
       r.copy.visible = shown;
       r.copy.position.copy(r.curve.getPoint(e));
       r.copy.quaternion.copy(r.from).slerp(r.to, e);
-    }
-    const pulse = at < PULSE ? Math.sin((Math.PI * at) / PULSE) : 0;
-    for (const h of guideArrows.userData.pulses) {
-      h.visible = pulse > 0;
-      h.material.uniforms.strength.value = pulse;
     }
   }
   const view3dOpen = !view3dSection?.classList.contains("collapsed");
@@ -3090,8 +3085,8 @@ function drawGuide() {
           mesh.material = mat;
           guideDimmed.push(mesh);
         }
-        // A cubelet the step may leave anywhere has no glow at all; the others glow gray.
-        for (const gl of glows[c.id] ?? []) if (gl.b === d) gl.paint = level === 2 ? (noGlow ??= [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ visible: false }))) : gray.glow;
+        // Only the cubelets the step applies to glow.
+        for (const gl of glows[c.id] ?? []) if (gl.b === d) gl.paint = noGlow ??= [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ visible: false }));
       });
     }
     guideArrows = makeArrows(g!.arrows);
@@ -3109,14 +3104,13 @@ drawGuide.key = "";
  * path shows where the cubelet goes and how it is turned when it gets there. Where the
  * puzzle is in the way, a path (and the copy flying along it) is drawn faintly, so one on
  * the far side can't be taken for one on the near side. A cubelet
- * that ends in its own spot has a full path and a ring where its sticker lands; one only
+ * that ends solved has a full path and a ring where its sticker lands; one only
  * passing through has a dashed path.
  */
 function makeArrows(paths: StickerPath[]) {
   const group = new THREE.Group();
   group.userData.count = paths.length;
   group.userData.runners = [];
-  group.userData.pulses = [];
   group.userData.drawn = 0; // meshes making up the paths themselves
   group.userData.through = 0; // sampled points of the paths that are inside the puzzle
   // Everything here is drawn twice: plainly where it is in front of the puzzle, and as a
@@ -3141,19 +3135,6 @@ function makeArrows(paths: StickerPath[]) {
   };
   const dir = (d: number) => new THREE.Vector3(...DIRS[d]);
   for (const p of paths) {
-    // The real cubelet pulses, where it is, at the start of each loop (not with reduced motion).
-    if (!reduceMotion) {
-      const h = haloMesh();
-      h.material = h.material.clone();
-      h.material.uniforms = THREE.UniformsUtils.clone(h.material.uniforms);
-      h.material.uniforms.strength.value = 0;
-      h.position.set(...SLOT_POS[p.from]);
-      h.layers.set(HALO_LAYER);
-      h.renderOrder = 3;
-      h.visible = false;
-      group.add(h);
-      group.userData.pulses.push(h);
-    }
     const n1 = dir(p.toDir);
     const { curve } = p;
     const a = curve.getPoint(0), b = curve.getPoint(1);
@@ -3213,11 +3194,11 @@ function makeArrows(paths: StickerPath[]) {
   return group;
 }
 
-/** Glow materials that draw nothing, for cubelets a step may leave anywhere (made on first use, once THREE is loaded). */
+/** Glow materials that draw nothing, for cubelets a step doesn't apply to (made on first use, once THREE is loaded). */
 let noGlow: any[] | null = null;
 
 /** The flying copies' loop, in milliseconds. */
-const GUIDE_LOOP = { PULSE: 600, TRAVEL: 2000, REST: 700, GAP: 300 };
+const GUIDE_LOOP = { TRAVEL: 2000, REST: 700, GAP: 300 };
 
 /** One sticker's path through a step: from a slot and the direction it faces there, to a slot and facing. */
 interface StickerPath {
@@ -3226,7 +3207,7 @@ interface StickerPath {
   to: number;
   toDir: number;
   color: Color;
-  /** Whether the cubelet ends in its own spot. */
+  /** Whether the cubelet ends solved: in its place, turned as solved. */
   lands: boolean;
   /** The cubelet, and how it is turned before and after. */
   cubelet: number;
@@ -3246,35 +3227,41 @@ function oriQuaternion(ori: number) {
 /**
  * A route from a sticker, as it faces before the step, to the face it will be on: it leaves
  * straight out of the sticker and arrives straight onto that face. Of a few routes, each
- * rising farther and swinging farther out to the side the two ends are on, the first that
- * touches no cubelet of st is taken, else the one that touches least. `hits` counts the
- * sampled points, away from the ends, that are inside the puzzle; `effort` how far the
- * route had to go out to clear it.
+ * rising farther and swinging farther out to the side the two ends are on (the lowest first,
+ * hugging the puzzle), the first that touches no cubelet of st is taken, else the one that
+ * touches least. `hits` counts the sampled points, away from the ends, that are inside the
+ * puzzle; `effort` how far the route had to go out to clear it; `length` its length.
  */
 function route(st: State, from: number, fromDir: number, to: number, toDir: number) {
+  const n0 = new THREE.Vector3(...DIRS[fromDir]), n1 = new THREE.Vector3(...DIRS[toDir]);
+  const a = new THREE.Vector3(...SLOT_POS[from]).addScaledVector(n0, 0.52);
+  const b = new THREE.Vector3(...SLOT_POS[to]).addScaledVector(n1, 0.52);
   const reach = 0.14;
+  // Within this of either end a path is still leaving or reaching a sticker, so the
+  // cubelets beside it there don't count as in the way.
+  const nearEnd = 0.45;
   const blocked = (p: any) => {
+    if (p.distanceTo(a) < nearEnd || p.distanceTo(b) < nearEnd) return false;
     for (const [dx, dy, dz] of [[0, 0, 0], [reach, 0, 0], [-reach, 0, 0], [0, reach, 0], [0, -reach, 0], [0, 0, reach], [0, 0, -reach]]) {
       const s = slotAtXYZ(Math.round(p.x + dx), Math.round(p.y + dy), Math.round(p.z + dz));
       if (s >= 0 && st.occ[s] >= 0) return true;
     }
     return false;
   };
-  const n0 = new THREE.Vector3(...DIRS[fromDir]), n1 = new THREE.Vector3(...DIRS[toDir]);
-  const a = new THREE.Vector3(...SLOT_POS[from]).addScaledVector(n0, 0.52);
-  const b = new THREE.Vector3(...SLOT_POS[to]).addScaledVector(n1, 0.52);
+
   const mid = a.clone().add(b);
   const aside = new THREE.Vector3(mid.x, 0, mid.z);
   if (aside.lengthSq() < 0.5) aside.set(1, 0, 1);
   aside.normalize();
-  let best: { curve: any; hits: number; effort: number } | null = null;
+  let best: { curve: any; hits: number; effort: number; length: number } | null = null;
   let effort = 0;
+  const d = a.distanceTo(b);
   for (const swing of [0, 1.2, 2.4, 3.6])
-    for (const rise of [1.0 + 0.3 * a.distanceTo(b), 1.6 + 0.4 * a.distanceTo(b), 2.6 + 0.5 * a.distanceTo(b)]) {
+    for (const rise of [0.35 + 0.25 * d, 0.6 + 0.3 * d, 1.0 + 0.3 * d, 1.6 + 0.4 * d, 2.6 + 0.5 * d]) {
       const curve = new THREE.CubicBezierCurve3(a, a.clone().addScaledVector(n0, rise).addScaledVector(aside, swing), b.clone().addScaledVector(n1, rise).addScaledVector(aside, swing), b);
       let hits = 0;
       for (let k = 3; k <= 45; k++) if (blocked(curve.getPoint(k / 48))) hits++;
-      if (!best || hits < best.hits) best = { curve, hits, effort };
+      if (!best || hits < best.hits) best = { curve, hits, effort, length: curve.getLength() };
       if (!hits) return best;
       effort++;
     }
@@ -3283,8 +3270,8 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
 
 /**
  * The sticker to follow for each cubelet a step moves: the one whose route clears the
- * puzzle most easily (fewest points inside it, then least far out), and among those one
- * that starts and ends on the faces the Home view shows (up, front, right).
+ * puzzle with the shortest path, favoring a little one that starts and ends on the faces
+ * the Home view shows (up, front, right).
  */
 function stickerPaths(st: State, step: SolveStep): StickerPath[] {
   // A parity step turns whole layers: paths for every cubelet in them would only tangle.
@@ -3303,7 +3290,8 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
       if (!color) return;
       const fromDir = ROT_DIR[st.ori[from] * 6 + d], toDir = ROT_DIR[after.ori[to] * 6 + d];
       const r = route(st, from, fromDir, to, toDir);
-      const score = r.hits * 100 + r.effort * 4 - (shown.includes(fromDir) ? 2 : 0) - (shown.includes(toDir) ? 1 : 0);
+      // A route clear of the puzzle first, then the shortest, then one on faces the Home view shows.
+      const score = r.hits * 100 + r.length - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
       if (score < bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from), cubelet: c.id, fromOri: st.ori[from], toOri: after.ori[to], curve: r.curve, hits: r.hits }, score];
     });
     if (best) out.push(best);
@@ -3697,10 +3685,10 @@ function installProbe() {
         paths: guide.arrows.map((p) => `${p.color} ${slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " lands" : ""}`),
         mode: guideMode,
         runners: guideArrows?.visible ? guideArrows.userData.runners.length : 0,
-        pulses: guideArrows?.visible ? guideArrows.userData.pulses.length : 0,
-        /** Glow bands of the cubelets the step may leave anywhere: drawn, and not drawn. */
-        freeGlow: [...guide.free].flatMap((id) => glows[id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 0 : 1), 0),
-        freeNoGlow: [...guide.free].flatMap((id) => glows[id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 1 : 0), 0),
+        /** Glow bands of the cubelets the step doesn't apply to that are drawn, and that are not; and of those it does apply to that are drawn. */
+        otherGlow: CUBELETS.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 0 : 1), 0),
+        otherNoGlow: CUBELETS.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 1 : 0), 0),
+        focusGlow: [...guide.focus].flatMap((id) => glows[id] ?? []).reduce((n, gl) => n + (gl.paint ? 0 : 1), 0),
         /** How many meshes the paths are drawn with (a shaft, a start and a head, each cased; and a ring for a cubelet reaching home). */
         pathMeshes: guideArrows?.visible ? guideArrows.userData.drawn : 0,
         /** How many sampled points of the paths, away from their ends, are inside the puzzle. */

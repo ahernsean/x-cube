@@ -1060,12 +1060,12 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   const g = await probe("guide");
   const loaded = { counter: await counter(), line: await line(), wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(
-    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners\. All three reach their own spots\. Turns: r \(F' L' F\) r' \(F' L F\) Step 1 of 1 to solved\.$/.test(loaded.line) && loaded.wide <= 0,
+    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners\. All three end up solved\. Turns: r \(F' L' F\) r' \(F' L F\) Step 1 of 1 to solved\.$/.test(loaded.line) && loaded.wide <= 0,
     `Next step loads the step's turns unplayed and says what it applies to ("${loaded.line}", ${loaded.counter})`,
   );
   // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
   // darker, since a 3-cycle leaves every other cubelet alone. One arrow per corner.
-  check(g?.focus.length === 3 && g.gray === 93 && g.darkGray === 0 && g.arrows === 3, `the cubelets the step applies to keep their colors, the rest are gray, and arrows show the cycle (${JSON.stringify(g)})`);
+  check(g?.focus.length === 3 && g.gray === 93 && g.darkGray === 0 && g.arrows === 3 && g.otherGlow === 0 && g.focusGlow > 0, `the cubelets the step applies to keep their colors, the rest are gray, and arrows show the cycle (${JSON.stringify(g)})`);
   // Each path follows one sticker, in its color, from the face it is on to the face it will
   // be on; all three of these cubelets end at home.
   const pathForm = /^[WYGBRO] [\w.]+\/[RLUDFB] > [\w.]+\/[RLUDFB] lands$/;
@@ -1090,7 +1090,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await page.click("#guide-show");
   await settle();
   const hiddenAfter = (await Promise.all(g.paths.map(seenPath))).flat().filter((x) => !x).length;
-  check(g.runners === (motion ? 3 : 0) && g.pulses === (motion ? 3 : 0) && hiddenBefore > 0 && hiddenAfter === 0, `Show turns the view to where the paths begin and end (${hiddenBefore} of 6 ends hidden from below, ${hiddenAfter} after Show); ${g.runners} copies fly, ${g.pulses} cubelets pulse`);
+  check(g.runners === (motion ? 3 : 0) && hiddenBefore > 0 && hiddenAfter === 0, `Show turns the view to where the paths begin and end (${hiddenBefore} of 6 ends hidden from below, ${hiddenAfter} after Show); ${g.runners} copies fly`);
   await page.click('[data-view="home"]');
   await settle();
   // One turn forward hides the arrows; one turn back, to the step's start, shows them again.
@@ -1144,7 +1144,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await play("R U");
   await next();
   const shape = await probe("guide");
-  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.freeNoGlow > 0 && shape.freeGlow === 0 && shape.arrows === 0 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, and gives them no edge glow (${JSON.stringify(shape)})`);
+  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows === 0 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, and only the cubelets it applies to glow (${JSON.stringify(shape)})`);
   // Playing the step and asking again carries the count on: step 2 of the same total, in its own box.
   const total = shape.after + 1;
   await page.click("#last");
@@ -1188,7 +1188,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await next();
   const passing = await probe("guide");
   const throughOnly = passing.paths.filter((t) => !t.endsWith(" lands")).length;
-  check(passing.stage === "corners" && throughOnly === 2 && passing.pathMeshes === 8 + 2 * (2 * 9 + 4) && passing.pathsThrough === 0 && /One reaches its own spot\./.test(await line()), `two cubelets only passing through get dashed paths (${passing.paths.join("; ")}; ${passing.pathMeshes} meshes)`);
+  check(passing.stage === "corners" && throughOnly === 2 && passing.pathMeshes === 8 + 2 * (2 * 9 + 4) && passing.pathsThrough === 0 && /One ends up solved\./.test(await line()), `two cubelets only passing through get dashed paths (${passing.paths.join("; ")}; ${passing.pathMeshes} meshes)`);
   // The order: "Top to bottom" solves the white X-face first, so the same corner cycle is a
   // top-corners step there. The choice is kept on this device.
   await startFresh();
@@ -1199,7 +1199,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await next();
   const byLayer = await probe("guide");
   const kept = await page.evaluate(() => localStorage.getItem("xcube.guideMode"));
-  check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Top corners: For the white X-face's corners: cycle three X-face corners\. All three reach their own spots\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
+  check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Top corners: For the white X-face's corners: cycle three X-face corners\. All three end up solved\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
   await page.click('[data-guide-mode="kinds"]');
   await startFresh();
   await play("R U");
