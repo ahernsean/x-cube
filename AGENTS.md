@@ -292,8 +292,10 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   of the sticker and coming straight down onto the face the sticker will be on. A
   cubelet that ends at home has a full path and a ring where its sticker lands; one only
   passing through has a thin, fainter path. The sticker followed is one that starts and
-  ends on the faces the Home view shows, where there is one. A bead runs along each
-  path, from the sticker to where it will be, unless the device asks for reduced motion.
+  ends on the faces the Home view shows, where there is one. A small copy of the
+  cubelet flies along each path, over and over, turning as the cubelet will turn: it
+  leaves showing its stickers as they are and arrives showing them as they will be
+  (not drawn where the device asks for reduced motion).
   **Show** turns the 3D view to where the paths begin and end (as the color editor's Show
   does for a problem). Parity steps, which turn whole layers, have no paths. **Order** switches between the solver's modes, "Corners,
   then edges" and "Top to bottom", and is kept on the device. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The

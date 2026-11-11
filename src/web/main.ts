@@ -1239,10 +1239,14 @@ function frame() {
   tickAnimation();
   tickSettle();
   if (guideArrows?.visible) {
-    // Each bead takes 1.6 seconds from its sticker to where the sticker will be, eased at both ends.
-    const t = (performance.now() % 1600) / 1600;
+    // Each copy takes two seconds from its sticker to where the sticker will be, eased at
+    // both ends, and rests there a moment before starting again.
+    const t = Math.min(1, (performance.now() % 2600) / 2000);
     const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-    for (const r of guideArrows.userData.runners) r.bead.position.copy(r.curve.getPoint(e));
+    for (const r of guideArrows.userData.runners) {
+      r.copy.position.copy(r.curve.getPoint(e));
+      r.copy.quaternion.copy(r.from).slerp(r.to, e);
+    }
   }
   const view3dOpen = !view3dSection?.classList.contains("collapsed");
   if (view3dOpen) updateCompass();
@@ -3056,34 +3060,27 @@ function makeArrows(paths: StickerPath[]) {
       [new THREE.ConeGeometry(radius * 2.6, 0.44, 14), paint, 5],
     ];
     if (p.lands) parts.push([new THREE.RingGeometry(0.3, 0.42, 24), ink, 4], [new THREE.RingGeometry(0.33, 0.39, 24), paint, 5]);
-    // A bead runs along the path, from the sticker to where it will be, over and over.
+    // A small copy of the cubelet flies along the path, over and over, turning as the
+    // cubelet will turn: it leaves showing its stickers as they are and arrives showing
+    // them as they will be. Each face is drawn only from its front, so the copy looks
+    // solid although, like the path, it is drawn over everything.
     if (!reduceMotion) {
-      const bead = new THREE.Group();
-      for (const [r, mat, order] of [[radius + 0.1, ink, 6], [radius + 0.06, paint, 7]] as [number, any, number][]) {
-        const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), mat);
-        m.renderOrder = order;
-        m.layers.set(HALO_LAYER);
-        bead.add(m);
-      }
-      group.add(bead);
-      (group.userData.runners ??= []).push({ bead, curve });
+      const copy = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.46, 0.46), new THREE.MeshBasicMaterial({ color: 0x101214, depthTest: false, depthWrite: false }));
+      body.renderOrder = 6;
+      copy.add(body);
+      CUBELETS[p.cubelet].stickers.forEach((color, d) => {
+        if (!color) return;
+        const face = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.36), new THREE.MeshBasicMaterial({ color: STICKER[color], depthTest: false, depthWrite: false }));
+        face.position.copy(dir(d).multiplyScalar(0.232));
+        face.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir(d));
+        face.renderOrder = 7;
+        copy.add(face);
+      });
+      copy.traverse((m: any) => m.layers.set(HALO_LAYER));
+      group.add(copy);
+      group.userData.runners.push({ copy, curve, from: oriQuaternion(p.fromOri), to: oriQuaternion(p.toOri) });
     }
-    parts.forEach(([geo, mat, order], k) => {
-      const m = new THREE.Mesh(geo, mat);
-      if (k === 2 || k === 3) m.position.copy(a);
-      if (k === 4 || k === 5) {
-        const base = curve.getPoint(headAt);
-        m.position.copy(base.clone().add(b).multiplyScalar(0.5));
-        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(base).normalize());
-      }
-      if (k >= 6) {
-        m.position.copy(b);
-        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n1);
-      }
-      m.renderOrder = order;
-      m.layers.set(HALO_LAYER);
-      group.add(m);
-    });
   }
   return group;
 }
@@ -3097,6 +3094,16 @@ interface StickerPath {
   color: Color;
   /** Whether the cubelet ends at home. */
   lands: boolean;
+  /** The cubelet, and how it is turned before and after. */
+  cubelet: number;
+  fromOri: number;
+  toOri: number;
+}
+
+/** A cubelet orientation (an index into ROTATIONS) as a quaternion. */
+function oriQuaternion(ori: number) {
+  const m = ROTATIONS[ori];
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().set(m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, 0, 0, 0, 1));
 }
 
 /**
@@ -3120,7 +3127,7 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
       if (!color) return;
       const fromDir = ROT_DIR[st.ori[from] * 6 + d], toDir = ROT_DIR[after.ori[to] * 6 + d];
       const score = (shown.includes(fromDir) ? 2 : 0) + (shown.includes(toDir) ? 1 : 0);
-      if (score > bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from) }, score];
+      if (score > bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from), cubelet: c.id, fromOri: st.ori[from], toOri: after.ori[to] }, score];
     });
     if (best) out.push(best);
   }

@@ -1039,7 +1039,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   // be on; all three of these cubelets end at home.
   const pathForm = /^[WYGBRO] [\w.]+\/[RLUDFB] > [\w.]+\/[RLUDFB] home$/;
   check(g?.paths.length === 3 && g.paths.every((t) => pathForm.test(t)) && new Set(g.paths.map((t) => t.split(" ")[1])).size === 3, `each moved cubelet has a path from one of its stickers to where that sticker will be (${g?.paths.join("; ")})`);
-  // A bead runs along each path (unless the device asks for less motion). Show turns the
+  // A small copy of each cubelet flies along its path (unless the device asks for less motion). Show turns the
   // view so that every path's sticker, and the face it is going to, can be seen.
   const motion = await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches);
   await page.click('[data-view="bottom"]');
@@ -1059,7 +1059,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await page.click("#guide-show");
   await settle();
   const hiddenAfter = (await Promise.all(g.paths.map(seenPath))).flat().filter((x) => !x).length;
-  check(g.runners === (motion ? 3 : 0) && hiddenBefore > 0 && hiddenAfter === 0, `Show turns the view to where the paths begin and end (${hiddenBefore} of 6 ends hidden from below, ${hiddenAfter} after Show); ${g.runners} beads run`);
+  check(g.runners === (motion ? 3 : 0) && hiddenBefore > 0 && hiddenAfter === 0, `Show turns the view to where the paths begin and end (${hiddenBefore} of 6 ends hidden from below, ${hiddenAfter} after Show); ${g.runners} copies fly`);
   await page.click('[data-view="home"]');
   await settle();
   // One turn forward hides the arrows; one turn back, to the step's start, shows them again.
