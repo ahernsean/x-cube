@@ -41,6 +41,14 @@ test("cli: steps prints a status line per turn, stopping at a refused turn", () 
   assert.match(lines[1], /^ {2}2 f {3}BLOCKED: .*6\/9/);
 });
 
+test("cli: solve prints the steps from a position to solved", () => {
+  const r = xc("solve", "R2 U r");
+  assert.equal(r.status, 0);
+  assert.match(r.out, /^ 1 core +\S/m);
+  assert.match(r.out, /\d+ turns in \d+ steps?\n$/);
+  assert.match(xc("solve", "").out, /already solved/);
+});
+
 test("cli: effect says the corner 3-cycle moves 3 cubelets and prints no flat view", () => {
   const r = xc("effect", "[R' F' R, b]");
   assert.equal(r.status, 0, r.err);
