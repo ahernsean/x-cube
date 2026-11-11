@@ -1730,6 +1730,7 @@ function finishAnim() {
   pivot.remove(anim.group);
   syncMeshes(anim.after);
   anim = null;
+  drawGuide(); // the turn may have ended the step, or brought the position back to its start
   if (!queue.length) showNetAnimation(false);
 }
 
@@ -2798,8 +2799,9 @@ interface Guide {
   step: SolveStep;
   /** Steps left after this one. */
   after: number;
-  /** Where in the turn list the step's turns begin. */
+  /** Where in the turn list the step's turns begin, and the position there. */
   start: number;
+  from: State;
   /** Cubelet ids: the ones the step is for, and the ones it may leave anywhere. */
   focus: Set<number>;
   free: Set<number>;
@@ -2834,6 +2836,7 @@ function nextStep() {
     step,
     after: steps.length - 1,
     start: app.cursor,
+    from: st.clone(),
     focus: new Set(step.moved.map(([from]) => st.occ[from])),
     free: new Set(step.free.map((s) => st.occ[s])),
     // A parity step turns whole layers: arrows for every cubelet in them would only tangle.
@@ -2844,10 +2847,13 @@ function nextStep() {
   render();
 }
 
-/** Whether the guide's step is still in the turn list where it was put. */
+/** Whether the guide's step is still in the turn list where it was put, starting from the position it was worked out for. */
 function guideHolds(g: Guide): boolean {
   const there = app.history.slice(g.start, g.start + g.step.turns.length);
-  return there.length === g.step.turns.length && there.every((t, i) => turnName(t) === turnName(g.step.turns[i]));
+  if (there.length !== g.step.turns.length || !there.every((t, i) => turnName(t) === turnName(g.step.turns[i]))) return false;
+  const st = app.base.clone();
+  for (let i = 0; i < g.start; i++) applyTurn(st, app.history[i]);
+  return st.equals(g.from);
 }
 
 function clearGuide() {
@@ -2879,7 +2885,9 @@ function refreshGuide() {
 function drawGuide() {
   if (!grayMaterial) return;
   const g = guide;
-  const within = !!g && app.cursor >= g.start && app.cursor < g.start + g.step.turns.length;
+  // During a turn the cursor is already past it; the grays go by the position the turn started from.
+  const at = anim ? app.cursor + (anim.forward ? -1 : 1) : app.cursor;
+  const within = !!g && at >= g.start && at < g.start + g.step.turns.length;
   const key = within ? `${g!.start}/${g!.step.alg}` : "";
   if (guideArrows) guideArrows.visible = !!g && app.cursor === g.start && !anim && !queue.length;
   if (drawGuide.key === key) return;
@@ -2911,7 +2919,7 @@ function drawGuide() {
     guideArrows.visible = app.cursor === g!.start && !anim && !queue.length;
     pivot.add(guideArrows);
   }
-  if (!anim && !queue.length) syncMeshes(app.current);
+  if (!anim) syncMeshes(app.current);
 }
 drawGuide.key = "";
 

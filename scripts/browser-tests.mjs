@@ -1016,7 +1016,7 @@ labTest("color editing: colors that turns can't reach", async ({ page, check, pr
 
 // ---- The step guide.
 
-labTest("guide: Next step loads one step, grays what it leaves alone, and shows where cubelets go", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh }) => {
+labTest("guide: Next step loads one step, grays what it leaves alone, and shows where cubelets go", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
   const line = () => page.$eval("#guide-line", (e) => e.textContent);
   const next = async () => {
     await page.evaluate(() => (document.getElementById("guide").open = true));
@@ -1035,6 +1035,14 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
   // darker, since a 3-cycle leaves every other cubelet alone. One arrow per corner.
   check(g?.focus.length === 3 && g.gray === 93 && g.darkGray === 0 && g.arrows === 3, `the cubelets the step is for keep their colors, the rest are gray, and arrows show the cycle (${JSON.stringify(g)})`);
+  // One turn forward hides the arrows; one turn back, to the step's start, shows them again.
+  await page.click("#fwd");
+  await settle();
+  const stepped = (await probe("guide")).arrows;
+  await page.click("#back");
+  await settle();
+  const returned = await probe("guide");
+  check(stepped === 0 && returned.arrows === 3 && returned.gray === 93, `the arrows hide once the step is under way and return at its start (${stepped}, then ${returned.arrows})`);
   // The grays are really drawn: the 3D view no longer shows the model's colors everywhere.
   const grayDrawn = (await sweep3d()).wrong.length;
   await page.click("#last");
@@ -1053,6 +1061,17 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await next();
   const shape = await probe("guide");
   check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.arrows === 0 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere (${JSON.stringify(shape)})`);
+  // Editing a turn before the step changes the position it starts from, so the step no
+  // longer applies, though its own turns are still in the list.
+  const listed = await turnList();
+  await page.click("#alg-edit");
+  await page.fill("#alg", listed.replace(/^R /, "R2 "));
+  await page.click("#load");
+  await settle();
+  check(listed.startsWith("R U ") && (await probe("guide")) === null && (await line()) === "", "editing a turn before the step drops the step");
+  await page.click("#last");
+  await settle();
+  await next();
   // Turning the puzzle by hand takes the step out of the turn list, and the guide goes with it.
   await page.click('[data-move="D"]');
   await settle();
