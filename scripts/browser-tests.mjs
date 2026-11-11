@@ -1069,7 +1069,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   // Each path follows one sticker, in its color, from the face it is on to the face it will
   // be on; all three of these cubelets end at home.
   const pathForm = /^[WYGBRO] [\w.]+\/[RLUDFB] > [\w.]+\/[RLUDFB] lands$/;
-  check(g?.paths.length === 3 && g.pathMeshes === 24 && g.pathsThrough === 0 && g.headGap >= 0 && g.headGap < 0.05 && g.paths.every((t) => pathForm.test(t)) && new Set(g.paths.map((t) => t.split(" ")[1])).size === 3, `each moved cubelet has a path from one of its stickers to where that sticker will be, going around the puzzle, not through it, each shaft joined to its head (${g?.paths.join("; ")})`);
+  check(g?.paths.length === 3 && g.pathMeshes === 24 && g.pathsThrough === 0 && g.pathsOut < 0.15 && g.headGap >= 0 && g.headGap < 0.05 && g.paths.every((t) => pathForm.test(t)) && new Set(g.paths.map((t) => t.split(" ")[1])).size === 3, `each moved cubelet has a path from one of its stickers to where that sticker will be, going around the puzzle, not through it, each shaft joined to its head (${g?.paths.join("; ")})`);
   // A small copy of each cubelet flies along its path (unless the device asks for less motion). Show turns the
   // view so that every path's sticker, and the face it is going to, can be seen.
   const motion = await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -1141,12 +1141,12 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   // Out of shape, the step applies to the core cubelets that are wrong; it may leave the
   // rest anywhere, so they are the darker gray. Those that move get plain paths. Their
   // stickers are often covered by neighbors that are about to move, so a path may graze
-  // the puzzle near its ends (a few sampled points), the price of keeping it short and in view.
+  // the puzzle near its ends, or pass behind it, faintly drawn: staying in view comes first.
   await startFresh();
   await play("R U");
   await next();
   const shape = await probe("guide");
-  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows > 0 && shape.paths.every((t) => !/ (lands|dashed)/.test(t)) && shape.pathsThrough <= 4 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, only the cubelets it applies to glow, and those that move have plain paths (${JSON.stringify(shape)})`);
+  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows > 0 && shape.paths.every((t) => !/ (lands|dashed)/.test(t)) && shape.pathsOut < 0.15 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, only the cubelets it applies to glow, and those that move have plain paths (${JSON.stringify(shape)})`);
   // Playing the step and asking again carries the count on: step 2 of the same total, in its own box.
   const total = shape.after + 1;
   await page.click("#last");

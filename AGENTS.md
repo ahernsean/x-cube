@@ -306,11 +306,13 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   one only passing through has a dashed path. In a shape or core step, which solves no
   cubelet, each cubelet it applies to that moves or turns has a plain path (no ring), read
   from where it ends; a core double edge has no sticker and so no path. Such a sticker is
-  often covered by a neighbor, so its path may pass through that one cubelet, and graze
-  another, near its ends. A path goes around the puzzle, never
+  often covered by a neighbor, so its path may pass through the puzzle (drawn faintly
+  there) rather than leave the view. A path goes around the puzzle, never
   through it: of a few routes, from one hugging the puzzle to ones rising and swinging
-  farther out, the one costing least is taken, where a sampled point inside the puzzle
-  costs most, then leaving the room the 3D view shows, then length. The sticker
+  farther out, the one costing least is taken: leaving the room the 3D view shows (a sphere around the
+  puzzle, whatever the view's angle) costs most, then a sampled point inside the puzzle,
+  then length. Besides arcs, the routes include orbits: out from the sticker, around the
+  puzzle at a fixed distance (over the top or bottom for opposite sides), and in. The sticker
   followed is the one whose clear route is shortest (so a hop to a neighboring spot stays
   a short hop), favoring a little one on the faces the Home view shows. Each loop
   (`GUIDE_LOOP`): a small copy of each cubelet flies along its path, turning as the cubelet will turn (it leaves showing its
