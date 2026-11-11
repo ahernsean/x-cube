@@ -119,6 +119,34 @@ corner 3-cycle is `R' F' R b R' F R b'` (both verified by tests).
 situation it solves, how to recognize it, and the test that checks it. Add new ones there,
 and to `src/core/algorithms.ts` (with an example position) so the Lab lists them.
 
+## Solving method
+
+`src/core/solve.ts` solves any position turns can reach as a list of steps a person could
+follow (`nextStep`, `solveSteps`; `xc solve` prints them). It is not the shortest solution
+(about 180 turns on average, 240 at most in 300 sampled positions). Each step has a stage,
+a goal in words, its turns, the cubelets it is for (`moved`: slot before, slot after) and
+the cubelets it may leave anywhere (`free`); every other cubelet looks the same after the
+step. Stages, in order:
+
+1. **hold**: turn the whole puzzle so white is up and green in front. No later step turns
+   the whole puzzle or leaves a center moved (the edge 3-cycle's two S turns undo each
+   other), so the centers stay put.
+2. **shape**: back to the X shape with face turns (at most 12; a table-driven search finds
+   the fewest). Free: every outer cubelet.
+3. **core**: white core cubelets up, yellow down, with the shape-keeping turns. Free: every
+   outer cubelet.
+4. **parity**: when the outer corners or the outer edges need an odd number of swaps, `r`
+   (both odd), `U` (edges only: it moves the four edges in one ring and the eight corners
+   in two) or `U r` (corners only) makes both even.
+5. **corners**, 6. **edges**: three at a time. Each step is one fixed 3-cycle (`CYCLES`:
+   Baum's two, or its inverse) inside setup turns that keep the shape, written
+   `[setup: cycle]`. An outer cubelet is turned one way in each spot, so placing it is all
+   there is to do. Setups are at most 7 turns for edges and 5 for corners.
+
+The 3-cycles are the method's whole repertoire for the outer cubelets, and
+`test/solve.test.ts` shows they are enough: it solves scrambled positions and positions
+from the color editor, and checks each step changes only what it says.
+
 ## Code map
 
 - `src/core/geometry.ts`: rotations, directions.
@@ -130,6 +158,7 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
 - `src/core/edit.ts`: fitting edited sticker colors to real cubelets (the Lab's color editor).
 - `src/core/search.ts`, `src/core/goals.ts`: iterative-deepening search with goal masks
   based on appearance (look-alike twins compare equal).
+- `src/core/solve.ts`: the step-by-step solver (see "Solving method" below).
 - `src/cli/xc.ts`: command-line driver (see `README.md`).
 - `src/web/`: **X-Cube Lab**, the browser viewer, built by `scripts/build-web.ts` into
   `dist/x-cube-lab.html` (published as a claude.ai artifact, which supplies the document

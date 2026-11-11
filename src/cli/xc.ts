@@ -5,11 +5,13 @@
 //   node src/cli/xc.ts effect "<alg>" [--from ...]     cycles / twists caused by alg
 //   node src/cli/xc.ts order "<alg>" [--from ...]      repeats until the start state looks the same
 //   node src/cli/xc.ts encode "<alg>"                  print a state code for solved + alg
+//   node src/cli/xc.ts solve "<alg>" [--state <code>]  steps from the position after alg to solved
 
 import { effect, isHomeX, netView, statusLine } from "../core/analyze.ts";
 import { formatAlg, parseAlg } from "../core/notation.ts";
 import { State, applyTurns, turnName } from "../core/puzzle.ts";
 import { decodeState, encodeState } from "../core/serialize.ts";
+import { solveSteps } from "../core/solve.ts";
 
 function startState(args: Map<string, string>): State {
   const st = args.has("--state") ? decodeState(args.get("--state")!) : State.solved();
@@ -29,7 +31,7 @@ function main(argv: string[]) {
   const [cmd, alg = "", ...rest] = argv;
   const args = new Map<string, string>();
   for (let i = 0; i < rest.length; i += 2) args.set(rest[i], rest[i + 1]);
-  if (!cmd) fail("usage: xc <show|steps|effect|order|encode> \"<alg>\" [--from \"<alg>\"] [--state <code>]");
+  if (!cmd) fail("usage: xc <show|steps|effect|order|encode|solve> \"<alg>\" [--from \"<alg>\"] [--state <code>]");
   const turns = parseAlg(alg);
   const start = startState(args);
   const st = start.clone();
@@ -75,6 +77,20 @@ function main(argv: string[]) {
       if (!r.ok) fail(r.error!);
       console.log(encodeState(st));
       console.log(isHomeX(st) ? "(X shape)" : "(not X shape)");
+      break;
+    }
+    case "solve": {
+      const r = applyTurns(st, turns);
+      if (!r.ok) fail(r.error!);
+      let steps;
+      try {
+        steps = solveSteps(st);
+      } catch (e) {
+        fail((e as Error).message);
+      }
+      if (!steps.length) console.log("already solved");
+      steps.forEach((step, i) => console.log(`${String(i + 1).padStart(2)} ${step.stage.padEnd(7)} ${step.alg}\n           ${step.goal}`));
+      if (steps.length) console.log(`${steps.reduce((n, step) => n + step.turns.length, 0)} turns in ${steps.length} ${steps.length === 1 ? "step" : "steps"}`);
       break;
     }
     default:
