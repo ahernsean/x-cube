@@ -48,6 +48,7 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
     const before = st.clone();
     assert.ok(applyTurns(st, step.turns).ok, `every turn of ${step.alg} is allowed`);
     assert.deepEqual(parseAlg(step.alg), step.turns, "the notation is the turns");
+    assert.equal(step.parts.reduce((n, part) => n + part.turns, 0), step.turns.length, `the parts of ${step.alg} are all of its turns`);
     if (step.stage === "hold") continue;
     // A regrip comes first or not at all, and what a step reports is as the puzzle was held before it.
     const rotations = step.turns.filter((t) => MOVE_DEFS[t.def].kind === "rotation");
@@ -68,6 +69,12 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
     if (step.stage !== "core") for (const [from, to] of step.moved) assert.equal(seen.occ[to], before.occ[from], `${step.alg} moves the cubelet it says where it says`);
     // A cycle brings home the cubelets it says, and at least one.
     if (!["core", "parity"].includes(step.stage)) {
+      // Its parts: the setup, the eight turns of the cycle, and the setup undone, after any regrip.
+      const names = step.parts.map((part) => part.name).join();
+      assert.ok(["cycle", "setup,cycle,undo", "regrip,cycle", "regrip,setup,cycle,undo"].includes(names), `${step.alg} is ${names}`);
+      const [setup, undo] = [step.parts.find((part) => part.name === "setup"), step.parts.find((part) => part.name === "undo")];
+      assert.equal(setup?.turns, undo?.turns);
+      if (setup) assert.deepEqual(step.turns.slice(-setup.turns), parseAlg(`(${step.alg.slice(step.alg.indexOf("[") + 1, step.alg.indexOf(":"))})'`), `${step.alg} ends by undoing its setup`);
       assert.ok(step.lands.length >= 1, `${step.alg} brings a cubelet home`);
       assert.match(step.goal, [/One goes home$/, /Two go home$/, /All three go home$/][step.lands.length - 1]);
       for (const [from, to] of step.moved) assert.equal(atHome(seen, to), step.lands.includes(from), `${step.alg} says which cubelets end at home`);

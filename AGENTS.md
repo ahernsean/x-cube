@@ -292,12 +292,15 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   of the sticker and coming straight down onto the face the sticker will be on. A
   cubelet that ends at home has a full path and a ring where its sticker lands; one only
   passing through has a thin, fainter path. The sticker followed is one that starts and
-  ends on the faces the Home view shows, where there is one. Parity steps, which turn
-  whole layers, have no paths. **Order** switches between the solver's modes, "Corners,
+  ends on the faces the Home view shows, where there is one. A bead runs along each
+  path, from the sticker to where it will be, unless the device asks for reduced motion.
+  **Show** turns the 3D view to where the paths begin and end (as the color editor's Show
+  does for a problem). Parity steps, which turn whole layers, have no paths. **Order** switches between the solver's modes, "Corners,
   then edges" and "Top to bottom", and is kept on the device. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
   guide calls it **Regrip**, and it names the center that is up now ("now blue is up").
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag
-  ("3 Corners"), the shown step's box outlined; tapping a tag, or **Step start**, shows
+  ("3 Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
+  undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows
   that step again at the position it begins from.
   **Stop**, or closing the disclosure, drops the step, its grays and its line and leaves
   the turn list alone; Next step starts again from the position shown. Playing the step returns the colors and the line reads "(done)". Any change that

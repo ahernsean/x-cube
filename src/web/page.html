@@ -159,6 +159,11 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 /* A step the guide loaded: its turns in a box, behind a tag that goes to the step's start. */
 .step-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
 .step-box.on { border-color: var(--accent); }
+/* The setup and its undoing are marked alike, under the turn; a regrip is ringed. */
+.tok.part-setup, .tok.part-undo { box-shadow: inset 0 -2px 0 var(--accent); }
+.tok.part-undo { opacity: 0.8; font-style: italic; }
+.tok.part-regrip { box-shadow: inset 0 0 0 1px var(--muted); }
+.tok.part-setup.cur, .tok.part-undo.cur, .tok.part-regrip.cur { box-shadow: inset 0 0 0 2px var(--good); }
 .step-tag { font: 700 11px var(--f-body); border: 0; background: none; color: var(--accent); padding: 3px 4px; cursor: pointer; white-space: nowrap; }
 .tok.done { background: var(--good-bg); color: var(--good); }
 .tok.cur { box-shadow: inset 0 0 0 2px var(--good); } /* inside the chip: .history clips anything drawn outside */
@@ -300,8 +305,8 @@ details[open] summary { margin-bottom: 8px; }
       </div>
       <details class="known" id="guide">
         <summary>Solve step by step</summary>
-        <p class="hint" style="margin:6px 0 0">Next step loads the turns for one step toward solved, ready to play. Until it is played, the cubelets it applies to keep their colors, the ones it leaves alone are gray, and the ones it may leave anywhere are darker. Each moved cubelet has a path in the color of one of its stickers, from that sticker to where it will be; a ring marks a cubelet reaching its home, and a thin path one that is only passing through. Each step is boxed in the turn list; its tag, or Step start, goes back to where it begins. Stop, or closing this section, ends it; Next step starts again from the position shown.</p>
-        <div class="row" style="margin-top:8px"><button class="btn primary" id="next-step">Next step</button><button class="btn" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn" id="guide-stop" title="Drop the step and its grays; the turn list stays as it is">Stop</button></div>
+        <p class="hint" style="margin:6px 0 0">Next step loads one step toward solved, ready to play. The cubelets it applies to keep their colors, and a path follows one sticker of each to where it will be; a ring marks a cubelet reaching home. Show turns the view to them. In the turn list, a step's tag goes back to its start.</p>
+        <div class="row" style="margin-top:8px"><button class="btn primary" id="next-step">Next step</button><button class="btn" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn" id="guide-show" title="Turn the view to where this step's paths begin and end">Show</button><button class="btn" id="guide-stop" title="Drop the step and its grays; the turn list stays as it is">Stop</button></div>
         <div class="row" style="margin-top:8px"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
         <p class="guide-line" id="guide-line" aria-live="polite"></p>
       </details>

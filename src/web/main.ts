@@ -1238,6 +1238,12 @@ function frame() {
   }
   tickAnimation();
   tickSettle();
+  if (guideArrows?.visible) {
+    // Each bead takes 1.6 seconds from its sticker to where the sticker will be, eased at both ends.
+    const t = (performance.now() % 1600) / 1600;
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    for (const r of guideArrows.userData.runners) r.bead.position.copy(r.curve.getPoint(e));
+  }
   const view3dOpen = !view3dSection?.classList.contains("collapsed");
   if (view3dOpen) updateCompass();
   renderNetAnimation();
@@ -2561,6 +2567,7 @@ function bindUI() {
   $("next-step").addEventListener("click", () => nextStep());
   $("guide-stop").addEventListener("click", () => stopGuide());
   $("guide-start").addEventListener("click", () => goToStep(guide ?? undefined));
+  $("guide-show").addEventListener("click", () => showGuide());
   $("guide").addEventListener("toggle", () => {
     if (!($("guide") as HTMLDetailsElement).open) stopGuide();
   });
@@ -2910,12 +2917,23 @@ function stopGuide() {
   render();
 }
 
+/** Show: turns the 3D view to where the shown step's paths begin and end. */
+function showGuide() {
+  if (!guide) return;
+  if (app.cursor !== guide.start) jump(guide.start);
+  const g = guide;
+  const faces: [number, number][] = g.arrows.length ? g.arrows.flatMap((p) => [[p.from, p.fromDir], [p.to, p.toDir]] as [number, number][]) : [...g.focus].flatMap((id) => [0, 1, 2, 3, 4, 5].map((d) => [app.current.occ.indexOf(id), d] as [number, number]).filter(([s, d]) => isExposed(app.current, s, d) && app.current.colorAt(s, d)));
+  showFaces(app.current, faces);
+}
+
 /** Step start, or a step's tag in the turn list: shows that step again, at the position it starts from. */
 function goToStep(g: Guide | undefined) {
   if (!g || edit) return;
   guide = g;
   jump(g.start);
 }
+
+const PART_TITLE = { regrip: "Regrip: turn the whole puzzle", setup: "Setup", cycle: "The cycle", undo: "The setup, undone", turns: "" };
 
 /** The turn list's chips, with each step the guide put there in a box behind a tag that goes to its start. */
 function turnListHtml(): string {
@@ -2927,9 +2945,9 @@ function turnListHtml(): string {
       out += chip(app.history[i], i++);
       continue;
     }
-    const end = i + g.step.turns.length;
     out += `<span class="step-box ${g === guide ? "on" : ""}"><button class="step-tag" data-step="${i}" title="Go to the start of this step">${g.index} ${STAGE_NAME[g.step.stage]}</button>`;
-    for (; i < end; i++) out += chip(app.history[i], i);
+    // A cycle step's parts are told apart: the setup, the cycle, and the setup undone.
+    for (const part of g.step.parts) for (let k = 0; k < part.turns; k++, i++) out += chip(app.history[i], i).replace('class="tok ', `title="${PART_TITLE[part.name]}" class="tok part-${part.name} `);
     out += "</span>";
   }
   return out;
@@ -2946,6 +2964,7 @@ function refreshGuide() {
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-guide-mode]")) b.classList.toggle("sel", b.dataset.guideMode === guideMode);
   ($("guide-stop") as HTMLButtonElement).disabled = !guide && !guideLine;
   ($("guide-start") as HTMLButtonElement).disabled = !guide || app.cursor === guide.start;
+  ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold";
   const line = $("guide-line");
   line.textContent = "";
   if (guide) {
@@ -3014,6 +3033,7 @@ drawGuide.key = "";
 function makeArrows(paths: StickerPath[]) {
   const group = new THREE.Group();
   group.userData.count = paths.length;
+  group.userData.runners = [];
   const flat = (color: number, opacity: number) => new THREE.MeshBasicMaterial({ color, depthTest: false, depthWrite: false, transparent: true, opacity, side: THREE.DoubleSide });
   const dir = (d: number) => new THREE.Vector3(...DIRS[d]);
   for (const p of paths) {
@@ -3036,6 +3056,18 @@ function makeArrows(paths: StickerPath[]) {
       [new THREE.ConeGeometry(radius * 2.6, 0.44, 14), paint, 5],
     ];
     if (p.lands) parts.push([new THREE.RingGeometry(0.3, 0.42, 24), ink, 4], [new THREE.RingGeometry(0.33, 0.39, 24), paint, 5]);
+    // A bead runs along the path, from the sticker to where it will be, over and over.
+    if (!reduceMotion) {
+      const bead = new THREE.Group();
+      for (const [r, mat, order] of [[radius + 0.1, ink, 6], [radius + 0.06, paint, 7]] as [number, any, number][]) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), mat);
+        m.renderOrder = order;
+        m.layers.set(HALO_LAYER);
+        bead.add(m);
+      }
+      group.add(bead);
+      (group.userData.runners ??= []).push({ bead, curve });
+    }
     parts.forEach(([geo, mat, order], k) => {
       const m = new THREE.Mesh(geo, mat);
       if (k === 2 || k === 3) m.position.copy(a);
@@ -3230,6 +3262,11 @@ function showHighlighted() {
   const faces: [number, number][] = [];
   for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d) && edit.colors[s * 6 + d]) faces.push([s, d]);
   if (!faces.length) for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d)) faces.push([s, d]);
+  showFaces(st, faces);
+}
+
+/** Tumbles the 3D view to the direction that shows these faces (slot, direction) of st best: the most unblocked, then each as squarely as possible. */
+function showFaces(st: State, faces: [number, number][]) {
   if (!faces.length) return;
   if (tween) (pivot.quaternion.copy(tween.to), (tween = null));
   const score = () => {
@@ -3475,6 +3512,7 @@ function installProbe() {
         /** Each path: the sticker it follows, from where and facing which way, to where and facing which way. */
         paths: guide.arrows.map((p) => `${p.color} ${slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " home" : ""}`),
         mode: guideMode,
+        runners: guideArrows?.visible ? guideArrows.userData.runners.length : 0,
       };
     },
     view: () => pivot.quaternion.toArray(),

@@ -1039,6 +1039,29 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   // be on; all three of these cubelets end at home.
   const pathForm = /^[WYGBRO] [\w.]+\/[RLUDFB] > [\w.]+\/[RLUDFB] home$/;
   check(g?.paths.length === 3 && g.paths.every((t) => pathForm.test(t)) && new Set(g.paths.map((t) => t.split(" ")[1])).size === 3, `each moved cubelet has a path from one of its stickers to where that sticker will be (${g?.paths.join("; ")})`);
+  // A bead runs along each path (unless the device asks for less motion). Show turns the
+  // view so that every path's sticker, and the face it is going to, can be seen.
+  const motion = await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches);
+  await page.click('[data-view="bottom"]');
+  await settle();
+  const seenPath = async (t) => {
+    const [, from, to] = t.match(/^\w ([\w.]+\/\w) > ([\w.]+\/\w)/);
+    const hits = [];
+    for (const end of [from, to]) {
+      const [slot, face] = end.split("/");
+      const at = await probe("sticker", slot, face);
+      const there = at && (await probe("at3d", at.x, at.y));
+      hits.push(there?.slot === slot && there?.face === face);
+    }
+    return hits;
+  };
+  const hiddenBefore = (await Promise.all(g.paths.map(seenPath))).flat().filter((x) => !x).length;
+  await page.click("#guide-show");
+  await settle();
+  const hiddenAfter = (await Promise.all(g.paths.map(seenPath))).flat().filter((x) => !x).length;
+  check(g.runners === (motion ? 3 : 0) && hiddenBefore > 0 && hiddenAfter === 0, `Show turns the view to where the paths begin and end (${hiddenBefore} of 6 ends hidden from below, ${hiddenAfter} after Show); ${g.runners} beads run`);
+  await page.click('[data-view="home"]');
+  await settle();
   // One turn forward hides the arrows; one turn back, to the step's start, shows them again.
   await page.click("#fwd");
   await settle();
@@ -1099,6 +1122,10 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   const second = await probe("guide");
   const boxes = await page.$$eval("#history .step-box", (els) => els.map((e) => e.classList.contains("on")).join());
   check(second?.index === 2 && second.index + second.after === total && new RegExp(`Step 2 of ${total} to solved\\.$`).test(await line()) && boxes === "false,true", `the next step after a played one is step 2 of the same ${total}, boxed after the first ("${await line()}", boxes ${boxes})`);
+  // In the turn list a cycle step's setup turns, and their undoing, are marked.
+  const marks = await page.$$eval("#history .step-box.on .tok", (els) => els.map((e) => (e.className.match(/part-(\w+)/) ?? [])[1]).join());
+  const want = /\[(.+):/.exec(second.alg) ? /^(regrip,)?(setup,)+(cycle,){8}(undo,?)+$/ : /^(regrip,)?(cycle,?){8}$/;
+  check((["corners", "edges"].includes(second.stage) ? want : /^(regrip,)?(turns,?)+$/).test(marks), `the step's turns are marked by part (${second.alg}: ${marks})`);
   // Stop drops the step's grays and line, and leaves the turn list and its boxes alone; so
   // does closing the section. Next step starts again from the position shown, counting on.
   const before = await turnList();

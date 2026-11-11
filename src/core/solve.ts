@@ -54,6 +54,11 @@ export interface SolveStep {
   moved: [from: number, to: number][];
   /** Slots, before the step, of cubelets the step may leave anywhere: nothing depends on them yet. */
   free: number[];
+  /**
+   * The step's turns in parts, in order, with how many turns each has: a cycle step is an
+   * optional regrip, the setup, the cycle, and the setup undone; any other step is one part.
+   */
+  parts: { name: "regrip" | "setup" | "cycle" | "undo" | "turns"; turns: number }[];
   /** In a cycle step: the slots, before the step, of the moved cubelets that end at home. The others are only passing through. */
   lands: number[];
   /**
@@ -482,6 +487,7 @@ function cycleStep(st: State, group: Group): SolveStep | null {
     goal: `${group.name ? `For ${group.name}: cycle` : "Cycle"} three ${OUTER_NAME[kind][0]}. ${landing === 3 ? "All three go" : landing === 2 ? "Two go" : "One goes"} home`,
     alg,
     turns: parseAlg(alg),
+    parts: ([["regrip", REGRIP[best.regrip].length], ["setup", best.setup.length], ["cycle", 8], ["undo", best.setup.length]] as const).filter(([, n]) => n).map(([name, turns]) => ({ name, turns })),
     moved,
     free: [],
     lands: moved.filter(([from, to]) => home.get(from) === to).map(([from]) => from),
@@ -504,6 +510,7 @@ function parityStep(st: State): SolveStep | null {
     goal: `${what} an odd number of swaps, which 3-cycles can't do. ${corners && edges ? "One outer turn makes" : edges ? "A U turn makes" : "A U turn and an outer turn make"} both even`,
     alg,
     turns,
+    parts: [{ name: "turns", turns: turns.length }],
     moved: SLOTS.filter((s) => st.occ[s] >= 0 && !isCore(s) && after.occ[s] !== st.occ[s]).map((s) => [s, after.occ.indexOf(st.occ[s])]),
     free: [],
     lands: [],
@@ -527,7 +534,7 @@ export function nextStep(st: State, mode: Mode = "kinds"): SolveStep | null {
     const turns = holdTurns(st);
     // The color a center shows is the color of the face its core center cubelet came from.
     const up = COLOR_NAME[FACE_COLOR[[0, 1, 2, 3, 4, 5].find((d) => slotAt(DIRS[d]) === CUBELETS[st.occ[UP]].home)!]];
-    return { stage: "hold", goal: `Turn the whole puzzle so the white center is up (now ${up} is up). Nothing else moves`, alg: formatAlg(turns), turns, moved: [], free: [], lands: [], regrip: 0 };
+    return { stage: "hold", goal: `Turn the whole puzzle so the white center is up (now ${up} is up). Nothing else moves`, alg: formatAlg(turns), turns, parts: [{ name: "turns", turns: turns.length }], moved: [], free: [], lands: [], regrip: 0 };
   }
   if (!isHomeX(st)) {
     const { turns, regrip } = shapeTurns(st);
@@ -540,12 +547,12 @@ export function nextStep(st: State, mode: Mode = "kinds"): SolveStep | null {
       return sideways(s) || (kind === "singleEdge" && SLOT_POS[s][1] === 0);
     });
     const all = [...REGRIP[regrip], ...turns];
-    return { stage: "shape", goal: "Bring the puzzle back to the X shape", alg: formatAlg(all), turns: all, moved: wrong.map((s) => [s, s]), free: others(st, wrong), lands: [], regrip };
+    return { stage: "shape", goal: "Bring the puzzle back to the X shape", alg: formatAlg(all), turns: all, parts: [...REGRIP[regrip].map(() => ({ name: "regrip" as const, turns: 1 })), { name: "turns", turns: turns.length }], moved: wrong.map((s) => [s, s]), free: others(st, wrong), lands: [], regrip };
   }
   const core = coreTurns(st);
   if (core.length) {
     const wrong = [...CORNER_SLOTS, ...SINGLE_SLOTS].filter((s) => CUBELETS[st.occ[s]].stickers.includes("W") !== SLOT_POS[s][1] > 0);
-    return { stage: "core", goal: "Bring the white core cubelets up and the yellow ones down", alg: formatAlg(core), turns: core, moved: wrong.map((s) => [s, s]), free: others(st, wrong), lands: [], regrip: 0 };
+    return { stage: "core", goal: "Bring the white core cubelets up and the yellow ones down", alg: formatAlg(core), turns: core, parts: [{ name: "turns", turns: core.length }], moved: wrong.map((s) => [s, s]), free: others(st, wrong), lands: [], regrip: 0 };
   }
   const parity = parityStep(st);
   if (parity) return parity;
