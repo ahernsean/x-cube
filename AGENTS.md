@@ -356,9 +356,11 @@ Never do any of these without an explicit instruction from the owner:
     the check runs and job logs) and fix what fails. Reproduce a CI failure locally with the
     narrowest run that shows it, then show that same run passing.
   - A push to a pull request cancels CI still running on its previous commit, and that
-    run's `all checks` then fails because a job was cancelled. That is not a failure: when
-    a failed check is on a commit that is no longer the pull request's head, ignore it and
-    don't report it. Only failures on the current head need looking into.
+    run's `all checks` then fails because a job was cancelled. That is not a failure. When
+    a check result or any other CI notice is for a commit that is no longer the pull
+    request's head, say nothing about it to the owner: no report, no "nothing to act on",
+    no mention in a later summary. Check which commit it is for, and if it is superseded,
+    end the turn without comment. Only results on the current head are worth a message.
 - CI (`.github/workflows/ci.yml`) runs the unit tests, the typecheck, and the build and
   browser tests in Chromium and WebKit, each as its own check, all on Node 24 (the version
   `package.json` requires). Keep it green. It reports coverage (unit tests, and browser
