@@ -367,16 +367,14 @@ function initScene(canvas: HTMLCanvasElement) {
     return mats.get(c);
   };
   paintMaterial = { sticker: matFor, tile: netMatFor, glow: (c: Color) => [0, 1, 2, 3].map((open) => glowMatFor(c, open)) };
-  // Gray versions of each color for the step guide: level 1 for cubelets a step leaves
-  // alone, level 2 (darker) for those it may leave anywhere. Each keeps some of its
-  // color's lightness, in a band that doesn't overlap the other level's.
+  // Grays for the step guide: level 1 for cubelets a step leaves alone, level 2 (darker)
+  // for those it may leave anywhere, the same for every color.
   const grayMats = new Map<string, { sticker: any; tile: any; glow: any[] }>();
   grayMaterial = (c: Color, level: 1 | 2) => {
     const key = `${c}/${level}`;
     if (!grayMats.has(key)) {
-      const { r, g, b } = new THREE.Color(STICKER[c]);
-      const light = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      const v = level === 1 ? 0.6 + 0.35 * light : 0.27 + 0.2 * light;
+      // One gray for every color at each level, so a gray white can't be taken for a white.
+      const v = level === 1 ? 0.55 : 0.24;
       const gray = new THREE.Color(v, v, v);
       const sticker = matFor(c).clone();
       sticker.color = gray;
@@ -2887,6 +2885,7 @@ function drawEdit() {
 
 const STAGE_NAME: Record<SolveStep["stage"], string> = {
   hold: "Regrip", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges",
+  coreTop: "Top core edges", coreTopC: "Top core corners", coreMiddle: "Middle core edges", coreBottom: "Bottom core edges", coreBottomC: "Bottom core corners",
   topEdges: "Top edges", topCorners: "Top corners", sideEdges: "Side edges", bottomCorners: "Bottom corners", bottomEdges: "Bottom edges",
 };
 
@@ -3247,8 +3246,9 @@ function oriQuaternion(ori: number) {
  * A route from a sticker, as it faces before the step, to the face it will be on: it leaves
  * straight out of the sticker and arrives straight onto that face. Of a few routes, each
  * rising farther and swinging farther out to the side the two ends are on (the lowest first,
- * hugging the puzzle), the first that touches no cubelet of st is taken, else the one that
- * touches least. `hits` counts the sampled points, away from the ends, that are inside the
+ * hugging the puzzle), the one costing least is taken: each sampled point inside the
+ * puzzle costs as much as five cubelets of length, and leaving the room the 3D view shows
+ * costs six for each cubelet out. `hits` counts the sampled points, away from the ends, that are inside the
  * puzzle, away from its ends (and from the one cubelet covering a hidden sticker at either
  * end); `effort` how far the route had to go out to clear it; `length` its length.
  */
@@ -3275,18 +3275,27 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
   const aside = new THREE.Vector3(mid.x, 0, mid.z);
   if (aside.lengthSq() < 0.5) aside.set(1, 0, 1);
   aside.normalize();
-  let best: { curve: any; hits: number; effort: number; length: number } | null = null;
+  let best: { curve: any; hits: number; effort: number; length: number; cost: number } | null = null;
   let effort = 0;
   const d = a.distanceTo(b);
+  // The view shows about this far from the puzzle's center; a route that goes farther is
+  // cut off at the edge of the 3D view.
+  const ROOM = 3.4;
   // Out to the side the ends are on, or else up or down past the top or bottom.
   const lift = new THREE.Vector3(0, a.y + b.y < 0 ? -1 : 1, 0);
   for (const [away, swing] of [[aside, 0], [aside, 1.2], [aside, 2.4], [lift, 1.5], [aside, 3.6], [lift, 3]] as [any, number][])
     for (const rise of [0.35 + 0.25 * d, 0.6 + 0.3 * d, 1.0 + 0.3 * d, 1.6 + 0.4 * d, 2.6 + 0.5 * d]) {
       const curve = new THREE.CubicBezierCurve3(a, a.clone().addScaledVector(n0, rise).addScaledVector(away, swing), b.clone().addScaledVector(n1, rise).addScaledVector(away, swing), b);
-      let hits = 0;
-      for (let k = 3; k <= 45; k++) if (blocked(curve.getPoint(k / 48))) hits++;
-      if (!best || hits < best.hits) best = { curve, hits, effort, length: curve.getLength() };
-      if (!hits) return best;
+      let hits = 0, out = 0;
+      for (let k = 3; k <= 45; k++) {
+        const pt = curve.getPoint(k / 48);
+        if (blocked(pt)) hits++;
+        out = Math.max(out, Math.abs(pt.x) - ROOM, Math.abs(pt.y) - ROOM, Math.abs(pt.z) - ROOM);
+      }
+      // Clear of the puzzle matters most, then staying in view, then being short.
+      const length = curve.getLength();
+      const cost = hits * 5 + Math.max(0, out) * 6 + length;
+      if (!best || cost < best.cost) best = { curve, hits, effort, length, cost };
       effort++;
     }
   return best!;
@@ -3308,7 +3317,7 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
   const out: StickerPath[] = [];
   // In a cycle step the solver says where each cubelet goes. In a shape or core step it
   // names the cubelets that are wrong, and where each goes is read from the result.
-  const cycle = !["shape", "core"].includes(step.stage);
+  const cycle = !(["shape", "core"].includes(step.stage) || step.stage.startsWith("core"));
   for (const [from, named] of step.moved) {
     const to = cycle ? named : after.occ.indexOf(st.occ[from]);
     if (to === from && after.ori[to] === st.ori[from]) continue;
@@ -3319,7 +3328,7 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
       const fromDir = ROT_DIR[st.ori[from] * 6 + d], toDir = ROT_DIR[after.ori[to] * 6 + d];
       const r = route(st, from, fromDir, to, toDir, !isExposed(st, from, fromDir), !isExposed(after, to, toDir));
       // A route clear of the puzzle first, then the shortest, then one on faces the Home view shows.
-      const score = r.hits * 100 + r.length - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
+      const score = r.cost - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
       if (score < bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from), dashed: cycle && !step.lands.includes(from), cubelet: c.id, fromOri: st.ori[from], toOri: after.ori[to], curve: r.curve, hits: r.hits }, score];
     });
     if (best) out.push(best);

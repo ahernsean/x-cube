@@ -1141,12 +1141,12 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   // Out of shape, the step applies to the core cubelets that are wrong; it may leave the
   // rest anywhere, so they are the darker gray. Those that move get plain paths. Their
   // stickers are often covered by neighbors that are about to move, so a path may graze
-  // the puzzle near its ends (a sampled point or two).
+  // the puzzle near its ends (a few sampled points), the price of keeping it short and in view.
   await startFresh();
   await play("R U");
   await next();
   const shape = await probe("guide");
-  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows > 0 && shape.paths.every((t) => !/ (lands|dashed)/.test(t)) && shape.pathsThrough <= 2 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, only the cubelets it applies to glow, and those that move have plain paths (${JSON.stringify(shape)})`);
+  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows > 0 && shape.paths.every((t) => !/ (lands|dashed)/.test(t)) && shape.pathsThrough <= 4 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, only the cubelets it applies to glow, and those that move have plain paths (${JSON.stringify(shape)})`);
   // Playing the step and asking again carries the count on: step 2 of the same total, in its own box.
   const total = shape.after + 1;
   await page.click("#last");
@@ -1202,6 +1202,13 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   const byLayer = await probe("guide");
   const kept = await page.evaluate(() => localStorage.getItem("xcube.guideMode"));
   check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Top corners: For the white X-face's corners: cycle three X-face corners\. All three end up solved\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
+  // Out of shape, top to bottom starts with the core, a cubelet at a time: a short step,
+  // one or two paths, and the line counts the cubelets placed.
+  await startFresh();
+  await play("R U F' L2");
+  await next();
+  const core = await probe("guide");
+  check(core?.stage.startsWith("core") && core.turns <= 9 && core.arrows >= 1 && core.arrows <= 3 && /^Top core edges: Put a white core edge in the top layer, white up \([1-4] of 4\)\./.test(await line()), `top to bottom places the core a cubelet at a time (${core?.alg}, ${core?.arrows} paths; "${await line()}")`);
   await page.click('[data-guide-mode="kinds"]');
   await startFresh();
   await play("R U");

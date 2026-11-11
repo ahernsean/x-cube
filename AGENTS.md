@@ -297,8 +297,8 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   (`[setup: cycle]`), then "Step 2 of 9 to solved" (counted from when the guide was started; a step taken
   from anywhere but the end of the one before starts the count again), each on its own line. Until the step has
   been played through, the cubelets it applies to keep their colors, the cubelets it leaves alone are gray, and the ones it may leave
-  anywhere are darker gray (stickers, flat-view tiles and edge glow; each gray keeps some
-  of its color's lightness). Before the step's first turn, **paths** in the 3D view
+  anywhere are darker gray (stickers and flat-view tiles; one gray for every color at each
+  level, so a gray white can't be taken for a white). Before the step's first turn, **paths** in the 3D view
   show where each cubelet it moves will go and how it will be turned: a path follows one of
   the cubelet's stickers, in that sticker's color with a dark casing, rising straight out
   of the sticker and coming straight down onto the face the sticker will be on. A
@@ -309,7 +309,8 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   often covered by a neighbor, so its path may pass through that one cubelet, and graze
   another, near its ends. A path goes around the puzzle, never
   through it: of a few routes, from one hugging the puzzle to ones rising and swinging
-  farther out, the first that touches no cubelet away from its ends is taken. The sticker
+  farther out, the one costing least is taken, where a sampled point inside the puzzle
+  costs most, then leaving the room the 3D view shows, then length. The sticker
   followed is the one whose clear route is shortest (so a hop to a neighboring spot stays
   a short hop), favoring a little one on the faces the Home view shows. Each loop
   (`GUIDE_LOOP`): a small copy of each cubelet flies along its path, turning as the cubelet will turn (it leaves showing its
