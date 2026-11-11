@@ -23,12 +23,12 @@
 // the puzzle is from green in front, and each outer cubelet's home turns with it.
 
 import { isHomeX, isSolved } from "./analyze.ts";
-import { DIRS, ROT_DIR, ROTATIONS, axisRotation, matVec } from "./geometry.ts";
+import { DIRS, ROT_DIR, ROTATIONS, axisRotation, matVec, type Vec3 } from "./geometry.ts";
 import { formatAlg, parseAlg } from "./notation.ts";
 import { COLOR_NAME, CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, type Kind, type Turn } from "./puzzle.ts";
 import { unreachableReason } from "./serialize.ts";
 
-export type Stage = "hold" | "shape" | "core" | "parity" | "corners" | "edges" | "topEdges" | "topCorners" | "sideEdges" | "bottomCorners" | "bottomEdges";
+export type Stage = "hold" | "shape" | "core" | "coreTop" | "coreTopC" | "coreMiddle" | "coreBottom" | "coreBottomC" | "parity" | "corners" | "edges" | "topEdges" | "topCorners" | "sideEdges" | "bottomCorners" | "bottomEdges";
 
 /**
  * The order the outer cubelets are solved in. Both orders use the same two 3-cycles.
@@ -337,6 +337,192 @@ function coreTurns(st: State): Turn[] {
   return out;
 }
 
+// ---------------------------------------------------------------- 2-3, by layers
+//
+// In the layers mode the shape and core stages are replaced by five, each step of which
+// brings one more core cubelet of one kind where it belongs, keeping those already there:
+//   coreTop      white core single edges in the top layer, white up;
+//   coreTopC     white core corners in the top layer, white up;
+//   coreMiddle   core double edges in the middle layer;
+//   coreBottom   yellow core single edges in the bottom layer, yellow down;
+//   coreBottomC  yellow core corners in the bottom layer, yellow down.
+// When all five are done the puzzle is in the X shape and the core is solved. Look-alike
+// cubelets are interchangeable, so each kind is tracked as a set of four (slot, axis)
+// codes: the slot, and the axis its white or yellow sticker (for a double edge, its front
+// or back face) points along. For each kind and each count, a table gives the fewest
+// face turns to have at least that many of the four where they belong; a step is found by
+// iterative deepening on face turns with the largest of those distances as the bound, and
+// among the fewest turns (and, for short steps, one more) the easiest is taken.
+
+/** The five kinds tracked, in stage order, with the slots their codes index into. */
+const TRACKED = (() => {
+  const marker = (h: Vec3) => (h[1] ? (h[1] > 0 ? 2 : 3) : h[2] > 0 ? 4 : 5);
+  const of = (kind: Kind, color: "W" | "Y" | null) => CUBELETS.filter((c) => c.kind === kind && (!color || c.stickers.includes(color))).map((c) => c.id);
+  const kinds = [
+    { stage: "coreTop", ids: of("singleEdge", "W"), slots: EDGE_SLOTS, good: (s: number, axis: number) => SLOT_POS[s][1] === 1 && axis === 1 },
+    { stage: "coreTopC", ids: of("coreCorner", "W"), slots: CORNER_SLOTS, good: (s: number, axis: number) => SLOT_POS[s][1] === 1 && axis === 1 },
+    { stage: "coreMiddle", ids: of("doubleEdge", null), slots: EDGE_SLOTS, good: (s: number) => SLOT_POS[s][1] === 0 },
+    { stage: "coreBottom", ids: of("singleEdge", "Y"), slots: EDGE_SLOTS, good: (s: number, axis: number) => SLOT_POS[s][1] === -1 && axis === 1 },
+    { stage: "coreBottomC", ids: of("coreCorner", "Y"), slots: CORNER_SLOTS, good: (s: number, axis: number) => SLOT_POS[s][1] === -1 && axis === 1 },
+  ] as const;
+  return kinds.map((k) => ({ ...k, marker: (id: number) => marker(SLOT_POS[CUBELETS[id].home]) }));
+})();
+
+interface LayerTables {
+  /** For each kind: its reachable arrangements numbered 0..n-1 by their sorted codes' index. */
+  id: Map<number, number>[];
+  /** next[k][state * 18 + m]: the arrangement after face turn m. */
+  next: Uint16Array[];
+  /** dist[k][j][state]: fewest face turns to at least j of kind k where they belong (255: never). */
+  dist: Uint8Array[][];
+}
+let layerTables: LayerTables | null = null;
+
+const base = (k: number) => TRACKED[k].slots.length * 3;
+/** The index of four codes of kind k, taken in ascending order. */
+function tupleIndex(k: number, codes: number[]): number {
+  const B = base(k);
+  const c = [...codes].sort((x, y) => x - y);
+  return ((c[0] * B + c[1]) * B + c[2]) * B + c[3];
+}
+const countGood = (k: number, codes: number[]) => codes.filter((code) => TRACKED[k].good(TRACKED[k].slots[(code / 3) | 0], code % 3)).length;
+
+/** The four codes of kind k in st. */
+function codesOf(st: State, k: number): number[] {
+  const t = TRACKED[k];
+  return t.ids.map((id) => {
+    const s = st.occ.indexOf(id);
+    return t.slots.indexOf(s) * 3 + (ROT_DIR[st.ori[s] * 6 + t.marker(id)] >> 1);
+  });
+}
+
+function buildLayerTables(): LayerTables {
+  const ids: Map<number, number>[] = [], next: Uint16Array[] = [], dist: Uint8Array[][] = [];
+  TRACKED.forEach((t, k) => {
+    const B = base(k);
+    // Where each code goes under each face turn.
+    const step = new Uint8Array(18 * B);
+    FACE_TURNS.forEach((turnDef, m) => {
+      const d = MOVE_DEFS[turnDef.def];
+      const rot = axisRotation(d.axis, d.ccw * turnDef.amount);
+      const perm = slotPerm(turnDef);
+      const axisTo = [0, 1, 2].map((a) => ROT_DIR[rot * 6 + a * 2] >> 1);
+      t.slots.forEach((s, i) => {
+        const moves = d.slots.includes(s);
+        for (let axis = 0; axis < 3; axis++) step[m * B + i * 3 + axis] = moves ? t.slots.indexOf(perm[s]) * 3 + axisTo[axis] : i * 3 + axis;
+      });
+    });
+    // Every arrangement reachable from solved, numbered as found, and its moves.
+    const id = new Map<number, number>();
+    const all: number[][] = [];
+    const add = (codes: number[]) => {
+      const i = tupleIndex(k, codes);
+      if (!id.has(i)) (id.set(i, all.length), all.push(codes));
+      return id.get(i)!;
+    };
+    add(codesOf(State.solved(), k));
+    const moves: number[] = [];
+    for (let n = 0; n < all.length; n++) for (let m = 0; m < 18; m++) moves.push(add(all[n].map((c) => step[m * B + c])));
+    const table = Uint16Array.from(moves);
+    const good = all.map((codes) => countGood(k, codes));
+    const perCount: Uint8Array[] = [];
+    for (let j = 0; j <= 4; j++) {
+      const dj = new Uint8Array(all.length).fill(255);
+      let frontier: number[] = [];
+      good.forEach((g, n) => g >= j && (dj[n] = 0, frontier.push(n)));
+      for (let depth = 1; frontier.length; depth++) {
+        const more: number[] = [];
+        for (const n of frontier)
+          for (let m = 0; m < 18; m++) {
+            const to = table[n * 18 + m];
+            if (dj[to] === 255) (dj[to] = depth, more.push(to));
+          }
+        frontier = more;
+      }
+      perCount.push(dj);
+    }
+    ids.push(id);
+    next.push(table);
+    dist.push(perCount);
+  });
+  return { id: ids, next, dist };
+}
+
+/** The next layer-by-layer core step from st, or null when the core is done. */
+function layerCoreStep(st: State): SolveStep | null {
+  const T = (layerTables ??= buildLayerTables());
+  const codes = TRACKED.map((_, k) => codesOf(st, k));
+  const counts = codes.map((c, k) => countGood(k, c));
+  const k = counts.findIndex((n) => n < 4);
+  if (k < 0) return null;
+  // Keep every kind before k complete, and bring at least one more of kind k.
+  const kinds = TRACKED.map((_, i) => i).filter((i) => i <= k);
+  const need = kinds.map((i) => (i < k ? 4 : counts[k] + 1));
+  const at = kinds.map((i) => T.id[i].get(tupleIndex(i, codes[i]))!);
+  const tables = kinds.map((i, n) => T.dist[i][need[n]]);
+  const nexts = kinds.map((i) => T.next[i]);
+  const bound = (cs: number[]) => {
+    let h = 0;
+    for (let n = 0; n < cs.length; n++) h = Math.max(h, tables[n][cs[n]]);
+    return h;
+  };
+  const found: number[][] = [];
+  const path: number[] = [];
+  const dfs = (cs: number[], budget: number, lastFace: number) => {
+    const h = bound(cs);
+    if (h === 0) {
+      if (budget === 0) found.push([...path]);
+      return;
+    }
+    if (h > budget || found.length >= 200) return;
+    for (let m = 0; m < 18; m++) {
+      const face = (m / 3) | 0;
+      if (face === lastFace || (face === (lastFace ^ 1) && face < lastFace)) continue;
+      path.push(m);
+      dfs(cs.map((c, n) => nexts[n][c * 18 + m]), budget - 1, face);
+      path.pop();
+    }
+  };
+  let depth = bound(at);
+  for (; !found.length && depth <= 16; depth++) dfs(at, depth, -1);
+  if (!found.length) throw new Error("no face turns place the next core cubelet");
+  if (depth <= 8) dfs(at, depth, -1); // and the ways one turn longer, which may be easier
+  let best: { turns: Turn[]; regrip: number; cost: number } | null = null;
+  for (const way of found)
+    for (let m = 0; m < 4; m++) {
+      const turns = regripped(way.map((i) => FACE_TURNS[i]), m);
+      const cost = ease(turns) + ease(REGRIP[m]);
+      if (!best || cost < best.cost) best = { turns, regrip: m, cost };
+    }
+  const { turns, regrip } = best!;
+  const t = TRACKED[k];
+  // The step is for the cubelets of kind k not yet where they belong.
+  const wrong = t.ids.map((id) => st.occ.indexOf(id)).filter((s) => !t.good(s, ROT_DIR[st.ori[s] * 6 + t.marker(st.occ[s])] >> 1));
+  const done = TRACKED.slice(0, k).flatMap((x) => x.ids.map((id) => st.occ.indexOf(id)));
+  const all = [...REGRIP[regrip], ...turns];
+  const result = st.clone();
+  applyTurns(result, all);
+  return {
+    stage: t.stage,
+    goal: LAYER_GOAL[k](countGood(k, codesOf(result, k))),
+    alg: formatAlg(all),
+    turns: all,
+    parts: [...REGRIP[regrip].map(() => ({ name: "regrip" as const, turns: 1 })), { name: "turns", turns: turns.length }],
+    moved: wrong.map((s) => [s, s]),
+    free: SLOTS.filter((s) => st.occ[s] >= 0 && !wrong.includes(s) && !done.includes(s) && !["center", "extCenter"].includes(kindAt(st, s))),
+    lands: [],
+    regrip,
+  };
+}
+
+const LAYER_GOAL: ((n: number) => string)[] = [
+  (n) => `Put a white core edge in the top layer, white up (${n} of 4)`,
+  (n) => `Put a white core corner in the top layer, white up (${n} of 4)`,
+  (n) => `Put a core double edge in the middle layer (${n} of 4)`,
+  (n) => `Put a yellow core edge in the bottom layer, yellow down (${n} of 4)`,
+  (n) => `Put a yellow core corner in the bottom layer, yellow down (${n} of 4)`,
+];
+
 // ---------------------------------------------------------------- 4-6. outer cubelets
 //
 // With the shape and core done, each outer corner and outer edge has one home, and is
@@ -535,6 +721,10 @@ export function nextStep(st: State, mode: Mode = "kinds"): SolveStep | null {
     // The color a center shows is the color of the face its core center cubelet came from.
     const up = COLOR_NAME[FACE_COLOR[[0, 1, 2, 3, 4, 5].find((d) => slotAt(DIRS[d]) === CUBELETS[st.occ[UP]].home)!]];
     return { stage: "hold", goal: `Turn the whole puzzle so the white center is up (now ${up} is up). Nothing else moves`, alg: formatAlg(turns), turns, parts: [{ name: "turns", turns: turns.length }], moved: [], free: [], lands: [], regrip: 0 };
+  }
+  if (mode === "layers") {
+    const step = layerCoreStep(st);
+    if (step) return step;
   }
   if (!isHomeX(st)) {
     const { turns, regrip } = shapeTurns(st);

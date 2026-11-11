@@ -30,6 +30,23 @@ const look = (st: State, except: Set<number>) => {
   return out;
 };
 const usage = { turns: 0, back: 0 };
+const LAYER_CORE = ["coreTop", "coreTopC", "coreMiddle", "coreBottom", "coreBottomC"];
+/** How many core cubelets of the i-th layer stage's kind are where they belong in st. */
+function coreInPlace(st: State, i: number): number {
+  const wanted = [
+    ["singleEdge", "W", 1], ["coreCorner", "W", 1], ["doubleEdge", null, 0], ["singleEdge", "Y", -1], ["coreCorner", "Y", -1],
+  ][i] as [string, string | null, number];
+  let n = 0;
+  for (let s = 0; s < NUM_SLOTS; s++) {
+    const c = CUBELETS[st.occ[s]];
+    if (!c || c.kind !== wanted[0] || (wanted[1] && !c.stickers.includes(wanted[1] as "W"))) continue;
+    if (SLOT_POS[s][1] !== wanted[2] || SLOT_POS[s].some((v) => Math.abs(v) > 1)) continue;
+    // A white or yellow sticker must face up or down; a double edge only has to be in the middle.
+    if (wanted[1] && st.colorAt(s, wanted[2] > 0 ? 2 : 3) !== wanted[1]) continue;
+    n++;
+  }
+  return n;
+}
 /** Whether the cubelet in a slot is home: each of its stickers matches the center of the face it is on. */
 const atHome = (st: State, slot: number) =>
   [0, 1, 2, 3, 4, 5].every((d) => {
@@ -41,6 +58,7 @@ const atHome = (st: State, slot: number) =>
 function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
   const st = start.clone();
   const order = ["hold", "shape", "core", "parity", ...(mode === "kinds" ? ["corners", "edges"] : ["topEdges", "topCorners", "sideEdges", "bottomCorners", "bottomEdges"])];
+  if (mode === "layers") order.splice(1, 2, ...LAYER_CORE);
   let stage = 0;
   for (const step of steps) {
     assert.ok(order.indexOf(step.stage) >= stage, `${step.stage} comes after ${order[stage]}`);
@@ -62,6 +80,15 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
     // Every cubelet the step doesn't name, or free, shows the same in the same slot.
     const named = new Set([...step.moved.map(([from]) => before.occ[from]), ...step.free.map((s) => before.occ[s])]);
     assert.equal(look(seen, named), look(before, named), `${step.alg} changes only what it names`);
+    if (LAYER_CORE.includes(step.stage)) {
+      // One more cubelet of the stage's kind where it belongs, and every earlier kind kept.
+      const k = LAYER_CORE.indexOf(step.stage);
+      const n = (st: State) => LAYER_CORE.map((_, i) => coreInPlace(st, i));
+      const [was, now] = [n(before), n(seen)];
+      assert.ok(now[k] > was[k] && now.slice(0, k).every((c) => c === 4), `${step.alg} brings one more of its kind in, keeping the earlier kinds (${was} to ${now})`);
+      assert.match(step.goal, new RegExp(`\\(${now[k]} of 4\\)$`));
+      continue;
+    }
     assert.ok(isHomeX(seen), `${step.alg} ends in the X shape`);
     if (step.stage === "shape") continue;
     for (let s = 0; s < NUM_SLOTS; s++)
@@ -126,7 +153,7 @@ test("solve: positions from the color editor are solved, whichever parity they n
   assert.deepEqual([...parity].sort(), ["U", "U r", "none", "r"], "the sample needs every parity fix, and none");
 });
 
-test("solve: layer by layer solves the same positions, top to bottom", () => {
+test("solve: layer by layer solves the same positions, the core a cubelet at a time from the top", () => {
   // The other order: white X-face edges, its corners, the side edges, then the yellow
   // X-face's corners and edges. A layer, once done, stays done.
   const rnd = random(77);
