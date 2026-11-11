@@ -298,6 +298,8 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   cubelet flies along each path, over and over, turning as the cubelet will turn: it
   leaves showing its stickers as they are and arrives showing them as they will be
   (not drawn where the device asks for reduced motion).
+  A path goes around the puzzle, never through it: of a few routes, each rising farther
+  and swinging farther out sideways, the first that touches no cubelet is taken.
   Where the puzzle is in the way, a path and its flying copy are drawn faintly (a second
   drawing that passes only behind what is already drawn), so a path on the far side
   can't be taken for one on the near side.

@@ -3084,7 +3084,7 @@ function drawGuide() {
         for (const gl of glows[c.id] ?? []) if (gl.b === d) gl.paint = gray.glow;
       });
     }
-    guideArrows = makeArrows(g!.arrows);
+    guideArrows = makeArrows(g!.arrows, g!.from);
     guideArrows.visible = app.cursor === g!.start && !anim && !queue.length;
     pivot.add(guideArrows);
   }
@@ -3102,11 +3102,21 @@ drawGuide.key = "";
  * that ends at home has a full path and a ring where its sticker lands; one that is only
  * passing through has a thin, fainter path.
  */
-function makeArrows(paths: StickerPath[]) {
+function makeArrows(paths: StickerPath[], st: State) {
+  // Whether a point is inside a cubelet of st, or within a path's thickness of one.
+  const reach = 0.14;
+  const blocked = (p: any) => {
+    for (const [dx, dy, dz] of [[0, 0, 0], [reach, 0, 0], [-reach, 0, 0], [0, reach, 0], [0, -reach, 0], [0, 0, reach], [0, 0, -reach]]) {
+      const s = slotAtXYZ(Math.round(p.x + dx), Math.round(p.y + dy), Math.round(p.z + dz));
+      if (s >= 0 && st.occ[s] >= 0) return true;
+    }
+    return false;
+  };
   const group = new THREE.Group();
   group.userData.count = paths.length;
   group.userData.runners = [];
   group.userData.drawn = 0; // meshes making up the paths themselves
+  group.userData.through = 0; // sampled points of the paths that are inside the puzzle
   // Everything here is drawn twice: plainly where it is in front of the puzzle, and as a
   // faint ghost where the puzzle is in the way (the same shape, passing only where
   // something nearer has already been drawn). Neither writes depth, so the parts of a
@@ -3132,8 +3142,25 @@ function makeArrows(paths: StickerPath[]) {
     const n0 = dir(p.fromDir), n1 = dir(p.toDir);
     const a = new THREE.Vector3(...SLOT_POS[p.from]).addScaledVector(n0, 0.52);
     const b = new THREE.Vector3(...SLOT_POS[p.to]).addScaledVector(n1, 0.52);
-    const rise = 1.0 + 0.3 * a.distanceTo(b);
-    const curve = new THREE.CubicBezierCurve3(a, a.clone().addScaledVector(n0, rise), b.clone().addScaledVector(n1, rise), b);
+    // The path leaves along the sticker's facing and arrives against the facing it will
+    // have. Between, it must clear the puzzle: of a few routes, each rising farther and
+    // swinging farther out to the side the two ends are on, the first that touches no
+    // cubelet is taken (or the one that touches least).
+    const mid = a.clone().add(b);
+    const aside = new THREE.Vector3(mid.x, 0, mid.z);
+    if (aside.lengthSq() < 0.5) aside.set(1, 0, 1);
+    aside.normalize();
+    let curve: any = null, fewest = Infinity;
+    search: for (const swing of [0, 1.2, 2.4, 3.6])
+      for (const rise of [1.0 + 0.3 * a.distanceTo(b), 1.6 + 0.4 * a.distanceTo(b), 2.6 + 0.5 * a.distanceTo(b)]) {
+        const route = new THREE.CubicBezierCurve3(a, a.clone().addScaledVector(n0, rise).addScaledVector(aside, swing), b.clone().addScaledVector(n1, rise).addScaledVector(aside, swing), b);
+        // The ends touch the puzzle by design; the rest is sampled.
+        let hits = 0;
+        for (let k = 3; k <= 45; k++) if (blocked(route.getPoint(k / 48))) hits++;
+        if (hits < fewest) [curve, fewest] = [route, hits];
+        if (!hits) break search;
+      }
+    group.userData.through += fewest;
     const headAt = 0.88;
     const shaftCurve = new THREE.CatmullRomCurve3([...Array(25).keys()].map((k) => curve.getPoint((k / 24) * headAt)));
     const radius = p.lands ? 0.075 : 0.045, opacity = p.lands ? 1 : 0.6;
@@ -3621,6 +3648,8 @@ function installProbe() {
         runners: guideArrows?.visible ? guideArrows.userData.runners.length : 0,
         /** How many meshes the paths are drawn with (a shaft, a start and a head, each cased; and a ring for a cubelet reaching home). */
         pathMeshes: guideArrows?.visible ? guideArrows.userData.drawn : 0,
+        /** How many sampled points of the paths, away from their ends, are inside the puzzle. */
+        pathsThrough: guideArrows?.visible ? guideArrows.userData.through : -1,
       };
     },
     view: () => pivot.quaternion.toArray(),
