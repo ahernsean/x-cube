@@ -174,7 +174,7 @@ test("edit: center colors arranged as no turns arrange them can't be reached", (
   assert.equal(fit.level, "possible");
   assert.deepEqual(visibleColors(fit.state!), mirrored, "still shows a state with the paint");
   assert.equal(fit.problems.length, 1);
-  assert.equal(fit.problems[0].text, "The center colors go around in mirrored order");
+  assert.equal(fit.problems[0].text, "Wrong center color order");
   assert.deepEqual([...fit.problems[0].slots].sort(), [fx, bx, rx, lx, at(0, 1, 0), at(0, -1, 0)].sort(), "names every center that shows");
   // Red and green traded: red ends up opposite blue.
   const apart = visibleColors(st);
@@ -182,7 +182,7 @@ test("edit: center colors arranged as no turns arrange them can't be reached", (
   apart[fx * 6 + F] = "R";
   fit = fitColors(st, apart);
   assert.equal(fit.level, "possible");
-  assert.equal(fit.problems[0].text, "Red and orange centers are always on opposite sides, and so are green and blue");
+  assert.equal(fit.problems[0].text, "Opposite centers must be red and orange, green and blue, or white and yellow");
   assert.deepEqual([...fit.problems[0].slots].sort(), [fx, bx, rx, lx].sort());
   // Slices move the centers, and that arrangement is fine.
   const sliced = after("M S' H2 R");
@@ -194,7 +194,7 @@ test("edit: center colors arranged as no turns arrange them can't be reached", (
   [colors[up * 6 + U], colors[down * 6 + 3]] = [colors[down * 6 + 3], colors[up * 6 + U]];
   fit = fitColors(turned, colors);
   assert.equal(fit.level, "possible");
-  assert.equal(fit.problems[0].text, "The center colors go around in mirrored order");
+  assert.equal(fit.problems[0].text, "Wrong center color order");
 });
 
 test("edit: a start no turns reach is refused, saying so", () => {

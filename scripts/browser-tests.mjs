@@ -995,7 +995,7 @@ labTest("color editing: colors that turns can't reach", async ({ page, check, pr
   await paint("G", "Rx", "R"); // the red and green centers traded: red is now opposite blue
   const centers = { line: await editLine(), off: await doneOff(), lit: (await probe("highlighted")).sort().join(), level: (await probe("editing")).level };
   check(
-    /^Not valid: Red and orange centers are always on opposite sides, and so are green and blue\. Show Hide$/.test(centers.line) && centers.off && centers.lit === "Bx,Fx,Lx,Rx" && centers.level === "possible",
+    /^Not valid: Opposite centers must be red and orange, green and blue, or white and yellow\. Show Hide$/.test(centers.line) && centers.off && centers.lit === "Bx,Fx,Lx,Rx" && centers.level === "possible",
     `center colors no turns arrange are not valid, with a halo on the centers and Done off ("${centers.line}", halo ${centers.lit})`,
   );
   await paint("G", "Fx", "F");

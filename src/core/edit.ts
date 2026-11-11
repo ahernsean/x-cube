@@ -316,17 +316,13 @@ function centerProblem(st: State): Problem | null {
     const out = SLOT_NEIGHBOR[CENTER_SLOTS[d] * 6 + d];
     return out >= 0 && st.occ[out] >= 0 ? out : CENTER_SLOTS[d];
   };
-  // Opposite spots whose colors aren't an opposite pair, and the color pairs they split up.
+  // Opposite spots whose colors aren't an opposite pair.
   const apart = [0, 2, 4].filter((d) => (home[d] ^ 1) !== home[d + 1]);
   if (apart.length) {
-    const split = [0, 2, 4].filter((h) => apart.some((d) => home[d] >> 1 === h >> 1 || home[d + 1] >> 1 === h >> 1));
-    const [first, ...rest] = split.map((h) => `${COLOR_NAME[FACE_COLOR[h]]} and ${COLOR_NAME[FACE_COLOR[h + 1]]}`);
-    return problem(
-      `${cap(first)} centers are always on opposite sides${rest.length ? `, and so are ${rest.join(", and ")}` : ""}`,
-      apart.flatMap((d) => [spot(d), spot(d + 1)]),
-    );
+    const pairs = [0, 4, 2].map((h) => `${COLOR_NAME[FACE_COLOR[h]]} and ${COLOR_NAME[FACE_COLOR[h + 1]]}`);
+    return problem(`Opposite centers must be ${pairs[0]}, ${pairs[1]}, or ${pairs[2]}`, apart.flatMap((d) => [spot(d), spot(d + 1)]));
   }
-  return problem("The center colors go around in mirrored order", [0, 1, 2, 3, 4, 5].map(spot));
+  return problem("Wrong center color order", [0, 1, 2, 3, 4, 5].map(spot));
 }
 
 /**

@@ -223,8 +223,8 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   the top of `src/core/edit.ts`, and `test/edit.test.ts` samples it). So two outer cubelets
   painted as each other are valid, and beyond the problems above the paint can be
   unreachable in only one way: the center colors arranged as no turns arrange them, either
-  "Red and orange centers are always on opposite sides, and so are green and blue" (halo on
-  the centers that should be opposite) or "The center colors go around in mirrored order"
+  "Opposite centers must be red and orange, green and blue, or white and yellow" (halo on
+  the centers that should be opposite) or "Wrong center color order"
   (halo on all six centers that show). A cube painted as the real one shows is always
   valid, so any problem means a sticker painted wrong.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
