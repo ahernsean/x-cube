@@ -298,6 +298,9 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   cubelet flies along each path, over and over, turning as the cubelet will turn: it
   leaves showing its stickers as they are and arrives showing them as they will be
   (not drawn where the device asks for reduced motion).
+  Where the puzzle is in the way, a path and its flying copy are drawn faintly (a second
+  drawing that passes only behind what is already drawn), so a path on the far side
+  can't be taken for one on the near side.
   **Show** turns the 3D view to where the paths begin and end (as the color editor's Show
   does for a problem). Parity steps, which turn whole layers, have no paths. **Order** switches between the solver's modes, "Corners,
   then edges" and "Top to bottom", and is kept on the device. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
