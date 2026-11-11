@@ -145,7 +145,7 @@ X-face's edges (`topEdges`), its corners (`topCorners`), the extension side edge
 (`sideEdges`), then the yellow X-face's corners and edges (`bottomCorners`,
 `bottomEdges`). A cycle never moves a cubelet that is already home, in either mode; it
 brings at least one cubelet of the current group home, and its third cubelet may be any
-unsolved one. A step's `lands` says which of the three end at home. Sampled over 200
+unsolved one. A step's `lands` says which of the three end in their own spots (the goal says "reach their own spots": "home" is kept for the Home view). Sampled over 200
 positions, the two modes come out about the same length (177 and 180 turns on average).
 
 **Ease, the owner's priorities for turns** (`EASE` in `solve.ts`), most important first:
@@ -292,17 +292,20 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   show where each cubelet it moves will go and how it will be turned: a path follows one of
   the cubelet's stickers, in that sticker's color with a dark casing, rising straight out
   of the sticker and coming straight down onto the face the sticker will be on. A
-  cubelet that ends at home has a full path and a ring where its sticker lands; one only
-  passing through has a thin, fainter path. The sticker followed is one that starts and
-  ends on the faces the Home view shows, where there is one. A small copy of the
-  cubelet flies along each path, over and over, turning as the cubelet will turn: it
-  leaves showing its stickers as they are and arrives showing them as they will be
-  (not drawn where the device asks for reduced motion).
-  A path goes around the puzzle, never through it: of a few routes, each rising farther
-  and swinging farther out sideways, the first that touches no cubelet is taken.
+  cubelet that ends in its own spot has a full path and a ring where its sticker lands;
+  one only passing through has a dashed path. A path goes around the puzzle, never
+  through it: of a few routes, each rising farther and swinging farther out sideways,
+  the first that touches no cubelet is taken. The sticker followed is the one whose route
+  clears the puzzle most easily, then one that starts and ends on the faces the Home view
+  shows. Each loop (`GUIDE_LOOP`): the real cubelets pulse with a halo, then a small copy
+  of each flies along its path, turning as the cubelet will turn (it leaves showing its
+  stickers as they are and arrives showing them as they will be), rests where it
+  arrives, vanishes, and after a short gap the loop starts again; none of this moves
+  where the device asks for reduced motion. The cubelets the step may leave anywhere have
+  no edge glow. The ⓘ beside the 3D view explains how to read the paths.
   Where the puzzle is in the way, a path and its flying copy are drawn faintly (a second
-  drawing that passes only behind what is already drawn), so a path on the far side
-  can't be taken for one on the near side.
+  drawing that passes only behind what is already drawn, without the path's dark
+  casing), so a path on the far side can't be taken for one on the near side.
   **Show** turns the 3D view to where the paths begin and end (as the color editor's Show
   does for a problem). Parity steps, which turn whole layers, have no paths. **Order** switches between the solver's modes, "Corners,
   then edges" and "Top to bottom", and is kept on the device. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
