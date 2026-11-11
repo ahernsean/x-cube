@@ -1219,6 +1219,29 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   check((await probe("guide")) === null && (await line()) === "", "a turn made by hand drops the step and its grays");
 });
 
+labTest("guide: a path goes the short way around the puzzle, at an even speed", async ({ page, check, probe, settle }) => {
+  // Out of shape, the first top-to-bottom step from here is R2, which takes a white core
+  // edge from the bottom of the right side to its top. Its white sticker is covered at
+  // both ends, so every route passes through something.
+  await page.locator("summary", { hasText: "State code" }).click();
+  await page.fill("#code-in", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
+  await page.click("#import");
+  await settle();
+  await page.locator("#guide > summary").click();
+  await page.click('[data-guide-mode="layers"]');
+  await page.click("#next-step");
+  await settle();
+  const g = await probe("guide");
+  const k = g.paths.findIndex((t) => /DR\/D > UR\/U/.test(t));
+  const pts = g.pathPoints[k] ?? [];
+  check(g.alg === "R2" && k >= 0 && pts.length === 13 && pts.every(([x, , z]) => x > 0.9 && Math.abs(z) < 0.2), `the path from the bottom of the right side to its top goes around the right side (${g.alg}; ${g.paths.join("; ")}; ${JSON.stringify(pts)})`);
+  // The flying copies' places at equal times are equally far apart (a chord across a
+  // bend is a little shorter than the path), on every path; and no path leaves the view.
+  const gaps = g.pathPoints.map((path) => path.slice(1).map((q, i) => Math.hypot(q[0] - path[i][0], q[1] - path[i][1], q[2] - path[i][2])));
+  const uneven = Math.max(...gaps.map((d) => Math.max(...d) / Math.min(...d)));
+  check(gaps.length === g.arrows && uneven < 1.35 && g.pathsOut < 0.05, `a flying copy neither lingers nor rushes (its longest stride is ${uneven.toFixed(2)} of its shortest), and stays in view (${g.pathsOut.toFixed(2)} out)`);
+});
+
 // ---- The standalone page, and saving on this device.
 
 // The standalone page (published to GitHub Pages) as a phone sees it: with the phone's
