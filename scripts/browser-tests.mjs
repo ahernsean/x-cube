@@ -1139,12 +1139,14 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
     `a Regrip step says to turn the whole puzzle, and keeps every color ("${holdStep.line}")`,
   );
   // Out of shape, the step applies to the core cubelets that are wrong; it may leave the
-  // rest anywhere, so they are the darker gray, and nothing has an arrow.
+  // rest anywhere, so they are the darker gray. Those that move get plain paths. Their
+  // stickers are often covered by neighbors that are about to move, so a path may graze
+  // the puzzle near its ends (a sampled point or two).
   await startFresh();
   await play("R U");
   await next();
   const shape = await probe("guide");
-  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows === 0 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, and only the cubelets it applies to glow (${JSON.stringify(shape)})`);
+  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows > 0 && shape.paths.every((t) => !/ (lands|dashed)/.test(t)) && shape.pathsThrough <= 2 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, only the cubelets it applies to glow, and those that move have plain paths (${JSON.stringify(shape)})`);
   // Playing the step and asking again carries the count on: step 2 of the same total, in its own box.
   const total = shape.after + 1;
   await page.click("#last");
@@ -1187,7 +1189,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await play("(F' L' F) r (F' L F) r' f (F' L' F) r (F' L F) r' f'");
   await next();
   const passing = await probe("guide");
-  const throughOnly = passing.paths.filter((t) => !t.endsWith(" lands")).length;
+  const throughOnly = passing.paths.filter((t) => t.endsWith(" dashed")).length;
   check(passing.stage === "corners" && throughOnly === 2 && passing.pathMeshes === 8 + 2 * (2 * 9 + 4) && passing.pathsThrough === 0 && /One ends up solved\./.test(await line()), `two cubelets only passing through get dashed paths (${passing.paths.join("; ")}; ${passing.pathMeshes} meshes)`);
   // The order: "Top to bottom" solves the white X-face first, so the same corner cycle is a
   // top-corners step there. The choice is kept on this device.

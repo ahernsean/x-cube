@@ -293,7 +293,11 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   the cubelet's stickers, in that sticker's color with a dark casing, rising straight out
   of the sticker and coming straight down onto the face the sticker will be on. A
   cubelet that ends up solved has a full path and a ring where its sticker lands;
-  one only passing through has a dashed path. A path goes around the puzzle, never
+  one only passing through has a dashed path. In a shape or core step, which solves no
+  cubelet, each cubelet it applies to that moves or turns has a plain path (no ring), read
+  from where it ends; a core double edge has no sticker and so no path. Such a sticker is
+  often covered by a neighbor, so its path may pass through that one cubelet, and graze
+  another, near its ends. A path goes around the puzzle, never
   through it: of a few routes, from one hugging the puzzle to ones rising and swinging
   farther out, the first that touches no cubelet away from its ends is taken. The sticker
   followed is the one whose clear route is shortest (so a hop to a neighboring spot stays
