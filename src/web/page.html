@@ -183,6 +183,8 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .add-turns { margin-top: 10px; }
 .known { margin-top: 10px; }
 .known summary { cursor: pointer; font-weight: 600; }
+/* A fixed height, so a step's text never moves what is below it. */
+.guide-line { margin: 8px 0 0; height: 7.4em; overflow-y: auto; font-size: 14px; }
 .known-alg { font: 13px var(--f-mono); overflow-wrap: anywhere; }
 .saved { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .saved li { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
@@ -291,6 +293,12 @@ details[open] summary { margin-bottom: 8px; }
         <button class="btn primary" id="load" title="Add the turns at the current step, then play them with ▶ or step through them">Load</button>
         <button class="btn" id="alg-edit" title="Edit the whole turn list here">Edit</button>
       </div>
+      <details class="known" id="guide">
+        <summary>Solve step by step</summary>
+        <p class="hint" style="margin:6px 0 0">Next step loads the turns for one step toward solved, ready to play. Until it is played, the cubelets it is for keep their colors, the ones it leaves alone are gray, and the ones it may leave anywhere are darker. Arrows show where cubelets go.</p>
+        <div class="row" style="margin-top:8px"><button class="btn primary" id="next-step">Next step</button></div>
+        <p class="guide-line" id="guide-line" aria-live="polite"></p>
+      </details>
       <details class="known">
         <summary>Algorithms</summary>
         <p class="hint" style="margin:6px 0 0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turn list with its start position.</p>

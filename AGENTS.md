@@ -256,6 +256,18 @@ from the color editor, and checks each step changes only what it says.
   the centers that should be opposite) or "Wrong center color order"
   (halo on all six centers that show). A cube painted as the real one shows is always
   valid, so any problem means a sticker painted wrong.
+- **Step guide:** "Solve step by step", a disclosure in the Run an algorithm panel. **Next
+  step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
+  the position shown, adds its turns at the current step, unplayed, and a line under the
+  button gives the stage, the goal, the turns as the solver writes them (`[setup: cycle]`)
+  and how many steps follow. Until the step has been played through, the cubelets it is
+  for keep their colors, the cubelets it leaves alone are gray, and the ones it may leave
+  anywhere are darker gray (stickers, flat-view tiles and edge glow; each gray keeps some
+  of its color's lightness). Before the step's first turn, purple arrows in the 3D view
+  show where each cubelet it moves will go; parity steps, which turn whole layers, have
+  none. Playing the step returns the colors and the line reads "(done)". Any change that
+  takes the step's turns out of the turn list (a turn by hand, Clear, Edit) drops the step,
+  its grays and its line; so does Edit colors. The line has a fixed height (layout rule).
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.

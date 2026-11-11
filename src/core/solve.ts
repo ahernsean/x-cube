@@ -383,7 +383,7 @@ function parityStep(st: State): SolveStep | null {
   const what = corners && edges ? "The X-face corners and the extension edges each need" : `The ${OUTER_NAME[corners ? "outerCorner" : "outerEdge"][0]} need`;
   return {
     stage: "parity",
-    goal: `${what} an odd number of swaps, which 3-cycles can't do. ${corners && edges ? "One outer turn" : edges ? "A U turn" : "A U turn and an outer turn"} makes both even`,
+    goal: `${what} an odd number of swaps, which 3-cycles can't do. ${corners && edges ? "One outer turn makes" : edges ? "A U turn makes" : "A U turn and an outer turn make"} both even`,
     alg,
     turns,
     moved: SLOTS.filter((s) => st.occ[s] >= 0 && !isCore(s) && after.occ[s] !== st.occ[s]).map((s) => [s, after.occ.indexOf(st.occ[s])]),

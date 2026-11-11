@@ -1014,6 +1014,51 @@ labTest("color editing: colors that turns can't reach", async ({ page, check, pr
   );
 });
 
+// ---- The step guide.
+
+labTest("guide: Next step loads one step, grays what it leaves alone, and shows where cubelets go", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh }) => {
+  const line = () => page.$eval("#guide-line", (e) => e.textContent);
+  const next = async () => {
+    await page.evaluate(() => (document.getElementById("guide").open = true));
+    await page.click("#next-step");
+    await settle();
+  };
+  // One corner 3-cycle away from solved: the step is that cycle undone.
+  await play("R' F' R b R' F R b'");
+  await next();
+  const g = await probe("guide");
+  const loaded = { counter: await counter(), line: await line(), wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
+  check(
+    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners: all three go home\. .+ This is the last step\.$/.test(loaded.line) && loaded.wide <= 0,
+    `Next step loads the step's turns unplayed and says what it is for ("${loaded.line}", ${loaded.counter})`,
+  );
+  // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
+  // darker, since a 3-cycle leaves every other cubelet alone. One arrow per corner.
+  check(g?.focus.length === 3 && g.gray === 93 && g.darkGray === 0 && g.arrows === 3, `the cubelets the step is for keep their colors, the rest are gray, and arrows show the cycle (${JSON.stringify(g)})`);
+  // The grays are really drawn: the 3D view no longer shows the model's colors everywhere.
+  const grayDrawn = (await sweep3d()).wrong.length;
+  await page.click("#last");
+  await settle();
+  const played = { g: await probe("guide"), status: await status(), line: await line(), wrong: (await sweep3d()).wrong.length };
+  check(
+    grayDrawn > 0 && played.wrong === 0 && played.g?.gray === 0 && played.g.arrows === 0 && /Solved/.test(played.status) && /^Corners \(done\)/.test(played.line),
+    `playing the step solves the puzzle and returns every sticker's color (${grayDrawn} gray stickers seen before, ${played.wrong} wrong after; ${played.status}; "${played.line}")`,
+  );
+  await next();
+  check((await probe("guide")) === null && /^Solved/.test(await line()), `from solved there is no step ("${await line()}")`);
+  // Out of shape, the step is for the core cubelets that are wrong; it may leave the rest
+  // anywhere, so they are the darker gray, and nothing has an arrow.
+  await startFresh();
+  await play("R U");
+  await next();
+  const shape = await probe("guide");
+  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.arrows === 0 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere (${JSON.stringify(shape)})`);
+  // Turning the puzzle by hand takes the step out of the turn list, and the guide goes with it.
+  await page.click('[data-move="D"]');
+  await settle();
+  check((await probe("guide")) === null && (await line()) === "", "a turn made by hand drops the step and its grays");
+});
+
 // ---- The standalone page, and saving on this device.
 
 // The standalone page (published to GitHub Pages) as a phone sees it: with the phone's

@@ -25,6 +25,7 @@ import {
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
 import { fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
+import { solveSteps, type SolveStep } from "../core/solve.ts";
 
 declare const THREE: any;
 
@@ -365,6 +366,25 @@ function initScene(canvas: HTMLCanvasElement) {
     return mats.get(c);
   };
   paintMaterial = { sticker: matFor, tile: netMatFor, glow: (c: Color) => [0, 1, 2, 3].map((open) => glowMatFor(c, open)) };
+  // Gray versions of each color for the step guide: level 1 for cubelets a step leaves
+  // alone, level 2 (darker) for those it may leave anywhere. Each keeps some of its
+  // color's lightness, in a band that doesn't overlap the other level's.
+  const grayMats = new Map<string, { sticker: any; tile: any; glow: any[] }>();
+  grayMaterial = (c: Color, level: 1 | 2) => {
+    const key = `${c}/${level}`;
+    if (!grayMats.has(key)) {
+      const { r, g, b } = new THREE.Color(STICKER[c]);
+      const light = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      const v = level === 1 ? 0.6 + 0.35 * light : 0.27 + 0.2 * light;
+      const gray = new THREE.Color(v, v, v);
+      const sticker = matFor(c).clone();
+      sticker.color = gray;
+      stickerMats.push(sticker);
+      applyGloss();
+      grayMats.set(key, { sticker, tile: new THREE.MeshBasicMaterial({ color: gray, vertexColors: true }), glow: [0, 1, 2, 3].map((open) => makeGlowMaterial(glowTex, gray, open)) });
+    }
+    return grayMats.get(key)!;
+  };
   // local face d -> plane placement
   const faceXform: [number, number, number, number, number][] = [
     // [px, py, pz, rotX, rotY]
@@ -1671,6 +1691,7 @@ let playing = false;
 let playingBack = false; // playing toward the start (◀) rather than the end (▶)
 
 function enqueue(turn: Turn, forward: boolean) {
+  if (guideArrows) guideArrows.visible = false; // the arrows describe the position before the step's first turn
   queue.push({ turn, forward });
 }
 
@@ -2279,6 +2300,7 @@ function escapeHtml(s: string) {
 
 function render() {
   const st = app.current;
+  refreshGuide();
   // status
   const shape = isHomeX(st) ? chip("X shape", "good") : isXShape(st) ? chip("X shape, tipped", "good") : chip("Out of shape", "warn");
   const solved = isSolved(st) ? chip("Solved", "good") : "";
@@ -2532,6 +2554,7 @@ function bindViewTools() {
 
 function bindUI() {
   bindAlgorithms();
+  $("next-step").addEventListener("click", () => nextStep());
   bindViewTools();
   $("edit-start").addEventListener("click", () => startEdit());
   $("edit-done").addEventListener("click", () => endEdit(true));
@@ -2696,6 +2719,7 @@ function bindUI() {
 const stickerMesh3d: any[] = [];
 const tileMesh: any[] = [];
 let paintMaterial: { sticker: (c: Color) => any; tile: (c: Color) => any; glow: (c: Color) => any[] } | null = null;
+let grayMaterial: ((c: Color, level: 1 | 2) => { sticker: any; tile: any; glow: any[] }) | null = null;
 
 interface Edit {
   shape: State; // the position editing started from; its shape is kept
@@ -2713,6 +2737,7 @@ let edit: Edit | null = null;
 function startEdit() {
   if (edit) return;
   flushAnimations();
+  clearGuide();
   const st = app.current.clone();
   const colors = visibleColors(st);
   edit = { shape: st, colors, fit: fitColors(st, colors), shown: st.clone(), paint: "W", painted: [], highlight: null, hidden: null, selected: "" };
@@ -2757,6 +2782,165 @@ function drawEdit() {
   }
   syncMeshes(edit.shown);
   placeHalos();
+}
+
+// ------------------------------------------------------------------ step guide
+//
+// Next step asks the solver (src/core/solve.ts) for one step from the position shown,
+// puts its turns in the turn list, unplayed, and says what the step is for. Until the
+// step has been played through, the cubelets it is for keep their colors, the cubelets it
+// leaves alone are gray, and the ones it may leave anywhere are darker gray; before its
+// first turn, arrows show where the cubelets it moves will go.
+
+const STAGE_NAME: Record<SolveStep["stage"], string> = { hold: "Hold", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges" };
+
+interface Guide {
+  step: SolveStep;
+  /** Steps left after this one. */
+  after: number;
+  /** Where in the turn list the step's turns begin. */
+  start: number;
+  /** Cubelet ids: the ones the step is for, and the ones it may leave anywhere. */
+  focus: Set<number>;
+  free: Set<number>;
+  /** Where each moved cubelet goes, as slots. */
+  arrows: [number, number][];
+}
+let guide: Guide | null = null;
+let guideLine = "";
+let guideDimmed: any[] = []; // meshes drawn gray
+let guideArrows: any = null;
+
+function nextStep() {
+  if (edit) return;
+  flushAnimations();
+  let steps: SolveStep[];
+  try {
+    steps = solveSteps(app.current);
+  } catch (e) {
+    clearGuide();
+    guideLine = "";
+    setMessage(`Can't solve from here: ${(e as Error).message}`, "error");
+    return render();
+  }
+  clearGuide();
+  if (!steps.length) {
+    guideLine = "Solved. Nothing left to do.";
+    return render();
+  }
+  const [step] = steps;
+  const st = app.current;
+  guide = {
+    step,
+    after: steps.length - 1,
+    start: app.cursor,
+    focus: new Set(step.moved.map(([from]) => st.occ[from])),
+    free: new Set(step.free.map((s) => st.occ[s])),
+    // A parity step turns whole layers: arrows for every cubelet in them would only tangle.
+    arrows: step.stage === "parity" ? [] : step.moved.filter(([from, to]) => from !== to),
+  };
+  app.history = app.history.slice(0, app.cursor).concat(step.turns);
+  setMessage(`${step.turns.length} turns loaded`, "ok");
+  render();
+}
+
+/** Whether the guide's step is still in the turn list where it was put. */
+function guideHolds(g: Guide): boolean {
+  const there = app.history.slice(g.start, g.start + g.step.turns.length);
+  return there.length === g.step.turns.length && there.every((t, i) => turnName(t) === turnName(g.step.turns[i]));
+}
+
+function clearGuide() {
+  guide = null;
+  drawGuide();
+}
+
+/** Drops the guide when its turns are gone from the list, redraws its grays and arrows, and writes its line. */
+function refreshGuide() {
+  if (guide && !guideHolds(guide)) {
+    guide = null;
+    guideLine = "";
+  }
+  drawGuide();
+  const line = $("guide-line");
+  line.textContent = "";
+  if (guide) {
+    const { step, after, start } = guide;
+    const done = app.cursor >= start + step.turns.length;
+    const head = document.createElement("strong");
+    head.textContent = `${STAGE_NAME[step.stage]}${done ? " (done)" : ""}: `;
+    const alg = document.createElement("span");
+    alg.className = "known-alg";
+    alg.textContent = step.alg;
+    line.append(head, `${step.goal}. `, alg, ` ${after ? `${after} more ${after === 1 ? "step" : "steps"} after this.` : "This is the last step."}`);
+  } else line.textContent = guideLine;
+}
+
+function drawGuide() {
+  if (!grayMaterial) return;
+  const g = guide;
+  const within = !!g && app.cursor >= g.start && app.cursor < g.start + g.step.turns.length;
+  const key = within ? `${g!.start}/${g!.step.alg}` : "";
+  if (guideArrows) guideArrows.visible = !!g && app.cursor === g.start && !anim && !queue.length;
+  if (drawGuide.key === key) return;
+  drawGuide.key = key;
+  for (const m of guideDimmed) m.material = m.userData.ownMaterial;
+  guideDimmed = [];
+  clearGlowPaint();
+  if (guideArrows) {
+    pivot.remove(guideArrows);
+    guideArrows = null;
+  }
+  if (within) {
+    for (const c of CUBELETS) {
+      if (g!.focus.has(c.id)) continue;
+      const level = g!.free.has(c.id) ? 2 : 1;
+      c.stickers.forEach((color, d) => {
+        if (!color) return;
+        const gray = grayMaterial!(color, level);
+        for (const [mesh, mat] of [[stickerMesh3d[c.id * 6 + d], gray.sticker], [tileMesh[c.id * 6 + d], gray.tile]]) {
+          if (!mesh) continue;
+          mesh.userData.ownMaterial ??= mesh.material;
+          mesh.material = mat;
+          guideDimmed.push(mesh);
+        }
+        for (const gl of glows[c.id] ?? []) if (gl.b === d) gl.paint = gray.glow;
+      });
+    }
+    guideArrows = makeArrows(g!.arrows);
+    guideArrows.visible = app.cursor === g!.start && !anim && !queue.length;
+    pivot.add(guideArrows);
+  }
+  if (!anim && !queue.length) syncMeshes(app.current);
+}
+drawGuide.key = "";
+
+/** Arrows from slot to slot, arched out from the puzzle and drawn over it, in the 3D view only. */
+function makeArrows(pairs: [number, number][]) {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: HALO.color, depthTest: false, depthWrite: false, transparent: true, opacity: 0.92 });
+  for (const [from, to] of pairs) {
+    const a = new THREE.Vector3(...SLOT_POS[from]).multiplyScalar(1.12);
+    const b = new THREE.Vector3(...SLOT_POS[to]).multiplyScalar(1.12);
+    const mid = a.clone().add(b).multiplyScalar(0.5);
+    // Arch away from the center; two spots straight across the puzzle arch upward.
+    const out = mid.lengthSq() > 0.01 ? mid.clone().normalize() : new THREE.Vector3(0, 1, 0);
+    const control = mid.clone().add(out.multiplyScalar(0.9 + 0.35 * a.distanceTo(b)));
+    const curve = new THREE.QuadraticBezierCurve3(a, control, b);
+    const headAt = 0.86;
+    const pts = [...Array(21).keys()].map((i) => curve.getPoint((i / 20) * headAt));
+    const shaft = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.07, 8), mat);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 14), mat);
+    const tip = curve.getPoint(1), base = curve.getPoint(headAt);
+    head.position.copy(base.clone().add(tip).multiplyScalar(0.5));
+    head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tip.clone().sub(base).normalize());
+    for (const m of [shaft, head]) {
+      m.renderOrder = 4;
+      m.layers.set(HALO_LAYER);
+      group.add(m);
+    }
+  }
+  return group;
 }
 
 // ------------------------------------------------------------------ highlight halo
@@ -3121,6 +3305,21 @@ function installProbe() {
     idle: () => !anim && !queue.length && !settle && !live && !tween,
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
+    /** The step guide: its step, the slots (now) of the cubelets it is for, how many stickers are drawn gray at each level, and the arrows showing. */
+    guide: () => {
+      if (!guide) return null;
+      const grays = [1, 2].map((level) => guideDimmed.filter((m) => stickerMesh3d.includes(m) && CUBELETS.some((c) => c.stickers.some((col) => col && grayMaterial!(col, level as 1 | 2).sticker === m.material))).length);
+      return {
+        stage: guide.step.stage,
+        alg: guide.step.alg,
+        turns: guide.step.turns.length,
+        after: guide.after,
+        focus: [...guide.focus].map((id) => slotName(app.current.occ.indexOf(id))).sort(),
+        gray: grays[0],
+        darkGray: grays[1],
+        arrows: guideArrows?.visible ? guideArrows.children.length / 2 : 0,
+      };
+    },
     view: () => pivot.quaternion.toArray(),
     // Deliberate faults, for testing the tests: draw two cubelets in each other's places,
     // or turn one cubelet's mesh a quarter turn about a face's axis. resync() redraws
