@@ -216,7 +216,17 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
   most unblocked, then each as squarely as possible, from the preset views and the
   directions between the stickers), again each time it is tapped. **Hide** removes the
   halo until the shown problem names other cubelets. Done, available only when valid, makes the fitted position the start
-  ("Edited colors"). Whether a valid position can be reached by turning is not checked yet.
+  ("Edited colors"). **Valid means turns can reach it:** some position showing the paint can
+  be reached by turning, and Done gives that position (so it has an X2 code). Many positions
+  show the same paint, because look-alike core cubelets can trade places and core double
+  edges are never seen; those choices absorb every swap and flip parity (the argument is at
+  the top of `src/core/edit.ts`, and `test/edit.test.ts` samples it). So two outer cubelets
+  painted as each other are valid, and beyond the problems above the paint can be
+  unreachable in only one way: the center colors arranged as no turns arrange them, either
+  "Opposite centers must be red and orange, green and blue, or white and yellow" (halo on
+  the centers that should be opposite) or "Wrong center color order"
+  (halo on all six centers that show). A cube painted as the real one shows is always
+  valid, so any problem means a sticker painted wrong.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.
