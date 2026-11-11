@@ -171,6 +171,7 @@ node src/cli/xc.ts steps  "R U R' U'"             # status after every turn
 node src/cli/xc.ts effect "[R' F' R, b]"          # which cubelets moved
 node src/cli/xc.ts order  "R U"                   # repetitions until it looks the same
 node src/cli/xc.ts solve  "R U F' l"              # steps from that position to solved
+node src/cli/xc.ts solve  "R U F' l" --mode layers   # ... solving the outer cubelets top to bottom
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
 node src/cli/xc.ts show "U" --state "VLTM DWOP ..."        # start from a saved state code
 node scripts/build-web.ts                         # build dist/index.html and dist/x-cube-lab.html

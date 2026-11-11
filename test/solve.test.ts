@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isHomeX, isSolved } from "../src/core/analyze.ts";
 import { fitColors, visibleColors } from "../src/core/edit.ts";
+import { DIRS } from "../src/core/geometry.ts";
 import { parseAlg } from "../src/core/notation.ts";
-import { CUBELETS, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, turnName, type Kind } from "../src/core/puzzle.ts";
+import { CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, slotAt, turnName, type Kind } from "../src/core/puzzle.ts";
 import { rotsTo, unreachableReason } from "../src/core/serialize.ts";
-import { nextStep, solveSteps, type SolveStep } from "../src/core/solve.ts";
+import { nextStep, solveSteps, type Mode, type SolveStep } from "../src/core/solve.ts";
 
 const after = (alg: string) => {
   const st = State.solved();
@@ -29,10 +30,17 @@ const look = (st: State, except: Set<number>) => {
   return out;
 };
 const usage = { turns: 0, back: 0 };
+/** Whether the cubelet in a slot is home: each of its stickers matches the center of the face it is on. */
+const atHome = (st: State, slot: number) =>
+  [0, 1, 2, 3, 4, 5].every((d) => {
+    const center = CUBELETS[st.occ[slotAt(DIRS[d])]];
+    const color = st.colorAt(slot, d);
+    return !color || color === FACE_COLOR[[0, 1, 2, 3, 4, 5].find((h) => slotAt(DIRS[h]) === center.home)!];
+  });
 /** Plays the steps from st, checking each does what it reports; returns the final state. */
-function play(start: State, steps: SolveStep[]): State {
+function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
   const st = start.clone();
-  const order = ["hold", "shape", "core", "parity", "corners", "edges"];
+  const order = ["hold", "shape", "core", "parity", ...(mode === "kinds" ? ["corners", "edges"] : ["topEdges", "topCorners", "sideEdges", "bottomCorners", "bottomEdges"])];
   let stage = 0;
   for (const step of steps) {
     assert.ok(order.indexOf(step.stage) >= stage, `${step.stage} comes after ${order[stage]}`);
@@ -58,6 +66,12 @@ function play(start: State, steps: SolveStep[]): State {
     for (let s = 0; s < NUM_SLOTS; s++)
       if (["coreCorner", "singleEdge"].includes(CUBELETS[seen.occ[s]]?.kind)) assert.equal(seen.colorAt(s, SLOT_POS[s][1] > 0 ? 2 : 3), SLOT_POS[s][1] > 0 ? "W" : "Y", `after ${step.alg}, white core cubelets are up`);
     if (step.stage !== "core") for (const [from, to] of step.moved) assert.equal(seen.occ[to], before.occ[from], `${step.alg} moves the cubelet it says where it says`);
+    // A cycle brings home the cubelets it says, and at least one.
+    if (!["core", "parity"].includes(step.stage)) {
+      assert.ok(step.lands.length >= 1, `${step.alg} brings a cubelet home`);
+      assert.match(step.goal, [/One goes home$/, /Two go home$/, /All three go home$/][step.lands.length - 1]);
+      for (const [from, to] of step.moved) assert.equal(atHome(seen, to), step.lands.includes(from), `${step.alg} says which cubelets end at home`);
+    }
   }
   return st;
 }
@@ -105,6 +119,21 @@ test("solve: positions from the color editor are solved, whichever parity they n
   assert.deepEqual([...parity].sort(), ["U", "U r", "none", "r"], "the sample needs every parity fix, and none");
 });
 
+test("solve: layer by layer solves the same positions, top to bottom", () => {
+  // The other order: white X-face edges, its corners, the side edges, then the yellow
+  // X-face's corners and edges. A layer, once done, stays done.
+  const rnd = random(77);
+  let turns = 0;
+  for (let trial = 0; trial < 40; trial++) {
+    const st = scrambled(rnd);
+    const steps = solveSteps(st, "layers");
+    assert.ok(isSolved(play(st, steps, "layers")), `trial ${trial}`);
+    turns += steps.reduce((sum, s) => sum + s.turns.length, 0);
+    assert.ok(steps.every((s) => s.stage !== "corners" && s.stage !== "edges"));
+  }
+  assert.ok(turns / 40 <= 260, `layer by layer stays learnable in length (average ${turns / 40})`);
+});
+
 test("solve: two outer edges traded alone are solved through the U parity step", () => {
   const st = State.solved();
   const colors = visibleColors(st);
@@ -127,7 +156,8 @@ test("solve: the stages come as needed", () => {
   const cycle = nextStep(after("(F' L' F) r (F' L F) r'"))!;
   assert.equal(cycle.stage, "corners");
   assert.equal(cycle.alg, "r (F' L' F) r' (F' L F)", "one 3-cycle is undone by its inverse, with no setup, written as a commutator");
-  assert.match(cycle.goal, /all three/);
+  assert.match(cycle.goal, /All three go home/);
+  assert.equal(cycle.lands.length, 3);
   // The hold step only brings white up; whichever side is in front then is the grip, and
   // the rest is solved from there. Later steps turn the whole puzzle only about its
   // vertical axis, so white stays up.

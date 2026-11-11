@@ -2802,7 +2802,10 @@ function drawEdit() {
 // first turn, arrows show where the cubelets it moves will go. Each step stays boxed in the
 // turn list behind a tag; the tag, or Step start, goes back to where the step begins.
 
-const STAGE_NAME: Record<SolveStep["stage"], string> = { hold: "Regrip", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges" };
+const STAGE_NAME: Record<SolveStep["stage"], string> = {
+  hold: "Regrip", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges",
+  topEdges: "Top edges", topCorners: "Top corners", sideEdges: "Side edges", bottomCorners: "Bottom corners", bottomEdges: "Bottom edges",
+};
 
 interface Guide {
   step: SolveStep;

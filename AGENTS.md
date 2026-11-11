@@ -139,6 +139,15 @@ step. Stages, in order:
    or its inverse) inside setup turns that keep the shape, written `[setup: cycle]`. An
    outer cubelet is turned one way in each spot, so placing it is all there is to do.
 
+**Modes** (`Mode`): the order of the outer cubelets, with the same two cycles either way.
+`kinds` is as above. `layers` goes top to bottom, as a 3x3x3 is often solved: the white
+X-face's edges (`topEdges`), its corners (`topCorners`), the extension side edges
+(`sideEdges`), then the yellow X-face's corners and edges (`bottomCorners`,
+`bottomEdges`). A cycle never moves a cubelet that is already home, in either mode; it
+brings at least one cubelet of the current group home, and its third cubelet may be any
+unsolved one. A step's `lands` says which of the three end at home. Sampled over 200
+positions, the two modes come out about the same length (177 and 180 turns on average).
+
 **Ease, the owner's priorities for turns** (`EASE` in `solve.ts`), most important first:
 avoid the back (`B`, `b`); then the bottom (`D`); then `H` and `S`; `M` is fine (a person
 does it as `L' R x'`); and regular, repeating patterns are easier to memorize. So:

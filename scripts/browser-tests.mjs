@@ -1029,7 +1029,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   const g = await probe("guide");
   const loaded = { counter: await counter(), line: await line(), wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(
-    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners: all three go home\. Turns: r \(F' L' F\) r' \(F' L F\) Step 1 of 1 to solved\.$/.test(loaded.line) && loaded.wide <= 0,
+    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners\. All three go home\. Turns: r \(F' L' F\) r' \(F' L F\) Step 1 of 1 to solved\.$/.test(loaded.line) && loaded.wide <= 0,
     `Next step loads the step's turns unplayed and says what it applies to ("${loaded.line}", ${loaded.counter})`,
   );
   // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
