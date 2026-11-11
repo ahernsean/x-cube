@@ -17,8 +17,10 @@
 // line, and the test fails at its end if any check did.
 //
 // Needs the `playwright` package and the browser for it (CI installs both). WebKit runs
-// with iPhone-like settings (touch, device pixel ratio 3) because the Lab is used mostly on
-// an iPhone and iPad. It is not given `isMobile`: the built page has no viewport meta tag
+// with touch because the Lab is used mostly on an iPhone and iPad, and both engines draw at
+// device pixel ratio 1: every pixel is drawn on the CPU here, and nothing the tests check
+// depends on the density (the standalone page's layout test alone runs as an iPhone, at
+// ratio 3). WebKit is not given `isMobile`: the built page has no viewport meta tag
 // (claude.ai adds one when it publishes the artifact), so a mobile layout would be 980 px wide.
 
 import assert from "node:assert/strict";
@@ -47,10 +49,11 @@ if (process.env.COVERAGE_DIR && !coverageDir) console.log(`(coverage is recorded
 const coverage = [];
 
 // Without a GPU, headless Chromium draws WebGL with SwiftShader, which here is about four
-// times slower than Mesa's llvmpipe (the CPU renderer WebKit uses on Linux). These flags
+// times slower than Mesa's llvmpipe. These flags
 // send Chromium's ANGLE to Mesa through EGL instead. Where Mesa's EGL is missing, Chromium
-// quietly keeps SwiftShader, so the startup test prints the renderer in use, and with
-// EXPECT_RENDERER set (CI sets it to llvmpipe) a different renderer fails it.
+// quietly keeps SwiftShader, so the startup test reports the renderer in use (in either
+// engine), and with EXPECT_RENDERER set (CI sets it to llvmpipe) a different one fails it
+// in Chromium.
 const launchArgs = engine === "chromium" && process.platform === "linux" ? ["--ignore-gpu-blocklist", "--use-angle=gl-egl"] : [];
 // Where the network is reached through a proxy (HTTPS_PROXY, as in some cloud sandboxes),
 // the browser and the CDN downloads below (route.fetch, made by Playwright, not the page)
@@ -109,7 +112,7 @@ const serveCdnFromMemory = (context) =>
 
 const labContext = () =>
   engine === "webkit"
-    ? { viewport: { width: 390, height: 900 }, deviceScaleFactor: 3, hasTouch: true }
+    ? { viewport: { width: 390, height: 900 }, hasTouch: true }
     : { viewport: { width: 390, height: 900 } };
 
 // Opens a page in a new context, ready to use: the Lab has drawn and is idle. `expand`
@@ -271,7 +274,7 @@ labTest(
       const ext = gl?.getExtension("WEBGL_debug_renderer_info");
       return gl ? gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) : "no WebGL 2";
     });
-    console.log(`     WebGL renderer: ${renderer}`);
+    check(true, `${engine} draws WebGL with: ${renderer}`);
     const expected = engine === "chromium" ? process.env.EXPECT_RENDERER : undefined;
     if (expected) check(renderer.includes(expected), `Chromium draws with ${expected}`);
 
