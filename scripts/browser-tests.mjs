@@ -861,6 +861,37 @@ labTest("edge glow: wraps around a cubelet's corner where two visible faces meet
   check(closedEnd < 0.3 * closedMid && flatEnd < 0.3 * flatMid, `edge glow fades out at a corner with no glow around it (3D ${fmt([closedMid, closedEnd])}), and in the flat view (${fmt([flatMid, flatEnd])})`);
 });
 
+labTest("edge glow: follows the cubelets while a layer turns, from where they are right now", async ({ page, check, probe, swipe, settle }) => {
+  // Solved, the front extension's bottom middle cubelet (Fx.D) has Fx.DR against its right
+  // face, so no glow lies in that face's plane, and the glow under its front face ends
+  // there. Part-way through R that face is exposed: its plane carries the yellow glow, and
+  // the front glow's end opens to go around the corner. Turned back, both are as before.
+  const band = async () => ({ side: await probe("glowBand", "Fx.D", "R", "D"), front: await probe("glowBand", "Fx.D", "F", "D") });
+  const fire = (steps) =>
+    page.evaluate((steps) => {
+      const c = document.getElementById("scene");
+      for (const [type, x, y] of steps) c.dispatchEvent(new PointerEvent(type, { pointerId: 7, pointerType: "touch", isPrimary: true, clientX: x, clientY: y, buttons: type === "pointerup" ? 0 : 1, bubbles: true, cancelable: true }));
+    }, steps);
+  const show = (b) => `side ${b.side.shown ? "shown" : "hidden"}, front ends ${b.front.open}`;
+  const rest = await band();
+  const at = await probe("sticker", "Fx.R", "F");
+  const [down, ...moves] = drag(at, 0, -30).slice(0, -1);
+  await fire([down, ...moves]);
+  const turning = await band();
+  await fire([...moves.reverse().slice(1), ["pointermove", at.x, at.y]]);
+  const back = await band();
+  await fire([["pointerup", at.x, at.y]]);
+  await settle();
+  check(!rest.side.shown && rest.front.open === 0 && turning.side.shown && turning.front.open !== 0 && !back.side.shown && back.front.open === 0, `a face uncovered by a turning layer glows during the turn, not only after it (at rest: ${show(rest)}; part-way through R: ${show(turning)}; turned back: ${show(back)})`);
+  check((await probe("turns")) === "", `turning the layer back leaves no turn (got "${await probe("turns")}")`);
+
+  await swipe(at, 0, -70);
+  const after = await band();
+  check((await probe("turns")) === "R" && after.side.shown && after.front.open !== 0, `after R the face stays exposed and glows (${show(after)})`);
+  const restError = await probe("glowRestError");
+  check(restError === 0, `the glow at the start of every turn matches the glow at rest (${restError} bands differ)`);
+});
+
 labTest("shading: the flat view's bands come from nearer neighbors, and live shading at a turn's start matches the rest shading", async ({ check, probe, startFresh, play }) => {
   // Each nearer neighbor casts a band along the shared edge, at full darkness at the edge
   // and gone past the ramp. Checked in a scrambled position, which has recesses between

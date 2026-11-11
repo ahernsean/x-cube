@@ -222,7 +222,9 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   away from the viewer or is edge-on. Where two visible faces of one cubelet meet, the
   hidden sticker's glow continues around the corner between them, rounded like the
   sticker's corner; elsewhere a glow fades out at its ends, and always in the flat view,
-  which sees only one side of a corner.
+  which sees only one side of a corner. Recomputed every frame during turns, from where
+  the cubelets are right then: a face between a turning layer and its neighbors is
+  exposed, and glows, from just after the turn starts until just before it ends.
 - **Shading:** grid-based ambient occlusion. Each face corner is darkened by filled grid
   spots in front of it (three near, five farther with less weight), blended across the
   face. Applied to stickers and plastic; recomputed every frame during turns. The flat
@@ -334,8 +336,9 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   a point in either view. It draws into its own offscreen buffer (an
   ID pass and a plain-color pass), so the views don't change. Its fault methods misdraw
   cubelets on purpose, so a test can check that the drawing checks catch them. It also
-  reports what the effect switches control, and how far the shading computed during a
-  turn is, at its start, from the rest shading.
+  reports what the effect switches control, how far the shading and the glow computed
+  during a turn are, at its start, from those at rest, and whether one glow band is drawn
+  right now (also part-way through a turn).
   Gestures read event timestamps, not handler time, so a slow frame can't change what a
   gesture means.
 
