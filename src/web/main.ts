@@ -1313,7 +1313,8 @@ function frame() {
     for (const r of guideArrows.userData.runners) {
       r.copy.visible = shown;
       r.copy.position.copy(runnerPoint(r, e));
-      r.copy.quaternion.copy(r.from).slerp(r.to, e);
+      const at = Math.min(RUNNER_STEPS - 1e-9, e * RUNNER_STEPS), k = Math.floor(at);
+      r.copy.quaternion.copy(r.turns[k]).slerp(r.turns[k + 1], at - k);
     }
   }
   const view3dOpen = !view3dSection?.classList.contains("collapsed");
@@ -3108,6 +3109,35 @@ drawGuide.key = "";
  * each cubelet it is for that moves or turns has a full path without a ring; one with
  * no sticker (a core double edge) has none.
  */
+/**
+ * How a flying copy is turned at RUNNER_STEPS + 1 places evenly along its path. It turns
+ * the way the path goes: the sticker the path follows faces out of the sticker's face at
+ * the start, away from the puzzle's center along the way, and out of its new face at the
+ * end, turning no more than that needs. Whatever spin about that sticker is then left to
+ * reach how the cubelet will be turned is spread evenly along the path.
+ */
+const RUNNER_STEPS = 48;
+function runnerTurns(curve: any, n0: any, n1: any, from: any, to: any): any[] {
+  const reach = Math.min(1, curve.getLength() / 3); // a short hop has no "along the way"
+  const facing = (e: number) => {
+    const out = curve.getPointAt(e).normalize().multiplyScalar(reach * Math.sin(Math.PI * e) ** 2);
+    const n = n0.clone().lerp(n1, e * e * (3 - 2 * e)).multiplyScalar(1 - out.length()).add(out);
+    return n.lengthSq() > 1e-8 ? n.normalize() : null;
+  };
+  const carried = [new THREE.Quaternion()];
+  const normals = [n0.clone()];
+  for (let k = 1; k <= RUNNER_STEPS; k++) {
+    const n = k === RUNNER_STEPS ? n1.clone() : facing(k / RUNNER_STEPS) ?? normals[k - 1].clone();
+    carried.push(new THREE.Quaternion().setFromUnitVectors(normals[k - 1], n).multiply(carried[k - 1]));
+    normals.push(n);
+  }
+  const left = to.clone().multiply(carried[RUNNER_STEPS].clone().multiply(from).invert());
+  let spin = 2 * Math.atan2(left.x * n1.x + left.y * n1.y + left.z * n1.z, left.w);
+  if (spin > Math.PI) spin -= 2 * Math.PI;
+  if (spin < -Math.PI) spin += 2 * Math.PI;
+  return carried.map((q, k) => new THREE.Quaternion().setFromAxisAngle(normals[k], (spin * k) / RUNNER_STEPS).multiply(q).multiply(from));
+}
+
 /** Where a flying copy is when it has gone the share e of its way: by distance along its path, so it neither lingers nor rushes. */
 const runnerPoint = (r: { curve: any }, e: number) => r.curve.getPointAt(e);
 
@@ -3118,6 +3148,7 @@ function makeArrows(paths: StickerPath[]) {
   group.userData.drawn = 0; // meshes making up the paths themselves
   group.userData.through = 0; // sampled points of the paths that are inside the puzzle
   group.userData.headGap = 0; // the worst miss between a shaft and its head
+  group.userData.bend = 0; // the sharpest bend of any path: radians over one cubelet's width
   group.userData.turning = 0; // the most any path turns in all, in radians
   group.userData.out = 0; // the farthest any path goes outside the room the 3D view shows
   // Everything here is drawn twice: plainly where it is in front of the puzzle, and as a
@@ -3148,6 +3179,7 @@ function makeArrows(paths: StickerPath[]) {
     group.userData.through += p.hits;
     group.userData.out = Math.max(group.userData.out, p.out);
     group.userData.turning = Math.max(group.userData.turning, p.turning);
+    group.userData.bend = Math.max(group.userData.bend, p.bend);
     // The head is a cone whose tip is on the sticker's new face. The shaft runs, by arc
     // length, to a little inside the head's base, so the two always join; and the head
     // points along the line from there to the tip.
@@ -3211,7 +3243,7 @@ function makeArrows(paths: StickerPath[]) {
         });
       });
       group.add(copy);
-      group.userData.runners.push({ copy, curve, from: oriQuaternion(p.fromOri), to: oriQuaternion(p.toOri) });
+      group.userData.runners.push({ copy, curve, turns: runnerTurns(curve, dir(p.fromDir), dir(p.toDir), oriQuaternion(p.fromOri), oriQuaternion(p.toOri)) });
     }
   }
   return group;
@@ -3244,6 +3276,8 @@ interface StickerPath {
   out: number;
   /** How much the route turns in all, in radians. */
   turning: number;
+  /** The most its heading turns over one cubelet's width, in radians. */
+  bend: number;
 }
 
 /** A cubelet orientation (an index into ROTATIONS) as a quaternion. */
@@ -3254,104 +3288,145 @@ function oriQuaternion(ori: number) {
 
 /**
  * A route from a sticker, as it faces before the step, to the face it will be on: it leaves
- * straight out of the sticker and arrives straight onto that face. Of a few routes (arches
- * of several heights, and orbits around the puzzle), the one costing least is taken:
+ * nearly straight out of the sticker and arrives nearly straight onto that face. Of a few
+ * routes (the short way around the puzzle and, for ends on opposite sides, ways by each of
+ * the six directions), each pulled tight around the puzzle, the one costing least is taken:
  * leaving the room the 3D view shows costs sixty for each cubelet out, a stretch inside the
- * puzzle eight times its length, and turning beyond a half turn a little. `hits` counts the
- * sampled points that are inside the puzzle, away from the route's ends (and from the one
- * cubelet covering a hidden sticker at either end); `effort` is the route's place in the
- * list; `length` its length; `turning` how much it turns in all.
+ * puzzle eight times its length, and each radian of turning 0.6. `hits` counts the sampled
+ * points that are inside the puzzle, away from the route's ends; `effort` is the route's
+ * place in the list; `length` its length; `turning` how much it turns in all.
  */
-function route(st: State, from: number, fromDir: number, to: number, toDir: number, hiddenFrom = false, hiddenTo = false) {
+function route(st: State, from: number, fromDir: number, to: number, toDir: number) {
   const n0 = new THREE.Vector3(...DIRS[fromDir]), n1 = new THREE.Vector3(...DIRS[toDir]);
   const a = new THREE.Vector3(...SLOT_POS[from]).addScaledVector(n0, 0.52);
   const b = new THREE.Vector3(...SLOT_POS[to]).addScaledVector(n1, 0.52);
-  const reach = 0.14;
-  // Within this of either end a path is still leaving or reaching a sticker, so the
-  // cubelets beside it there don't count as in the way.
-  // A sticker covered by a neighbor (a core cubelet's, out of shape) can only be left or
-  // reached through that neighbor, so a path there may pass through one cubelet more.
-  const nearFrom = hiddenFrom ? 1.45 : 0.45, nearTo = hiddenTo ? 1.45 : 0.45;
-  const blocked = (p: any) => {
-    if (p.distanceTo(a) < nearFrom || p.distanceTo(b) < nearTo) return false;
-    for (const [dx, dy, dz] of [[0, 0, 0], [reach, 0, 0], [-reach, 0, 0], [0, reach, 0], [0, -reach, 0], [0, 0, reach], [0, 0, -reach]]) {
-      const s = slotAtXYZ(Math.round(p.x + dx), Math.round(p.y + dy), Math.round(p.z + dz));
-      if (s >= 0 && st.occ[s] >= 0) return true;
-    }
-    return false;
-  };
-
-  let best: { curve: any; hits: number; effort: number; length: number; cost: number; out: number; turning: number } | null = null;
-  let effort = 0;
-  const d = a.distanceTo(b);
   // The 3D view shows about this far from the puzzle's center in every direction, however
   // the view is turned (a portrait phone is the tightest); a route that goes farther is cut
   // off at the edge of the view.
   const ROOM = 3.1;
-  const routes: any[] = [];
-  // Arches: straight out of the sticker, over, and straight onto the new face. These suit
-  // near spots; the lowest hug the puzzle.
-  for (const rise of [0.35 + 0.25 * d, 0.6 + 0.3 * d, 1.0 + 0.3 * d, 1.6 + 0.4 * d])
-    routes.push(new THREE.CubicBezierCurve3(a, a.clone().addScaledVector(n0, rise), b.clone().addScaledVector(n1, rise), b));
-  // Orbits: out from the sticker, around the puzzle by the short way (or, for ends on
-  // opposite sides, by way of one of the six directions), and in onto the new face. An
-  // orbit hugs the puzzle: each of its points is as near the center as is clear of
-  // cubelets (plus a margin), and no point is much nearer than its neighbors, so the
-  // route rises over what sticks out and doesn't dip between. The curve passes through
-  // the points and is of the kind that doesn't overshoot or loop between them.
-  const filled = (p: any) => {
-    for (const [dx, dy, dz] of [[0, 0, 0], [reach, 0, 0], [-reach, 0, 0], [0, reach, 0], [0, -reach, 0], [0, 0, reach], [0, 0, -reach]]) {
-      const s = slotAtXYZ(Math.round(p.x + dx), Math.round(p.y + dy), Math.round(p.z + dz));
-      if (s >= 0 && st.occ[s] >= 0) return true;
+  // A route keeps this far from every cubelet, except near its ends, where it need only
+  // be LEAN times as far from them as from the end: so it leaves a sticker, and comes
+  // onto a face, within about 40 degrees of straight out.
+  const MARGIN = 0.32, LEAN = 0.75, POINTS = 40;
+  // What is in the way: every cubelet and the puzzle's solid center, as boxes. No sticker
+  // is ever covered, so the way out of the sticker is clear. The spot the new face looks
+  // into may be filled now by a cubelet the step takes away, so that one doesn't count.
+  const p1 = SLOT_POS[to];
+  const beyond = slotAtXYZ(p1[0] + DIRS[toDir][0], p1[1] + DIRS[toDir][1], p1[2] + DIRS[toDir][2]);
+  const boxes: Vec3[] = [[0, 0, 0]];
+  st.occ.forEach((id, s) => id >= 0 && s !== beyond && boxes.push(SLOT_POS[s]));
+  /** How far p is from the nearest box (0 inside one); `away` is set to the direction out of it. */
+  const away = new THREE.Vector3();
+  const clearance = (p: any) => {
+    let best = Infinity;
+    for (const c of boxes) {
+      const x = Math.max(Math.abs(p.x - c[0]) - 0.5, 0), y = Math.max(Math.abs(p.y - c[1]) - 0.5, 0), z = Math.max(Math.abs(p.z - c[2]) - 0.5, 0);
+      const d = x * x + y * y + z * z;
+      if (d < best) (best = d, away.set(Math.sign(p.x - c[0]) * x, Math.sign(p.y - c[1]) * y, Math.sign(p.z - c[2]) * z));
     }
-    return false;
+    best = Math.sqrt(best);
+    if (best > 1e-6) away.divideScalar(best);
+    else away.copy(p).normalize(); // inside a cubelet: out from the puzzle's center
+    return best;
   };
-  const clearAt = (u: any) => {
-    let r = ROOM;
-    while (r > 1.9 && !filled(u.clone().multiplyScalar(r - 0.1))) r -= 0.1;
-    return r;
+  // A route starts as an arc well outside the puzzle and is then pulled tight like an
+  // elastic band: each point moves toward the middle of its neighbors, and back out of
+  // whatever it is pulled into. So it ends as the shortest way of its kind around the
+  // puzzle, straight where nothing is near and rounded (by MARGIN) where it bends
+  // around a cubelet.
+  const tighten = (pts: any[]) => {
+    const mid = new THREE.Vector3();
+    for (let pass = 0; pass < 120; pass++)
+      for (let i = 1; i < pts.length - 1; i++) {
+        const p = pts[i];
+        p.lerp(mid.addVectors(pts[i - 1], pts[i + 1]).multiplyScalar(0.5), 0.5);
+        for (let k = 0; k < 3; k++) {
+          const need = Math.min(MARGIN, LEAN * Math.min(p.distanceTo(a), p.distanceTo(b)));
+          const d = clearance(p);
+          if (d >= need) break;
+          p.addScaledVector(away, d > 1e-6 ? need - d : 0.15);
+        }
+        if (p.length() > ROOM) p.setLength(ROOM);
+      }
+    return pts;
   };
-  const out0 = a.clone().addScaledVector(n0, 0.45), out1 = b.clone().addScaledVector(n1, 0.45);
-  const u0 = out0.clone().normalize(), u1 = out1.clone().normalize();
+  // A band pulled tight turns sharply where it wraps around a cubelet's edge. So the
+  // tight route is then let spring like a stiff rod: each point moves to lessen the
+  // bending around it (much) and the length (a little), still kept clear of the
+  // cubelets. Bends spread over about WIDTH, so the route stands off a corner it rounds.
+  const WIDTH = 1.1;
+  const stiffen = (taut: any[]) => {
+    const tight = new THREE.CatmullRomCurve3(taut, false, "centripetal");
+    const length = tight.getLength();
+    const n = Math.max(12, Math.min(64, Math.round(length / 0.2) + 1));
+    const pts = Array.from({ length: n }, (_, i) => tight.getPointAt(i / (n - 1)));
+    const bend = 0.06, pull = bend * (length / (n - 1) / WIDTH) ** 2;
+    const lap = pts.map(() => new THREE.Vector3());
+    for (let pass = 0; pass < 400; pass++) {
+      for (let i = 1; i < n - 1; i++) lap[i].copy(pts[i - 1]).addScaledVector(pts[i], -2).add(pts[i + 1]);
+      for (let i = 1; i < n - 1; i++) {
+        const p = pts[i];
+        p.addScaledVector(lap[i], pull + 2 * bend).addScaledVector(lap[i - 1], -bend).addScaledVector(lap[i + 1], -bend);
+        for (let k = 0; k < 3; k++) {
+          const need = Math.min(MARGIN, LEAN * Math.min(p.distanceTo(a), p.distanceTo(b)));
+          const d = clearance(p);
+          if (d >= need) break;
+          p.addScaledVector(away, d > 1e-6 ? need - d : 0.15);
+        }
+        if (p.length() > ROOM) p.setLength(ROOM);
+      }
+    }
+    return pts;
+  };
+  // The arcs to start from: the short way around, and for ends on opposite sides of the
+  // puzzle, by way of each of the six directions.
+  const u0 = a.clone().normalize(), u1 = b.clone().normalize();
   const opposite = u0.dot(u1) < -0.3;
   const vias = [null, ...DIRS.map((v) => new THREE.Vector3(...v)).filter((v) => opposite && v.dot(u0) < 0.8 && v.dot(u1) < 0.8)];
-  for (const margin of [0.15, 0.4])
-    for (const via of vias) {
-      if (!via && u0.dot(u1) < -0.95) continue; // straight across: no short way around
-      const stops = via ? [u0, via, u1] : [u0, u1];
-      const dirs: any[] = [];
-      for (let leg = 0; leg + 1 < stops.length; leg++) {
-        const q = new THREE.Quaternion().setFromUnitVectors(stops[leg], stops[leg + 1]);
-        const steps = Math.max(2, Math.round(stops[leg].angleTo(stops[leg + 1]) / 0.3));
-        for (let k = leg ? 1 : 0; k <= steps; k++) dirs.push(stops[leg].clone().applyQuaternion(new THREE.Quaternion().slerp(q, k / steps)));
-      }
-      const radii = dirs.map((u) => Math.min(ROOM, clearAt(u) + margin));
-      for (let pass = 0; pass < 2; pass++) {
-        for (let k = 1; k < radii.length; k++) radii[k] = Math.max(radii[k], radii[k - 1] - 0.2);
-        for (let k = radii.length - 2; k >= 0; k--) radii[k] = Math.max(radii[k], radii[k + 1] - 0.2);
-      }
-      routes.push(new THREE.CatmullRomCurve3([a, out0, ...dirs.map((u, k) => u.clone().multiplyScalar(Math.max(radii[k], k === 0 ? out0.length() : k === dirs.length - 1 ? out1.length() : 0))), out1, b], false, "centripetal"));
+  const routes: any[] = [];
+  for (const via of vias) {
+    if (!via && u0.dot(u1) < -0.95) continue; // straight across: no short way around
+    const stops = via ? [u0, via, u1] : [u0, u1];
+    const angles = stops.slice(1).map((u, k) => stops[k].angleTo(u));
+    const whole = angles.reduce((x, y) => x + y, 0);
+    const pts: any[] = [];
+    for (let i = 0; i < POINTS; i++) {
+      const t = i / (POINTS - 1);
+      let turn = t * whole, leg = 0;
+      while (leg < angles.length - 1 && turn > angles[leg]) turn -= angles[leg++];
+      const q = new THREE.Quaternion().slerp(new THREE.Quaternion().setFromUnitVectors(stops[leg], stops[leg + 1]), angles[leg] ? turn / angles[leg] : 0);
+      const flat = a.length() + (b.length() - a.length()) * t;
+      pts.push(stops[leg].clone().applyQuaternion(q).multiplyScalar(flat + (3 - flat) * Math.sin(Math.PI * t)));
     }
+    pts[0].copy(a);
+    pts[POINTS - 1].copy(b);
+    routes.push(new THREE.CatmullRomCurve3(stiffen(tighten(pts)), false, "centripetal"));
+  }
+  let best: { curve: any; hits: number; effort: number; length: number; cost: number; out: number; turning: number; bend: number } | null = null;
+  let effort = 0;
   for (const curve of routes) {
     // Sampled evenly along its length: how much of it is inside the puzzle, how far it
-    // leaves the view, and how much it turns in all (a route that doubles back turns a lot).
-    let hits = 0, out = 0, turning = 0;
+    // leaves the view, and how much it turns in all.
+    let hits = 0, out = 0, turning = 0, bend = 0;
     let before: any = null;
+    const whole = curve.getLength();
+    // The sharpest bend: how far the heading turns over one cubelet's width of the route.
+    for (let k = 0; k + 1 <= 48 * Math.max(0, 1 - 1 / whole); k++) bend = Math.max(bend, curve.getTangentAt(k / 48).angleTo(curve.getTangentAt(Math.min(1, k / 48 + 1 / whole))));
     for (let k = 0; k <= 48; k++) {
       const pt = curve.getPointAt(k / 48);
-      if (k >= 3 && k <= 45 && blocked(pt)) hits++;
+      if (pt.distanceTo(a) > 0.45 && pt.distanceTo(b) > 0.45 && clearance(pt) < 0.1) hits++;
       out = Math.max(out, pt.length() - ROOM);
       const heading = curve.getTangentAt(k / 48);
       if (before) turning += before.angleTo(heading);
       before = heading;
     }
     // Staying in view matters most, then clear of the puzzle (a stretch behind it is drawn
-    // faintly, and still seen), then being short and not winding about. What is inside the
-    // puzzle counts by its length, not its share of the route, or a long way around would
-    // look clearer than a short one that is blocked for the same distance.
+    // faintly, and still seen), then being short and turning little. The turning is what
+    // makes one sticker of a cubelet better to follow than another: one facing the way the
+    // cubelet goes needs no bend to get started.
     const length = curve.getLength();
-    const cost = Math.max(0, out) * 60 + (hits / 48) * length * 8 + length + Math.max(0, turning - Math.PI) * 0.5;
-    if (!best || cost < best.cost) best = { curve, hits, effort, length, cost, out: Math.max(0, out), turning };
+    const cost = Math.max(0, out) * 60 + (hits / 48) * length * 8 + length + turning * 0.6;
+    if (!best || cost < best.cost) best = { curve, hits, effort, length, cost, out: Math.max(0, out), turning, bend };
     effort++;
   }
   return best!;
@@ -3382,10 +3457,10 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
     c.stickers.forEach((color, d) => {
       if (!color) return;
       const fromDir = ROT_DIR[st.ori[from] * 6 + d], toDir = ROT_DIR[after.ori[to] * 6 + d];
-      const r = route(st, from, fromDir, to, toDir, !isExposed(st, from, fromDir), !isExposed(after, to, toDir));
+      const r = route(st, from, fromDir, to, toDir);
       // A route clear of the puzzle first, then the shortest, then one on faces the Home view shows.
       const score = r.cost - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
-      if (score < bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from), dashed: cycle && !step.lands.includes(from), cubelet: c.id, fromOri: st.ori[from], toOri: after.ori[to], curve: r.curve, hits: r.hits, out: r.out, turning: r.turning }, score];
+      if (score < bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from), dashed: cycle && !step.lands.includes(from), cubelet: c.id, fromOri: st.ori[from], toOri: after.ori[to], curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
     });
     if (best) out.push(best);
   }
@@ -3791,7 +3866,8 @@ function installProbe() {
         /** How far, in cubelets, the farthest path goes outside the room the 3D view shows. */
         pathsOut: guideArrows?.visible ? guideArrows.userData.out : -1,
         pathsTurning: guideArrows?.visible ? guideArrows.userData.turning : -1,
-        pathPoints: guideArrows?.visible ? guideArrows.userData.runners.map((r: any) => Array.from({ length: 13 }, (_, k) => runnerPoint(r, k / 12).toArray().map((v: number) => Math.round(v * 100) / 100))) : [],
+        pathsBend: guideArrows?.visible ? guideArrows.userData.bend : -1,
+        pathPoints: guideArrows?.visible ? guideArrows.userData.runners.map((r: any) => Array.from({ length: 25 }, (_, k) => runnerPoint(r, k / 24).toArray().map((v: number) => Math.round(v * 100) / 100))) : [],
       };
     },
     view: () => pivot.quaternion.toArray(),

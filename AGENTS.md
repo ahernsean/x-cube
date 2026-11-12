@@ -303,25 +303,31 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   anywhere are darker gray (stickers and flat-view tiles; one gray for every color at each
   level, so a gray white can't be taken for a white). Before the step's first turn, **paths** in the 3D view
   show where each cubelet it moves will go and how it will be turned: a path follows one of
-  the cubelet's stickers, in that sticker's color with a dark casing, rising straight out
-  of the sticker and coming straight down onto the face the sticker will be on. A
+  the cubelet's stickers, in that sticker's color with a dark casing, leaving the sticker and
+  coming onto the face the sticker will be on within about 40 degrees of straight out. A
   cubelet that ends up solved has a full path and a ring where its sticker lands;
   one only passing through has a dashed path. In a shape or core step, which solves no
   cubelet, each cubelet it applies to that moves or turns has a plain path (no ring), read
-  from where it ends; a core double edge has no sticker and so no path. Such a sticker is
-  often covered by a neighbor, so its path may pass through the puzzle (drawn faintly
-  there) rather than leave the view. A path goes around the puzzle, never
-  through it: of a few routes, the one costing least is taken (`route`): leaving the room
-  the 3D view shows (a sphere around the puzzle, whatever the view's angle) costs most,
-  then the length of it inside the puzzle, then its length, then winding about. The
-  routes are arches (out of the sticker, over, and onto the new face, at several heights)
-  and orbits: out from the sticker, around the puzzle by the short way (for opposite
-  sides, by way of each of the six directions), and in. An orbit hugs the puzzle: each
-  point is as near the center as is clear of cubelets, plus a margin, and no point is
-  much nearer than its neighbors. A flying copy moves by distance along its path, so its
-  speed is even (eased at the ends). The sticker
-  followed is the one whose clear route is shortest (so a hop to a neighboring spot stays
-  a short hop), favoring a little one on the faces the Home view shows. Each loop
+  from where it ends; a core double edge has no sticker and so no path. A path goes
+  around the puzzle, never through it (`route`). It starts as an arc well outside the
+  puzzle (the short way around; for opposite sides, also by way of each of the six
+  directions) and is pulled tight like an elastic band: each point moves toward the
+  middle of its neighbors and back out of whatever it is pulled into, keeping a margin
+  from every cubelet, so the path is straight where nothing is near and rounded where it
+  bends around a cubelet. It is then let spring like a stiff rod, which spreads each bend
+  over about a cubelet's width. No sticker is ever covered, so the start is clear; the spot the
+  new face looks into may be filled until the step takes that cubelet away, so that one
+  cubelet doesn't count (the path is drawn faintly through it). Of the routes, the one
+  costing least is taken: leaving the room the 3D view shows (a sphere around the puzzle,
+  whatever the view's angle) costs most, then the length of it inside the puzzle, then
+  its length and how much it turns. A flying copy moves by distance along its path, so
+  its speed is even (eased at the ends). It turns the way its path goes: the followed
+  sticker faces out of its face at the start, away from the puzzle's center along the
+  way, and out of its new face at the end, and any spin about that sticker still needed
+  is spread evenly along the path. The sticker
+  followed is the one whose route costs least, so a hop to a neighboring spot stays a
+  short hop and the sticker facing the way the cubelet goes is preferred to one whose
+  path would turn back on itself; one on the faces the Home view shows is favored a little. Each loop
   (`GUIDE_LOOP`): a small copy of each cubelet flies along its path, turning as the cubelet will turn (it leaves showing its
   stickers as they are and arrives showing them as they will be), rests where it
   arrives, vanishes, and after a short gap the loop starts again; none of this moves

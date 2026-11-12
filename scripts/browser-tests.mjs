@@ -1224,8 +1224,8 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
 
 labTest("guide: a path goes the short way around the puzzle, at an even speed", async ({ page, check, probe, settle }) => {
   // Out of shape, the first top-to-bottom step from here is R2, which takes a white core
-  // edge from the bottom of the right side to its top. Its white sticker is covered at
-  // both ends, so every route passes through something.
+  // edge from the bottom of the right side to its top. The spot above where its white
+  // sticker will be is filled until the turn takes that cubelet away.
   await page.locator("summary", { hasText: "State code" }).click();
   await page.fill("#code-in", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
   await page.click("#import");
@@ -1237,13 +1237,41 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   const g = await probe("guide");
   const k = g.paths.findIndex((t) => /DR\/D > UR\/U/.test(t));
   const pts = g.pathPoints[k] ?? [];
-  check(g.alg === "R2" && k >= 0 && pts.length === 13 && pts.every(([x, , z]) => x > 0.9 && Math.abs(z) < 0.2), `the path from the bottom of the right side to its top goes around the right side (${g.alg}; ${g.paths.join("; ")}; ${JSON.stringify(pts)})`);
+  check(g.alg === "R2" && k >= 0 && pts.length === 25 && pts.every(([x, , z]) => x > 0.9 && Math.abs(z) < 0.2) && g.pathsThrough === 0, `the path from the bottom of the right side to its top goes around the right side, through nothing but the cubelet the turn takes away (${g.alg}; ${g.paths.join("; ")}; ${JSON.stringify(pts)})`);
   // The flying copies' places at equal times are equally far apart (a chord across a
   // bend is a little shorter than the path), on every path; and no path leaves the view.
   const gaps = g.pathPoints.map((path) => path.slice(1).map((q, i) => Math.hypot(q[0] - path[i][0], q[1] - path[i][1], q[2] - path[i][2])));
   const uneven = Math.max(...gaps.map((d) => Math.max(...d) / Math.min(...d)));
   check(gaps.length === g.arrows && uneven < 1.35 && g.pathsOut < 0.05, `a flying copy neither lingers nor rushes (its longest stride is ${uneven.toFixed(2)} of its shortest), and stays in view (${g.pathsOut.toFixed(2)} out)`);
+  check(sharpest(g) < 50, `no path bends sharply (${sharpest(g).toFixed(0)} degrees at most between one stride and the next)`);
+  // A cubelet with several stickers is followed by the one that needs no bend to get
+  // started: here a corner hops along the front face, and its front sticker is followed,
+  // not the one on its side, whose path would have to turn back on itself.
+  await page.click("#guide-stop");
+  await page.click('[data-guide-mode="kinds"]');
+  for (let i = 0; i < 3; i++) {
+    await page.click("#next-step");
+    await settle();
+    if (i < 2) (await page.click("#last"), await settle());
+  }
+  const c = await probe("guide");
+  const hop = c.paths.find((t) => /Fx\.UR\/. > Fx\.DL\//.test(t));
+  check(c.stage === "corners" && /Fx\.UR\/F > Fx\.DL\/F/.test(hop ?? "") && sharpest(c) < 50, `a corner moving across the front face is followed by its front sticker, with no hairpin (${c.alg}; ${c.paths.join("; ")}; ${sharpest(c).toFixed(0)} degrees)`);
 });
+
+/** The sharpest bend, in degrees, between one stride and the next of any path's 24 strides. */
+function sharpest(g) {
+  let worst = 0;
+  for (const path of g.pathPoints) {
+    const strides = path.slice(1).map((q, i) => q.map((v, k) => v - path[i][k]));
+    for (let i = 1; i < strides.length; i++) {
+      const [u, v] = [strides[i - 1], strides[i]];
+      const cos = (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (Math.hypot(...u) * Math.hypot(...v));
+      worst = Math.max(worst, (Math.acos(Math.min(1, cos)) * 180) / Math.PI);
+    }
+  }
+  return worst;
+}
 
 // ---- The standalone page, and saving on this device.
 
