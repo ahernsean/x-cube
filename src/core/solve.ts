@@ -96,8 +96,12 @@ function slotPerm(t: Turn): Int16Array {
 
 // ---------------------------------------------------------------- ease and grip
 
-/** How hard each kind of turn is on the hands (lower is easier), by move name. */
-const EASE: Record<string, number> = { U: 2, R: 2, L: 2, F: 2, r: 2, l: 2, f: 2, M: 2, D: 4, d: 4, u: 4, H: 6, S: 6, E: 6, B: 8, b: 8, x: 4, y: 4, z: 4 };
+/**
+ * How hard each kind of turn is on the hands (lower is easier), by move name. F is a
+ * little harder than R, L and U: the owner would rather regrip and turn R than turn F
+ * several times. Whole numbers, since the tables below sort by them.
+ */
+const EASE: Record<string, number> = { U: 4, R: 4, L: 4, F: 7, r: 4, l: 4, f: 4, M: 4, D: 8, d: 8, u: 8, H: 12, S: 12, E: 12, B: 16, b: 16, x: 8, y: 8, z: 8 };
 const ease = (turns: readonly Turn[]) => turns.reduce((sum, t) => sum + EASE[MOVE_DEFS[t.def].name], 0);
 const ALL_TURNS: Turn[] = MOVE_DEFS.flatMap((_, def) => ([1, 2, 3] as const).map((amount) => ({ def, amount })));
 
@@ -673,16 +677,16 @@ const GROUPS: Record<Mode, Group[]> = {
  * all, and on the back (z below 0) less. Counted for each cubelet a step is for as the
  * regrip leaves it and after each turn, in ease units.
  */
-const UNSEEN_DOWN = 2, UNSEEN_BACK = 1;
+const UNSEEN_DOWN = 4, UNSEEN_BACK = 2;
 /**
  * What it costs, for each turn, to build a layer (white or yellow) while it is on the
  * bottom: the person flips the puzzle to work the layer they are building on top.
  */
-const LAYER_DOWN = 3;
+const LAYER_DOWN = 6;
 /** The cost of a step of `turns` turns for a target layer (1 white, -1 yellow, 0 none), with yellow up after the regrip or not. */
 const layerDown = (target: number, yellowUp: boolean, turns: number) => (target && target > 0 === yellowUp ? LAYER_DOWN * turns : 0);
 /** What flipping the puzzle over costs beyond the x2 turn's ease, so a solve doesn't flip back and forth for little gain. */
-const FLIP_COST = 8;
+const FLIP_COST = 16;
 const UNSEEN_HELD = Float32Array.from(SLOTS, (s) => (SLOT_POS[s][1] < 0 ? UNSEEN_DOWN : 0) + (SLOT_POS[s][2] < 0 ? UNSEEN_BACK : 0));
 /**
  * By slot, as the solver sees the puzzle (always white up): for a puzzle held white up,

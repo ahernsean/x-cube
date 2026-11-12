@@ -163,7 +163,10 @@ positions, the two modes come out about the same length (177 and 180 turns on av
 
 **Ease, the owner's priorities for turns** (`EASE` in `solve.ts`), most important first:
 avoid the back (`B`, `b`); then the bottom (`D`); then `H` and `S`; `M` is fine (a person
-does it as `L' R x'`); and regular, repeating patterns are easier to memorize. So:
+does it as `L' R x'`); `R` is preferred to `F` (F costs 7 to R's 4, so `y' R U R' U R U2 R'`
+beats `F U F' U F U2 F'`); and regular, repeating patterns are easier to memorize. The
+weights are whole numbers (the tables sort by them): `U R L M` and the outer turns 4, `F`
+7, `D` 8, a rotation 8, `H S` 12, `B` 16. So:
 
 - Turns are chosen by ease, not by number: setups and the core stage take the easiest
   way, and the shape stage weighs every way with the fewest turns, and with one more.
@@ -184,19 +187,19 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   core are done in `kinds` (its shape and core steps need white up), starts with a hold step.
 - **Seeing the cubelets.** A cycle step's cost, and a layer core step's, also counts where
   the cubelets it is for are while a person turns: after the regrip and after each turn,
-  each one on the bottom (y below 0) costs `UNSEEN_DOWN` (2) and each on the back (z below
-  0) `UNSEEN_BACK` (1), in ease units. In `layers`, a step that builds the white or the
+  each one on the bottom (y below 0) costs `UNSEEN_DOWN` (4) and each on the back (z below
+  0) `UNSEEN_BACK` (2), in ease units. In `layers`, a step that builds the white or the
   yellow layer (`coreTop`, `coreTopC`, `coreBottom`, `coreBottomC`, `topEdges`,
-  `topCorners`, `bottomCorners`, `bottomEdges`) also costs `LAYER_DOWN` (3) for each of
+  `topCorners`, `bottomCorners`, `bottomEdges`) also costs `LAYER_DOWN` (6) for each of
   its turns while that layer is on the bottom: the owner flips the puzzle to work the layer
-  being built on top. A flip costs `FLIP_COST` (8) on top of the `x2` turn's ease, so a
+  being built on top. A flip costs `FLIP_COST` (16) on top of the `x2` turn's ease, so a
   solve doesn't flip back and forth for little gain. Each cycle reaches into the bottom
   layer (corners Fx.UL, Rx.UF, Rx.DF; edges Fx.L, Rx.F, Rx.D), so some time there is
   unavoidable. Over 40 Lab shuffles solved top to bottom: the steps' cubelets spent 21%
   of their turns on the bottom (28% with no flips), 28 of 750 white or yellow layer steps
   were worked with that layer on the bottom (159 of 736 with no flips), about 3 flips per
   solve (typically at the yellow core, and back for the white X-face), and 227 turns
-  instead of 222. Over 100 sampled `kinds` solves, the outer steps' cubelets' share of
+  instead of 222 (230 once `F` cost more than `R`; most `F` turns left are the cycles' own). Over 100 sampled `kinds` solves, the outer steps' cubelets' share of
   turns on the bottom fell from 27% to 22%, with about 1.5 flips and the same turns.
 - **The cycles are commutators, written grouped:** corners `(F' L' F) r (F' L F) r'`,
   edges `(F' M' F) r (F' M F) r'` (inverses: `r (F' L' F) r' (F' L F)` and likewise).
