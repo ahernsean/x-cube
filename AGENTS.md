@@ -344,7 +344,8 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   casing), so a path on the far side can't be taken for one on the near side.
   **Show** turns the 3D view to where the paths begin and end (as the color editor's Show
   does for a problem). A parity step, which turns whole layers, has one neutral arrow for each turn instead:
-  an arc just outside the face of the layer, as far around as the turn goes (`layerArrow`). **Order** switches between the solver's modes, "Corners,
+  an arc around the outside of the layer, where a finger would swipe to turn it, as far
+  around as the turn goes (`layerArrow`). **Order** switches between the solver's modes, "Corners,
   then edges" and "Top to bottom", and is kept on the device. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
   guide calls it **Regrip**, and it names the center that is up now ("now blue is up").
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag

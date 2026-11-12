@@ -3482,25 +3482,30 @@ function attached(st: State, s: number): number[] {
 }
 
 /**
- * An arrow for a turn of one layer: an arc just outside the layer's face, about its axis,
- * as far around as the turn goes and the way it goes, placed where the Home view sees it
- * best. None for a turn of the whole puzzle.
+ * An arrow for a turn of one layer: an arc around the outside of the layer, where a
+ * finger would swipe to turn it, about the layer's axis, as far around as the turn goes
+ * and the way it goes, on the side the Home view sees best. None for a turn of the whole
+ * puzzle.
  */
 function layerArrow(st: State, turn: Turn): StickerPath[] {
   const def = MOVE_DEFS[turn.def];
   const filled = def.slots.filter((s) => st.occ[s] >= 0);
   const side = def.slots.reduce((sum, s) => sum + SLOT_POS[s][def.axis], 0);
-  if (!side) return [];
+  if (!side || !filled.length) return [];
   const out = Math.sign(side);
+  const [u, v] = [0, 1, 2].filter((k) => k !== def.axis);
+  // The arc is level with the layer's cubelets nearest the middle of the puzzle (an inner
+  // turn's layer also holds the extension beyond it) and just outside the farthest of them.
+  const level = Math.min(...filled.map((s) => SLOT_POS[s][def.axis] * out)) * out;
+  const rim = Math.max(...filled.filter((s) => SLOT_POS[s][def.axis] === level).map((s) => Math.hypot(Math.abs(SLOT_POS[s][u]) + 0.5, Math.abs(SLOT_POS[s][v]) + 0.5)));
   const axis = new THREE.Vector3().setComponent(def.axis, out);
   const quarters = def.ccw * (turn.amount === 3 ? -1 : turn.amount);
   const whole = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3().setComponent(def.axis, 1), (quarters * Math.PI) / 2);
-  const top = Math.max(...filled.filter((s) => SLOT_POS[s].every((v, k) => k === def.axis || v === 0)).map((s) => SLOT_POS[s][def.axis] * out));
-  const height = top + 0.5 + 0.3;
-  const toward = new THREE.Vector3(1, 0.8, 1).projectOnPlane(axis).normalize().multiplyScalar(1.25);
+  const toward = new THREE.Vector3(1, 0.8, 1).projectOnPlane(axis).normalize().multiplyScalar(Math.min(rim + 0.25, 3.2));
   const start = toward.applyQuaternion(new THREE.Quaternion().slerp(whole, 0.5).invert());
-  const curve = new THREE.CatmullRomCurve3(Array.from({ length: 17 }, (_, k) => start.clone().applyQuaternion(new THREE.Quaternion().slerp(whole, k / 16)).addScaledVector(axis, height)), false, "centripetal");
-  const center = filled.find((s) => SLOT_POS[s].every((v, k) => (k === def.axis ? v * out === top : v === 0)))!;
+  const curve = new THREE.CatmullRomCurve3(Array.from({ length: 17 }, (_, k) => start.clone().applyQuaternion(new THREE.Quaternion().slerp(whole, k / 16)).addScaledVector(axis, level * out)), false, "centripetal");
+  // Show turns the view by the path's ends: here the layer's middle, seen from outside.
+  const center = filled.find((s) => SLOT_POS[s][u] === 0 && SLOT_POS[s][v] === 0) ?? filled[0];
   const d = dirIndex(axis.toArray() as Vec3);
   return [{ from: center, fromDir: d, to: center, toDir: d, color: null, lands: false, dashed: false, layer: true, cubelet: -1, fromOri: 0, toOri: 0, curve, hits: 0, out: 0, turning: 0, bend: 0 }];
 }
