@@ -22,6 +22,7 @@ import {
   type Color,
   type Turn,
   applyTurns,
+  invertTurns,
 } from "../core/puzzle.ts";
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
 import { fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
@@ -2994,7 +2995,7 @@ function nextStep() {
 function stepColors(st: State, step: SolveStep): { focus: Set<number>; free: Set<number> } {
   const after = st.clone();
   applyTurns(after, step.turns);
-  applyTurns(after, parseAlg(["", "y'", "y2", "y"][step.regrip]));
+  applyTurns(after, invertTurns(parseAlg(step.regrip)));
   const changed = (s: number) => st.occ[s] >= 0 && (after.occ[s] !== st.occ[s] || after.ori[s] !== st.ori[s]);
   const focus = new Set(step.moved.filter(([from]) => changed(from)).flatMap(([from]) => [from, ...attached(st, from)]).map((s) => st.occ[s]));
   const free = new Set([...Array(NUM_SLOTS).keys()].filter(changed).map((s) => st.occ[s]).filter((id) => !focus.has(id)));
@@ -3743,7 +3744,7 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
   // Where everything ends, as the puzzle is held before the step: the regrip undone.
   const after = st.clone();
   applyTurns(after, step.turns);
-  applyTurns(after, parseAlg(["", "y'", "y2", "y"][step.regrip]));
+  applyTurns(after, invertTurns(parseAlg(step.regrip)));
   const shown = [2, 4, 0];
   const out: StickerPath[] = [];
   // In a cycle step the solver says where each cubelet goes. In a shape or core step it

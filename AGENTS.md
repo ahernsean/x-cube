@@ -131,7 +131,7 @@ a goal in words, its turns, the cubelets it applies to (`moved`: slot before, sl
 the cubelets it may leave anywhere (`free`); every other cubelet looks the same after the
 step. Stages, in order:
 
-1. **hold**: turn the whole puzzle so white is up.
+1. **hold**: turn the whole puzzle so white is up (outer steps may later flip it, below).
 2. **shape**: back to the X shape with face turns. Free: every outer cubelet.
 3. **core**: white core cubelets up, yellow down, with the shape-keeping turns. Free: every
    outer cubelet.
@@ -170,9 +170,23 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   In 200 sampled solves `B` was 0.1% of turns and `D` 1.1%, with no `b`, `S` or `H`.
 - **Regrips.** A step may begin with a turn of the whole puzzle about its vertical axis
   (`y`, `y'`, `y2`) when that makes the rest easier; a regrip is never in the middle of a
-  step. So only white stays put: the **grip** is how many quarter turns the puzzle is from
-  green in front, and each outer cubelet's home turns with it. A step's `regrip` says how
-  it begins, and its `moved` places are as the puzzle is held before it.
+  step. An outer step (parity aside) may also begin by flipping the puzzle over, `x2`, alone or before a
+  `y` turn (the owner flips with `x2` more often than `z2`), so the bottom comes on top;
+  the steps after it go on from there, and the puzzle is turned back only if a later step
+  is better off that way. So the **grip** is which of these eight holds the puzzle is in,
+  from white up and green front (`GRIPS`), and each outer cubelet's home turns with it.
+  A step's `regrip` is the notation it begins with ("" for none), and its `moved` places
+  are as the puzzle is held before it. A position held neither white nor yellow up, or
+  yellow up before the shape and core are done, still starts with a hold step.
+- **Seeing the cubelets.** A cycle step's cost also counts where its three cubelets are
+  while a person turns: after the regrip and after each turn, each one on the bottom
+  (y below 0) costs `UNSEEN_DOWN` (2) and each on the back (z below 0) `UNSEEN_BACK` (1),
+  in ease units. A flip costs `FLIP_COST` (8) on top of the `x2` turn's ease, so a solve
+  doesn't flip back and forth for little gain. Each cycle reaches into the bottom layer
+  (corners Fx.UL, Rx.UF, Rx.DF; edges Fx.L, Rx.F, Rx.D), so some time there is unavoidable.
+  Over 100 sampled solves in each order, the tracked cubelets' share of turns on the
+  bottom fell from 27% to 21-22% and on the back from 23% to 21%, with 1.1 to 1.6 flips
+  per solve and about the same number of turns (within 1).
 - **The cycles are commutators, written grouped:** corners `(F' L' F) r (F' L F) r'`,
   edges `(F' M' F) r (F' M F) r'` (inverses: `r (F' L' F) r' (F' L F)` and likewise).
   They are Baum's two turned a quarter around the puzzle, which takes out `b` and `S`.
@@ -364,6 +378,7 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   around as the turn goes (`layerArrow`). **Order** switches between the solver's modes, "Corners,
   then edges" and "Top to bottom", and is kept on the device. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
   guide calls it **Regrip**, and it names the center that is up now ("now blue is up").
+  A cycle step's regrip may flip the puzzle over (`x2`); the Hold line then says yellow is up.
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag
   ("3 Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
   undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows

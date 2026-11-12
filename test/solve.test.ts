@@ -5,8 +5,8 @@ import { isHomeX, isSolved } from "../src/core/analyze.ts";
 import { fitColors, visibleColors } from "../src/core/edit.ts";
 import { DIRS } from "../src/core/geometry.ts";
 import { parseAlg } from "../src/core/notation.ts";
-import { CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, slotAt, turnName, type Kind } from "../src/core/puzzle.ts";
-import { rotsTo, unreachableReason } from "../src/core/serialize.ts";
+import { CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, turnName, type Kind } from "../src/core/puzzle.ts";
+import { decodeState, rotsTo, unreachableReason } from "../src/core/serialize.ts";
 import { nextStep, solveSteps, type Mode, type SolveStep } from "../src/core/solve.ts";
 
 const after = (alg: string) => {
@@ -54,6 +54,8 @@ const atHome = (st: State, slot: number) =>
     const color = st.colorAt(slot, d);
     return !color || color === FACE_COLOR[[0, 1, 2, 3, 4, 5].find((h) => slotAt(DIRS[h]) === center.home)!];
   });
+/** Whether the white center is up (yellow is up once an outer step has flipped the puzzle over). */
+const whiteUp = (st: State) => CUBELETS[st.occ[slotAt([0, 1, 0])]].home === slotAt([0, 1, 0]);
 /** Plays the steps from st, checking each does what it reports; returns the final state. */
 function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
   const st = start.clone();
@@ -70,10 +72,13 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
     if (step.stage === "hold") continue;
     // A regrip comes first or not at all, and what a step reports is as the puzzle was held before it.
     const rotations = step.turns.filter((t) => MOVE_DEFS[t.def].kind === "rotation");
-    assert.equal(rotations.length, step.regrip ? 1 : 0, `${step.alg} regrips only as it says`);
-    if (step.regrip) assert.equal(turnName(step.turns[0]), ["", "y", "y2", "y'"][step.regrip], `${step.alg} begins with its regrip`);
+    const regrip = parseAlg(step.regrip);
+    assert.ok(regrip.length <= 2, `${step.alg} regrips with at most a flip and a turn`);
+    assert.deepEqual(step.turns.slice(0, regrip.length), regrip, `${step.alg} begins with its regrip`);
+    assert.equal(rotations.length, regrip.length, `${step.alg} regrips only as it says`);
+    if (/x2/.test(step.regrip)) assert.ok(["corners", "edges", "topEdges", "topCorners", "sideEdges", "bottomCorners", "bottomEdges"].includes(step.stage), `only an outer step flips the puzzle (${step.alg})`);
     const seen = st.clone(); // the result, turned back to the grip the step reports in
-    applyTurns(seen, parseAlg(["", "y'", "y2", "y"][step.regrip]));
+    applyTurns(seen, invertTurns(regrip));
     usage.turns += step.turns.length;
     for (const t of step.turns) if (/^[Bb]/.test(turnName(t))) usage.back++;
     if (["corners", "edges"].includes(step.stage)) assert.ok(!/[bBSH]/.test(step.alg.slice(step.alg.indexOf(":") + 1)), `the cycle in ${step.alg} has no back turn and no S or H`);
@@ -92,7 +97,7 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
     assert.ok(isHomeX(seen), `${step.alg} ends in the X shape`);
     if (step.stage === "shape") continue;
     for (let s = 0; s < NUM_SLOTS; s++)
-      if (["coreCorner", "singleEdge"].includes(CUBELETS[seen.occ[s]]?.kind)) assert.equal(seen.colorAt(s, SLOT_POS[s][1] > 0 ? 2 : 3), SLOT_POS[s][1] > 0 ? "W" : "Y", `after ${step.alg}, white core cubelets are up`);
+      if (["coreCorner", "singleEdge"].includes(CUBELETS[seen.occ[s]]?.kind)) assert.equal(seen.colorAt(s, SLOT_POS[s][1] > 0 ? 2 : 3), SLOT_POS[s][1] > 0 === whiteUp(seen) ? "W" : "Y", `after ${step.alg}, the core cubelets are the color of their X-face center`);
     if (step.stage !== "core") for (const [from, to] of step.moved) assert.equal(seen.occ[to], before.occ[from], `${step.alg} moves the cubelet it says where it says`);
     // A cycle brings home the cubelets it says, and at least one.
     if (!["core", "parity"].includes(step.stage)) {
@@ -178,6 +183,29 @@ test("solve: two outer edges traded alone are solved through the U parity step",
   assert.equal(steps[0].stage, "parity");
   assert.equal(steps[0].alg, "U");
   assert.ok(isSolved(play(fit.state!, steps)));
+});
+
+test("solve: an outer step flips the puzzle over when the cubelets it cycles are on the bottom", () => {
+  // Shape and core done; the first corners to cycle are three yellow X-face corners.
+  const st = decodeState("GAQB MAQZ OPMU ADTJ BUGX BTTM REMC BKDW RYUV XEPY LUSB");
+  for (const mode of ["kinds", "layers"] as Mode[]) {
+    const steps = solveSteps(st, mode);
+    assert.ok(isSolved(play(st, steps, mode)), mode);
+    const flip = steps.find((s) => s.regrip.startsWith("x2"));
+    assert.ok(flip, `${mode}: some step flips the puzzle over`);
+    assert.ok(flip.moved.filter(([from]) => SLOT_POS[from][1] < 0).length >= 2, `${mode}: the flip is for cubelets on the bottom (${flip.alg})`);
+    assert.ok(!steps.some((s) => s.stage === "hold"), `${mode}: the steps go on with yellow up, with no hold step`);
+  }
+  const first = nextStep(st)!;
+  assert.equal(first.regrip, "x2", "the first corners step begins by flipping the puzzle over");
+  assert.ok(first.moved.every(([from]) => SLOT_POS[from][1] < 0), "its three corners are on the bottom");
+});
+
+test("solve: a position held yellow up starts with a hold step until its core is done", () => {
+  const st = after("x2 R U");
+  assert.equal(nextStep(st)!.stage, "hold");
+  const flipped = after("U r x2");
+  assert.notEqual(nextStep(flipped)!.stage, "hold", "with the shape and core done, the outer steps go on yellow up");
 });
 
 test("solve: the stages come as needed", () => {

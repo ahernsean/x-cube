@@ -1169,8 +1169,8 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   check(second?.index === 2 && second.index + second.after === total && new RegExp(`Step 2 of ${total} to solved\\.$`).test(await line()) && boxes === "false,true", `the next step after a played one is step 2 of the same ${total}, boxed after the first ("${await line()}", boxes ${boxes})`);
   // In the turn list a cycle step's setup turns, and their undoing, are marked.
   const marks = await page.$$eval("#history .step-box.on .tok", (els) => els.map((e) => (e.className.match(/part-(\w+)/) ?? [])[1]).join());
-  const want = /\[(.+):/.exec(second.alg) ? /^(regrip,)?(setup,)+(cycle,){8}(undo,?)+$/ : /^(regrip,)?(cycle,?){8}$/;
-  check((["corners", "edges"].includes(second.stage) ? want : /^(regrip,)?(turns,?)+$/).test(marks), `the step's turns are marked by part (${second.alg}: ${marks})`);
+  const want = /\[(.+):/.exec(second.alg) ? /^(regrip,)*(setup,)+(cycle,){8}(undo,?)+$/ : /^(regrip,)*(cycle,?){8}$/;
+  check((["corners", "edges"].includes(second.stage) ? want : /^(regrip,)*(turns,?)+$/).test(marks), `the step's turns are marked by part (${second.alg}: ${marks})`);
   // Stop drops the step's grays and line, and leaves the turn list and its boxes alone; so
   // does closing the section. Next step starts again from the position shown, counting on.
   const before = await turnList();
