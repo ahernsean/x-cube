@@ -101,6 +101,8 @@ function reduceMotionView() {
 const LIGHT = { env: 0.45, key: 0.45, plasticRough: 0.28, plasticSpec: 6, plasticEnv: 0.22, coat: 0.5, coatRough: 0.1, stickerRough: 0.6, stickerSpec: 0.5, filmCoat: 1, filmNormal: 0.35, exposure: 1.15, shadowSoft: 12 };
 let keyLight: any = null;
 let envTex: any = null;
+/** What the step guide's flying copies are made of: the puzzle's own body and sticker shapes and materials. */
+let copyLook: { body: any; plane: any; bodyMat: any; sticker: (c: Color) => any; place: (m: any, d: number) => void } | null = null;
 const SHADOW_KEY = "xcube-lab-shadows";
 let shadowsOn = (() => {
   try {
@@ -385,6 +387,17 @@ function initScene(canvas: HTMLCanvasElement) {
     return grayMats.get(key)!;
   };
   // local face d -> plane placement
+  copyLook = {
+    body,
+    plane,
+    bodyMat,
+    sticker: matFor,
+    place: (m, d) => {
+      const [px, py, pz, rx, ry] = faceXform[d];
+      m.position.set(px, py, pz);
+      m.rotation.set(rx, ry, 0);
+    },
+  };
   const faceXform: [number, number, number, number, number][] = [
     // [px, py, pz, rotX, rotY]
     [0.4945, 0, 0, 0, Math.PI / 2],
@@ -1312,8 +1325,10 @@ function frame() {
     const shown = at < TRAVEL + REST;
     for (const r of guideArrows.userData.runners) {
       r.copy.visible = shown;
-      r.copy.position.copy(runnerPoint(r, e));
-      const at = Math.min(RUNNER_STEPS - 1e-9, e * RUNNER_STEPS), k = Math.floor(at);
+      // A twist in place eases each of its parts itself, so it goes by the loop's plain time.
+      const u = r.raw ? t : e;
+      r.copy.position.copy(r.place ? r.place(u) : runnerPoint(r, u));
+      const at = Math.min(RUNNER_STEPS - 1e-9, u * RUNNER_STEPS), k = Math.floor(at);
       r.copy.quaternion.copy(r.turns[k]).slerp(r.turns[k + 1], at - k);
     }
   }
@@ -3182,7 +3197,54 @@ function makeArrows(paths: StickerPath[]) {
     }
   };
   const dir = (d: number) => new THREE.Vector3(...DIRS[d]);
+  /**
+   * A small copy of a path's cubelet, with the rest of its unit placed and turned as it is
+   * beside it: made like the puzzle's own cubelets (the same rounded plastic and stickers,
+   * lit by the same room and key light, casting and taking shadows), at COPY of their size.
+   * It is drawn twice, as the paths are: faintly where the puzzle is in the way, then
+   * plainly in front, where its cubelets hide each other as solid ones do.
+   */
+  const COPY = 0.47;
+  const unitCopy = (p: StickerPath) => {
+    const look = copyLook!;
+    const copy = new THREE.Group();
+    copy.userData.cubelet = p.cubelet;
+    copy.scale.setScalar(COPY);
+    const twice = (to: any, geo: any, mat: any, place?: (m: any) => void) => {
+      for (const ghost of [true, false]) {
+        const m = new THREE.Mesh(geo, mat.clone());
+        Object.assign(m.material, { transparent: true, depthWrite: !ghost, opacity: ghost ? GHOST : 1, depthFunc: ghost ? THREE.GreaterDepth : THREE.LessEqualDepth });
+        if (ghost) m.material.side = THREE.FrontSide;
+        else m.castShadow = m.receiveShadow = true;
+        place?.(m);
+        m.renderOrder = ghost ? 7 : 8;
+        m.layers.set(HALO_LAYER);
+        to.add(m);
+      }
+    };
+    const one = (to: any, cubelet: number) => {
+      twice(to, withAoColors(look.body), look.bodyMat);
+      CUBELETS[cubelet].stickers.forEach((color, d) => {
+        if (color) twice(to, withAoColors(look.plane), look.sticker(color), (m) => look.place(m, d));
+      });
+    };
+    one(copy, p.cubelet);
+    const undo = oriQuaternion(p.fromOri).invert();
+    for (const other of p.unit ?? []) {
+      const part = new THREE.Group();
+      part.position.set(...other.offset).applyQuaternion(undo);
+      part.quaternion.copy(undo).multiply(oriQuaternion(other.ori));
+      one(part, other.cubelet);
+      copy.add(part);
+    }
+    group.add(copy);
+    return copy;
+  };
   for (const p of paths) {
+    if (p.twist) {
+      twistGlyph(p);
+      continue;
+    }
     const n1 = dir(p.toDir);
     const { curve } = p;
     const a = curve.getPoint(0), b = curve.getPoint(1);
@@ -3243,34 +3305,88 @@ function makeArrows(paths: StickerPath[]) {
     // them as they will be. Each face is drawn only from its front, so the copy looks
     // solid although, like the path, it is drawn over everything.
     if (!reduceMotion && !p.layer) {
-      const copy = new THREE.Group();
-      const small = (to: any, cubelet: number) => {
-        both(to, new THREE.BoxGeometry(0.46, 0.46, 0.46), solid(0x3a4042), 6);
-        CUBELETS[cubelet].stickers.forEach((color, d) => {
-          if (!color) return;
-          both(to, new THREE.PlaneGeometry(0.36, 0.36), solid(STICKER[color]), 7, (m) => {
-            m.position.copy(dir(d).multiplyScalar(0.232));
-            m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir(d));
-          });
-        });
-      };
-      small(copy, p.cubelet);
-      // The rest of a unit, placed and turned as it is beside this cubelet.
-      const undo = oriQuaternion(p.fromOri).invert();
-      for (const other of p.unit ?? []) {
-        const part = new THREE.Group();
-        part.position.set(...other.offset).multiplyScalar(0.47).applyQuaternion(undo);
-        part.quaternion.copy(undo).multiply(oriQuaternion(other.ori));
-        small(part, other.cubelet);
-        copy.add(part);
-      }
-      group.add(copy);
+      const copy = unitCopy(p);
       const followed = [0, 1, 2, 3, 4, 5].find((d) => ROT_DIR[p.fromOri * 6 + d] === p.fromDir)!;
       group.userData.runners.push({ copy, curve, followed, turns: runnerTurns(curve, dir(p.fromDir), dir(p.toDir), oriQuaternion(p.fromOri), oriQuaternion(p.toOri)) });
     }
   }
+  /**
+   * A cubelet that stays in its spot and only turns: a hairline stem straight out of it
+   * along the axis it turns about, and on the stem's end a white disc square to that axis,
+   * outlined in the paths' dark casing, with the share of a whole turn the cubelet turns
+   * filled in. Its copy (with the rest of its unit) rises along the stem to just past the
+   * disc, turns there, and drops back in, easing into and out of each of the three.
+   */
+  function twistGlyph(p: StickerPath) {
+    const axis = new THREE.Vector3(...p.twist!.axis), angle = p.twist!.angle;
+    const tip = p.curve.getPoint(0), center = p.curve.getPoint(1);
+    group.userData.out = Math.max(group.userData.out, p.out);
+    const ink = flat(0x101214, 1).slice(0, 1), paint = flat(p.color ? STICKER[p.color] : NEUTRAL_PATH, 1);
+    const stem = new THREE.LineCurve3(tip, center);
+    const DISC = 0.5, RIM = 0.05;
+    // The filled share starts at the disc's top as the Home view holds the puzzle, and goes the way the cubelet turns.
+    const up = new THREE.Vector3(0, 1, 0).projectOnPlane(axis);
+    if (up.lengthSq() < 1e-6) up.set(0, 0, -1).projectOnPlane(axis);
+    up.normalize();
+    const face = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis);
+    // The disc's own +y, turned onto `up`: circle geometry's angles start at its +x.
+    const yNow = new THREE.Vector3(0, 1, 0).applyQuaternion(face);
+    const spin = Math.atan2(new THREE.Vector3().crossVectors(yNow, up).dot(axis), yNow.dot(up));
+    face.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, spin));
+    const share = Math.abs(angle);
+    const onDisc = (lift: number) => (m: any) => {
+      m.position.copy(center).addScaledVector(axis, lift);
+      m.quaternion.copy(face);
+    };
+    const parts: [any, any, number, ((m: any) => void)?][] = [
+      [new THREE.TubeGeometry(stem, 4, 0.045, 6), ink, 4],
+      [new THREE.TubeGeometry(stem, 4, 0.022, 6), paint, 5],
+      [new THREE.CircleGeometry(DISC + RIM, 48), ink, 4, onDisc(-0.002)],
+      [new THREE.CircleGeometry(DISC, 48), flat(0xf4f4f2, 1), 5, onDisc(0)],
+      // Angles go counterclockwise about the disc's normal (the axis), as a right-handed turn
+      // does. The share to turn is in the page's highlight blue.
+      [new THREE.CircleGeometry(DISC - 0.02, 48, Math.PI / 2 - (angle > 0 ? 0 : share), share), flat(TWIST_BLUE, 1), 6, onDisc(0.002)],
+    ];
+    // An arrow just outside the disc's rim, from where the blue share starts to where it
+    // ends, the way the cubelet turns.
+    const ARROW = DISC + RIM + 0.11, TIP = 0.26;
+    const onRim = (a: number) => new THREE.Vector3(Math.cos(a) * ARROW, Math.sin(a) * ARROW, 0.004).applyQuaternion(face).add(center);
+    const reach = share - TIP / ARROW;
+    const rim = new THREE.CatmullRomCurve3(Array.from({ length: 25 }, (_, k) => onRim(Math.PI / 2 + Math.sign(angle) * (reach * k) / 24)));
+    const point = onRim(Math.PI / 2 + angle), heading = point.clone().sub(rim.getPoint(1)).normalize();
+    const blue = flat(TWIST_BLUE, 1), r = 0.05;
+    parts.push(
+      [new THREE.TubeGeometry(rim, 32, r + 0.03, 8), ink, 4],
+      [new THREE.TubeGeometry(rim, 32, r, 8), blue, 5],
+      ...[[TIP + 0.06, r * 2.8 + 0.035, ink, 4], [TIP, r * 2.8, blue, 5]].map(([h, w, mats, order]: any) => [new THREE.ConeGeometry(w, h, 14), mats, order, (m: any) => {
+        m.position.copy(point).addScaledVector(heading, -h / 2);
+        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), heading);
+      }] as [any, any, number, (m: any) => void]),
+    );
+    for (const [geo, mats, order, place] of parts) {
+      both(group, geo, mats, order, place);
+      group.userData.drawn++;
+    }
+    if (reduceMotion) return;
+    const copy = unitCopy(p);
+    const home = new THREE.Vector3(...SLOT_POS[p.from]);
+    // Just past the disc: far enough out that none of the unit's copy is behind it.
+    const above = center.clone().addScaledVector(axis, 0.55);
+    const from = oriQuaternion(p.fromOri);
+    // Out to past the disc, turn, and back, each eased at both its ends, by the loop's own time.
+    const OUT = 0.3, BACK = 0.7, GAP = 0.04;
+    const ease = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x));
+    const turned = (t: number) => ease((t - OUT - GAP) / (BACK - OUT - 2 * GAP));
+    const turns = Array.from({ length: RUNNER_STEPS + 1 }, (_, k) => new THREE.Quaternion().setFromAxisAngle(axis, angle * turned(k / RUNNER_STEPS)).multiply(from));
+    const place = (t: number) => home.clone().lerp(above, t < OUT ? ease(t / OUT) : t > BACK ? ease((1 - t) / (1 - BACK)) : 1);
+    const followed = Math.max(0, CUBELETS[p.cubelet].stickers.findIndex((c) => !!c));
+    group.userData.runners.push({ copy, curve: p.curve, followed, turns, place, raw: true, twist: { axis, angle, home } });
+  }
   return group;
 }
+
+/** The share of a whole turn a cubelet turns in place, on its disc: the page's highlight blue (--accent). */
+const TWIST_BLUE = 0x1d5fd6;
 
 /** The color of a path that follows no sticker: a core double edge's unit. */
 const NEUTRAL_PATH = 0x8f979b;
@@ -3307,6 +3423,12 @@ interface StickerPath {
   layer?: boolean;
   /** The other cubelets flying with it as one unit: each one's id, how it is turned, and where it is from this one (in slots). */
   unit?: { cubelet: number; ori: number; offset: Vec3 }[];
+  /**
+   * For a cubelet that stays in its spot and only turns: the axis it turns about (out from
+   * the puzzle's center through the spot) and how far, in radians (right-handed about the
+   * axis). The curve is then the stem from the cubelet out to the turn's glyph.
+   */
+  twist?: { axis: Vec3; angle: number };
   /** Whether the cubelet ends solved: in its place, turned as solved (drawn with a ring). */
   lands: boolean;
   /** Whether it is only passing through: a cycle moves it, but not to where it ends up solved (drawn dashed). */
@@ -3531,12 +3653,13 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
  * the Home view shows (up, front, right).
  */
 /**
- * The slots of the extension cubelets against a core double edge in slot s (none for any
- * other cubelet). A double edge has no sticker and is never seen, so the guide shows it
- * and these two as one unit: they keep their colors, and they fly together.
+ * The slots of the extension cubelets against a core corner, single edge or double edge in
+ * slot s (none for any other cubelet): two, one and two. Inner turns carry them rigidly
+ * with it, and a shape or core step has only inner turns, so the guide shows the core
+ * cubelet and these as one unit: they keep their colors, and they fly together.
  */
 function attached(st: State, s: number): number[] {
-  if (st.occ[s] < 0 || CUBELETS[st.occ[s]].kind !== "doubleEdge") return [];
+  if (st.occ[s] < 0 || !["coreCorner", "singleEdge", "doubleEdge"].includes(CUBELETS[st.occ[s]].kind)) return [];
   const p = SLOT_POS[s];
   return DIRS.map((d) => slotAtXYZ(p[0] + d[0], p[1] + d[1], p[2] + d[2])).filter((n) => n >= 0 && st.occ[n] >= 0 && SLOT_POS[n].some((v) => Math.abs(v) === 2));
 }
@@ -3570,6 +3693,32 @@ function layerArrow(st: State, turn: Turn): StickerPath[] {
   return [{ from: center, fromDir: d, to: center, toDir: d, color: null, lands: false, dashed: false, layer: true, cubelet: -1, fromOri: 0, toOri: 0, curve, hits: 0, out: 0, turning: 0, bend: 0 }];
 }
 
+/**
+ * The path of a cubelet that stays in slot s and only turns (to orientation `ori`): a stem
+ * from its outermost corner or edge straight out from the puzzle's center, the way it turns
+ * about, to where the turn's glyph is drawn. Nothing is ever beyond a core cubelet's
+ * outermost corner or edge (a spot with two coordinates of +/-2 is not a slot), so the stem
+ * is always clear. It follows the cubelet's own sticker, or none (a core double edge).
+ */
+function twistPath(st: State, s: number, ori: number, unit: { cubelet: number; ori: number; offset: Vec3 }[], dashed: boolean, lands: boolean): StickerPath {
+  const pos = SLOT_POS[s];
+  const axis = new THREE.Vector3(...pos).normalize();
+  // The turn, as the cubelet sees it from outside: about the axis out through it. It never
+  // moves its spot, so it is about that axis; a half turn is shown counterclockwise.
+  const q = oriQuaternion(ori).multiply(oriQuaternion(st.ori[s]).invert());
+  let angle = 2 * Math.atan2(new THREE.Vector3(q.x, q.y, q.z).dot(axis), q.w);
+  if (angle > Math.PI + 1e-6) angle -= 2 * Math.PI;
+  if (angle < -Math.PI + 1e-6) angle += 2 * Math.PI;
+  const c = CUBELETS[st.occ[s]];
+  const d = c.stickers.findIndex((color) => !!color);
+  const fromDir = d >= 0 ? ROT_DIR[st.ori[s] * 6 + d] : dirIndex(pos.map((v, k) => (k === pos.findIndex((x) => x !== 0) ? Math.sign(v) : 0)) as unknown as Vec3);
+  const toDir = d >= 0 ? ROT_DIR[ori * 6 + d] : fromDir;
+  const tip = new THREE.Vector3(...pos.map((v) => v + Math.sign(v) * 0.5));
+  const STEM = 0.9;
+  const curve = new THREE.LineCurve3(tip, tip.clone().addScaledVector(axis, STEM));
+  return { from: s, fromDir, to: s, toDir, color: d >= 0 ? c.stickers[d] : null, lands, dashed, cubelet: c.id, fromOri: st.ori[s], toOri: ori, unit: unit.length ? unit : undefined, twist: { axis: axis.toArray() as Vec3, angle }, curve, hits: 0, out: Math.max(0, tip.length() + STEM - 3.1), turning: 0, bend: 0 };
+}
+
 function stickerPaths(st: State, step: SolveStep): StickerPath[] {
   // A parity step turns whole layers: paths for every cubelet in them would only tangle.
   // Each turn has one neutral arrow instead, around the face of the layer it turns.
@@ -3587,6 +3736,12 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
     const to = cycle ? named : after.occ.indexOf(st.occ[from]);
     if (to === from && after.ori[to] === st.ori[from]) continue;
     const c = CUBELETS[st.occ[from]];
+    const unit = attached(st, from);
+    const offsets = (around: number, xs: number[]) => xs.map((x) => ({ cubelet: st.occ[x], ori: st.ori[x], offset: [SLOT_POS[x][0] - SLOT_POS[around][0], SLOT_POS[x][1] - SLOT_POS[around][1], SLOT_POS[x][2] - SLOT_POS[around][2]] as Vec3 }));
+    if (to === from) {
+      out.push(twistPath(st, from, after.ori[to], offsets(from, unit), cycle && !step.lands.includes(from), step.lands.includes(from)));
+      continue;
+    }
     let best: StickerPath | null = null, bestScore = Infinity;
     c.stickers.forEach((color, d) => {
       if (!color) return;
@@ -3594,19 +3749,18 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
       const r = route(st, from, fromDir, to, toDir);
       // A route clear of the puzzle first, then the shortest, then one on faces the Home view shows.
       const score = r.cost - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
-      if (score < bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from), dashed: cycle && !step.lands.includes(from), cubelet: c.id, fromOri: st.ori[from], toOri: after.ori[to], curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
+      if (score < bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from), dashed: cycle && !step.lands.includes(from), cubelet: c.id, fromOri: st.ori[from], toOri: after.ori[to], unit: unit.length ? offsets(from, unit) : undefined, curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
     });
     // A core double edge has no sticker: its unit's path follows the outward sticker of
     // one of the extension cubelets against it, in a neutral color.
-    const unit = attached(st, from);
-    for (const u of unit) {
+    if (c.kind === "doubleEdge") for (const u of unit) {
       const pu = SLOT_POS[u], pf = SLOT_POS[from];
       const fromDir = dirIndex([pu[0] - pf[0], pu[1] - pf[1], pu[2] - pf[2]]);
       const local = [0, 1, 2, 3, 4, 5].find((d) => ROT_DIR[st.ori[u] * 6 + d] === fromDir)!;
       const toU = after.occ.indexOf(st.occ[u]), toDir = ROT_DIR[after.ori[toU] * 6 + local];
       const r = route(st, u, fromDir, toU, toDir);
       const score = r.cost - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
-      const others = [from, ...unit.filter((x) => x !== u)].map((x) => ({ cubelet: st.occ[x], ori: st.ori[x], offset: [SLOT_POS[x][0] - pu[0], SLOT_POS[x][1] - pu[1], SLOT_POS[x][2] - pu[2]] as Vec3 }));
+      const others = offsets(u, [from, ...unit.filter((x) => x !== u)]);
       if (score < bestScore) [best, bestScore] = [{ from: u, fromDir, to: toU, toDir, color: null, lands: false, dashed: false, cubelet: st.occ[u], fromOri: st.ori[u], toOri: after.ori[toU], unit: others, curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
     }
     if (best) out.push(best);
@@ -3999,7 +4153,35 @@ function installProbe() {
         darkGray: grays[1],
         arrows: guideArrows?.visible ? guideArrows.userData.count : 0,
         /** Each path: the sticker it follows, from where and facing which way, to where and facing which way. */
-        paths: guide.arrows.map((p) => `${p.color} ${slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " lands" : ""}${p.dashed ? " dashed" : ""}`),
+        paths: guide.arrows.map((p) => `${p.color} ${slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " lands" : ""}${p.dashed ? " dashed" : ""}${p.twist ? " twist" : ""}`),
+        /** How many cubelets fly together on each path (a core cubelet with the extension cubelets against it is three, two or three). */
+        units: guide.arrows.filter((p) => !p.layer).map((p) => 1 + (p.unit?.length ?? 0)),
+        /**
+         * Each cubelet that turns in place: its slot, how far the disc says it turns (degrees,
+         * right-handed about the axis out through it), how far its flying cubelet has turned
+         * halfway through its flight, and how far out along the axis the flying cubelet is
+         * at 25 even times of its flight.
+         */
+        twists: guideArrows?.visible
+          ? guideArrows.userData.runners.filter((r: any) => r.twist).map((r: any) => {
+              const q = r.turns[RUNNER_STEPS / 2].clone().multiply(r.turns[0].clone().invert());
+              const half = 2 * Math.atan2(new THREE.Vector3(q.x, q.y, q.z).dot(r.twist.axis), q.w);
+              return {
+                slot: slotName(app.current.occ.indexOf(r.copy.userData.cubelet)),
+                angle: Math.round((r.twist.angle * 180) / Math.PI),
+                half: Math.round((half * 180) / Math.PI),
+                lift: Array.from({ length: 25 }, (_, k) => Math.round(r.place(k / 24).sub(r.twist.home).dot(r.twist.axis) * 1000) / 1000),
+              };
+            })
+          : [],
+        /** Whether every flying cubelet is made of the puzzle's own lit materials, and casts and takes shadows where it is drawn plainly. */
+        flyersLit: guideArrows?.visible
+          ? guideArrows.userData.runners.every((r: any) => {
+              const meshes: any[] = [];
+              r.copy.traverse((o: any) => o.isMesh && meshes.push(o));
+              return meshes.length > 0 && meshes.every((m) => m.material.isMeshPhysicalMaterial) && meshes.filter((m) => m.material.depthWrite).every((m) => m.castShadow && m.receiveShadow);
+            })
+          : false,
         mode: guideMode,
         runners: guideArrows?.visible ? guideArrows.userData.runners.length : 0,
         /** Glow bands of the cubelets the step doesn't apply to that are drawn, and that are not; and of those it does apply to that are drawn. */

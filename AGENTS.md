@@ -308,10 +308,20 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   cubelet that ends up solved has a full path and a ring where its sticker lands;
   one only passing through has a dashed path. In a shape or core step, which solves no
   cubelet, each cubelet it applies to that moves or turns has a plain path (no ring), read
-  from where it ends. A core double edge has no sticker and is never seen, so it is shown
-  as a unit with the two extension cubelets against it (`attached`): those keep their
-  colors, and the unit's path, in a neutral gray, follows the outward sticker of one of
-  them, with all three flying together. A path goes
+  from where it ends. Shape and core steps have only inner turns, which carry each core
+  corner, single edge and double edge rigidly with the extension cubelets against it (two,
+  one and two; `attached`), so each moves as a unit: those cubelets keep their colors and
+  fly with it. A corner's or single edge's path follows its own sticker; a core double edge
+  has no sticker and is never seen, so its unit's path, in a neutral gray, follows the
+  outward sticker of one of the others. A cubelet that stays in its spot and only turns
+  gets no path, which would show a move that isn't there (`twistPath`): a hairline stem
+  runs straight out of its outermost corner or edge along the axis it turns about (always
+  clear: nothing is beyond it), and on the stem's end a white disc, outlined dark, has the
+  share of a whole turn it turns filled in the page's highlight blue, with a blue arrow
+  just outside the rim from one end of that share to the other, the way it turns. Its
+  flying cubelet (with its unit) rises along the stem to just past the disc, turns there
+  the same way the disc shows, and drops back in, each of the three eased at both ends.
+  A path goes
   around the puzzle, never through it (`route`). It starts as an arc well outside the
   puzzle (the short way around; for opposite sides, also by way of each of the six
   directions) and is pulled tight like an elastic band: each point moves toward the
@@ -336,7 +346,9 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   followed is the one whose route costs least, so a hop to a neighboring spot stays a
   short hop and the sticker facing the way the cubelet goes is preferred to one whose
   path would turn back on itself; one on the faces the Home view shows is favored a little. Each loop
-  (`GUIDE_LOOP`): a small copy of each cubelet flies along its path, turning as the cubelet will turn (it leaves showing its
+  (`GUIDE_LOOP`): a small copy of each cubelet (a **flying cubelet**, made like the
+  puzzle's own: the same rounded plastic and stickers, lit by the same room and key light,
+  casting and taking shadows, its cubelets hiding each other as solid ones do) flies along its path, turning as the cubelet will turn (it leaves showing its
   stickers as they are and arrives showing them as they will be), rests where it
   arrives, vanishes, and after a short gap the loop starts again; none of this moves
   where the device asks for reduced motion. Only the cubelets the step applies to have
