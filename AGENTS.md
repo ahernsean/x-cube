@@ -299,8 +299,10 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   button gives the stage and goal, then "Turns:" with the turns as the solver writes them
   (`[setup: cycle]`), then "Step 2 of 9 to solved" (counted from when the guide was started; a step taken
   from anywhere but the end of the one before starts the count again), each on its own line. Until the step has
-  been played through, the cubelets it applies to keep their colors, the cubelets it leaves alone are gray, and the ones it may leave
-  anywhere are darker gray (stickers and flat-view tiles; one gray for every color at each
+  been played through, its colors picture what its turns do (`stepColors`): the cubelets it applies to that it moves or
+  turns keep their colors (with the extension cubelets moving with them as a unit), every other cubelet it moves or turns is
+  darker gray (left for later steps), and every cubelet it leaves as it was is gray, even one it applies to that is not yet
+  where it belongs (stickers and flat-view tiles; one gray for every color at each
   level, so a gray white can't be taken for a white). Before the step's first turn, **paths** in the 3D view
   show where each cubelet it moves will go and how it will be turned: a path follows one of
   the cubelet's stickers, in that sticker's color with a dark casing, leaving the sticker and
@@ -339,7 +341,8 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   cubelet, to round a cubelet near the edge of the view without a tight bend. A flying copy moves by distance along its path, so
   its speed is even (eased at the ends). It turns the way its path goes: the followed
   sticker faces out of its face at the start, away from the puzzle's center along the
-  way, and out of its new face at the end (a sticker facing the same way at both ends
+  way (leaning out only within the plane of its turn, so whatever faces along the turn's
+  axis keeps facing that way), and out of its new face at the end (a sticker facing the same way at both ends
   keeps facing that way), and any spin about that sticker still needed
   is spread evenly along the path. The sticker
   followed is the one whose route costs least, so a hop to a neighboring spot stays a
@@ -510,6 +513,8 @@ context a cold reader doesn't have.
 
 ### Pull requests
 
+- Open every pull request as a **draft**, and leave it a draft until the owner says it is
+  ready. Only then mark it ready for review (which also starts the Codex review).
 - The description has a **Summary** section only, describing what changed and why.
 - Keep the title and description current with every push; never leave them describing
   only some of the commits.

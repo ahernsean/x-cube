@@ -2974,14 +2974,31 @@ function nextStep() {
     index,
     start: app.cursor,
     from: st.clone(),
-    focus: new Set(step.moved.flatMap(([from]) => [from, ...attached(st, from)]).map((s) => st.occ[s])),
-    free: new Set(step.free.map((s) => st.occ[s])),
+    ...stepColors(st, step),
     arrows: stickerPaths(st, step),
   };
   trail.push(guide);
   app.history = app.history.slice(0, app.cursor).concat(step.turns);
   setMessage(`${step.turns.length} turns loaded`, "ok");
   render();
+}
+
+/**
+ * Which cubelets a step colors and which it grays darker, by what its turns do (as the
+ * puzzle is held before it, the regrip undone), so the colors picture what the turns do.
+ * Colored: each cubelet the step is for that it moves or turns, with the extension
+ * cubelets that move with it as a unit. Darker gray: every other cubelet it moves or
+ * turns, left for later steps. Everything it leaves as it was is the lighter gray, even a
+ * cubelet the step is for (one not yet where it belongs, left for a later step).
+ */
+function stepColors(st: State, step: SolveStep): { focus: Set<number>; free: Set<number> } {
+  const after = st.clone();
+  applyTurns(after, step.turns);
+  applyTurns(after, parseAlg(["", "y'", "y2", "y"][step.regrip]));
+  const changed = (s: number) => st.occ[s] >= 0 && (after.occ[s] !== st.occ[s] || after.ori[s] !== st.ori[s]);
+  const focus = new Set(step.moved.filter(([from]) => changed(from)).flatMap(([from]) => [from, ...attached(st, from)]).map((s) => st.occ[s]));
+  const free = new Set([...Array(NUM_SLOTS).keys()].filter(changed).map((s) => st.occ[s]).filter((id) => !focus.has(id)));
+  return { focus, free };
 }
 
 /** Whether the guide's step is still in the turn list where it was put, starting from the position it was worked out for. */
@@ -3137,8 +3154,15 @@ function runnerTurns(curve: any, n0: any, n1: any, from: any, to: any): any[] {
   // A short hop has no "along the way", and a sticker that faces the same way at both
   // ends keeps facing that way throughout.
   const reach = Math.min(1, curve.getLength() / 3) * Math.min(1, 1 - n0.dot(n1));
+  // A sticker turning between two faces turns about the axis square to both, and leans out
+  // only in that turn's plane: whatever faces along the axis keeps facing that way. (Between
+  // opposite faces any plane would do, and the path's own is taken.)
+  const square = new THREE.Vector3().crossVectors(n0, n1);
+  const plane = square.lengthSq() > 1e-6 ? square.normalize() : null;
   const facing = (e: number) => {
-    const out = curve.getPointAt(e).normalize().multiplyScalar(reach * Math.sin(Math.PI * e) ** 2);
+    const out = curve.getPointAt(e);
+    if (plane) out.projectOnPlane(plane);
+    out.normalize().multiplyScalar(reach * Math.sin(Math.PI * e) ** 2);
     const n = n0.clone().lerp(n1, e * e * (3 - 2 * e)).multiplyScalar(1 - out.length()).add(out);
     return n.lengthSq() > 1e-8 ? n.normalize() : null;
   };

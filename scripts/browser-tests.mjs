@@ -1326,6 +1326,25 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   check(unit.stage === "coreMiddle" && unit.arrows === 1 && /^null /.test(unit.paths[0]) && unit.focus.length >= 3 && unit.runners === 1, `a core double edge moves as a unit with the cubelets against it, on a neutral path (${unit.alg}; ${unit.paths.join("; ")}; focus ${unit.focus.join(" ")})`);
 });
 
+labTest("guide: a flying cubelet turns only about the axis its sticker turns about", async ({ page, check, probe, settle }) => {
+  // The owner's position: Top to bottom's next step is R', which carries the white core
+  // single edge at BR (white facing back) to UR. Everything facing right keeps facing
+  // right, so the white sticker, turning from back to up, must stay square to the right
+  // all the way, rather than lean out toward it with the path.
+  await page.locator("summary", { hasText: "State code" }).click();
+  await page.fill("#code-in", "KLSM RMQS NGSD YZPP ELND KEFV WOPY KHDX CARB ZUAG LCMZ");
+  await page.click("#import");
+  await settle();
+  await page.locator("#guide > summary").click();
+  await page.click('[data-guide-mode="layers"]');
+  await page.click("#next-step");
+  await settle();
+  const g = await probe("guide");
+  const unit = g.paths.findIndex((t) => /^W BR\/B > UR\/U/.test(t));
+  const facing = g.runnerFacing[unit] ?? [];
+  check(g.alg === "R'" && unit >= 0 && facing.length === 13 && facing.every((v) => Math.abs(v[0]) < 0.03), `the edge turns only about the right's axis (${g.paths.join("; ")}; ${JSON.stringify(facing)})`);
+});
+
 labTest("guide: a cubelet turning in place has a disc, and its unit rises past it, turns, and drops back", async ({ page, check, probe, settle }) => {
   // The owner's position: Top to bottom's next step (R U R' U' R) turns the white core
   // corner at UFR a third of a turn clockwise in place, with its two extension cubelets.
@@ -1348,6 +1367,23 @@ labTest("guide: a cubelet turning in place has a disc, and its unit rises past i
   const rise = lift.slice(0, 8), fall = lift.slice(17);
   check(lift[0] === 0 && lift[24] === 0 && top > 1 && lift.slice(8, 17).every((v) => v === top), `the unit rises along the stem to past the disc, stays there, and drops back (${lift.join(" ")})`);
   check(rise.every((v, k) => k === 0 || v >= rise[k - 1]) && fall.every((v, k) => k === 0 || v <= fall[k - 1]) && top - lift[7] < 0.06 * top && lift[1] < 0.06 * top, `it eases into and out of the spot past the disc, as at the start and end (${lift.join(" ")})`);
+});
+
+labTest("guide: only the cubelets a step moves or turns keep their colors", async ({ page, check, probe, settle }) => {
+  // The owner's position: Top to bottom's next step (R' D2 R) moves the white core corners
+  // at DBL and DFL, each with its two extension cubelets. The white core corners at UBL and
+  // UFL are not yet white up either, but the step leaves them as they are: light gray.
+  await page.locator("summary", { hasText: "State code" }).click();
+  await page.fill("#code-in", "JOJT HKNW MEZE HNZG NDXA YKTH CBNN CGVJ JLAC BAPV SSXJ");
+  await page.click("#import");
+  await settle();
+  await page.locator("#guide > summary").click();
+  await page.click('[data-guide-mode="layers"]');
+  await page.click("#next-step");
+  await settle();
+  const g = await probe("guide");
+  check(g.alg === "R' D2 R" && g.focus.length === 6 && ["DBL", "DFL"].every((s) => g.focus.includes(s)) && !g.focus.some((s) => ["UBL", "UFL"].includes(s)), `only the moved corners and their extension cubelets keep their colors (${g.focus.join(" ")})`);
+  check(g.darkGray > 0 && g.gray > 0, `what else the turns move is darker gray, and what they leave alone lighter (${g.darkGray} darker, ${g.gray} lighter)`);
 });
 
 labTest("guide: a parity turn has one arc around the outside of its layer", async ({ page, check, probe, settle, play }) => {
