@@ -1369,6 +1369,23 @@ labTest("guide: a cubelet turning in place has a disc, and its unit rises past i
   check(rise.every((v, k) => k === 0 || v >= rise[k - 1]) && fall.every((v, k) => k === 0 || v <= fall[k - 1]) && top - lift[7] < 0.06 * top && lift[1] < 0.06 * top, `it eases into and out of the spot past the disc, as at the start and end (${lift.join(" ")})`);
 });
 
+labTest("guide: only the cubelets a step moves or turns keep their colors", async ({ page, check, probe, settle }) => {
+  // The owner's position: Top to bottom's next step (R' D2 R) moves the white core corners
+  // at DBL and DFL, each with its two extension cubelets. The white core corners at UBL and
+  // UFL are not yet white up either, but the step leaves them as they are: light gray.
+  await page.locator("summary", { hasText: "State code" }).click();
+  await page.fill("#code-in", "JOJT HKNW MEZE HNZG NDXA YKTH CBNN CGVJ JLAC BAPV SSXJ");
+  await page.click("#import");
+  await settle();
+  await page.locator("#guide > summary").click();
+  await page.click('[data-guide-mode="layers"]');
+  await page.click("#next-step");
+  await settle();
+  const g = await probe("guide");
+  check(g.alg === "R' D2 R" && g.focus.length === 6 && ["DBL", "DFL"].every((s) => g.focus.includes(s)) && !g.focus.some((s) => ["UBL", "UFL"].includes(s)), `only the moved corners and their extension cubelets keep their colors (${g.focus.join(" ")})`);
+  check(g.darkGray > 0 && g.gray > 0, `what else the turns move is darker gray, and what they leave alone lighter (${g.darkGray} darker, ${g.gray} lighter)`);
+});
+
 labTest("guide: a parity turn has one arc around the outside of its layer", async ({ page, check, probe, settle, play }) => {
   await page.locator("#guide > summary").click();
   await play("U");
