@@ -1283,6 +1283,7 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   /** The most any path is off straight out of its sticker at its start, or straight onto its face at its end, in degrees. */
   const lean = (g) =>
     Math.max(...g.paths.map((t, i) => {
+      if (/ twist$/.test(t)) return 0; // a turn in place has a stem straight out along its axis instead
       const [, f0, f1] = t.match(/\/(\w) > [\w.]+\/(\w)/);
       const pts = g.pathPoints[i];
       return Math.max(angle(sub(pts[1], pts[0]), FACE[f0]), angle(sub(pts[23], pts[24]), FACE[f1]));
@@ -1323,6 +1324,30 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   const facing = cycle.runnerFacing[level] ?? [];
   check(cycle.stage === "corners" && level >= 0 && facing.length === 13 && facing.every((v) => angle(v, FACE.U) < 3) && lean(cycle) < 47, `a flying copy whose sticker faces up at both ends keeps it facing up all the way (${cycle.alg}; ${cycle.paths.join("; ")}; ${JSON.stringify(facing)})`);
   check(unit.stage === "coreMiddle" && unit.arrows === 1 && /^null /.test(unit.paths[0]) && unit.focus.length >= 3 && unit.runners === 1, `a core double edge moves as a unit with the cubelets against it, on a neutral path (${unit.alg}; ${unit.paths.join("; ")}; focus ${unit.focus.join(" ")})`);
+});
+
+labTest("guide: a cubelet turning in place has a disc, and its unit rises past it, turns, and drops back", async ({ page, check, probe, settle }) => {
+  // The owner's position: Top to bottom's next step (R U R' U' R) turns the white core
+  // corner at UFR a third of a turn clockwise in place, with its two extension cubelets.
+  await page.locator("summary", { hasText: "State code" }).click();
+  await page.fill("#code-in", "VSXN IXMM XYNB KLAF LRHN PTVM ZFSA TRVQ QRJK UWWB YLHH");
+  await page.click("#import");
+  await settle();
+  await page.locator("#guide > summary").click();
+  await page.click('[data-guide-mode="layers"]');
+  await page.click("#next-step");
+  await settle();
+  const g = await probe("guide");
+  const tw = g.twists[0];
+  check(g.alg === "R U R' U' R" && g.paths.some((t) => /^W UFR\/\w > UFR\/\w twist$/.test(t)) && g.twists.length === 1 && tw.slot === "UFR", `the corner turning in place gets a twist, not a path (${g.paths.join("; ")})`);
+  check(tw.angle === -120 && Math.sign(tw.half) === -1 && Math.abs(tw.half + 60) < 3, `the disc shows a third of a turn clockwise seen from outside, and the flying cubelet turns the same way (${tw.angle}, halfway ${tw.half})`);
+  check(g.units.every((n) => n === 3), `every core corner of the step flies with its two extension cubelets (${g.units.join(" ")})`);
+  check(g.flyersLit, "the flying cubelets are made and lit like the puzzle's own, with shadows");
+  // Out, hold past the disc while turning, back; each part eased, so the rise comes to rest at the disc.
+  const lift = tw.lift, top = Math.max(...lift);
+  const rise = lift.slice(0, 8), fall = lift.slice(17);
+  check(lift[0] === 0 && lift[24] === 0 && top > 1 && lift.slice(8, 17).every((v) => v === top), `the unit rises along the stem to past the disc, stays there, and drops back (${lift.join(" ")})`);
+  check(rise.every((v, k) => k === 0 || v >= rise[k - 1]) && fall.every((v, k) => k === 0 || v <= fall[k - 1]) && top - lift[7] < 0.06 * top && lift[1] < 0.06 * top, `it eases into and out of the spot past the disc, as at the start and end (${lift.join(" ")})`);
 });
 
 labTest("guide: a parity turn has one arc around the outside of its layer", async ({ page, check, probe, settle, play }) => {

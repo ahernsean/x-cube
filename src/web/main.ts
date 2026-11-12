@@ -3201,6 +3201,7 @@ function makeArrows(paths: StickerPath[]) {
   const unitCopy = (p: StickerPath) => {
     const look = copyLook!;
     const copy = new THREE.Group();
+    copy.userData.cubelet = p.cubelet;
     copy.scale.setScalar(COPY);
     const twice = (to: any, geo: any, mat: any, place?: (m: any) => void) => {
       for (const ghost of [true, false]) {
@@ -3372,7 +3373,7 @@ function makeArrows(paths: StickerPath[]) {
     const turns = Array.from({ length: RUNNER_STEPS + 1 }, (_, k) => new THREE.Quaternion().setFromAxisAngle(axis, angle * turned(k / RUNNER_STEPS)).multiply(from));
     const place = (t: number) => home.clone().lerp(above, t < OUT ? ease(t / OUT) : t > BACK ? ease((1 - t) / (1 - BACK)) : 1);
     const followed = Math.max(0, CUBELETS[p.cubelet].stickers.findIndex((c) => !!c));
-    group.userData.runners.push({ copy, curve: p.curve, followed, turns, place, raw: true });
+    group.userData.runners.push({ copy, curve: p.curve, followed, turns, place, raw: true, twist: { axis, angle, home } });
   }
   return group;
 }
@@ -4145,7 +4146,35 @@ function installProbe() {
         darkGray: grays[1],
         arrows: guideArrows?.visible ? guideArrows.userData.count : 0,
         /** Each path: the sticker it follows, from where and facing which way, to where and facing which way. */
-        paths: guide.arrows.map((p) => `${p.color} ${slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " lands" : ""}${p.dashed ? " dashed" : ""}`),
+        paths: guide.arrows.map((p) => `${p.color} ${slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " lands" : ""}${p.dashed ? " dashed" : ""}${p.twist ? " twist" : ""}`),
+        /** How many cubelets fly together on each path (a core cubelet with the extension cubelets against it is three, two or three). */
+        units: guide.arrows.filter((p) => !p.layer).map((p) => 1 + (p.unit?.length ?? 0)),
+        /**
+         * Each cubelet that turns in place: its slot, how far the disc says it turns (degrees,
+         * right-handed about the axis out through it), how far its flying cubelet has turned
+         * halfway through its flight, and how far out along the axis the flying cubelet is
+         * at 25 even times of its flight.
+         */
+        twists: guideArrows?.visible
+          ? guideArrows.userData.runners.filter((r: any) => r.twist).map((r: any) => {
+              const q = r.turns[RUNNER_STEPS / 2].clone().multiply(r.turns[0].clone().invert());
+              const half = 2 * Math.atan2(new THREE.Vector3(q.x, q.y, q.z).dot(r.twist.axis), q.w);
+              return {
+                slot: slotName(app.current.occ.indexOf(r.copy.userData.cubelet)),
+                angle: Math.round((r.twist.angle * 180) / Math.PI),
+                half: Math.round((half * 180) / Math.PI),
+                lift: Array.from({ length: 25 }, (_, k) => Math.round(r.place(k / 24).sub(r.twist.home).dot(r.twist.axis) * 1000) / 1000),
+              };
+            })
+          : [],
+        /** Whether every flying cubelet is made of the puzzle's own lit materials, and casts and takes shadows where it is drawn plainly. */
+        flyersLit: guideArrows?.visible
+          ? guideArrows.userData.runners.every((r: any) => {
+              const meshes: any[] = [];
+              r.copy.traverse((o: any) => o.isMesh && meshes.push(o));
+              return meshes.length > 0 && meshes.every((m) => m.material.isMeshPhysicalMaterial) && meshes.filter((m) => m.material.depthWrite).every((m) => m.castShadow && m.receiveShadow);
+            })
+          : false,
         mode: guideMode,
         runners: guideArrows?.visible ? guideArrows.userData.runners.length : 0,
         /** Glow bands of the cubelets the step doesn't apply to that are drawn, and that are not; and of those it does apply to that are drawn. */
