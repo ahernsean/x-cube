@@ -329,7 +329,8 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   cubelet, to round a cubelet near the edge of the view without a tight bend. A flying copy moves by distance along its path, so
   its speed is even (eased at the ends). It turns the way its path goes: the followed
   sticker faces out of its face at the start, away from the puzzle's center along the
-  way, and out of its new face at the end (a sticker facing the same way at both ends
+  way (leaning out only within the plane of its turn, so whatever faces along the turn's
+  axis keeps facing that way), and out of its new face at the end (a sticker facing the same way at both ends
   keeps facing that way), and any spin about that sticker still needed
   is spread evenly along the path. The sticker
   followed is the one whose route costs least, so a hop to a neighboring spot stays a

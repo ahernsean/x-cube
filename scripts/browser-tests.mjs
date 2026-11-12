@@ -1325,6 +1325,25 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   check(unit.stage === "coreMiddle" && unit.arrows === 1 && /^null /.test(unit.paths[0]) && unit.focus.length >= 3 && unit.runners === 1, `a core double edge moves as a unit with the cubelets against it, on a neutral path (${unit.alg}; ${unit.paths.join("; ")}; focus ${unit.focus.join(" ")})`);
 });
 
+labTest("guide: a flying cubelet turns only about the axis its sticker turns about", async ({ page, check, probe, settle }) => {
+  // The owner's position: Top to bottom's next step is R', which carries the white core
+  // single edge at BR (white facing back) to UR. Everything facing right keeps facing
+  // right, so the white sticker, turning from back to up, must stay square to the right
+  // all the way, rather than lean out toward it with the path.
+  await page.locator("summary", { hasText: "State code" }).click();
+  await page.fill("#code-in", "KLSM RMQS NGSD YZPP ELND KEFV WOPY KHDX CARB ZUAG LCMZ");
+  await page.click("#import");
+  await settle();
+  await page.locator("#guide > summary").click();
+  await page.click('[data-guide-mode="layers"]');
+  await page.click("#next-step");
+  await settle();
+  const g = await probe("guide");
+  const unit = g.paths.findIndex((t) => /^W BR\/B > UR\/U/.test(t));
+  const facing = g.runnerFacing[unit] ?? [];
+  check(g.alg === "R'" && unit >= 0 && facing.length === 13 && facing.every((v) => Math.abs(v[0]) < 0.03), `the edge turns only about the right's axis (${g.paths.join("; ")}; ${JSON.stringify(facing)})`);
+});
+
 labTest("guide: a parity turn has one arc around the outside of its layer", async ({ page, check, probe, settle, play }) => {
   await page.locator("#guide > summary").click();
   await play("U");
