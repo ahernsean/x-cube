@@ -1346,10 +1346,10 @@ labTest("guide: a flying cubelet turns only about the axis its sticker turns abo
 });
 
 labTest("guide: a cubelet turning in place has a disc, and its unit rises past it, turns, and drops back", async ({ page, check, probe, settle }) => {
-  // The owner's position: Top to bottom's next step (R U R' U' R) turns the white core
-  // corner at UFR a third of a turn clockwise in place, with its two extension cubelets.
+  // Top to bottom's next step here (F' U' F U F') turns the white core corner at UFR a
+  // third of a turn counterclockwise in place, with its two extension cubelets.
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "VSXN IXMM XYNB KLAF LRHN PTVM ZFSA TRVQ QRJK UWWB YLHH");
+  await page.fill("#code-in", "MKCT OOXD PDQK ZTIX BSRG LFFL MBXH TUNQ CCAY TMCT GMUR");
   await page.click("#import");
   await settle();
   await page.locator("#guide > summary").click();
@@ -1358,8 +1358,8 @@ labTest("guide: a cubelet turning in place has a disc, and its unit rises past i
   await settle();
   const g = await probe("guide");
   const tw = g.twists[0];
-  check(g.alg === "R U R' U' R" && g.paths.some((t) => /^W UFR\/\w > UFR\/\w twist$/.test(t)) && g.twists.length === 1 && tw.slot === "UFR", `the corner turning in place gets a twist, not a path (${g.paths.join("; ")})`);
-  check(tw.angle === -120 && Math.sign(tw.half) === -1 && Math.abs(tw.half + 60) < 3, `the disc shows a third of a turn clockwise seen from outside, and the flying cubelet turns the same way (${tw.angle}, halfway ${tw.half})`);
+  check(g.alg === "F' U' F U F'" && g.paths.some((t) => /^W UFR\/\w > UFR\/\w twist$/.test(t)) && g.twists.length === 1 && tw.slot === "UFR", `the corner turning in place gets a twist, not a path (${g.paths.join("; ")})`);
+  check(tw.angle === 120 && Math.sign(tw.half) === 1 && Math.abs(tw.half - 60) < 3, `the disc shows a third of a turn counterclockwise seen from outside, and the flying cubelet turns the same way (${tw.angle}, halfway ${tw.half})`);
   check(g.units.every((n) => n === 3), `every core corner of the step flies with its two extension cubelets (${g.units.join(" ")})`);
   check(g.flyersLit, "the flying cubelets are made and lit like the puzzle's own, with shadows");
   // Out, hold past the disc while turning, back; each part eased, so the rise comes to rest at the disc.

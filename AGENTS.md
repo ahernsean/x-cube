@@ -170,23 +170,34 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   In 200 sampled solves `B` was 0.1% of turns and `D` 1.1%, with no `b`, `S` or `H`.
 - **Regrips.** A step may begin with a turn of the whole puzzle about its vertical axis
   (`y`, `y'`, `y2`) when that makes the rest easier; a regrip is never in the middle of a
-  step. An outer step (parity aside) may also begin by flipping the puzzle over, `x2`, alone or before a
-  `y` turn (the owner flips with `x2` more often than `z2`), so the bottom comes on top;
-  the steps after it go on from there, and the puzzle is turned back only if a later step
-  is better off that way. So the **grip** is which of these eight holds the puzzle is in,
-  from white up and green front (`GRIPS`), and each outer cubelet's home turns with it.
-  A step's `regrip` is the notation it begins with ("" for none), and its `moved` places
-  are as the puzzle is held before it. A position held neither white nor yellow up, or
-  yellow up before the shape and core are done, still starts with a hold step.
-- **Seeing the cubelets.** A cycle step's cost also counts where its three cubelets are
-  while a person turns: after the regrip and after each turn, each one on the bottom
-  (y below 0) costs `UNSEEN_DOWN` (2) and each on the back (z below 0) `UNSEEN_BACK` (1),
-  in ease units. A flip costs `FLIP_COST` (8) on top of the `x2` turn's ease, so a solve
-  doesn't flip back and forth for little gain. Each cycle reaches into the bottom layer
-  (corners Fx.UL, Rx.UF, Rx.DF; edges Fx.L, Rx.F, Rx.D), so some time there is unavoidable.
-  Over 100 sampled solves in each order, the tracked cubelets' share of turns on the
-  bottom fell from 27% to 21-22% and on the back from 23% to 21%, with 1.1 to 1.6 flips
-  per solve and about the same number of turns (within 1).
+  step. A cycle step or a layer core step (`layers`) may also begin by flipping the puzzle
+  over, `x2`, alone or before a `y` turn (the owner flips with `x2` more often than `z2`),
+  so the bottom comes on top; the steps after it go on from there, and the puzzle is
+  turned back only if a later step is better off that way. So the **grip** is which of
+  these eight holds the puzzle is in, from white up and green front (`GRIPS`), and each
+  outer cubelet's home turns with it. A step's `regrip` is the notation it begins with
+  ("" for none), and its `moved` places are as the puzzle is held before it. With yellow
+  up, a layer core step is found with the puzzle turned back white up and then named as
+  it is held (`asFlipped`; ease by the names as held, and its goal says "top layer,
+  yellow up"); a cycle step works with yellow up as it is, so its cycle keeps its front
+  turns. A position held neither white nor yellow up, or yellow up before the shape and
+  core are done in `kinds` (its shape and core steps need white up), starts with a hold step.
+- **Seeing the cubelets.** A cycle step's cost, and a layer core step's, also counts where
+  the cubelets it is for are while a person turns: after the regrip and after each turn,
+  each one on the bottom (y below 0) costs `UNSEEN_DOWN` (2) and each on the back (z below
+  0) `UNSEEN_BACK` (1), in ease units. In `layers`, a step that builds the white or the
+  yellow layer (`coreTop`, `coreTopC`, `coreBottom`, `coreBottomC`, `topEdges`,
+  `topCorners`, `bottomCorners`, `bottomEdges`) also costs `LAYER_DOWN` (3) for each of
+  its turns while that layer is on the bottom: the owner flips the puzzle to work the layer
+  being built on top. A flip costs `FLIP_COST` (8) on top of the `x2` turn's ease, so a
+  solve doesn't flip back and forth for little gain. Each cycle reaches into the bottom
+  layer (corners Fx.UL, Rx.UF, Rx.DF; edges Fx.L, Rx.F, Rx.D), so some time there is
+  unavoidable. Over 40 Lab shuffles solved top to bottom: the steps' cubelets spent 21%
+  of their turns on the bottom (28% with no flips), 28 of 750 white or yellow layer steps
+  were worked with that layer on the bottom (159 of 736 with no flips), about 3 flips per
+  solve (typically at the yellow core, and back for the white X-face), and 227 turns
+  instead of 222. Over 100 sampled `kinds` solves, the outer steps' cubelets' share of
+  turns on the bottom fell from 27% to 22%, with about 1.5 flips and the same turns.
 - **The cycles are commutators, written grouped:** corners `(F' L' F) r (F' L F) r'`,
   edges `(F' M' F) r (F' M F) r'` (inverses: `r (F' L' F) r' (F' L F)` and likewise).
   They are Baum's two turned a quarter around the puzzle, which takes out `b` and `S`.

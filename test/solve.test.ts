@@ -56,6 +56,13 @@ const atHome = (st: State, slot: number) =>
   });
 /** Whether the white center is up (yellow is up once an outer step has flipped the puzzle over). */
 const whiteUp = (st: State) => CUBELETS[st.occ[slotAt([0, 1, 0])]].home === slotAt([0, 1, 0]);
+/** st turned white up, if it is held yellow up. */
+const upright = (st: State) => {
+  if (whiteUp(st)) return st;
+  const turned = st.clone();
+  applyTurns(turned, parseAlg("x2"));
+  return turned;
+};
 /** Plays the steps from st, checking each does what it reports; returns the final state. */
 function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
   const st = start.clone();
@@ -76,7 +83,7 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
     assert.ok(regrip.length <= 2, `${step.alg} regrips with at most a flip and a turn`);
     assert.deepEqual(step.turns.slice(0, regrip.length), regrip, `${step.alg} begins with its regrip`);
     assert.equal(rotations.length, regrip.length, `${step.alg} regrips only as it says`);
-    if (/x2/.test(step.regrip)) assert.ok(["corners", "edges", "topEdges", "topCorners", "sideEdges", "bottomCorners", "bottomEdges"].includes(step.stage), `only an outer step flips the puzzle (${step.alg})`);
+    if (/x2/.test(step.regrip)) assert.ok([...LAYER_CORE, "corners", "edges", "topEdges", "topCorners", "sideEdges", "bottomCorners", "bottomEdges"].includes(step.stage), `only a layer core step or an outer step flips the puzzle (${step.alg})`);
     const seen = st.clone(); // the result, turned back to the grip the step reports in
     applyTurns(seen, invertTurns(regrip));
     usage.turns += step.turns.length;
@@ -88,7 +95,7 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
     if (LAYER_CORE.includes(step.stage)) {
       // One more cubelet of the stage's kind where it belongs, and every earlier kind kept.
       const k = LAYER_CORE.indexOf(step.stage);
-      const n = (st: State) => LAYER_CORE.map((_, i) => coreInPlace(st, i));
+      const n = (st: State) => LAYER_CORE.map((_, i) => coreInPlace(upright(st), i));
       const [was, now] = [n(before), n(seen)];
       assert.ok(now[k] > was[k] && now.slice(0, k).every((c) => c === 4), `${step.alg} brings one more of its kind in, keeping the earlier kinds (${was} to ${now})`);
       assert.match(step.goal, new RegExp(`\\(${now[k]} of 4\\)$`));
@@ -201,11 +208,51 @@ test("solve: an outer step flips the puzzle over when the cubelets it cycles are
   assert.ok(first.moved.every(([from]) => SLOT_POS[from][1] < 0), "its three corners are on the bottom");
 });
 
-test("solve: a position held yellow up starts with a hold step until its core is done", () => {
+test("solve: a layer core step flips the puzzle over for yellow core cubelets on the bottom, and the next goes on yellow up", () => {
+  // Layer by layer, at the yellow core corners, all four of them still to place.
+  const st = decodeState("GWSV OIRU LSII FXSG YHCO UAHZ SCBW RRHP LSSB IWGO GTNA");
+  const first = nextStep(st, "layers")!;
+  assert.equal(first.stage, "coreBottomC");
+  assert.ok(first.regrip.startsWith("x2"), `it flips the puzzle over (${first.alg})`);
+  assert.ok(first.moved.every(([from]) => SLOT_POS[from][1] < 0), "its corners are on the bottom");
+  assert.match(first.goal, /top layer, yellow up \(1 of 4\)$/, "the goal is as the puzzle is held after the flip");
+  const next = st.clone();
+  applyTurns(next, first.turns);
+  const second = nextStep(next, "layers")!;
+  assert.equal(second.stage, "coreBottomC");
+  assert.equal(second.regrip, "", `it goes on yellow up (${second.alg})`);
+  assert.ok(second.moved.every(([from]) => SLOT_POS[from][1] > 0), "its corners are on top");
+  assert.match(second.goal, /top layer, yellow up/);
+  assert.ok(isSolved(play(st, solveSteps(st, "layers"), "layers")));
+});
+
+test("solve: a position held yellow up starts with a hold step until its core is done, layer by layer goes on yellow up", () => {
   const st = after("x2 R U");
   assert.equal(nextStep(st)!.stage, "hold");
+  const steps = solveSteps(st, "layers");
+  assert.ok(isSolved(play(st, steps, "layers")));
+  assert.notEqual(steps[0].stage, "hold", "layer by layer, the core steps go on yellow up");
   const flipped = after("U r x2");
   assert.notEqual(nextStep(flipped)!.stage, "hold", "with the shape and core done, the outer steps go on yellow up");
+});
+
+test("solve: layer by layer works each white or yellow layer with it on top, nearly always", () => {
+  const rnd = random(77);
+  let steps = 0, down = 0;
+  for (let trial = 0; trial < 20; trial++) {
+    const st = scrambled(rnd);
+    for (const step of solveSteps(st, "layers")) {
+      const held = st.clone();
+      applyTurns(held, parseAlg(step.regrip));
+      const white = /^(coreTop|top)/.test(step.stage), yellow = /^(coreBottom|bottom)/.test(step.stage);
+      if (white || yellow) {
+        steps++;
+        if (white !== whiteUp(held)) down++;
+      }
+      applyTurns(st, step.turns);
+    }
+  }
+  assert.ok(down / steps < 0.06, `${down} of ${steps} steps build a layer while it is on the bottom`);
 });
 
 test("solve: the stages come as needed", () => {
