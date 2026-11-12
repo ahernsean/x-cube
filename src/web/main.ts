@@ -3257,7 +3257,8 @@ function makeArrows(paths: StickerPath[]) {
         copy.add(part);
       }
       group.add(copy);
-      group.userData.runners.push({ copy, curve, turns: runnerTurns(curve, dir(p.fromDir), dir(p.toDir), oriQuaternion(p.fromOri), oriQuaternion(p.toOri)) });
+      const followed = [0, 1, 2, 3, 4, 5].find((d) => ROT_DIR[p.fromOri * 6 + d] === p.fromDir)!;
+      group.userData.runners.push({ copy, curve, followed, turns: runnerTurns(curve, dir(p.fromDir), dir(p.toDir), oriQuaternion(p.fromOri), oriQuaternion(p.toOri)) });
     }
   }
   return group;
@@ -3330,8 +3331,8 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
   // nearly reaches the edge of the view without a tight bend.
   const SLACK = 0.4;
   // A route keeps this far from every cubelet, except near its ends, where it need only
-  // be LEAN times as far from them as from the end: so it leaves a sticker, and comes
-  // onto a face, within 45 degrees of straight out.
+  // be LEAN times as far from them as from the end, as a cubelet beside the end leaves
+  // room for a route within 45 degrees of straight out.
   const MARGIN = 0.32, LEAN = 0.7, POINTS = 40;
   // What is in the way: every cubelet and the puzzle's solid center, as boxes. No sticker
   // is ever covered, so the way out of the sticker is clear. The spot the new face looks
@@ -3372,8 +3373,26 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
           p.addScaledVector(away, d > 1e-6 ? need - d : 0.15);
         }
         if (p.length() > ROOM + SLACK) p.setLength(ROOM + SLACK);
+        upright(p);
       }
     return pts;
+  };
+  // Near its ends a route stays inside a 45 degree cone around straight out of the
+  // sticker (and straight onto the new face): a point that leans more is lifted onto the
+  // cone. Beyond CONE of the end the route is free.
+  const CONE = 0.9, COS = Math.SQRT1_2;
+  const offset = new THREE.Vector3();
+  const upright = (p: any) => {
+    for (const [end, n] of [[a, n0], [b, n1]] as [any, any][]) {
+      offset.subVectors(p, end);
+      const r = offset.length();
+      if (r < 1e-6 || r > CONE) continue;
+      const along = offset.dot(n);
+      if (along >= COS * r) continue;
+      // Keep the sideways part, and raise the outward part until the lean is 45 degrees.
+      const side = offset.addScaledVector(n, -along).length();
+      p.copy(end).addScaledVector(n, Math.max(side, 1e-3) * (COS / Math.sqrt(1 - COS * COS))).add(offset);
+    }
   };
   // A band pulled tight turns sharply where it wraps around a cubelet's edge. So the
   // tight route is then let spring like a stiff rod: each point moves to lessen the
@@ -3406,6 +3425,7 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
           p.addScaledVector(away, d > 1e-6 ? need - d : 0.15);
         }
         if (p.length() > ROOM + SLACK) p.setLength(ROOM + SLACK);
+        upright(p);
       }
     }
     return pts;
@@ -3954,7 +3974,9 @@ function installProbe() {
         pathsOut: guideArrows?.visible ? guideArrows.userData.out : -1,
         pathsTurning: guideArrows?.visible ? guideArrows.userData.turning : -1,
         pathsBend: guideArrows?.visible ? guideArrows.userData.bend : -1,
-        pathPoints: guideArrows?.visible ? guideArrows.userData.runners.map((r: any) => Array.from({ length: 25 }, (_, k) => runnerPoint(r, k / 24).toArray().map((v: number) => Math.round(v * 100) / 100))) : [],
+        pathPoints: guideArrows?.visible ? guide.arrows.map((p) => Array.from({ length: 25 }, (_, k) => runnerPoint(p, k / 24).toArray().map((v: number) => Math.round(v * 100) / 100))) : [],
+        // Which way each flying copy's followed sticker faces at 13 even places along its flight.
+        runnerFacing: guideArrows?.visible ? guideArrows.userData.runners.map((r: any) => Array.from({ length: 13 }, (_, k) => new THREE.Vector3(...DIRS[r.followed]).applyQuaternion(r.turns[(k * RUNNER_STEPS) / 12]).toArray().map((v: number) => Math.round(v * 100) / 100))) : [],
       };
     },
     view: () => pivot.quaternion.toArray(),

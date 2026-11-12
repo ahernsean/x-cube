@@ -317,7 +317,8 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   directions) and is pulled tight like an elastic band: each point moves toward the
   middle of its neighbors and back out of whatever it is pulled into, keeping a margin
   from every cubelet, so the path is straight where nothing is near and rounded where it
-  bends around a cubelet. It is then let spring like a stiff rod, which spreads each bend
+  bends around a cubelet. Near its ends it stays inside a 45 degree cone around straight
+  out of the sticker and straight onto the new face. It is then let spring like a stiff rod, which spreads each bend
   over about a cubelet's width and keeps it convex (away from its ends it never bows in
   toward the puzzle). No sticker is ever covered, so the start is clear; the spot the
   new face looks into may be filled until the step takes that cubelet away, so that one

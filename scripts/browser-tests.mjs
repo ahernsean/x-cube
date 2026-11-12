@@ -1259,6 +1259,76 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   check(c.stage === "corners" && /Fx\.UR\/F > Fx\.DL\/F/.test(hop ?? "") && sharpest(c) < 50, `a corner moving across the front face is followed by its front sticker, with no hairpin (${c.alg}; ${c.paths.join("; ")}; ${sharpest(c).toFixed(0)} degrees)`);
 });
 
+labTest("guide: paths leave and arrive nearly straight out, never bow in, and copies keep a level sticker level", async ({ page, check, probe, settle }) => {
+  // Top to bottom from the owner's position: the first step (R2), and later the third
+  // white core corner (U R' D2 R) and a core double edge (R2 U2 L U2 R2).
+  await page.locator("summary", { hasText: "State code" }).click();
+  await page.fill("#code-in", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
+  await page.click("#import");
+  await settle();
+  await page.locator("#guide > summary").click();
+  await page.click('[data-guide-mode="layers"]');
+  const FACE = { R: [1, 0, 0], L: [-1, 0, 0], U: [0, 1, 0], D: [0, -1, 0], F: [0, 0, 1], B: [0, 0, -1] };
+  const angle = (u, v) => (Math.acos(Math.max(-1, Math.min(1, (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (Math.hypot(...u) * Math.hypot(...v))))) * 180) / Math.PI;
+  const sub = (a, b) => a.map((x, k) => x - b[k]);
+  /** The most any path is off straight out of its sticker at its start, or straight onto its face at its end, in degrees. */
+  const lean = (g) =>
+    Math.max(...g.paths.map((t, i) => {
+      const [, f0, f1] = t.match(/\/(\w) > [\w.]+\/(\w)/);
+      const pts = g.pathPoints[i];
+      return Math.max(angle(sub(pts[1], pts[0]), FACE[f0]), angle(sub(pts[23], pts[24]), FACE[f1]));
+    }));
+  /** How far any path bows in toward the puzzle: a point nearer the center than the middle of its neighbors, away from its ends. */
+  const bowIn = (g) =>
+    Math.max(0, ...g.pathPoints.flatMap((pts) => pts.slice(4, -4).map((p, k) => {
+      const mid = pts[k + 3].map((x, j) => (x + pts[k + 5][j]) / 2);
+      return Math.hypot(...mid) - Math.hypot(...p);
+    })));
+  const steps = [];
+  for (let i = 0; i < 7; i++) {
+    await page.click("#next-step");
+    await settle();
+    steps.push(await probe("guide"));
+    await page.click("#last");
+    await settle();
+  }
+  const first = steps[0], corner = steps[4], unit = steps[6];
+  check(first.alg === "R2" && lean(first) < 47 && bowIn(first) < 0.03, `a path leaves its sticker and comes onto its face within 45 degrees of straight out (${lean(first).toFixed(0)} at most, sampled a twenty-fourth of the way in), and never bows in toward the puzzle (${bowIn(first).toFixed(3)})`);
+  check(steps.every((g) => g.arrows === 0 || (lean(g) < 47 && bowIn(g) < 0.03)), `so does every path of the first seven steps (${steps.map((g) => `${g.alg}: ${g.arrows ? `${lean(g).toFixed(0)} degrees, ${bowIn(g).toFixed(3)} in` : "no paths"}`).join("; ")})`);
+  // A core double edge has no sticker: it and the two extension cubelets against it move
+  // as one unit, on one neutral path, and all three keep their colors.
+  // One corner cycle from solved: a white X-face corner hops along the top, white up at
+  // both ends, and its flying copy keeps white up all the way.
+  await page.click("#guide-stop");
+  await page.click("#reset");
+  await settle();
+  await page.click('[data-guide-mode="kinds"]');
+  await page.fill("#alg", "(F' L' F) r (F' L F) r'");
+  await page.click("#load");
+  await page.click("#last");
+  await settle();
+  await page.click("#next-step");
+  await settle();
+  const cycle = await probe("guide");
+  const level = cycle.paths.findIndex((t) => /^W [\w.]+\/U > [\w.]+\/U/.test(t));
+  const facing = cycle.runnerFacing[level] ?? [];
+  check(cycle.stage === "corners" && level >= 0 && facing.length === 13 && facing.every((v) => angle(v, FACE.U) < 3) && lean(cycle) < 47, `a flying copy whose sticker faces up at both ends keeps it facing up all the way (${cycle.alg}; ${cycle.paths.join("; ")}; ${JSON.stringify(facing)})`);
+  check(unit.stage === "coreMiddle" && unit.arrows === 1 && /^null /.test(unit.paths[0]) && unit.focus.length >= 3 && unit.runners === 1, `a core double edge moves as a unit with the cubelets against it, on a neutral path (${unit.alg}; ${unit.paths.join("; ")}; focus ${unit.focus.join(" ")})`);
+});
+
+labTest("guide: a parity turn has one arc around the outside of its layer", async ({ page, check, probe, settle, play }) => {
+  await page.locator("#guide > summary").click();
+  await play("U");
+  await page.click("#next-step");
+  await settle();
+  const g = await probe("guide");
+  const pts = g.pathPoints[0] ?? [];
+  // A quarter turn of the top layer: level with it (y = 1), outside its rim (the extensions
+  // reach 2.5 from the axis), and a quarter of the way around.
+  const around = pts.length && (Math.acos((pts[0][0] * pts[24][0] + pts[0][2] * pts[24][2]) / (Math.hypot(pts[0][0], pts[0][2]) * Math.hypot(pts[24][0], pts[24][2]))) * 180) / Math.PI;
+  check(g.stage === "parity" && g.alg === "U" && g.arrows === 1 && g.runners === 0 && pts.every(([x, y, z]) => Math.abs(y - 1) < 0.01 && Math.hypot(x, z) > 2.5) && Math.abs(around - 90) < 2, `the parity turn U has one arc, level with the top layer and outside it, a quarter of the way around, and no flying copy (${g.alg}; ${g.paths.join("; ")}; ${around?.toFixed(0)} degrees; ${JSON.stringify(pts.filter((_, k) => k % 6 === 0))})`);
+});
+
 /** The sharpest bend, in degrees, between one stride and the next of any path's 24 strides. */
 function sharpest(g) {
   let worst = 0;
