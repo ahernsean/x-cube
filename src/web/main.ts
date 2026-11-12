@@ -3339,16 +3339,33 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
   // into may be filled now by a cubelet the step takes away, so that one doesn't count.
   const p1 = SLOT_POS[to];
   const beyond = slotAtXYZ(p1[0] + DIRS[toDir][0], p1[1] + DIRS[toDir][1], p1[2] + DIRS[toDir][2]);
-  const boxes: Vec3[] = [[0, 0, 0]];
-  st.occ.forEach((id, s) => id >= 0 && s !== beyond && boxes.push(SLOT_POS[s]));
-  /** How far p is from the nearest box (0 inside one); `away` is set to the direction out of it. */
+  // Filled lattice spots, as a 5x5x5 grid from -2 to 2 (the center is filled).
+  const solid = new Uint8Array(125);
+  solid[62] = 1;
+  st.occ.forEach((id, s) => id >= 0 && s !== beyond && (solid[(SLOT_POS[s][0] + 2) * 25 + (SLOT_POS[s][1] + 2) * 5 + SLOT_POS[s][2] + 2] = 1));
+  /**
+   * How far p is from the nearest box (0 inside one), up to FAR; `away` is set to the
+   * direction out of it. Only the 27 spots around p are looked at: a box farther than
+   * that is more than a cubelet away, beyond any margin a route keeps.
+   */
+  const FAR = 1;
   const away = new THREE.Vector3();
   const clearance = (p: any) => {
-    let best = Infinity;
-    for (const c of boxes) {
-      const x = Math.max(Math.abs(p.x - c[0]) - 0.5, 0), y = Math.max(Math.abs(p.y - c[1]) - 0.5, 0), z = Math.max(Math.abs(p.z - c[2]) - 0.5, 0);
-      const d = x * x + y * y + z * z;
-      if (d < best) (best = d, away.set(Math.sign(p.x - c[0]) * x, Math.sign(p.y - c[1]) * y, Math.sign(p.z - c[2]) * z));
+    let best = FAR * FAR;
+    const cx = Math.round(p.x), cy = Math.round(p.y), cz = Math.round(p.z);
+    for (let i = cx - 1; i <= cx + 1; i++) {
+      if (i < -2 || i > 2) continue;
+      const x = Math.max(Math.abs(p.x - i) - 0.5, 0);
+      for (let j = cy - 1; j <= cy + 1; j++) {
+        if (j < -2 || j > 2) continue;
+        const y = Math.max(Math.abs(p.y - j) - 0.5, 0);
+        for (let k = cz - 1; k <= cz + 1; k++) {
+          if (k < -2 || k > 2 || !solid[(i + 2) * 25 + (j + 2) * 5 + k + 2]) continue;
+          const z = Math.max(Math.abs(p.z - k) - 0.5, 0);
+          const d = x * x + y * y + z * z;
+          if (d < best) (best = d, away.set(Math.sign(p.x - i) * x, Math.sign(p.y - j) * y, Math.sign(p.z - k) * z));
+        }
+      }
     }
     best = Math.sqrt(best);
     if (best > 1e-6) away.divideScalar(best);
@@ -3435,7 +3452,7 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
   const u0 = a.clone().normalize(), u1 = b.clone().normalize();
   const opposite = u0.dot(u1) < -0.3;
   const vias = [null, ...DIRS.map((v) => new THREE.Vector3(...v)).filter((v) => opposite && v.dot(u0) < 0.8 && v.dot(u1) < 0.8)];
-  const routes: any[] = [];
+  const routes: any[][] = [];
   for (const via of vias) {
     if (!via && u0.dot(u1) < -0.95) continue; // straight across: no short way around
     const stops = via ? [u0, via, u1] : [u0, u1];
@@ -3452,11 +3469,9 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
     }
     pts[0].copy(a);
     pts[POINTS - 1].copy(b);
-    routes.push(new THREE.CatmullRomCurve3(stiffen(tighten(pts)), false, "centripetal"));
+    routes.push(tighten(pts));
   }
-  let best: { curve: any; hits: number; effort: number; length: number; cost: number; out: number; turning: number; bend: number } | null = null;
-  let effort = 0;
-  for (const curve of routes) {
+  const score = (curve: any, effort: number) => {
     // Sampled evenly along its length: how much of it is inside the puzzle, how far it
     // leaves the view, and how much it turns in all.
     let hits = 0, out = 0, turning = 0, bend = 0;
@@ -3479,10 +3494,13 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
     // cubelet goes needs no bend to get started.
     const length = curve.getLength();
     const cost = Math.max(0, out) * 5 + (hits / 48) * length * 8 + length + turning * 0.6;
-    if (!best || cost < best.cost) best = { curve, hits, effort, length, cost, out: Math.max(0, out), turning, bend };
-    effort++;
-  }
-  return best!;
+    return { curve, hits, effort, length, cost, out: Math.max(0, out), turning, bend };
+  };
+  // Stiffening is the slow part, and it changes a route's cost little, so only the two
+  // routes cheapest when pulled tight are stiffened, and the cheaper of those is taken.
+  const curve = (pts: any[]) => new THREE.CatmullRomCurve3(pts, false, "centripetal");
+  const tight = routes.map((pts, k) => ({ pts, cost: score(curve(pts), k).cost, k })).sort((x, y) => x.cost - y.cost);
+  return tight.slice(0, 2).map(({ pts, k }) => score(curve(stiffen(pts)), k)).reduce((x, y) => (y.cost < x.cost ? y : x));
 }
 
 /**
