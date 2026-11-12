@@ -72,5 +72,37 @@ export const KNOWN_ALGORITHMS: readonly KnownAlgorithm[] = [
     start: () => State.solved(),
     result: "3-cycle",
   },
+  {
+    id: "corner-cycle",
+    name: "Corner 3-cycle",
+    situation: "Cycles three X-face corners (Fx.UL, Rx.UF, Rx.DF) and keeps the X shape. Baum's, turned a quarter around: no back turns.",
+    alg: "(F' L' F) r (F' L F) r'",
+    start: () => State.solved(),
+    result: "3-cycle",
+  },
+  {
+    id: "corner-cycle-mirror",
+    name: "Corner 3-cycle, mirrored",
+    situation: "Cycles three X-face corners (Lx.DF, Fx.UR, Lx.UF) and keeps the X shape. The one above, left for right: R inside, for a right hand.",
+    alg: "(F R F') l' (F R' F') l",
+    start: () => State.solved(),
+    result: "3-cycle",
+  },
+  {
+    id: "edge-cycle",
+    name: "Edge 3-cycle",
+    situation: "Cycles three extension edges (Fx.L, Rx.F, Rx.D) and keeps the X shape. Baum's, turned a quarter around: no back or S turns.",
+    alg: "(F' M' F) r (F' M F) r'",
+    start: () => State.solved(),
+    result: "3-cycle",
+  },
+  {
+    id: "edge-cycle-mirror",
+    name: "Edge 3-cycle, mirrored",
+    situation: "Cycles three extension edges (Lx.D, Fx.R, Lx.F) and keeps the X shape. The one above, left for right.",
+    alg: "(F M' F') l' (F M F') l",
+    start: () => State.solved(),
+    result: "3-cycle",
+  },
 ];
 

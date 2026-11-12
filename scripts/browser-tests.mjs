@@ -739,7 +739,7 @@ labTest("algorithms: one can be deleted, and the turn list saved as one and load
   await page.click(`[data-alg-load="${mine}"]`);
   const loadedMine = { base: await page.$eval("#base-label", (e) => e.textContent), alg: await turnList(), counter: await counter() };
   check(
-    algsBefore.length === 5 && algsBefore.includes("Corner 3-cycle (Baum)") && !afterDelete.includes("Corner 3-cycle (Baum)") && afterDelete.length === 4 && fieldAfterLoad === "" && afterSave.at(-1) === "Sexy move" && loadedMine.base === "Sexy move" && loadedMine.alg === "R U R' U'" && loadedMine.counter === "0/4",
+    algsBefore.length === 9 && algsBefore.includes("Corner 3-cycle (Baum)") && !afterDelete.includes("Corner 3-cycle (Baum)") && afterDelete.length === 8 && fieldAfterLoad === "" && afterSave.at(-1) === "Sexy move" && loadedMine.base === "Sexy move" && loadedMine.alg === "R U R' U'" && loadedMine.counter === "0/4",
     `algorithms: delete one (${algsBefore.length} -> ${afterDelete.length}), save one ("${afterSave.at(-1)}"), and load it back ("${loadedMine.alg}", ${loadedMine.counter})`,
   );
 });
@@ -1169,8 +1169,8 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   check(second?.index === 2 && second.index + second.after === total && new RegExp(`Step 2 of ${total} to solved\\.$`).test(await line()) && boxes === "false,true", `the next step after a played one is step 2 of the same ${total}, boxed after the first ("${await line()}", boxes ${boxes})`);
   // In the turn list a cycle step's setup turns, and their undoing, are marked.
   const marks = await page.$$eval("#history .step-box.on .tok", (els) => els.map((e) => (e.className.match(/part-(\w+)/) ?? [])[1]).join());
-  const want = /\[(.+):/.exec(second.alg) ? /^(regrip,)?(setup,)+(cycle,){8}(undo,?)+$/ : /^(regrip,)?(cycle,?){8}$/;
-  check((["corners", "edges"].includes(second.stage) ? want : /^(regrip,)?(turns,?)+$/).test(marks), `the step's turns are marked by part (${second.alg}: ${marks})`);
+  const want = /\[(.+):/.exec(second.alg) ? /^(regrip,)*(setup,)+(cycle,){8}(undo,?)+$/ : /^(regrip,)*(cycle,?){8}$/;
+  check((["corners", "edges"].includes(second.stage) ? want : /^(regrip,)*(turns,?)+$/).test(marks), `the step's turns are marked by part (${second.alg}: ${marks})`);
   // Stop drops the step's grays and line, and leaves the turn list and its boxes alone; so
   // does closing the section. Next step starts again from the position shown, counting on.
   const before = await turnList();
@@ -1323,7 +1323,7 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   const level = cycle.paths.findIndex((t) => /^W [\w.]+\/U > [\w.]+\/U/.test(t));
   const facing = cycle.runnerFacing[level] ?? [];
   check(cycle.stage === "corners" && level >= 0 && facing.length === 13 && facing.every((v) => angle(v, FACE.U) < 3) && lean(cycle) < 47, `a flying copy whose sticker faces up at both ends keeps it facing up all the way (${cycle.alg}; ${cycle.paths.join("; ")}; ${JSON.stringify(facing)})`);
-  check(unit.stage === "coreMiddle" && unit.arrows === 1 && /^null /.test(unit.paths[0]) && unit.focus.length >= 3 && unit.runners === 1, `a core double edge moves as a unit with the cubelets against it, on a neutral path (${unit.alg}; ${unit.paths.join("; ")}; focus ${unit.focus.join(" ")})`);
+  check(unit.stage === "coreMiddle" && unit.arrows >= 1 && unit.paths.every((t) => /^null /.test(t)) && unit.focus.length >= 3 * unit.arrows && unit.runners === unit.arrows, `each core double edge moves as a unit with the cubelets against it, on a neutral path (${unit.alg}; ${unit.paths.join("; ")}; focus ${unit.focus.join(" ")})`);
 });
 
 labTest("guide: a flying cubelet turns only about the axis its sticker turns about", async ({ page, check, probe, settle }) => {
@@ -1346,10 +1346,10 @@ labTest("guide: a flying cubelet turns only about the axis its sticker turns abo
 });
 
 labTest("guide: a cubelet turning in place has a disc, and its unit rises past it, turns, and drops back", async ({ page, check, probe, settle }) => {
-  // The owner's position: Top to bottom's next step (R U R' U' R) turns the white core
-  // corner at UFR a third of a turn clockwise in place, with its two extension cubelets.
+  // Top to bottom's next step here turns one white core corner a third of a turn in place,
+  // with its two extension cubelets.
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "VSXN IXMM XYNB KLAF LRHN PTVM ZFSA TRVQ QRJK UWWB YLHH");
+  await page.fill("#code-in", "MKCT OOXD PDQK ZTIX BSRG LFFL MBXH TUNQ CCAY TMCT GMUR");
   await page.click("#import");
   await settle();
   await page.locator("#guide > summary").click();
@@ -1358,8 +1358,8 @@ labTest("guide: a cubelet turning in place has a disc, and its unit rises past i
   await settle();
   const g = await probe("guide");
   const tw = g.twists[0];
-  check(g.alg === "R U R' U' R" && g.paths.some((t) => /^W UFR\/\w > UFR\/\w twist$/.test(t)) && g.twists.length === 1 && tw.slot === "UFR", `the corner turning in place gets a twist, not a path (${g.paths.join("; ")})`);
-  check(tw.angle === -120 && Math.sign(tw.half) === -1 && Math.abs(tw.half + 60) < 3, `the disc shows a third of a turn clockwise seen from outside, and the flying cubelet turns the same way (${tw.angle}, halfway ${tw.half})`);
+  check(g.stage === "coreTopC" && g.twists.length === 1 && g.paths.some((t) => new RegExp(`^W ${tw.slot}/\\w > ${tw.slot}/\\w twist$`).test(t)), `the corner turning in place gets a twist, not a path (${g.alg}: ${g.paths.join("; ")})`);
+  check(Math.abs(tw.angle) === 120 && Math.sign(tw.half) === Math.sign(tw.angle) && Math.abs(Math.abs(tw.half) - 60) < 3, `the disc shows a third of a turn, and the flying cubelet turns the same way (${tw.angle}, halfway ${tw.half})`);
   check(g.units.every((n) => n === 3), `every core corner of the step flies with its two extension cubelets (${g.units.join(" ")})`);
   check(g.flyersLit, "the flying cubelets are made and lit like the puzzle's own, with shadows");
   // Out, hold past the disc while turning, back; each part eased, so the rise comes to rest at the disc.

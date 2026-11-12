@@ -131,14 +131,14 @@ a goal in words, its turns, the cubelets it applies to (`moved`: slot before, sl
 the cubelets it may leave anywhere (`free`); every other cubelet looks the same after the
 step. Stages, in order:
 
-1. **hold**: turn the whole puzzle so white is up.
+1. **hold**: turn the whole puzzle so white is up (outer steps may later flip it, below).
 2. **shape**: back to the X shape with face turns. Free: every outer cubelet.
 3. **core**: white core cubelets up, yellow down, with the shape-keeping turns. Free: every
    outer cubelet.
 4. **parity**: when the outer corners or the outer edges need an odd number of swaps, `r`
    (both odd), `U` (edges only: it moves the four edges in one ring and the eight corners
    in two) or `U r` (corners only) makes both even.
-5. **corners**, 6. **edges**: three at a time. Each step is one fixed 3-cycle (`CYCLES`,
+5. **corners**, 6. **edges**: three at a time. Each step is one of two fixed 3-cycles per kind (`CYCLES`,
    or its inverse) inside setup turns that keep the shape, written `[setup: cycle]`. An
    outer cubelet is turned one way in each spot, so placing it is all there is to do.
 
@@ -163,20 +163,55 @@ positions, the two modes come out about the same length (177 and 180 turns on av
 
 **Ease, the owner's priorities for turns** (`EASE` in `solve.ts`), most important first:
 avoid the back (`B`, `b`); then the bottom (`D`); then `H` and `S`; `M` is fine (a person
-does it as `L' R x'`); and regular, repeating patterns are easier to memorize. So:
+does it as `L' R x'`); `R` is preferred to `F` (F costs 7 to R's 4, so `y' R U R' U R U2 R'`
+beats `F U F' U F U2 F'`); the owner is right-handed, so `L` is a little harder than `R`;
+an outer turn is as hard as its face's inner turn (`r` like `R`, `f` like `F`); and
+regular, repeating patterns are easier to memorize. The weights are whole numbers (the
+tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H S` 12,
+`B b` 16. So:
 
 - Turns are chosen by ease, not by number: setups and the core stage take the easiest
   way, and the shape stage weighs every way with the fewest turns, and with one more.
   In 200 sampled solves `B` was 0.1% of turns and `D` 1.1%, with no `b`, `S` or `H`.
 - **Regrips.** A step may begin with a turn of the whole puzzle about its vertical axis
   (`y`, `y'`, `y2`) when that makes the rest easier; a regrip is never in the middle of a
-  step. So only white stays put: the **grip** is how many quarter turns the puzzle is from
-  green in front, and each outer cubelet's home turns with it. A step's `regrip` says how
-  it begins, and its `moved` places are as the puzzle is held before it.
+  step. A cycle step or a layer core step (`layers`) may also begin by flipping the puzzle
+  over, `x2`, alone or before a `y` turn (the owner flips with `x2` more often than `z2`),
+  so the bottom comes on top; the steps after it go on from there, and the puzzle is
+  turned back only if a later step is better off that way. So the **grip** is which of
+  these eight holds the puzzle is in, from white up and green front (`GRIPS`), and each
+  outer cubelet's home turns with it. A step's `regrip` is the notation it begins with
+  ("" for none), and its `moved` places are as the puzzle is held before it. With yellow
+  up, a layer core step is found with the puzzle turned back white up and then named as
+  it is held (`asFlipped`; ease by the names as held, and its goal says "top layer,
+  yellow up"); a cycle step works with yellow up as it is, so its cycle keeps its front
+  turns. A position held neither white nor yellow up, or yellow up before the shape and
+  core are done in `kinds` (its shape and core steps need white up), starts with a hold step.
+- **Seeing the cubelets.** A cycle step's cost, and a layer core step's, also counts where
+  the cubelets it is for are while a person turns: after the regrip and after each turn,
+  each one on the bottom (y below 0) costs `UNSEEN_DOWN` (4) and each on the back (z below
+  0) `UNSEEN_BACK` (2), in ease units. In `layers`, a step that builds the white or the
+  yellow layer (`coreTop`, `coreTopC`, `coreBottom`, `coreBottomC`, `topEdges`,
+  `topCorners`, `bottomCorners`, `bottomEdges`) also costs `LAYER_DOWN` (6) for each of
+  its turns while that layer is on the bottom: the owner flips the puzzle to work the layer
+  being built on top. A flip costs `FLIP_COST` (16) on top of the `x2` turn's ease, so a
+  solve doesn't flip back and forth for little gain. Each cycle reaches into the bottom
+  layer (corners Fx.UL, Rx.UF, Rx.DF; edges Fx.L, Rx.F, Rx.D), so some time there is
+  unavoidable. Over 40 Lab shuffles solved top to bottom: the steps' cubelets spent 21%
+  of their turns on the bottom (28% with no flips), 28 of 750 white or yellow layer steps
+  were worked with that layer on the bottom (159 of 736 with no flips), about 3 flips per
+  solve (typically at the yellow core, and back for the white X-face), and 227 turns
+  instead of 222 (230 once `F` cost more than `R`; most `F` turns left are the cycles' own). Over 100 sampled `kinds` solves, the outer steps' cubelets' share of
+  turns on the bottom fell from 27% to 22%, with about 1.5 flips and the same turns.
 - **The cycles are commutators, written grouped:** corners `(F' L' F) r (F' L F) r'`,
   edges `(F' M' F) r (F' M F) r'` (inverses: `r (F' L' F) r' (F' L F)` and likewise).
   They are Baum's two turned a quarter around the puzzle, which takes out `b` and `S`.
-  The edge cycle's two `M` turns undo each other, but between them the side centers are moved.
+  Each has a mirror image, left for right, the owner's: corners `(F R F') l' (F R' F') l`
+  (Lx.DF, Fx.UR, Lx.UF), edges `(F M' F') l' (F M F') l` (Lx.D, Fx.R, Lx.F). A step takes
+  whichever of the two, with its setup and the rest of its cost, is easiest (the mirror on
+  a tie); with two to choose from, setups are shorter (183 turns a solve in `kinds` instead
+  of 191). The edge cycle's two `M` turns undo each other, but between them the side centers are moved.
+  `ALGORITHMS.md` and the Lab's Algorithms list have all four.
 - Setups reach every one of the 3,360 ordered triples of spots for each kind, which with
   the parity fixes makes the outer stages complete; `test/solve.test.ts` solves scrambled
   positions and positions from the color editor, and checks each step changes only what
@@ -364,6 +399,7 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   around as the turn goes (`layerArrow`). **Order** switches between the solver's modes, "Corners,
   then edges" and "Top to bottom", and is kept on the device. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
   guide calls it **Regrip**, and it names the center that is up now ("now blue is up").
+  A cycle step's regrip may flip the puzzle over (`x2`); the Hold line then says yellow is up.
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag
   ("3 Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
   undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows
