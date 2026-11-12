@@ -87,6 +87,9 @@ corner 3-cycle is `R' F' R b R' F R b'` (both verified by tests).
   (away from the core). Inner turns carry it rigidly with the core cubelet it touches;
   outer turns spin it about its outward axis.
 - **Fused centers** never separate.
+- **No sticker is ever covered.** In every position, in or out of shape, the spot a
+  sticker faces is empty or outside the puzzle. (The spot a sticker *will* face after some
+  turns may be filled now.)
 - **The shape depends only on the core.** Each core cubelet always has the same number of
   outer cubelets against it (2 per corner, 1 per single edge, 2 per double edge). The X
   shape returns exactly when the core corners have white/yellow facing up or down, the
@@ -123,29 +126,61 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
 
 `src/core/solve.ts` solves any position turns can reach as a list of steps a person could
 follow (`nextStep`, `solveSteps`; `xc solve` prints them). It is not the shortest solution
-(about 180 turns on average, 240 at most in 300 sampled positions). Each step has a stage,
-a goal in words, its turns, the cubelets it is for (`moved`: slot before, slot after) and
+(about 175 turns on average, 242 at most in 200 sampled positions). Each step has a stage,
+a goal in words, its turns, the cubelets it applies to (`moved`: slot before, slot after) and
 the cubelets it may leave anywhere (`free`); every other cubelet looks the same after the
 step. Stages, in order:
 
-1. **hold**: turn the whole puzzle so white is up and green in front. No later step turns
-   the whole puzzle or leaves a center moved (the edge 3-cycle's two S turns undo each
-   other), so the centers stay put.
-2. **shape**: back to the X shape with face turns (at most 12; a table-driven search finds
-   the fewest). Free: every outer cubelet.
+1. **hold**: turn the whole puzzle so white is up.
+2. **shape**: back to the X shape with face turns. Free: every outer cubelet.
 3. **core**: white core cubelets up, yellow down, with the shape-keeping turns. Free: every
    outer cubelet.
 4. **parity**: when the outer corners or the outer edges need an odd number of swaps, `r`
    (both odd), `U` (edges only: it moves the four edges in one ring and the eight corners
    in two) or `U r` (corners only) makes both even.
-5. **corners**, 6. **edges**: three at a time. Each step is one fixed 3-cycle (`CYCLES`:
-   Baum's two, or its inverse) inside setup turns that keep the shape, written
-   `[setup: cycle]`. An outer cubelet is turned one way in each spot, so placing it is all
-   there is to do. Setups are at most 7 turns for edges and 5 for corners.
+5. **corners**, 6. **edges**: three at a time. Each step is one fixed 3-cycle (`CYCLES`,
+   or its inverse) inside setup turns that keep the shape, written `[setup: cycle]`. An
+   outer cubelet is turned one way in each spot, so placing it is all there is to do.
 
-The 3-cycles are the method's whole repertoire for the outer cubelets, and
-`test/solve.test.ts` shows they are enough: it solves scrambled positions and positions
-from the color editor, and checks each step changes only what it says.
+**Modes** (`Mode`). `kinds` is as above. `layers` goes top to bottom, as a 3x3x3 is often
+solved. Its core comes first, a cubelet at a time, in place of the shape and core stages:
+the white core single edges into the top layer, white up (`coreTop`), then the white core
+corners (`coreTopC`), the double edges into the middle layer (`coreMiddle`), the yellow
+single edges into the bottom layer, yellow down (`coreBottom`), and the yellow corners
+(`coreBottomC`). Each step brings at least one more of its kind where it belongs and keeps
+the earlier kinds; look-alikes are interchangeable, so each kind is tracked as a set of
+four (slot, sticker axis) codes, with a table per kind and count of the fewest face
+turns, and a step is the easiest of the shortest ways an iterative deepening search finds
+(about 4.5 turns, 9 at most, over 60 sampled positions). When the five are done the
+puzzle is in the X shape with its core solved. Then the outer cubelets, with the same two
+cycles as `kinds`, top to bottom: the white
+X-face's edges (`topEdges`), its corners (`topCorners`), the extension side edges
+(`sideEdges`), then the yellow X-face's corners and edges (`bottomCorners`,
+`bottomEdges`). A cycle never moves a cubelet that is already home, in either mode; it
+brings at least one cubelet of the current group home, and its third cubelet may be any
+unsolved one. A step's `lands` says which of the three end up solved (in place and turned as solved; the goal says "Two end up solved", since "home" is the Home view). Sampled over 200
+positions, the two modes come out about the same length (177 and 180 turns on average).
+
+**Ease, the owner's priorities for turns** (`EASE` in `solve.ts`), most important first:
+avoid the back (`B`, `b`); then the bottom (`D`); then `H` and `S`; `M` is fine (a person
+does it as `L' R x'`); and regular, repeating patterns are easier to memorize. So:
+
+- Turns are chosen by ease, not by number: setups and the core stage take the easiest
+  way, and the shape stage weighs every way with the fewest turns, and with one more.
+  In 200 sampled solves `B` was 0.1% of turns and `D` 1.1%, with no `b`, `S` or `H`.
+- **Regrips.** A step may begin with a turn of the whole puzzle about its vertical axis
+  (`y`, `y'`, `y2`) when that makes the rest easier; a regrip is never in the middle of a
+  step. So only white stays put: the **grip** is how many quarter turns the puzzle is from
+  green in front, and each outer cubelet's home turns with it. A step's `regrip` says how
+  it begins, and its `moved` places are as the puzzle is held before it.
+- **The cycles are commutators, written grouped:** corners `(F' L' F) r (F' L F) r'`,
+  edges `(F' M' F) r (F' M F) r'` (inverses: `r (F' L' F) r' (F' L F)` and likewise).
+  They are Baum's two turned a quarter around the puzzle, which takes out `b` and `S`.
+  The edge cycle's two `M` turns undo each other, but between them the side centers are moved.
+- Setups reach every one of the 3,360 ordered triples of spots for each kind, which with
+  the parity fixes makes the outer stages complete; `test/solve.test.ts` solves scrambled
+  positions and positions from the color editor, and checks each step changes only what
+  it says.
 
 ## Code map
 
@@ -158,7 +193,7 @@ from the color editor, and checks each step changes only what it says.
 - `src/core/edit.ts`: fitting edited sticker colors to real cubelets (the Lab's color editor).
 - `src/core/search.ts`, `src/core/goals.ts`: iterative-deepening search with goal masks
   based on appearance (look-alike twins compare equal).
-- `src/core/solve.ts`: the step-by-step solver (see "Solving method" below).
+- `src/core/solve.ts`: the step-by-step solver (see "Solving method" above).
 - `src/cli/xc.ts`: command-line driver (see `README.md`).
 - `src/web/`: **X-Cube Lab**, the browser viewer, built by `scripts/build-web.ts` into
   `dist/x-cube-lab.html` (published as a claude.ai artifact, which supplies the document
@@ -258,6 +293,70 @@ from the color editor, and checks each step changes only what it says.
   the centers that should be opposite) or "Wrong center color order"
   (halo on all six centers that show). A cube painted as the real one shows is always
   valid, so any problem means a sticker painted wrong.
+- **Step guide:** "Solve step by step", a disclosure in the Run an algorithm panel. **Next
+  step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
+  the position shown, adds its turns at the current step, unplayed, and a line under the
+  button gives the stage and goal, then "Turns:" with the turns as the solver writes them
+  (`[setup: cycle]`), then "Step 2 of 9 to solved" (counted from when the guide was started; a step taken
+  from anywhere but the end of the one before starts the count again), each on its own line. Until the step has
+  been played through, the cubelets it applies to keep their colors, the cubelets it leaves alone are gray, and the ones it may leave
+  anywhere are darker gray (stickers and flat-view tiles; one gray for every color at each
+  level, so a gray white can't be taken for a white). Before the step's first turn, **paths** in the 3D view
+  show where each cubelet it moves will go and how it will be turned: a path follows one of
+  the cubelet's stickers, in that sticker's color with a dark casing, leaving the sticker and
+  coming onto the face the sticker will be on within 45 degrees of straight out. A
+  cubelet that ends up solved has a full path and a ring where its sticker lands;
+  one only passing through has a dashed path. In a shape or core step, which solves no
+  cubelet, each cubelet it applies to that moves or turns has a plain path (no ring), read
+  from where it ends. A core double edge has no sticker and is never seen, so it is shown
+  as a unit with the two extension cubelets against it (`attached`): those keep their
+  colors, and the unit's path, in a neutral gray, follows the outward sticker of one of
+  them, with all three flying together. A path goes
+  around the puzzle, never through it (`route`). It starts as an arc well outside the
+  puzzle (the short way around; for opposite sides, also by way of each of the six
+  directions) and is pulled tight like an elastic band: each point moves toward the
+  middle of its neighbors and back out of whatever it is pulled into, keeping a margin
+  from every cubelet, so the path is straight where nothing is near and rounded where it
+  bends around a cubelet. Near its ends it stays inside a 45 degree cone around straight
+  out of the sticker and straight onto the new face. It is then let spring like a stiff rod, which spreads each bend
+  over about a cubelet's width and keeps it convex (away from its ends it never bows in
+  toward the puzzle). No sticker is ever covered, so the start is clear; the spot the
+  new face looks into may be filled until the step takes that cubelet away, so that one
+  cubelet doesn't count (the path is drawn faintly through it). Of the routes, the one
+  costing least is taken: the length of it inside the puzzle costs most, then its length,
+  how much it turns, and how far it leaves the room the 3D view shows (a sphere around
+  the puzzle, whatever the view's angle). A route may leave that room by up to 0.4 of a
+  cubelet, to round a cubelet near the edge of the view without a tight bend. A flying copy moves by distance along its path, so
+  its speed is even (eased at the ends). It turns the way its path goes: the followed
+  sticker faces out of its face at the start, away from the puzzle's center along the
+  way, and out of its new face at the end (a sticker facing the same way at both ends
+  keeps facing that way), and any spin about that sticker still needed
+  is spread evenly along the path. The sticker
+  followed is the one whose route costs least, so a hop to a neighboring spot stays a
+  short hop and the sticker facing the way the cubelet goes is preferred to one whose
+  path would turn back on itself; one on the faces the Home view shows is favored a little. Each loop
+  (`GUIDE_LOOP`): a small copy of each cubelet flies along its path, turning as the cubelet will turn (it leaves showing its
+  stickers as they are and arrives showing them as they will be), rests where it
+  arrives, vanishes, and after a short gap the loop starts again; none of this moves
+  where the device asks for reduced motion. Only the cubelets the step applies to have
+  edge glow. The ⓘ beside the 3D view explains how to read the paths.
+  Where the puzzle is in the way, a path and its flying copy are drawn faintly (a second
+  drawing that passes only behind what is already drawn, without the path's dark
+  casing), so a path on the far side can't be taken for one on the near side.
+  **Show** turns the 3D view to where the paths begin and end (as the color editor's Show
+  does for a problem). A parity step, which turns whole layers, has one neutral arrow for each turn instead:
+  an arc around the outside of the layer, where a finger would swipe to turn it, as far
+  around as the turn goes (`layerArrow`). **Order** switches between the solver's modes, "Corners,
+  then edges" and "Top to bottom", and is kept on the device. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
+  guide calls it **Regrip**, and it names the center that is up now ("now blue is up").
+  Each step the guide has loaded stays in the turn list in a rounded box behind a tag
+  ("3 Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
+  undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows
+  that step again at the position it begins from.
+  **Stop**, or closing the disclosure, drops the step, its grays and its line and leaves
+  the turn list alone; Next step starts again from the position shown. Playing the step returns the colors and the line reads "(done)". Any change that
+  takes the step's turns out of the turn list (a turn by hand, Clear, Edit) drops the step,
+  its grays and its line; so does Edit colors. The line has a fixed height (layout rule).
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.
@@ -347,9 +446,11 @@ Never do any of these without an explicit instruction from the owner:
     the check runs and job logs) and fix what fails. Reproduce a CI failure locally with the
     narrowest run that shows it, then show that same run passing.
   - A push to a pull request cancels CI still running on its previous commit, and that
-    run's `all checks` then fails because a job was cancelled. That is not a failure: when
-    a failed check is on a commit that is no longer the pull request's head, ignore it and
-    don't report it. Only failures on the current head need looking into.
+    run's `all checks` then fails because a job was cancelled. That is not a failure. When
+    a check result or any other CI notice is for a commit that is no longer the pull
+    request's head, say nothing about it to the owner: no report, no "nothing to act on",
+    no mention in a later summary. Check which commit it is for, and if it is superseded,
+    end the turn without comment. Only results on the current head are worth a message.
 - CI (`.github/workflows/ci.yml`) runs the unit tests, the typecheck, and the build and
   browser tests in Chromium and WebKit, each as its own check, all on Node 24 (the version
   `package.json` requires). Keep it green. It reports coverage (unit tests, and browser

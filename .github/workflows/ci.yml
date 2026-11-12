@@ -108,6 +108,15 @@ jobs:
           packages=(~/webkit-packages/*.deb)
           echo "Restored ${#packages[@]} packages"
           if (( ${#packages[@]} )); then sudo cp "${packages[@]}" /var/cache/apt/archives/; fi
+      # The runner image's package lists can name versions the mirrors no longer have (404),
+      # so refresh them first, retrying while the mirrors' names don't resolve.
+      - name: Refresh apt's package lists
+        run: |
+          for attempt in 1 2 3; do
+            sudo apt-get update && break
+            echo "apt-get update failed (attempt $attempt); retrying"
+            sleep 15
+          done
       - run: npx playwright install --with-deps ${{ matrix.browser }}
       # Chromium draws with Mesa's llvmpipe, much faster than its own SwiftShader, which it
       # quietly falls back to without Mesa's EGL (see scripts/browser-tests.mjs).

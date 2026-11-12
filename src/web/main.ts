@@ -2,7 +2,7 @@
 // three.js r128 is loaded as a global from cdnjs by the page.
 
 import { isHomeX, isSolved, isXShape, isExposed, outerAvailability } from "../core/analyze.ts";
-import { DIRS, ROT_DIR, ROT_INV, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
+import { DIRS, axisRotation, ROT_DIR, ROT_INV, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
   COLOR_NAME,
@@ -21,10 +21,12 @@ import {
   turnName,
   type Color,
   type Turn,
+  applyTurns,
 } from "../core/puzzle.ts";
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
 import { fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
+import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 
 declare const THREE: any;
 
@@ -365,6 +367,23 @@ function initScene(canvas: HTMLCanvasElement) {
     return mats.get(c);
   };
   paintMaterial = { sticker: matFor, tile: netMatFor, glow: (c: Color) => [0, 1, 2, 3].map((open) => glowMatFor(c, open)) };
+  // Grays for the step guide: level 1 for cubelets a step leaves alone, level 2 (darker)
+  // for those it may leave anywhere, the same for every color.
+  const grayMats = new Map<string, { sticker: any; tile: any; glow: any[] }>();
+  grayMaterial = (c: Color, level: 1 | 2) => {
+    const key = `${c}/${level}`;
+    if (!grayMats.has(key)) {
+      // One gray for every color at each level, so a gray white can't be taken for a white.
+      const v = level === 1 ? 0.55 : 0.24;
+      const gray = new THREE.Color(v, v, v);
+      const sticker = matFor(c).clone();
+      sticker.color = gray;
+      stickerMats.push(sticker);
+      applyGloss();
+      grayMats.set(key, { sticker, tile: new THREE.MeshBasicMaterial({ color: gray, vertexColors: true }), glow: [0, 1, 2, 3].map((open) => makeGlowMaterial(glowTex, gray, open)) });
+    }
+    return grayMats.get(key)!;
+  };
   // local face d -> plane placement
   const faceXform: [number, number, number, number, number][] = [
     // [px, py, pz, rotX, rotY]
@@ -1283,6 +1302,21 @@ function frame() {
   }
   tickAnimation();
   tickSettle();
+  if (guideArrows?.visible) {
+    // One loop: the copies travel (eased at both ends), rest where they arrive, vanish, and
+    // after a short gap start again.
+    const { TRAVEL, REST, GAP } = GUIDE_LOOP;
+    const at = performance.now() % (TRAVEL + REST + GAP);
+    const t = Math.min(1, at / TRAVEL);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const shown = at < TRAVEL + REST;
+    for (const r of guideArrows.userData.runners) {
+      r.copy.visible = shown;
+      r.copy.position.copy(runnerPoint(r, e));
+      const at = Math.min(RUNNER_STEPS - 1e-9, e * RUNNER_STEPS), k = Math.floor(at);
+      r.copy.quaternion.copy(r.turns[k]).slerp(r.turns[k + 1], at - k);
+    }
+  }
   const view3dOpen = !view3dSection?.classList.contains("collapsed");
   if (view3dOpen) updateCompass();
   renderNetAnimation();
@@ -1737,6 +1771,7 @@ let playing = false;
 let playingBack = false; // playing toward the start (◀) rather than the end (▶)
 
 function enqueue(turn: Turn, forward: boolean) {
+  if (guideArrows) guideArrows.visible = false; // the arrows describe the position before the step's first turn
   queue.push({ turn, forward });
 }
 
@@ -1775,6 +1810,7 @@ function finishAnim() {
   pivot.remove(anim.group);
   syncMeshes(anim.after);
   anim = null;
+  drawGuide(); // the turn may have ended the step, or brought the position back to its start
   if (!queue.length) showNetAnimation(false);
 }
 
@@ -2345,6 +2381,7 @@ function escapeHtml(s: string) {
 
 function render() {
   const st = app.current;
+  refreshGuide();
   // status
   const shape = isHomeX(st) ? chip("X shape", "good") : isXShape(st) ? chip("X shape, tipped", "good") : chip("Out of shape", "warn");
   const solved = isSolved(st) ? chip("Solved", "good") : "";
@@ -2373,10 +2410,12 @@ function render() {
   }
 
   // history strip
-  const hist = app.history
-    .map((t, i) => `<button class="tok ${i < app.cursor ? "done" : ""} ${i === app.cursor - 1 ? "cur" : ""}" data-jump="${i + 1}">${turnName(t)}</button>`)
-    .join("");
+  const hist = turnListHtml();
   $("history").innerHTML = hist || `<span class="hint">Turns you make or load appear here. Tap one to jump to it.</span>`;
+  // Keep the shown step's box, or else the current turn, in sight within the list.
+  const list = $("history");
+  const shown = list.querySelector<HTMLElement>(".step-box.on") ?? list.querySelector<HTMLElement>(".tok.cur");
+  if (shown && (shown.offsetTop < list.scrollTop || shown.offsetTop + shown.offsetHeight > list.scrollTop + list.clientHeight)) list.scrollTop = shown.offsetTop;
   $("counter").textContent = `${app.cursor} / ${app.history.length}`;
   $("load").textContent = editingTurns ? "Update" : "Load";
   $("alg-edit").textContent = editingTurns ? "Cancel" : "Edit";
@@ -2598,6 +2637,13 @@ function bindViewTools() {
 
 function bindUI() {
   bindAlgorithms();
+  $("next-step").addEventListener("click", () => nextStep());
+  $("guide-stop").addEventListener("click", () => stopGuide());
+  $("guide-start").addEventListener("click", () => goToStep(guide ?? undefined));
+  $("guide-show").addEventListener("click", () => showGuide());
+  $("guide").addEventListener("toggle", () => {
+    if (!($("guide") as HTMLDetailsElement).open) stopGuide();
+  });
   bindViewTools();
   $("edit-start").addEventListener("click", () => startEdit());
   $("edit-done").addEventListener("click", () => endEdit(true));
@@ -2630,6 +2676,8 @@ function bindUI() {
       app.modifier = Number(ds.mod) as 1 | 2 | 3;
       render();
     } else if (ds.jump) jump(Number(ds.jump));
+    else if (ds.step) goToStep(trail.find((g) => g.start === Number(ds.step)));
+    else if (ds.guideMode) setGuideMode(ds.guideMode as Mode);
     else if (ds.load) {
       const s = saved.find((x) => x.id === ds.load);
       if (s) {
@@ -2762,6 +2810,7 @@ function bindUI() {
 const stickerMesh3d: any[] = [];
 const tileMesh: any[] = [];
 let paintMaterial: { sticker: (c: Color) => any; tile: (c: Color) => any; glow: (c: Color) => any[] } | null = null;
+let grayMaterial: ((c: Color, level: 1 | 2) => { sticker: any; tile: any; glow: any[] }) | null = null;
 
 interface Edit {
   shape: State; // the position editing started from; its shape is kept
@@ -2779,6 +2828,7 @@ let edit: Edit | null = null;
 function startEdit() {
   if (edit) return;
   flushAnimations();
+  clearGuide();
   const st = app.current.clone();
   const colors = visibleColors(st);
   edit = { shape: st, colors, fit: fitColors(st, colors), shown: st.clone(), paint: "W", painted: [], highlight: null, hidden: null, selected: "" };
@@ -2823,6 +2873,738 @@ function drawEdit() {
   }
   syncMeshes(edit.shown);
   placeHalos();
+}
+
+// ------------------------------------------------------------------ step guide
+//
+// Next step asks the solver (src/core/solve.ts) for one step from the position shown,
+// puts its turns in the turn list, unplayed, and says what the step is for. Until the
+// step has been played through, the cubelets it applies to keep their colors, the cubelets it
+// leaves alone are gray, and the ones it may leave anywhere are darker gray; before its
+// first turn, arrows show where the cubelets it moves will go. Each step stays boxed in the
+// turn list behind a tag; the tag, or Step start, goes back to where the step begins.
+
+const STAGE_NAME: Record<SolveStep["stage"], string> = {
+  hold: "Regrip", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges",
+  coreTop: "Top core edges", coreTopC: "Top core corners", coreMiddle: "Middle core edges", coreBottom: "Bottom core edges", coreBottomC: "Bottom core corners",
+  topEdges: "Top edges", topCorners: "Top corners", sideEdges: "Side edges", bottomCorners: "Bottom corners", bottomEdges: "Bottom edges",
+};
+
+interface Guide {
+  step: SolveStep;
+  /** Steps left after this one, and this step's number since the guide was last started. */
+  after: number;
+  index: number;
+  /** Where in the turn list the step's turns begin, and the position there. */
+  start: number;
+  from: State;
+  /** Cubelet ids: the ones the step is for, and the ones it may leave anywhere. */
+  focus: Set<number>;
+  free: Set<number>;
+  /** A path for each cubelet the step moves to another spot. */
+  arrows: StickerPath[];
+}
+/** Every step the guide has put in the turn list that is still there, in order; `guide` is the one being shown, if any. */
+let trail: Guide[] = [];
+let guide: Guide | null = null;
+let guideLine = "";
+const GUIDE_MODE_KEY = "xcube.guideMode";
+/** The order Next step solves the outer cubelets in, kept on this device. */
+let guideMode: Mode = (() => {
+  try {
+    return localStorage.getItem(GUIDE_MODE_KEY) === "layers" ? "layers" : "kinds";
+  } catch {
+    return "kinds";
+  }
+})();
+
+function setGuideMode(mode: Mode) {
+  guideMode = mode;
+  try {
+    localStorage.setItem(GUIDE_MODE_KEY, mode);
+  } catch {
+    // The choice then lasts only for this visit.
+  }
+  render();
+}
+let guideDimmed: any[] = []; // meshes drawn gray
+let guideArrows: any = null;
+
+function nextStep() {
+  if (edit) return;
+  flushAnimations();
+  let steps: SolveStep[];
+  try {
+    steps = solveSteps(app.current, guideMode);
+  } catch (e) {
+    clearGuide();
+    guideLine = "";
+    setMessage(`Can't solve from here: ${(e as Error).message}`, "error");
+    return render();
+  }
+  // Carrying on from the end of a step, the count carries on too.
+  trail = trail.filter((g) => guideHolds(g) && g.start + g.step.turns.length <= app.cursor);
+  const prev = trail.find((g) => g.start + g.step.turns.length === app.cursor);
+  const index = prev ? prev.index + 1 : 1;
+  clearGuide();
+  if (!steps.length) {
+    guideLine = "Solved. Nothing left to do.";
+    return render();
+  }
+  const [step] = steps;
+  const st = app.current;
+  guide = {
+    step,
+    after: steps.length - 1,
+    index,
+    start: app.cursor,
+    from: st.clone(),
+    focus: new Set(step.moved.flatMap(([from]) => [from, ...attached(st, from)]).map((s) => st.occ[s])),
+    free: new Set(step.free.map((s) => st.occ[s])),
+    arrows: stickerPaths(st, step),
+  };
+  trail.push(guide);
+  app.history = app.history.slice(0, app.cursor).concat(step.turns);
+  setMessage(`${step.turns.length} turns loaded`, "ok");
+  render();
+}
+
+/** Whether the guide's step is still in the turn list where it was put, starting from the position it was worked out for. */
+function guideHolds(g: Guide): boolean {
+  const there = app.history.slice(g.start, g.start + g.step.turns.length);
+  if (there.length !== g.step.turns.length || !there.every((t, i) => turnName(t) === turnName(g.step.turns[i]))) return false;
+  const st = app.base.clone();
+  for (let i = 0; i < g.start; i++) applyTurn(st, app.history[i]);
+  return st.equals(g.from);
+}
+
+function clearGuide() {
+  guide = null;
+  drawGuide();
+}
+
+/** Stop, or closing the disclosure: drops the shown step's grays, arrows and line. The turn list keeps its turns and its step boxes. */
+function stopGuide() {
+  if (!guide && !guideLine) return;
+  clearGuide();
+  guideLine = "";
+  render();
+}
+
+/** Show: turns the 3D view to where the shown step's paths begin and end. */
+function showGuide() {
+  if (!guide) return;
+  if (app.cursor !== guide.start) jump(guide.start);
+  const g = guide;
+  const faces: [number, number][] = g.arrows.length ? g.arrows.flatMap((p) => [[p.from, p.fromDir], [p.to, p.toDir]] as [number, number][]) : [...g.focus].flatMap((id) => [0, 1, 2, 3, 4, 5].map((d) => [app.current.occ.indexOf(id), d] as [number, number]).filter(([s, d]) => isExposed(app.current, s, d) && app.current.colorAt(s, d)));
+  showFaces(app.current, faces);
+}
+
+/** Step start, or a step's tag in the turn list: shows that step again, at the position it starts from. */
+function goToStep(g: Guide | undefined) {
+  if (!g || edit) return;
+  guide = g;
+  jump(g.start);
+}
+
+const PART_TITLE = { regrip: "Regrip: turn the whole puzzle", setup: "Setup", cycle: "The cycle", undo: "The setup, undone", turns: "" };
+
+/** The turn list's chips, with each step the guide put there in a box behind a tag that goes to its start. */
+function turnListHtml(): string {
+  const chip = (t: Turn, i: number) => `<button class="tok ${i < app.cursor ? "done" : ""} ${i === app.cursor - 1 ? "cur" : ""}" data-jump="${i + 1}">${turnName(t)}</button>`;
+  let out = "";
+  for (let i = 0; i < app.history.length; ) {
+    const g = trail.find((x) => x.start === i);
+    if (!g) {
+      out += chip(app.history[i], i++);
+      continue;
+    }
+    out += `<span class="step-box ${g === guide ? "on" : ""}"><button class="step-tag" data-step="${i}" title="Go to the start of this step">${g.index} ${STAGE_NAME[g.step.stage]}</button>`;
+    // A cycle step's parts are told apart: the setup, the cycle, and the setup undone.
+    for (const part of g.step.parts) for (let k = 0; k < part.turns; k++, i++) out += chip(app.history[i], i).replace('class="tok ', `title="${PART_TITLE[part.name]}" class="tok part-${part.name} `);
+    out += "</span>";
+  }
+  return out;
+}
+
+/** Drops the guide when its turns are gone from the list, redraws its grays and arrows, and writes its line. */
+function refreshGuide() {
+  trail = trail.filter(guideHolds);
+  if (guide && !trail.includes(guide)) {
+    guide = null;
+    guideLine = "";
+  }
+  drawGuide();
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-guide-mode]")) b.classList.toggle("sel", b.dataset.guideMode === guideMode);
+  ($("guide-stop") as HTMLButtonElement).disabled = !guide && !guideLine;
+  ($("guide-start") as HTMLButtonElement).disabled = !guide || app.cursor === guide.start;
+  ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold";
+  const line = $("guide-line");
+  line.textContent = "";
+  if (guide) {
+    const { step, after, index, start } = guide;
+    const done = app.cursor >= start + step.turns.length;
+    const head = document.createElement("strong");
+    head.textContent = `${STAGE_NAME[step.stage]}${done ? " (done)" : ""}: `;
+    const alg = document.createElement("span");
+    alg.className = "known-alg";
+    alg.textContent = step.alg;
+    // Three lines: what the step does, its turns, and how far there is to go.
+    line.append(head, `${step.goal}. `, document.createElement("br"), Object.assign(document.createElement("b"), { textContent: "Turns:" }), " ", alg, " ", document.createElement("br"), `Step ${index} of ${index + after} to solved.`);
+  } else line.textContent = guideLine;
+}
+
+function drawGuide() {
+  if (!grayMaterial) return;
+  const g = guide;
+  // During a turn the cursor is already past it; the grays go by the position the turn started from.
+  const at = anim ? app.cursor + (anim.forward ? -1 : 1) : app.cursor;
+  // A hold step only turns the whole puzzle, and the center colors are what it goes by: no grays.
+  const within = !!g && g.step.stage !== "hold" && at >= g.start && at < g.start + g.step.turns.length;
+  const key = within ? `${g!.start}/${g!.step.alg}` : "";
+  if (guideArrows) guideArrows.visible = !!g && app.cursor === g.start && !anim && !queue.length;
+  if (drawGuide.key === key) return;
+  drawGuide.key = key;
+  for (const m of guideDimmed) m.material = m.userData.ownMaterial;
+  guideDimmed = [];
+  clearGlowPaint();
+  if (guideArrows) {
+    pivot.remove(guideArrows);
+    disposeTree(guideArrows);
+    guideArrows = null;
+  }
+  if (within) {
+    for (const c of CUBELETS) {
+      if (g!.focus.has(c.id)) continue;
+      const level = g!.free.has(c.id) ? 2 : 1;
+      c.stickers.forEach((color, d) => {
+        if (!color) return;
+        const gray = grayMaterial!(color, level);
+        for (const [mesh, mat] of [[stickerMesh3d[c.id * 6 + d], gray.sticker], [tileMesh[c.id * 6 + d], gray.tile]]) {
+          if (!mesh) continue;
+          mesh.userData.ownMaterial ??= mesh.material;
+          mesh.material = mat;
+          guideDimmed.push(mesh);
+        }
+        // Only the cubelets the step applies to glow.
+        for (const gl of glows[c.id] ?? []) if (gl.b === d) gl.paint = noGlow ??= [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ visible: false }));
+      });
+    }
+    guideArrows = makeArrows(g!.arrows);
+    guideArrows.visible = app.cursor === g!.start && !anim && !queue.length;
+    pivot.add(guideArrows);
+  }
+  if (!anim) syncMeshes(app.current);
+}
+drawGuide.key = "";
+
+/**
+ * The paths of a step, in the 3D view only. Each follows one
+ * sticker of a moved cubelet, in that sticker's color: it rises straight out of the
+ * sticker, arches over, and comes straight down onto the face the sticker will be on. So a
+ * path shows where the cubelet goes and how it is turned when it gets there. Where the
+ * puzzle is in the way, a path (and the copy flying along it) is drawn faintly, so one on
+ * the far side can't be taken for one on the near side. A cubelet
+ * that ends solved has a full path and a ring where its sticker lands; one only
+ * passing through has a dashed path. In a shape or core step, which solves no cubelet,
+ * each cubelet it is for that moves or turns has a full path without a ring; one with
+ * no sticker (a core double edge) has none.
+ */
+/**
+ * How a flying copy is turned at RUNNER_STEPS + 1 places evenly along its path. It turns
+ * the way the path goes: the sticker the path follows faces out of the sticker's face at
+ * the start, away from the puzzle's center along the way, and out of its new face at the
+ * end, turning no more than that needs. Whatever spin about that sticker is then left to
+ * reach how the cubelet will be turned is spread evenly along the path.
+ */
+const RUNNER_STEPS = 48;
+function runnerTurns(curve: any, n0: any, n1: any, from: any, to: any): any[] {
+  // A short hop has no "along the way", and a sticker that faces the same way at both
+  // ends keeps facing that way throughout.
+  const reach = Math.min(1, curve.getLength() / 3) * Math.min(1, 1 - n0.dot(n1));
+  const facing = (e: number) => {
+    const out = curve.getPointAt(e).normalize().multiplyScalar(reach * Math.sin(Math.PI * e) ** 2);
+    const n = n0.clone().lerp(n1, e * e * (3 - 2 * e)).multiplyScalar(1 - out.length()).add(out);
+    return n.lengthSq() > 1e-8 ? n.normalize() : null;
+  };
+  const carried = [new THREE.Quaternion()];
+  const normals = [n0.clone()];
+  for (let k = 1; k <= RUNNER_STEPS; k++) {
+    const n = k === RUNNER_STEPS ? n1.clone() : facing(k / RUNNER_STEPS) ?? normals[k - 1].clone();
+    carried.push(new THREE.Quaternion().setFromUnitVectors(normals[k - 1], n).multiply(carried[k - 1]));
+    normals.push(n);
+  }
+  const left = to.clone().multiply(carried[RUNNER_STEPS].clone().multiply(from).invert());
+  let spin = 2 * Math.atan2(left.x * n1.x + left.y * n1.y + left.z * n1.z, left.w);
+  if (spin > Math.PI) spin -= 2 * Math.PI;
+  if (spin < -Math.PI) spin += 2 * Math.PI;
+  return carried.map((q, k) => new THREE.Quaternion().setFromAxisAngle(normals[k], (spin * k) / RUNNER_STEPS).multiply(q).multiply(from));
+}
+
+/** Where a flying copy is when it has gone the share e of its way: by distance along its path, so it neither lingers nor rushes. */
+const runnerPoint = (r: { curve: any }, e: number) => r.curve.getPointAt(e);
+
+function makeArrows(paths: StickerPath[]) {
+  const group = new THREE.Group();
+  group.userData.count = paths.length;
+  group.userData.runners = [];
+  group.userData.drawn = 0; // meshes making up the paths themselves
+  group.userData.through = 0; // sampled points of the paths that are inside the puzzle
+  group.userData.headGap = 0; // the worst miss between a shaft and its head
+  group.userData.bend = 0; // the sharpest bend of any path: radians over one cubelet's width
+  group.userData.turning = 0; // the most any path turns in all, in radians
+  group.userData.out = 0; // the farthest any path goes outside the room the 3D view shows
+  // Everything here is drawn twice: plainly where it is in front of the puzzle, and as a
+  // faint ghost where the puzzle is in the way (the same shape, passing only where
+  // something nearer has already been drawn). Neither writes depth, so the parts of a
+  // path never hide each other, and all of it is marked transparent so that it is drawn
+  // after the puzzle, in the order given.
+  const GHOST = 0.22;
+  const pair = (color: number, opacity: number, side: number) =>
+    [false, true].map((ghost) => new THREE.MeshBasicMaterial({ color, depthWrite: false, transparent: true, opacity: ghost ? opacity * GHOST : opacity, side, depthFunc: ghost ? THREE.GreaterDepth : THREE.LessEqualDepth }));
+  const flat = (color: number, opacity: number) => pair(color, opacity, THREE.DoubleSide);
+  const solid = (color: number) => pair(color, 1, THREE.FrontSide);
+  /** Adds a mesh to `to` in both drawings; `place` positions each. */
+  const both = (to: any, geo: any, mats: any[], order: number, place?: (m: any) => void) => {
+    for (const mat of mats) {
+      const m = new THREE.Mesh(geo, mat);
+      place?.(m);
+      m.renderOrder = order;
+      m.layers.set(HALO_LAYER);
+      to.add(m);
+    }
+  };
+  const dir = (d: number) => new THREE.Vector3(...DIRS[d]);
+  for (const p of paths) {
+    const n1 = dir(p.toDir);
+    const { curve } = p;
+    const a = curve.getPoint(0), b = curve.getPoint(1);
+    group.userData.through += p.hits;
+    group.userData.out = Math.max(group.userData.out, p.out);
+    group.userData.turning = Math.max(group.userData.turning, p.turning);
+    group.userData.bend = Math.max(group.userData.bend, p.bend);
+    // The head is a cone whose tip is on the sticker's new face. The shaft runs, by arc
+    // length, to a little inside the head's base, so the two always join; and the head
+    // points along the line from there to the tip.
+    const HEAD = 0.44;
+    const length = curve.getLength();
+    const headAt = Math.max(0.5, 1 - HEAD / length);
+    const shaftEnd = Math.min(1, headAt + 0.06 / length);
+    const base = curve.getPointAt(headAt);
+    const pointing = b.clone().sub(base).normalize();
+    const shaftCurve = new THREE.CatmullRomCurve3([...Array(25).keys()].map((k) => curve.getPointAt((k / 24) * shaftEnd)));
+    // How far the shaft's end is from the axis of the head, inside its base (0 when they join).
+    const end = shaftCurve.getPoint(1), headBase = b.clone().addScaledVector(pointing, -HEAD);
+    const along = end.clone().sub(headBase).dot(pointing);
+    const offAxis = end.clone().sub(headBase).addScaledVector(pointing, -along).length();
+    group.userData.headGap = Math.max(group.userData.headGap, along < -0.01 || along > HEAD ? 1 : offAxis);
+    const radius = p.dashed ? 0.055 : 0.075, opacity = p.dashed ? 0.75 : 1;
+    // The dark casing is left out of the faint drawing: behind the puzzle it would only
+    // outline where the path goes in.
+    const ink = flat(0x101214, opacity).slice(0, 1), paint = flat(p.color ? STICKER[p.color] : NEUTRAL_PATH, opacity);
+    // A cubelet only passing through gets a dashed path: the shaft in short pieces.
+    const pieces = !p.dashed ? [[0, 1]] : [...Array(9).keys()].map((k) => [k / 9, k / 9 + 0.6 / 9]);
+    const shafts = pieces.map(([t0, t1]) => new THREE.CatmullRomCurve3([...Array(9).keys()].map((k) => shaftCurve.getPoint(t0 + ((t1 - t0) * k) / 8))));
+    const parts: [any, any, number][] = [
+      // A dark casing under the color keeps a white or yellow path readable on any background.
+      ...shafts.flatMap((c) => [[new THREE.TubeGeometry(c, p.dashed ? 6 : 32, radius + 0.035, 8), ink, 4], [new THREE.TubeGeometry(c, p.dashed ? 6 : 32, radius, 8), paint, 5]] as [any, any, number][]),
+      [new THREE.SphereGeometry(radius + 0.075, 12, 8), ink, 4],
+      [new THREE.SphereGeometry(radius + 0.04, 12, 8), paint, 5],
+      [new THREE.ConeGeometry(radius * 2.6 + 0.04, HEAD + 0.06, 14), ink, 4],
+      [new THREE.ConeGeometry(radius * 2.6, HEAD, 14), paint, 5],
+    ];
+    if (p.lands) parts.push([new THREE.RingGeometry(0.3, 0.42, 24), ink, 4], [new THREE.RingGeometry(0.33, 0.39, 24), paint, 5]);
+    parts.forEach(([geo, mats, order], index) => {
+      const k = index - 2 * shafts.length + 2; // 2, 3: the start; 4, 5: the head; 6, 7: the ring
+      both(group, geo, mats, order, (m) => {
+        if (k === 2 || k === 3) m.position.copy(a);
+        if (k === 4 || k === 5) {
+          // Each cone (the casing a little longer than the color) is placed with its tip at b.
+          const h = k === 4 ? HEAD + 0.06 : HEAD;
+          m.position.copy(b).addScaledVector(pointing, -h / 2);
+          m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pointing);
+        }
+        if (k >= 6) {
+          m.position.copy(b);
+          m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n1);
+        }
+      });
+      group.userData.drawn++;
+    });
+    // A small copy of the cubelet flies along the path, over and over, turning as the
+    // cubelet will turn: it leaves showing its stickers as they are and arrives showing
+    // them as they will be. Each face is drawn only from its front, so the copy looks
+    // solid although, like the path, it is drawn over everything.
+    if (!reduceMotion && !p.layer) {
+      const copy = new THREE.Group();
+      const small = (to: any, cubelet: number) => {
+        both(to, new THREE.BoxGeometry(0.46, 0.46, 0.46), solid(0x3a4042), 6);
+        CUBELETS[cubelet].stickers.forEach((color, d) => {
+          if (!color) return;
+          both(to, new THREE.PlaneGeometry(0.36, 0.36), solid(STICKER[color]), 7, (m) => {
+            m.position.copy(dir(d).multiplyScalar(0.232));
+            m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir(d));
+          });
+        });
+      };
+      small(copy, p.cubelet);
+      // The rest of a unit, placed and turned as it is beside this cubelet.
+      const undo = oriQuaternion(p.fromOri).invert();
+      for (const other of p.unit ?? []) {
+        const part = new THREE.Group();
+        part.position.set(...other.offset).multiplyScalar(0.47).applyQuaternion(undo);
+        part.quaternion.copy(undo).multiply(oriQuaternion(other.ori));
+        small(part, other.cubelet);
+        copy.add(part);
+      }
+      group.add(copy);
+      const followed = [0, 1, 2, 3, 4, 5].find((d) => ROT_DIR[p.fromOri * 6 + d] === p.fromDir)!;
+      group.userData.runners.push({ copy, curve, followed, turns: runnerTurns(curve, dir(p.fromDir), dir(p.toDir), oriQuaternion(p.fromOri), oriQuaternion(p.toOri)) });
+    }
+  }
+  return group;
+}
+
+/** The color of a path that follows no sticker: a core double edge's unit. */
+const NEUTRAL_PATH = 0x8f979b;
+
+/**
+ * Frees the graphics memory of everything in a group that nothing else uses: each
+ * geometry and material once (a geometry is shared by a mesh's two drawings). Only for
+ * groups that make their own, as the guide's paths and flying copies do.
+ */
+function disposeTree(group: any) {
+  const owned = new Set<any>();
+  group.traverse((o: any) => {
+    if (o.geometry) owned.add(o.geometry);
+    for (const m of [o.material].flat()) if (m) owned.add(m);
+  });
+  for (const x of owned) x.dispose();
+}
+
+/** Glow materials that draw nothing, for cubelets a step doesn't apply to (made on first use, once THREE is loaded). */
+let noGlow: any[] | null = null;
+
+/** The flying copies' loop, in milliseconds. */
+const GUIDE_LOOP = { TRAVEL: 2000, REST: 700, GAP: 300 };
+
+/** One sticker's path through a step: from a slot and the direction it faces there, to a slot and facing. */
+interface StickerPath {
+  from: number;
+  fromDir: number;
+  to: number;
+  toDir: number;
+  /** The sticker's color, or null for the neutral path of a cubelet with no sticker. */
+  color: Color | null;
+  /** Whether this is the arrow of a whole layer's turn, which has no flying copy. */
+  layer?: boolean;
+  /** The other cubelets flying with it as one unit: each one's id, how it is turned, and where it is from this one (in slots). */
+  unit?: { cubelet: number; ori: number; offset: Vec3 }[];
+  /** Whether the cubelet ends solved: in its place, turned as solved (drawn with a ring). */
+  lands: boolean;
+  /** Whether it is only passing through: a cycle moves it, but not to where it ends up solved (drawn dashed). */
+  dashed: boolean;
+  /** The cubelet, and how it is turned before and after. */
+  cubelet: number;
+  fromOri: number;
+  toOri: number;
+  /** The route drawn (see route), how many of its sampled points are inside the puzzle, and how far it leaves the room the 3D view shows. */
+  curve: any;
+  hits: number;
+  out: number;
+  /** How much the route turns in all, in radians. */
+  turning: number;
+  /** The most its heading turns over one cubelet's width, in radians. */
+  bend: number;
+}
+
+/** A cubelet orientation (an index into ROTATIONS) as a quaternion. */
+function oriQuaternion(ori: number) {
+  const m = ROTATIONS[ori];
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().set(m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, 0, 0, 0, 1));
+}
+
+/**
+ * A route from a sticker, as it faces before the step, to the face it will be on: it leaves
+ * nearly straight out of the sticker and arrives nearly straight onto that face. Of a few
+ * routes (the short way around the puzzle and, for ends on opposite sides, ways by each of
+ * the six directions), each pulled tight around the puzzle, the one costing least is taken:
+ * leaving the room the 3D view shows costs sixty for each cubelet out, a stretch inside the
+ * puzzle eight times its length, and each radian of turning 0.6. `hits` counts the sampled
+ * points that are inside the puzzle, away from the route's ends; `effort` is the route's
+ * place in the list; `length` its length; `turning` how much it turns in all.
+ */
+function route(st: State, from: number, fromDir: number, to: number, toDir: number) {
+  const n0 = new THREE.Vector3(...DIRS[fromDir]), n1 = new THREE.Vector3(...DIRS[toDir]);
+  const a = new THREE.Vector3(...SLOT_POS[from]).addScaledVector(n0, 0.52);
+  const b = new THREE.Vector3(...SLOT_POS[to]).addScaledVector(n1, 0.52);
+  // The 3D view shows about this far from the puzzle's center in every direction, however
+  // the view is turned (a portrait phone is the tightest); a route that goes farther is cut
+  // off at the edge of the view.
+  const ROOM = 3.1;
+  // A route may go this much farther where it has to (it costs), to round a cubelet that
+  // nearly reaches the edge of the view without a tight bend.
+  const SLACK = 0.4;
+  // A route keeps this far from every cubelet, except near its ends, where it need only
+  // be LEAN times as far from them as from the end, as a cubelet beside the end leaves
+  // room for a route within 45 degrees of straight out.
+  const MARGIN = 0.32, LEAN = 0.7, POINTS = 40;
+  // What is in the way: every cubelet and the puzzle's solid center, as boxes. No sticker
+  // is ever covered, so the way out of the sticker is clear. The spot the new face looks
+  // into may be filled now by a cubelet the step takes away, so that one doesn't count.
+  const p1 = SLOT_POS[to];
+  const beyond = slotAtXYZ(p1[0] + DIRS[toDir][0], p1[1] + DIRS[toDir][1], p1[2] + DIRS[toDir][2]);
+  // Filled lattice spots, as a 5x5x5 grid from -2 to 2 (the center is filled).
+  const solid = new Uint8Array(125);
+  solid[62] = 1;
+  st.occ.forEach((id, s) => id >= 0 && s !== beyond && (solid[(SLOT_POS[s][0] + 2) * 25 + (SLOT_POS[s][1] + 2) * 5 + SLOT_POS[s][2] + 2] = 1));
+  /**
+   * How far p is from the nearest box (0 inside one), up to FAR; `away` is set to the
+   * direction out of it. Only the 27 spots around p are looked at: a box farther than
+   * that is more than a cubelet away, beyond any margin a route keeps.
+   */
+  const FAR = 1;
+  const away = new THREE.Vector3();
+  const clearance = (p: any) => {
+    let best = FAR * FAR;
+    const cx = Math.round(p.x), cy = Math.round(p.y), cz = Math.round(p.z);
+    for (let i = cx - 1; i <= cx + 1; i++) {
+      if (i < -2 || i > 2) continue;
+      const x = Math.max(Math.abs(p.x - i) - 0.5, 0);
+      for (let j = cy - 1; j <= cy + 1; j++) {
+        if (j < -2 || j > 2) continue;
+        const y = Math.max(Math.abs(p.y - j) - 0.5, 0);
+        for (let k = cz - 1; k <= cz + 1; k++) {
+          if (k < -2 || k > 2 || !solid[(i + 2) * 25 + (j + 2) * 5 + k + 2]) continue;
+          const z = Math.max(Math.abs(p.z - k) - 0.5, 0);
+          const d = x * x + y * y + z * z;
+          if (d < best) (best = d, away.set(Math.sign(p.x - i) * x, Math.sign(p.y - j) * y, Math.sign(p.z - k) * z));
+        }
+      }
+    }
+    best = Math.sqrt(best);
+    if (best > 1e-6) away.divideScalar(best);
+    else away.copy(p).normalize(); // inside a cubelet: out from the puzzle's center
+    return best;
+  };
+  // A route starts as an arc well outside the puzzle and is then pulled tight like an
+  // elastic band: each point moves toward the middle of its neighbors, and back out of
+  // whatever it is pulled into. So it ends as the shortest way of its kind around the
+  // puzzle, straight where nothing is near and rounded (by MARGIN) where it bends
+  // around a cubelet.
+  const tighten = (pts: any[]) => {
+    const mid = new THREE.Vector3();
+    for (let pass = 0; pass < 120; pass++)
+      for (let i = 1; i < pts.length - 1; i++) {
+        const p = pts[i];
+        p.lerp(mid.addVectors(pts[i - 1], pts[i + 1]).multiplyScalar(0.5), 0.5);
+        for (let k = 0; k < 3; k++) {
+          const need = Math.min(MARGIN, LEAN * Math.min(p.distanceTo(a), p.distanceTo(b)));
+          const d = clearance(p);
+          if (d >= need) break;
+          p.addScaledVector(away, d > 1e-6 ? need - d : 0.15);
+        }
+        if (p.length() > ROOM + SLACK) p.setLength(ROOM + SLACK);
+        upright(p);
+      }
+    return pts;
+  };
+  // Near its ends a route stays inside a 45 degree cone around straight out of the
+  // sticker (and straight onto the new face): a point that leans more is lifted onto the
+  // cone. Beyond CONE of the end the route is free.
+  const CONE = 0.9, COS = Math.SQRT1_2;
+  const offset = new THREE.Vector3();
+  const upright = (p: any) => {
+    for (const [end, n] of [[a, n0], [b, n1]] as [any, any][]) {
+      offset.subVectors(p, end);
+      const r = offset.length();
+      if (r < 1e-6 || r > CONE) continue;
+      const along = offset.dot(n);
+      if (along >= COS * r) continue;
+      // Keep the sideways part, and raise the outward part until the lean is 45 degrees.
+      const side = offset.addScaledVector(n, -along).length();
+      p.copy(end).addScaledVector(n, Math.max(side, 1e-3) * (COS / Math.sqrt(1 - COS * COS))).add(offset);
+    }
+  };
+  // A band pulled tight turns sharply where it wraps around a cubelet's edge. So the
+  // tight route is then let spring like a stiff rod: each point moves to lessen the
+  // bending around it (much) and the length (a little), still kept clear of the
+  // cubelets. Bends spread over about WIDTH, so the route stands off a corner it rounds.
+  const WIDTH = 1.6;
+  const stiffen = (taut: any[]) => {
+    const tight = new THREE.CatmullRomCurve3(taut, false, "centripetal");
+    const length = tight.getLength();
+    const n = Math.max(12, Math.min(64, Math.round(length / 0.2) + 1));
+    const pts = Array.from({ length: n }, (_, i) => tight.getPointAt(i / (n - 1)));
+    const bend = 0.06, pull = bend * (length / (n - 1) / WIDTH) ** 2;
+    const lap = pts.map(() => new THREE.Vector3());
+    const mid = new THREE.Vector3();
+    for (let pass = 0; pass < 700; pass++) {
+      for (let i = 1; i < n - 1; i++) lap[i].copy(pts[i - 1]).addScaledVector(pts[i], -2).add(pts[i + 1]);
+      for (let i = 1; i < n - 1; i++) {
+        const p = pts[i];
+        p.addScaledVector(lap[i], pull + 2 * bend).addScaledVector(lap[i - 1], -bend).addScaledVector(lap[i + 1], -bend);
+        // Convex: away from its ends a route never bows in toward the puzzle. A point
+        // nearer the puzzle's center than the middle of its neighbors moves out to there.
+        if (i > 2 && i < n - 3) {
+          mid.addVectors(pts[i - 1], pts[i + 1]).multiplyScalar(0.5).sub(p);
+          if (mid.dot(p) > 0) p.add(mid);
+        }
+        for (let k = 0; k < 3; k++) {
+          const need = Math.min(MARGIN, LEAN * Math.min(p.distanceTo(a), p.distanceTo(b)));
+          const d = clearance(p);
+          if (d >= need) break;
+          p.addScaledVector(away, d > 1e-6 ? need - d : 0.15);
+        }
+        if (p.length() > ROOM + SLACK) p.setLength(ROOM + SLACK);
+        upright(p);
+      }
+    }
+    return pts;
+  };
+  // The arcs to start from: the short way around, and for ends on opposite sides of the
+  // puzzle, by way of each of the six directions.
+  const u0 = a.clone().normalize(), u1 = b.clone().normalize();
+  const opposite = u0.dot(u1) < -0.3;
+  const vias = [null, ...DIRS.map((v) => new THREE.Vector3(...v)).filter((v) => opposite && v.dot(u0) < 0.8 && v.dot(u1) < 0.8)];
+  const routes: any[][] = [];
+  for (const via of vias) {
+    if (!via && u0.dot(u1) < -0.95) continue; // straight across: no short way around
+    const stops = via ? [u0, via, u1] : [u0, u1];
+    const angles = stops.slice(1).map((u, k) => stops[k].angleTo(u));
+    const whole = angles.reduce((x, y) => x + y, 0);
+    const pts: any[] = [];
+    for (let i = 0; i < POINTS; i++) {
+      const t = i / (POINTS - 1);
+      let turn = t * whole, leg = 0;
+      while (leg < angles.length - 1 && turn > angles[leg]) turn -= angles[leg++];
+      const q = new THREE.Quaternion().slerp(new THREE.Quaternion().setFromUnitVectors(stops[leg], stops[leg + 1]), angles[leg] ? turn / angles[leg] : 0);
+      const flat = a.length() + (b.length() - a.length()) * t;
+      pts.push(stops[leg].clone().applyQuaternion(q).multiplyScalar(flat + (3 - flat) * Math.sin(Math.PI * t)));
+    }
+    pts[0].copy(a);
+    pts[POINTS - 1].copy(b);
+    routes.push(tighten(pts));
+  }
+  const score = (curve: any, effort: number) => {
+    // Sampled evenly along its length: how much of it is inside the puzzle, how far it
+    // leaves the view, and how much it turns in all.
+    let hits = 0, out = 0, turning = 0, bend = 0;
+    let before: any = null;
+    const whole = curve.getLength();
+    // The sharpest bend: how far the heading turns over one cubelet's width of the route.
+    for (let k = 0; k + 1 <= 48 * Math.max(0, 1 - 1 / whole); k++) bend = Math.max(bend, curve.getTangentAt(k / 48).angleTo(curve.getTangentAt(Math.min(1, k / 48 + 1 / whole))));
+    for (let k = 0; k <= 48; k++) {
+      const pt = curve.getPointAt(k / 48);
+      if (pt.distanceTo(a) > 0.45 && pt.distanceTo(b) > 0.45 && clearance(pt) < 0.1) hits++;
+      out = Math.max(out, pt.length() - ROOM);
+      const heading = curve.getTangentAt(k / 48);
+      if (before) turning += before.angleTo(heading);
+      before = heading;
+    }
+    // Clear of the puzzle matters most (a stretch behind it is drawn faintly, and still
+    // seen), then being short, turning little and staying in view: a route can't go far
+    // out of view, so a little out is better than a long way around. The turning is what
+    // makes one sticker of a cubelet better to follow than another: one facing the way the
+    // cubelet goes needs no bend to get started.
+    const length = curve.getLength();
+    const cost = Math.max(0, out) * 5 + (hits / 48) * length * 8 + length + turning * 0.6;
+    return { curve, hits, effort, length, cost, out: Math.max(0, out), turning, bend };
+  };
+  // Stiffening is the slow part, and it changes a route's cost little, so only the two
+  // routes cheapest when pulled tight are stiffened, and the cheaper of those is taken.
+  const curve = (pts: any[]) => new THREE.CatmullRomCurve3(pts, false, "centripetal");
+  const tight = routes.map((pts, k) => ({ pts, cost: score(curve(pts), k).cost, k })).sort((x, y) => x.cost - y.cost);
+  return tight.slice(0, 2).map(({ pts, k }) => score(curve(stiffen(pts)), k)).reduce((x, y) => (y.cost < x.cost ? y : x));
+}
+
+/**
+ * The sticker to follow for each cubelet a step moves: the one whose route clears the
+ * puzzle with the shortest path, favoring a little one that starts and ends on the faces
+ * the Home view shows (up, front, right).
+ */
+/**
+ * The slots of the extension cubelets against a core double edge in slot s (none for any
+ * other cubelet). A double edge has no sticker and is never seen, so the guide shows it
+ * and these two as one unit: they keep their colors, and they fly together.
+ */
+function attached(st: State, s: number): number[] {
+  if (st.occ[s] < 0 || CUBELETS[st.occ[s]].kind !== "doubleEdge") return [];
+  const p = SLOT_POS[s];
+  return DIRS.map((d) => slotAtXYZ(p[0] + d[0], p[1] + d[1], p[2] + d[2])).filter((n) => n >= 0 && st.occ[n] >= 0 && SLOT_POS[n].some((v) => Math.abs(v) === 2));
+}
+
+/**
+ * An arrow for a turn of one layer: an arc around the outside of the layer, where a
+ * finger would swipe to turn it, about the layer's axis, as far around as the turn goes
+ * and the way it goes, on the side the Home view sees best. None for a turn of the whole
+ * puzzle.
+ */
+function layerArrow(st: State, turn: Turn): StickerPath[] {
+  const def = MOVE_DEFS[turn.def];
+  const filled = def.slots.filter((s) => st.occ[s] >= 0);
+  const side = def.slots.reduce((sum, s) => sum + SLOT_POS[s][def.axis], 0);
+  if (!side || !filled.length) return [];
+  const out = Math.sign(side);
+  const [u, v] = [0, 1, 2].filter((k) => k !== def.axis);
+  // The arc is level with the layer's cubelets nearest the middle of the puzzle (an inner
+  // turn's layer also holds the extension beyond it) and just outside the farthest of them.
+  const level = Math.min(...filled.map((s) => SLOT_POS[s][def.axis] * out)) * out;
+  const rim = Math.max(...filled.filter((s) => SLOT_POS[s][def.axis] === level).map((s) => Math.hypot(Math.abs(SLOT_POS[s][u]) + 0.5, Math.abs(SLOT_POS[s][v]) + 0.5)));
+  const axis = new THREE.Vector3().setComponent(def.axis, out);
+  const quarters = def.ccw * (turn.amount === 3 ? -1 : turn.amount);
+  const whole = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3().setComponent(def.axis, 1), (quarters * Math.PI) / 2);
+  const toward = new THREE.Vector3(1, 0.8, 1).projectOnPlane(axis).normalize().multiplyScalar(Math.min(rim + 0.25, 3.2));
+  const start = toward.applyQuaternion(new THREE.Quaternion().slerp(whole, 0.5).invert());
+  const curve = new THREE.CatmullRomCurve3(Array.from({ length: 17 }, (_, k) => start.clone().applyQuaternion(new THREE.Quaternion().slerp(whole, k / 16)).addScaledVector(axis, level * out)), false, "centripetal");
+  // Show turns the view by the path's ends: here the layer's middle, seen from outside.
+  const center = filled.find((s) => SLOT_POS[s][u] === 0 && SLOT_POS[s][v] === 0) ?? filled[0];
+  const d = dirIndex(axis.toArray() as Vec3);
+  return [{ from: center, fromDir: d, to: center, toDir: d, color: null, lands: false, dashed: false, layer: true, cubelet: -1, fromOri: 0, toOri: 0, curve, hits: 0, out: 0, turning: 0, bend: 0 }];
+}
+
+function stickerPaths(st: State, step: SolveStep): StickerPath[] {
+  // A parity step turns whole layers: paths for every cubelet in them would only tangle.
+  // Each turn has one neutral arrow instead, around the face of the layer it turns.
+  if (step.stage === "parity") return step.turns.flatMap((turn) => layerArrow(st, turn));
+  // Where everything ends, as the puzzle is held before the step: the regrip undone.
+  const after = st.clone();
+  applyTurns(after, step.turns);
+  applyTurns(after, parseAlg(["", "y'", "y2", "y"][step.regrip]));
+  const shown = [2, 4, 0];
+  const out: StickerPath[] = [];
+  // In a cycle step the solver says where each cubelet goes. In a shape or core step it
+  // names the cubelets that are wrong, and where each goes is read from the result.
+  const cycle = !(["shape", "core"].includes(step.stage) || step.stage.startsWith("core"));
+  for (const [from, named] of step.moved) {
+    const to = cycle ? named : after.occ.indexOf(st.occ[from]);
+    if (to === from && after.ori[to] === st.ori[from]) continue;
+    const c = CUBELETS[st.occ[from]];
+    let best: StickerPath | null = null, bestScore = Infinity;
+    c.stickers.forEach((color, d) => {
+      if (!color) return;
+      const fromDir = ROT_DIR[st.ori[from] * 6 + d], toDir = ROT_DIR[after.ori[to] * 6 + d];
+      const r = route(st, from, fromDir, to, toDir);
+      // A route clear of the puzzle first, then the shortest, then one on faces the Home view shows.
+      const score = r.cost - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
+      if (score < bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from), dashed: cycle && !step.lands.includes(from), cubelet: c.id, fromOri: st.ori[from], toOri: after.ori[to], curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
+    });
+    // A core double edge has no sticker: its unit's path follows the outward sticker of
+    // one of the extension cubelets against it, in a neutral color.
+    const unit = attached(st, from);
+    for (const u of unit) {
+      const pu = SLOT_POS[u], pf = SLOT_POS[from];
+      const fromDir = dirIndex([pu[0] - pf[0], pu[1] - pf[1], pu[2] - pf[2]]);
+      const local = [0, 1, 2, 3, 4, 5].find((d) => ROT_DIR[st.ori[u] * 6 + d] === fromDir)!;
+      const toU = after.occ.indexOf(st.occ[u]), toDir = ROT_DIR[after.ori[toU] * 6 + local];
+      const r = route(st, u, fromDir, toU, toDir);
+      const score = r.cost - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
+      const others = [from, ...unit.filter((x) => x !== u)].map((x) => ({ cubelet: st.occ[x], ori: st.ori[x], offset: [SLOT_POS[x][0] - pu[0], SLOT_POS[x][1] - pu[1], SLOT_POS[x][2] - pu[2]] as Vec3 }));
+      if (score < bestScore) [best, bestScore] = [{ from: u, fromDir, to: toU, toDir, color: null, lands: false, dashed: false, cubelet: st.occ[u], fromOri: st.ori[u], toOri: after.ori[toU], unit: others, curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
+    }
+    if (best) out.push(best);
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------ highlight halo
@@ -2960,6 +3742,11 @@ function showHighlighted() {
   const faces: [number, number][] = [];
   for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d) && edit.colors[s * 6 + d]) faces.push([s, d]);
   if (!faces.length) for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d)) faces.push([s, d]);
+  showFaces(st, faces);
+}
+
+/** Tumbles the 3D view to the direction that shows these faces (slot, direction) of st best: the most unblocked, then each as squarely as possible. */
+function showFaces(st: State, faces: [number, number][]) {
   if (!faces.length) return;
   if (tween) (pivot.quaternion.copy(tween.to), (tween = null));
   const score = () => {
@@ -3187,6 +3974,46 @@ function installProbe() {
     idle: () => !anim && !queue.length && !settle && !live && !tween,
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
+    /** The step guide: its step, the slots (now) of the cubelets it applies to, how many stickers are drawn gray at each level, and the arrows showing. */
+    /** Geometries the renderer holds right now, to check that the guide frees its own. */
+    geometries: () => renderer.info.memory.geometries,
+    guide: () => {
+      if (!guide) return null;
+      const grays = [1, 2].map((level) => guideDimmed.filter((m) => stickerMesh3d.includes(m) && CUBELETS.some((c) => c.stickers.some((col) => col && grayMaterial!(col, level as 1 | 2).sticker === m.material))).length);
+      return {
+        stage: guide.step.stage,
+        alg: guide.step.alg,
+        turns: guide.step.turns.length,
+        after: guide.after,
+        index: guide.index,
+        start: guide.start,
+        focus: [...guide.focus].map((id) => slotName(app.current.occ.indexOf(id))).sort(),
+        gray: grays[0],
+        darkGray: grays[1],
+        arrows: guideArrows?.visible ? guideArrows.userData.count : 0,
+        /** Each path: the sticker it follows, from where and facing which way, to where and facing which way. */
+        paths: guide.arrows.map((p) => `${p.color} ${slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " lands" : ""}${p.dashed ? " dashed" : ""}`),
+        mode: guideMode,
+        runners: guideArrows?.visible ? guideArrows.userData.runners.length : 0,
+        /** Glow bands of the cubelets the step doesn't apply to that are drawn, and that are not; and of those it does apply to that are drawn. */
+        otherGlow: CUBELETS.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 0 : 1), 0),
+        otherNoGlow: CUBELETS.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 1 : 0), 0),
+        focusGlow: [...guide.focus].flatMap((id) => glows[id] ?? []).reduce((n, gl) => n + (gl.paint ? 0 : 1), 0),
+        /** How many meshes the paths are drawn with (a shaft, a start and a head, each cased; and a ring for a cubelet reaching home). */
+        pathMeshes: guideArrows?.visible ? guideArrows.userData.drawn : 0,
+        /** The worst miss between a path's shaft and its head: how far off the head's axis the shaft ends, inside the head's base (1 if outside it). */
+        headGap: guideArrows?.visible ? guideArrows.userData.headGap : -1,
+        /** How many sampled points of the paths, away from their ends, are inside the puzzle. */
+        pathsThrough: guideArrows?.visible ? guideArrows.userData.through : -1,
+        /** How far, in cubelets, the farthest path goes outside the room the 3D view shows. */
+        pathsOut: guideArrows?.visible ? guideArrows.userData.out : -1,
+        pathsTurning: guideArrows?.visible ? guideArrows.userData.turning : -1,
+        pathsBend: guideArrows?.visible ? guideArrows.userData.bend : -1,
+        pathPoints: guideArrows?.visible ? guide.arrows.map((p) => Array.from({ length: 25 }, (_, k) => runnerPoint(p, k / 24).toArray().map((v: number) => Math.round(v * 100) / 100))) : [],
+        // Which way each flying copy's followed sticker faces at 13 even places along its flight.
+        runnerFacing: guideArrows?.visible ? guideArrows.userData.runners.map((r: any) => Array.from({ length: 13 }, (_, k) => new THREE.Vector3(...DIRS[r.followed]).applyQuaternion(r.turns[(k * RUNNER_STEPS) / 12]).toArray().map((v: number) => Math.round(v * 100) / 100))) : [],
+      };
+    },
     view: () => pivot.quaternion.toArray(),
     // Deliberate faults, for testing the tests: draw two cubelets in each other's places,
     // or turn one cubelet's mesh a quarter turn about a face's axis. resync() redraws

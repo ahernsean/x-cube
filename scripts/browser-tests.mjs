@@ -17,8 +17,10 @@
 // line, and the test fails at its end if any check did.
 //
 // Needs the `playwright` package and the browser for it (CI installs both). WebKit runs
-// with iPhone-like settings (touch, device pixel ratio 3) because the Lab is used mostly on
-// an iPhone and iPad. It is not given `isMobile`: the built page has no viewport meta tag
+// with touch because the Lab is used mostly on an iPhone and iPad, and both engines draw at
+// device pixel ratio 1: every pixel is drawn on the CPU here, and nothing the tests check
+// depends on the density (the standalone page's layout test alone runs as an iPhone, at
+// ratio 3). WebKit is not given `isMobile`: the built page has no viewport meta tag
 // (claude.ai adds one when it publishes the artifact), so a mobile layout would be 980 px wide.
 
 import assert from "node:assert/strict";
@@ -47,10 +49,11 @@ if (process.env.COVERAGE_DIR && !coverageDir) console.log(`(coverage is recorded
 const coverage = [];
 
 // Without a GPU, headless Chromium draws WebGL with SwiftShader, which here is about four
-// times slower than Mesa's llvmpipe (the CPU renderer WebKit uses on Linux). These flags
+// times slower than Mesa's llvmpipe. These flags
 // send Chromium's ANGLE to Mesa through EGL instead. Where Mesa's EGL is missing, Chromium
-// quietly keeps SwiftShader, so the startup test prints the renderer in use, and with
-// EXPECT_RENDERER set (CI sets it to llvmpipe) a different renderer fails it.
+// quietly keeps SwiftShader, so the startup test reports the renderer in use (in either
+// engine), and with EXPECT_RENDERER set (CI sets it to llvmpipe) a different one fails it
+// in Chromium.
 const launchArgs = engine === "chromium" && process.platform === "linux" ? ["--ignore-gpu-blocklist", "--use-angle=gl-egl"] : [];
 // Where the network is reached through a proxy (HTTPS_PROXY, as in some cloud sandboxes),
 // the browser and the CDN downloads below (route.fetch, made by Playwright, not the page)
@@ -109,7 +112,7 @@ const serveCdnFromMemory = (context) =>
 
 const labContext = () =>
   engine === "webkit"
-    ? { viewport: { width: 390, height: 900 }, deviceScaleFactor: 3, hasTouch: true }
+    ? { viewport: { width: 390, height: 900 }, hasTouch: true }
     : { viewport: { width: 390, height: 900 } };
 
 // Opens a page in a new context, ready to use: the Lab has drawn and is idle. `expand`
@@ -140,6 +143,17 @@ async function openLab({ url = pageUrl, context: contextOptions = labContext(), 
     await context.close();
   };
   return { page, context, errors, close, ...h };
+}
+
+/** The step guide's line, and Next step (opening the guide first if it is closed). */
+function guideHelpers(page, settle) {
+  const line = () => page.$eval("#guide-line", (e) => e.textContent);
+  const next = async () => {
+    await page.evaluate(() => (document.getElementById("guide").open = true));
+    await page.click("#next-step");
+    await settle();
+  };
+  return { line, next };
 }
 
 // A test of the Lab: `body` gets the open page, its helpers and `check`. Every test also
@@ -271,7 +285,7 @@ labTest(
       const ext = gl?.getExtension("WEBGL_debug_renderer_info");
       return gl ? gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) : "no WebGL 2";
     });
-    console.log(`     WebGL renderer: ${renderer}`);
+    check(true, `${engine} draws WebGL with: ${renderer}`);
     const expected = engine === "chromium" ? process.env.EXPECT_RENDERER : undefined;
     if (expected) check(renderer.includes(expected), `Chromium draws with ${expected}`);
 
@@ -1044,6 +1058,317 @@ labTest("color editing: colors that turns can't reach", async ({ page, check, pr
     `two outer edges traded are valid, and Done gives a position turns can reach, which has a 44-letter code (${traded.line}, ${done.code})`,
   );
 });
+
+// ---- The step guide.
+
+labTest("guide: Next step loads one step, grays what it leaves alone, and shows where cubelets go", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
+  const { line, next } = guideHelpers(page, settle);
+  // One corner 3-cycle away from solved: the step is that cycle undone, written as a commutator.
+  await play("(F' L' F) r (F' L F) r'");
+  await next();
+  const g = await probe("guide");
+  const loaded = { counter: await counter(), line: await line(), wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
+  check(
+    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners\. All three end up solved\. Turns: r \(F' L' F\) r' \(F' L F\) Step 1 of 1 to solved\.$/.test(loaded.line) && loaded.wide <= 0,
+    `Next step loads the step's turns unplayed and says what it applies to ("${loaded.line}", ${loaded.counter})`,
+  );
+  // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
+  // darker, since a 3-cycle leaves every other cubelet alone. One arrow per corner.
+  check(g?.focus.length === 3 && g.gray === 93 && g.darkGray === 0 && g.arrows === 3 && g.otherGlow === 0 && g.focusGlow > 0, `the cubelets the step applies to keep their colors, the rest are gray, and arrows show the cycle (${JSON.stringify(g)})`);
+  // Each path follows one sticker, in its color, from the face it is on to the face it will
+  // be on; all three of these cubelets end at home.
+  const pathForm = /^[WYGBRO] [\w.]+\/[RLUDFB] > [\w.]+\/[RLUDFB] lands$/;
+  check(g?.paths.length === 3 && g.pathMeshes === 24 && g.pathsThrough === 0 && g.pathsOut < 0.45 && g.headGap >= 0 && g.headGap < 0.05 && g.paths.every((t) => pathForm.test(t)) && new Set(g.paths.map((t) => t.split(" ")[1])).size === 3, `each moved cubelet has a path from one of its stickers to where that sticker will be, going around the puzzle, not through it, each shaft joined to its head (${g?.paths.join("; ")})`);
+  // A small copy of each cubelet flies along its path (unless the device asks for less motion). Show turns the
+  // view so that every path's sticker, and the face it is going to, can be seen.
+  const motion = await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches);
+  await page.click('[data-view="bottom"]');
+  await settle();
+  const seenPath = async (t) => {
+    const [, from, to] = t.match(/^\w ([\w.]+\/\w) > ([\w.]+\/\w)/);
+    const hits = [];
+    for (const end of [from, to]) {
+      const [slot, face] = end.split("/");
+      const at = await probe("sticker", slot, face);
+      const there = at && (await probe("at3d", at.x, at.y));
+      hits.push(there?.slot === slot && there?.face === face);
+    }
+    return hits;
+  };
+  const hiddenBefore = (await Promise.all(g.paths.map(seenPath))).flat().filter((x) => !x).length;
+  await page.click("#guide-show");
+  await settle();
+  const hiddenAfter = (await Promise.all(g.paths.map(seenPath))).flat().filter((x) => !x).length;
+  check(g.runners === (motion ? 3 : 0) && hiddenBefore > 0 && hiddenAfter === 0, `Show turns the view to where the paths begin and end (${hiddenBefore} of 6 ends hidden from below, ${hiddenAfter} after Show; ${g.paths.join("; ")}); ${g.runners} copies fly`);
+  await page.click('[data-view="home"]');
+  await settle();
+  // One turn forward hides the arrows; one turn back, to the step's start, shows them again.
+  await page.click("#fwd");
+  await settle();
+  const stepped = (await probe("guide")).arrows;
+  await page.click("#back");
+  await settle();
+  const returned = await probe("guide");
+  check(stepped === 0 && returned.arrows === 3 && returned.gray === 93, `the arrows hide once the step is under way and return at its start (${stepped}, then ${returned.arrows})`);
+  // The grays are really drawn: the 3D view no longer shows the model's colors everywhere.
+  const grayDrawn = (await sweep3d()).wrong.length;
+  await page.click("#last");
+  await settle();
+  const played = { g: await probe("guide"), status: await status(), line: await line(), wrong: (await sweep3d()).wrong.length };
+  check(
+    grayDrawn > 0 && played.wrong === 0 && played.g?.gray === 0 && played.g.arrows === 0 && /Solved/.test(played.status) && /^Corners \(done\)/.test(played.line),
+    `playing the step solves the puzzle and returns every sticker's color (${grayDrawn} gray stickers seen before, ${played.wrong} wrong after; ${played.status}; "${played.line}")`,
+  );
+  // The step is boxed in the turn list behind a tag. Step start, and the tag, go back to
+  // where the step begins, with its grays and arrows.
+  const box = await page.$$eval("#history .step-box", (els) => els.map((e) => `${e.querySelector(".step-tag").textContent}:${e.querySelectorAll(".tok").length}:${e.classList.contains("on")}`).join());
+  await page.click("#guide-start");
+  await settle();
+  const backAtStart = { counter: await counter(), g: await probe("guide"), off: await page.$eval("#guide-start", (b) => b.disabled) };
+  await page.click("#last");
+  await settle();
+  await page.click("#history .step-tag");
+  await settle();
+  const byTag = { counter: await counter(), arrows: (await probe("guide")).arrows };
+  check(
+    box === "1 Corners:8:true" && backAtStart.counter === "8/16" && backAtStart.g.arrows === 3 && backAtStart.g.gray === 93 && backAtStart.off && byTag.counter === "8/16" && byTag.arrows === 3,
+    `the step is boxed in the turn list (${box}); Step start and its tag go back to its start (${backAtStart.counter}, ${byTag.counter})`,
+  );
+  await page.click("#last");
+  await settle();
+  await next();
+  check((await probe("guide")) === null && /^Solved/.test(await line()), `from solved there is no step ("${await line()}")`);
+});
+
+labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, and an edit before the step", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
+  const { line, next } = guideHelpers(page, settle);
+  // A puzzle tipped over gets a Regrip step, which grays nothing: the center colors are what it goes by.
+  await play("x");
+  await next();
+  const holdStep = { g: await probe("guide"), line: await line() };
+  check(
+    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Regrip: Turn the whole puzzle so the white center is up \(now \w+ is up\)\. Nothing else moves\. Turns: x' Step 1 of 1 to solved\.$/.test(holdStep.line),
+    `a Regrip step says to turn the whole puzzle, and keeps every color ("${holdStep.line}")`,
+  );
+  // Out of shape, the step applies to the core cubelets that are wrong; it may leave the
+  // rest anywhere, so they are the darker gray. Those that move get plain paths. Their
+  // stickers are often covered by neighbors that are about to move, so a path may graze
+  // the puzzle near its ends, or pass behind it, faintly drawn: staying in view comes first.
+  await startFresh();
+  await play("R U");
+  await next();
+  const shape = await probe("guide");
+  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows > 0 && shape.paths.every((t) => !/ (lands|dashed)/.test(t)) && shape.pathsOut < 0.45 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, only the cubelets it applies to glow, and those that move have plain paths (${JSON.stringify(shape)})`);
+  // Playing the step and asking again carries the count on: step 2 of the same total, in its own box.
+  const total = shape.after + 1;
+  await page.click("#last");
+  await settle();
+  await next();
+  const second = await probe("guide");
+  const boxes = await page.$$eval("#history .step-box", (els) => els.map((e) => e.classList.contains("on")).join());
+  check(second?.index === 2 && second.index + second.after === total && new RegExp(`Step 2 of ${total} to solved\\.$`).test(await line()) && boxes === "false,true", `the next step after a played one is step 2 of the same ${total}, boxed after the first ("${await line()}", boxes ${boxes})`);
+  // In the turn list a cycle step's setup turns, and their undoing, are marked.
+  const marks = await page.$$eval("#history .step-box.on .tok", (els) => els.map((e) => (e.className.match(/part-(\w+)/) ?? [])[1]).join());
+  const want = /\[(.+):/.exec(second.alg) ? /^(regrip,)?(setup,)+(cycle,){8}(undo,?)+$/ : /^(regrip,)?(cycle,?){8}$/;
+  check((["corners", "edges"].includes(second.stage) ? want : /^(regrip,)?(turns,?)+$/).test(marks), `the step's turns are marked by part (${second.alg}: ${marks})`);
+  // Stop drops the step's grays and line, and leaves the turn list and its boxes alone; so
+  // does closing the section. Next step starts again from the position shown, counting on.
+  const before = await turnList();
+  await page.click("#guide-stop");
+  const stopped = { g: await probe("guide"), line: await line(), list: await turnList(), off: await page.$eval("#guide-stop", (b) => b.disabled) };
+  await next();
+  const again = await probe("guide");
+  await page.evaluate(() => (document.getElementById("guide").open = false));
+  await settle();
+  const closed = await probe("guide");
+  check(stopped.g === null && stopped.line === "" && stopped.list === before && stopped.off && again?.index === 2 && again.alg === second.alg && closed === null, `Stop and closing the section end the guide without touching the turn list; Next step starts it again (${JSON.stringify({ stopped: stopped.g, again: again?.index, closed })})`);
+  // Editing a turn before a step changes the position it starts from, so the step no
+  // longer applies, though its own turns are still in the list.
+  await startFresh();
+  await play("R U");
+  await next();
+  const listed = await turnList();
+  await page.click("#alg-edit");
+  await page.fill("#alg", listed.replace(/^R /, "R2 "));
+  await page.click("#load");
+  await settle();
+  check(listed.startsWith("R U ") && (await probe("guide")) === null && (await line()) === "" && (await page.$$("#history .step-box")).length === 0, "editing a turn before the step drops the step and its box");
+});
+
+labTest("guide: dashed paths, the order switch, a layered core step, and a turn by hand", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
+  const { line, next } = guideHelpers(page, settle);
+  // A cubelet only passing through has a dashed path, in several pieces, and no ring.
+  await play("(F' L' F) r (F' L F) r' f (F' L' F) r (F' L F) r' f'");
+  await next();
+  const passing = await probe("guide");
+  const throughOnly = passing.paths.filter((t) => t.endsWith(" dashed")).length;
+  check(passing.stage === "corners" && throughOnly === 2 && passing.pathMeshes === 8 + 2 * (2 * 9 + 4) && passing.pathsThrough === 0 && /One ends up solved\./.test(await line()), `two cubelets only passing through get dashed paths (${passing.paths.join("; ")}; ${passing.pathMeshes} meshes)`);
+  // The order: "Top to bottom" solves the white X-face first, so the same corner cycle is a
+  // top-corners step there. The choice is kept on this device.
+  await startFresh();
+  await play("(F' L' F) r (F' L F) r'");
+  await next();
+  const byKind = (await probe("guide")).stage;
+  await page.click('[data-guide-mode="layers"]');
+  await next();
+  const byLayer = await probe("guide");
+  const kept = await page.evaluate(() => localStorage.getItem("xcube.guideMode"));
+  check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Top corners: For the white X-face's corners: cycle three X-face corners\. All three end up solved\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
+  // Out of shape, top to bottom starts with the core, a cubelet at a time: a short step,
+  // one or two paths, and the line counts the cubelets placed.
+  await startFresh();
+  await play("R U F' L2");
+  await next();
+  const core = await probe("guide");
+  check(core?.stage.startsWith("core") && core.turns <= 9 && core.arrows >= 1 && core.arrows <= 3 && /^Top core edges: Put a white core edge in the top layer, white up \([1-4] of 4\)\./.test(await line()), `top to bottom places the core a cubelet at a time (${core?.alg}, ${core?.arrows} paths; "${await line()}")`);
+  await page.click('[data-guide-mode="kinds"]');
+  await startFresh();
+  await play("R U");
+  await next();
+  // Turning the puzzle by hand takes the step out of the turn list, and the guide goes with it.
+  await page.click('[data-move="D"]');
+  await settle();
+  check((await probe("guide")) === null && (await line()) === "", "a turn made by hand drops the step and its grays");
+});
+
+labTest("guide: a path goes the short way around the puzzle, at an even speed", async ({ page, check, probe, settle }) => {
+  // Out of shape, the first top-to-bottom step from here is R2, which takes a white core
+  // edge from the bottom of the right side to its top. The spot above where its white
+  // sticker will be is filled until the turn takes that cubelet away.
+  await page.locator("summary", { hasText: "State code" }).click();
+  await page.fill("#code-in", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
+  await page.click("#import");
+  await settle();
+  await page.locator("#guide > summary").click();
+  await page.click('[data-guide-mode="layers"]');
+  await page.click("#next-step");
+  await settle();
+  const g = await probe("guide");
+  const k = g.paths.findIndex((t) => /DR\/D > UR\/U/.test(t));
+  const pts = g.pathPoints[k] ?? [];
+  check(g.alg === "R2" && k >= 0 && pts.length === 25 && pts.every(([x, , z]) => x > 0.9 && Math.abs(z) < 0.2) && g.pathsThrough === 0, `the path from the bottom of the right side to its top goes around the right side, through nothing but the cubelet the turn takes away (${g.alg}; ${g.paths.join("; ")}; ${JSON.stringify(pts)})`);
+  // The flying copies' places at equal times are equally far apart (a chord across a
+  // bend is a little shorter than the path), on every path; and no path leaves the view.
+  const gaps = g.pathPoints.map((path) => path.slice(1).map((q, i) => Math.hypot(q[0] - path[i][0], q[1] - path[i][1], q[2] - path[i][2])));
+  const uneven = Math.max(...gaps.map((d) => Math.max(...d) / Math.min(...d)));
+  check(gaps.length === g.arrows && uneven < 1.35 && g.pathsOut < 0.45, `a flying copy neither lingers nor rushes (its longest stride is ${uneven.toFixed(2)} of its shortest), and leaves the view by little if at all (${g.pathsOut.toFixed(2)} out)`);
+  check(sharpest(g) < 50, `no path bends sharply (${sharpest(g).toFixed(0)} degrees at most between one stride and the next)`);
+  // A cubelet with several stickers is followed by the one that needs no bend to get
+  // started: here a corner hops along the front face, and its front sticker is followed,
+  // not the one on its side, whose path would have to turn back on itself.
+  await page.click("#guide-stop");
+  await page.click('[data-guide-mode="kinds"]');
+  for (let i = 0; i < 3; i++) {
+    await page.click("#next-step");
+    await settle();
+    if (i < 2) (await page.click("#last"), await settle());
+  }
+  const c = await probe("guide");
+  const hop = c.paths.find((t) => /Fx\.UR\/. > Fx\.DL\//.test(t));
+  check(c.stage === "corners" && /Fx\.UR\/F > Fx\.DL\/F/.test(hop ?? "") && sharpest(c) < 50, `a corner moving across the front face is followed by its front sticker, with no hairpin (${c.alg}; ${c.paths.join("; ")}; ${sharpest(c).toFixed(0)} degrees)`);
+});
+
+labTest("guide: paths leave and arrive nearly straight out, never bow in, and copies keep a level sticker level", async ({ page, check, probe, settle }) => {
+  // Top to bottom from the owner's position: the first step (R2), and later the third
+  // white core corner (U R' D2 R) and a core double edge (R2 U2 L U2 R2).
+  await page.locator("summary", { hasText: "State code" }).click();
+  await page.fill("#code-in", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
+  await page.click("#import");
+  await settle();
+  await page.locator("#guide > summary").click();
+  await page.click('[data-guide-mode="layers"]');
+  const FACE = { R: [1, 0, 0], L: [-1, 0, 0], U: [0, 1, 0], D: [0, -1, 0], F: [0, 0, 1], B: [0, 0, -1] };
+  const angle = (u, v) => (Math.acos(Math.max(-1, Math.min(1, (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (Math.hypot(...u) * Math.hypot(...v))))) * 180) / Math.PI;
+  const sub = (a, b) => a.map((x, k) => x - b[k]);
+  /** The most any path is off straight out of its sticker at its start, or straight onto its face at its end, in degrees. */
+  const lean = (g) =>
+    Math.max(...g.paths.map((t, i) => {
+      const [, f0, f1] = t.match(/\/(\w) > [\w.]+\/(\w)/);
+      const pts = g.pathPoints[i];
+      return Math.max(angle(sub(pts[1], pts[0]), FACE[f0]), angle(sub(pts[23], pts[24]), FACE[f1]));
+    }));
+  /** How far any path bows in toward the puzzle: a point nearer the center than the middle of its neighbors, away from its ends. */
+  const bowIn = (g) =>
+    Math.max(0, ...g.pathPoints.flatMap((pts) => pts.slice(4, -4).map((p, k) => {
+      const mid = pts[k + 3].map((x, j) => (x + pts[k + 5][j]) / 2);
+      return Math.hypot(...mid) - Math.hypot(...p);
+    })));
+  const steps = [];
+  for (let i = 0; i < 7; i++) {
+    await page.click("#next-step");
+    await settle();
+    steps.push(await probe("guide"));
+    await page.click("#last");
+    await settle();
+  }
+  const first = steps[0], corner = steps[4], unit = steps[6];
+  check(first.alg === "R2" && lean(first) < 47 && bowIn(first) < 0.03, `a path leaves its sticker and comes onto its face within 45 degrees of straight out (${lean(first).toFixed(0)} at most, sampled a twenty-fourth of the way in), and never bows in toward the puzzle (${bowIn(first).toFixed(3)})`);
+  check(steps.every((g) => g.arrows === 0 || (lean(g) < 47 && bowIn(g) < 0.03)), `so does every path of the first seven steps (${steps.map((g) => `${g.alg}: ${g.arrows ? `${lean(g).toFixed(0)} degrees, ${bowIn(g).toFixed(3)} in` : "no paths"}`).join("; ")})`);
+  // A core double edge has no sticker: it and the two extension cubelets against it move
+  // as one unit, on one neutral path, and all three keep their colors.
+  // One corner cycle from solved: a white X-face corner hops along the top, white up at
+  // both ends, and its flying copy keeps white up all the way.
+  await page.click("#guide-stop");
+  await page.click("#reset");
+  await settle();
+  await page.click('[data-guide-mode="kinds"]');
+  await page.fill("#alg", "(F' L' F) r (F' L F) r'");
+  await page.click("#load");
+  await page.click("#last");
+  await settle();
+  await page.click("#next-step");
+  await settle();
+  const cycle = await probe("guide");
+  const level = cycle.paths.findIndex((t) => /^W [\w.]+\/U > [\w.]+\/U/.test(t));
+  const facing = cycle.runnerFacing[level] ?? [];
+  check(cycle.stage === "corners" && level >= 0 && facing.length === 13 && facing.every((v) => angle(v, FACE.U) < 3) && lean(cycle) < 47, `a flying copy whose sticker faces up at both ends keeps it facing up all the way (${cycle.alg}; ${cycle.paths.join("; ")}; ${JSON.stringify(facing)})`);
+  check(unit.stage === "coreMiddle" && unit.arrows === 1 && /^null /.test(unit.paths[0]) && unit.focus.length >= 3 && unit.runners === 1, `a core double edge moves as a unit with the cubelets against it, on a neutral path (${unit.alg}; ${unit.paths.join("; ")}; focus ${unit.focus.join(" ")})`);
+});
+
+labTest("guide: a parity turn has one arc around the outside of its layer", async ({ page, check, probe, settle, play }) => {
+  await page.locator("#guide > summary").click();
+  await play("U");
+  await page.click("#next-step");
+  await settle();
+  const g = await probe("guide");
+  const pts = g.pathPoints[0] ?? [];
+  // A quarter turn of the top layer: level with it (y = 1), outside its rim (the extensions
+  // reach 2.5 from the axis), and a quarter of the way around.
+  const around = pts.length && (Math.acos((pts[0][0] * pts[24][0] + pts[0][2] * pts[24][2]) / (Math.hypot(pts[0][0], pts[0][2]) * Math.hypot(pts[24][0], pts[24][2]))) * 180) / Math.PI;
+  check(g.stage === "parity" && g.alg === "U" && g.arrows === 1 && g.runners === 0 && pts.every(([x, y, z]) => Math.abs(y - 1) < 0.01 && Math.hypot(x, z) > 2.5) && Math.abs(around - 90) < 2, `the parity turn U has one arc, level with the top layer and outside it, a quarter of the way around, and no flying copy (${g.alg}; ${g.paths.join("; ")}; ${around?.toFixed(0)} degrees; ${JSON.stringify(pts.filter((_, k) => k % 6 === 0))})`);
+});
+
+labTest("guide: dropping a step frees its paths' graphics memory", async ({ page, check, probe, settle, play }) => {
+  // Each Next step builds new paths and flying copies; Stop drops them. The renderer's count
+  // of geometries is back where it was each time, so using the guide doesn't pile them up.
+  const { next } = guideHelpers(page, settle);
+  await play("(F' L' F) r (F' L F) r'");
+  const counts = [];
+  for (let i = 0; i < 4; i++) {
+    await next();
+    await page.waitForTimeout(200); // a few frames, so the paths are drawn and their geometry uploaded
+    const shown = await probe("geometries");
+    await page.click("#guide-stop");
+    await settle();
+    counts.push([shown, await probe("geometries")]);
+  }
+  const after = counts.map(([, a]) => a);
+  check(counts.every(([shown, a]) => shown > a) && after.every((a) => a === after[0]), `each step's paths add geometries while shown and free them when dropped (shown, then dropped: ${counts.map((c) => c.join(" > ")).join("; ")})`);
+});
+
+/** The sharpest bend, in degrees, between one stride and the next of any path's 24 strides. */
+function sharpest(g) {
+  let worst = 0;
+  for (const path of g.pathPoints) {
+    const strides = path.slice(1).map((q, i) => q.map((v, k) => v - path[i][k]));
+    for (let i = 1; i < strides.length; i++) {
+      const [u, v] = [strides[i - 1], strides[i]];
+      const cos = (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (Math.hypot(...u) * Math.hypot(...v));
+      worst = Math.max(worst, (Math.acos(Math.min(1, cos)) * 180) / Math.PI);
+    }
+  }
+  return worst;
+}
 
 // ---- The standalone page, and saving on this device.
 

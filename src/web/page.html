@@ -154,8 +154,17 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .tp { min-width: 44px; font-size: 15px; }
 .tp sub { font-size: 9px; margin-left: 1px; }
 .tp.stop { background: var(--ink); color: var(--panel); border-color: var(--ink); }
-.history { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
+.history { position: relative; display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
 .tok { font: 13px var(--f-mono); border: 0; background: var(--off-bg); color: var(--muted); border-radius: 5px; padding: 3px 6px; cursor: pointer; }
+/* A step the guide loaded: its turns in a box, behind a tag that goes to the step's start. */
+.step-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
+.step-box.on { border-color: var(--accent); }
+/* The setup and its undoing are marked alike, under the turn; a regrip is ringed. */
+.tok.part-setup, .tok.part-undo { box-shadow: inset 0 -2px 0 var(--accent); }
+.tok.part-undo { opacity: 0.8; font-style: italic; }
+.tok.part-regrip { box-shadow: inset 0 0 0 1px var(--muted); }
+.tok.part-setup.cur, .tok.part-undo.cur, .tok.part-regrip.cur { box-shadow: inset 0 0 0 2px var(--good); }
+.step-tag { font: 700 11px var(--f-body); border: 0; background: none; color: var(--accent); padding: 3px 4px; cursor: pointer; white-space: nowrap; }
 .tok.done { background: var(--good-bg); color: var(--good); }
 .tok.cur { box-shadow: inset 0 0 0 2px var(--good); } /* inside the chip: .history clips anything drawn outside */
 .transport { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -183,6 +192,9 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .add-turns { margin-top: 10px; }
 .known { margin-top: 10px; }
 .known summary { cursor: pointer; font-weight: 600; }
+/* A fixed height, so a step's text never moves what is below it. */
+.guide-modes button { font: 600 13px var(--f-body); padding: 6px 10px; min-height: 34px; }
+.guide-line { margin: 8px 0 0; height: 7.4em; overflow-y: auto; font-size: 14px; }
 .known-alg { font: 13px var(--f-mono); overflow-wrap: anywhere; }
 .saved { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .saved li { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
@@ -223,6 +235,7 @@ details[open] summary { margin-bottom: 8px; }
       </div>
       <div class="pop" id="info-pop" hidden>
         <p class="hint">Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes.</p>
+        <p class="hint"><strong>During a solve step</strong>, only the cubelets the step applies to keep their colors; gray ones don't move, dark gray ones may end up anywhere. Each colored cubelet has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the cubelet flies along it. With a ring: the cubelet ends up solved. Dashed: it is passing through and moves again later. Plain: a shape or core step moves it; it is solved later.</p>
       </div>
       <div class="pop" id="render-pop" hidden title="Applies to the 3D view and the flat view">
         <label class="keep" for="glow"><input type="checkbox" id="glow"> Edge glow</label>
@@ -291,6 +304,13 @@ details[open] summary { margin-bottom: 8px; }
         <button class="btn primary" id="load" title="Add the turns at the current step, then play them with ▶ or step through them">Load</button>
         <button class="btn" id="alg-edit" title="Edit the whole turn list here">Edit</button>
       </div>
+      <details class="known" id="guide">
+        <summary>Solve step by step</summary>
+        <p class="hint" style="margin:6px 0 0">Next step loads one step toward solved, ready to play. The cubelets it applies to keep their colors, and paths show where they go (the ⓘ beside the 3D view says how to read them). In the turn list, a step's tag goes back to its start.</p>
+        <div class="row" style="margin-top:8px"><button class="btn primary" id="next-step">Next step</button><button class="btn" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn" id="guide-show" title="Turn the view to where this step's paths begin and end">Show</button><button class="btn" id="guide-stop" title="Drop the step and its grays; the turn list stays as it is">Stop</button></div>
+        <div class="row" style="margin-top:8px"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
+        <p class="guide-line" id="guide-line" aria-live="polite"></p>
+      </details>
       <details class="known">
         <summary>Algorithms</summary>
         <p class="hint" style="margin:6px 0 0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turn list with its start position.</p>

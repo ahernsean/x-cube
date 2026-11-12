@@ -5,7 +5,8 @@
 //   node src/cli/xc.ts effect "<alg>" [--from ...]     cycles / twists caused by alg
 //   node src/cli/xc.ts order "<alg>" [--from ...]      repeats until the start state looks the same
 //   node src/cli/xc.ts encode "<alg>"                  print a state code for solved + alg
-//   node src/cli/xc.ts solve "<alg>" [--state <code>]  steps from the position after alg to solved
+//   node src/cli/xc.ts solve "<alg>" [--state <code>] [--mode kinds|layers]
+//                                                      steps from the position after alg to solved
 
 import { effect, isHomeX, netView, statusLine } from "../core/analyze.ts";
 import { formatAlg, parseAlg } from "../core/notation.ts";
@@ -84,12 +85,14 @@ function main(argv: string[]) {
       if (!r.ok) fail(r.error!);
       let steps;
       try {
-        steps = solveSteps(st);
+        const mode = args.get("--mode") ?? "kinds";
+        if (mode !== "kinds" && mode !== "layers") fail(`unknown mode ${mode} (use kinds or layers)`);
+        steps = solveSteps(st, mode);
       } catch (e) {
         fail((e as Error).message);
       }
       if (!steps.length) console.log("already solved");
-      steps.forEach((step, i) => console.log(`${String(i + 1).padStart(2)} ${step.stage.padEnd(7)} ${step.alg}\n           ${step.goal}`));
+      steps.forEach((step, i) => console.log(`${String(i + 1).padStart(2)} ${step.stage.padEnd(13)} ${step.alg}\n                 ${step.goal}`));
       if (steps.length) console.log(`${steps.reduce((n, step) => n + step.turns.length, 0)} turns in ${steps.length} ${steps.length === 1 ? "step" : "steps"}`);
       break;
     }
