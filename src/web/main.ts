@@ -2,7 +2,7 @@
 // three.js r128 is loaded as a global from cdnjs by the page.
 
 import { isHomeX, isSolved, isXShape, isExposed, outerAvailability } from "../core/analyze.ts";
-import { DIRS, ROT_DIR, ROT_INV, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
+import { DIRS, axisRotation, ROT_DIR, ROT_INV, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
   COLOR_NAME,
@@ -3234,7 +3234,7 @@ function makeArrows(paths: StickerPath[]) {
     // cubelet will turn: it leaves showing its stickers as they are and arrives showing
     // them as they will be. Each face is drawn only from its front, so the copy looks
     // solid although, like the path, it is drawn over everything.
-    if (!reduceMotion) {
+    if (!reduceMotion && !p.layer) {
       const copy = new THREE.Group();
       const small = (to: any, cubelet: number) => {
         both(to, new THREE.BoxGeometry(0.46, 0.46, 0.46), solid(0x3a4042), 6);
@@ -3280,6 +3280,8 @@ interface StickerPath {
   toDir: number;
   /** The sticker's color, or null for the neutral path of a cubelet with no sticker. */
   color: Color | null;
+  /** Whether this is the arrow of a whole layer's turn, which has no flying copy. */
+  layer?: boolean;
   /** The other cubelets flying with it as one unit: each one's id, how it is turned, and where it is from this one (in slots). */
   unit?: { cubelet: number; ori: number; offset: Vec3 }[];
   /** Whether the cubelet ends solved: in its place, turned as solved (drawn with a ring). */
@@ -3324,10 +3326,13 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
   // the view is turned (a portrait phone is the tightest); a route that goes farther is cut
   // off at the edge of the view.
   const ROOM = 3.1;
+  // A route may go this much farther where it has to (it costs), to round a cubelet that
+  // nearly reaches the edge of the view without a tight bend.
+  const SLACK = 0.4;
   // A route keeps this far from every cubelet, except near its ends, where it need only
   // be LEAN times as far from them as from the end: so it leaves a sticker, and comes
-  // onto a face, within 60 degrees of straight out.
-  const MARGIN = 0.32, LEAN = 0.5, POINTS = 40;
+  // onto a face, within 45 degrees of straight out.
+  const MARGIN = 0.32, LEAN = 0.7, POINTS = 40;
   // What is in the way: every cubelet and the puzzle's solid center, as boxes. No sticker
   // is ever covered, so the way out of the sticker is clear. The spot the new face looks
   // into may be filled now by a cubelet the step takes away, so that one doesn't count.
@@ -3366,7 +3371,7 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
           if (d >= need) break;
           p.addScaledVector(away, d > 1e-6 ? need - d : 0.15);
         }
-        if (p.length() > ROOM) p.setLength(ROOM);
+        if (p.length() > ROOM + SLACK) p.setLength(ROOM + SLACK);
       }
     return pts;
   };
@@ -3400,7 +3405,7 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
           if (d >= need) break;
           p.addScaledVector(away, d > 1e-6 ? need - d : 0.15);
         }
-        if (p.length() > ROOM) p.setLength(ROOM);
+        if (p.length() > ROOM + SLACK) p.setLength(ROOM + SLACK);
       }
     }
     return pts;
@@ -3447,12 +3452,13 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
       if (before) turning += before.angleTo(heading);
       before = heading;
     }
-    // Staying in view matters most, then clear of the puzzle (a stretch behind it is drawn
-    // faintly, and still seen), then being short and turning little. The turning is what
+    // Clear of the puzzle matters most (a stretch behind it is drawn faintly, and still
+    // seen), then being short, turning little and staying in view: a route can't go far
+    // out of view, so a little out is better than a long way around. The turning is what
     // makes one sticker of a cubelet better to follow than another: one facing the way the
     // cubelet goes needs no bend to get started.
     const length = curve.getLength();
-    const cost = Math.max(0, out) * 60 + (hits / 48) * length * 8 + length + turning * 0.6;
+    const cost = Math.max(0, out) * 5 + (hits / 48) * length * 8 + length + turning * 0.6;
     if (!best || cost < best.cost) best = { curve, hits, effort, length, cost, out: Math.max(0, out), turning, bend };
     effort++;
   }
@@ -3475,9 +3481,34 @@ function attached(st: State, s: number): number[] {
   return DIRS.map((d) => slotAtXYZ(p[0] + d[0], p[1] + d[1], p[2] + d[2])).filter((n) => n >= 0 && st.occ[n] >= 0 && SLOT_POS[n].some((v) => Math.abs(v) === 2));
 }
 
+/**
+ * An arrow for a turn of one layer: an arc just outside the layer's face, about its axis,
+ * as far around as the turn goes and the way it goes, placed where the Home view sees it
+ * best. None for a turn of the whole puzzle.
+ */
+function layerArrow(st: State, turn: Turn): StickerPath[] {
+  const def = MOVE_DEFS[turn.def];
+  const filled = def.slots.filter((s) => st.occ[s] >= 0);
+  const side = def.slots.reduce((sum, s) => sum + SLOT_POS[s][def.axis], 0);
+  if (!side) return [];
+  const out = Math.sign(side);
+  const axis = new THREE.Vector3().setComponent(def.axis, out);
+  const quarters = def.ccw * (turn.amount === 3 ? -1 : turn.amount);
+  const whole = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3().setComponent(def.axis, 1), (quarters * Math.PI) / 2);
+  const top = Math.max(...filled.filter((s) => SLOT_POS[s].every((v, k) => k === def.axis || v === 0)).map((s) => SLOT_POS[s][def.axis] * out));
+  const height = top + 0.5 + 0.3;
+  const toward = new THREE.Vector3(1, 0.8, 1).projectOnPlane(axis).normalize().multiplyScalar(1.25);
+  const start = toward.applyQuaternion(new THREE.Quaternion().slerp(whole, 0.5).invert());
+  const curve = new THREE.CatmullRomCurve3(Array.from({ length: 17 }, (_, k) => start.clone().applyQuaternion(new THREE.Quaternion().slerp(whole, k / 16)).addScaledVector(axis, height)), false, "centripetal");
+  const center = filled.find((s) => SLOT_POS[s].every((v, k) => (k === def.axis ? v * out === top : v === 0)))!;
+  const d = dirIndex(axis.toArray() as Vec3);
+  return [{ from: center, fromDir: d, to: center, toDir: d, color: null, lands: false, dashed: false, layer: true, cubelet: -1, fromOri: 0, toOri: 0, curve, hits: 0, out: 0, turning: 0, bend: 0 }];
+}
+
 function stickerPaths(st: State, step: SolveStep): StickerPath[] {
   // A parity step turns whole layers: paths for every cubelet in them would only tangle.
-  if (step.stage === "parity") return [];
+  // Each turn has one neutral arrow instead, around the face of the layer it turns.
+  if (step.stage === "parity") return step.turns.flatMap((turn) => layerArrow(st, turn));
   // Where everything ends, as the puzzle is held before the step: the regrip undone.
   const after = st.clone();
   applyTurns(after, step.turns);

@@ -304,7 +304,7 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   level, so a gray white can't be taken for a white). Before the step's first turn, **paths** in the 3D view
   show where each cubelet it moves will go and how it will be turned: a path follows one of
   the cubelet's stickers, in that sticker's color with a dark casing, leaving the sticker and
-  coming onto the face the sticker will be on within 60 degrees of straight out. A
+  coming onto the face the sticker will be on within 45 degrees of straight out. A
   cubelet that ends up solved has a full path and a ring where its sticker lands;
   one only passing through has a dashed path. In a shape or core step, which solves no
   cubelet, each cubelet it applies to that moves or turns has a plain path (no ring), read
@@ -322,9 +322,10 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   toward the puzzle). No sticker is ever covered, so the start is clear; the spot the
   new face looks into may be filled until the step takes that cubelet away, so that one
   cubelet doesn't count (the path is drawn faintly through it). Of the routes, the one
-  costing least is taken: leaving the room the 3D view shows (a sphere around the puzzle,
-  whatever the view's angle) costs most, then the length of it inside the puzzle, then
-  its length and how much it turns. A flying copy moves by distance along its path, so
+  costing least is taken: the length of it inside the puzzle costs most, then its length,
+  how much it turns, and how far it leaves the room the 3D view shows (a sphere around
+  the puzzle, whatever the view's angle). A route may leave that room by up to 0.4 of a
+  cubelet, to round a cubelet near the edge of the view without a tight bend. A flying copy moves by distance along its path, so
   its speed is even (eased at the ends). It turns the way its path goes: the followed
   sticker faces out of its face at the start, away from the puzzle's center along the
   way, and out of its new face at the end (a sticker facing the same way at both ends
@@ -342,7 +343,8 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   drawing that passes only behind what is already drawn, without the path's dark
   casing), so a path on the far side can't be taken for one on the near side.
   **Show** turns the 3D view to where the paths begin and end (as the color editor's Show
-  does for a problem). Parity steps, which turn whole layers, have no paths. **Order** switches between the solver's modes, "Corners,
+  does for a problem). A parity step, which turns whole layers, has one neutral arrow for each turn instead:
+  an arc just outside the face of the layer, as far around as the turn goes (`layerArrow`). **Order** switches between the solver's modes, "Corners,
   then edges" and "Top to bottom", and is kept on the device. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
   guide calls it **Regrip**, and it names the center that is up now ("now blue is up").
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag

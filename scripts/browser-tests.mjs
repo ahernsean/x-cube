@@ -1072,7 +1072,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   // Each path follows one sticker, in its color, from the face it is on to the face it will
   // be on; all three of these cubelets end at home.
   const pathForm = /^[WYGBRO] [\w.]+\/[RLUDFB] > [\w.]+\/[RLUDFB] lands$/;
-  check(g?.paths.length === 3 && g.pathMeshes === 24 && g.pathsThrough === 0 && g.pathsOut < 0.15 && g.headGap >= 0 && g.headGap < 0.05 && g.paths.every((t) => pathForm.test(t)) && new Set(g.paths.map((t) => t.split(" ")[1])).size === 3, `each moved cubelet has a path from one of its stickers to where that sticker will be, going around the puzzle, not through it, each shaft joined to its head (${g?.paths.join("; ")})`);
+  check(g?.paths.length === 3 && g.pathMeshes === 24 && g.pathsThrough === 0 && g.pathsOut < 0.45 && g.headGap >= 0 && g.headGap < 0.05 && g.paths.every((t) => pathForm.test(t)) && new Set(g.paths.map((t) => t.split(" ")[1])).size === 3, `each moved cubelet has a path from one of its stickers to where that sticker will be, going around the puzzle, not through it, each shaft joined to its head (${g?.paths.join("; ")})`);
   // A small copy of each cubelet flies along its path (unless the device asks for less motion). Show turns the
   // view so that every path's sticker, and the face it is going to, can be seen.
   const motion = await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -1093,7 +1093,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await page.click("#guide-show");
   await settle();
   const hiddenAfter = (await Promise.all(g.paths.map(seenPath))).flat().filter((x) => !x).length;
-  check(g.runners === (motion ? 3 : 0) && hiddenBefore > 0 && hiddenAfter === 0, `Show turns the view to where the paths begin and end (${hiddenBefore} of 6 ends hidden from below, ${hiddenAfter} after Show); ${g.runners} copies fly`);
+  check(g.runners === (motion ? 3 : 0) && hiddenBefore > 0 && hiddenAfter === 0, `Show turns the view to where the paths begin and end (${hiddenBefore} of 6 ends hidden from below, ${hiddenAfter} after Show; ${g.paths.join("; ")}); ${g.runners} copies fly`);
   await page.click('[data-view="home"]');
   await settle();
   // One turn forward hides the arrows; one turn back, to the step's start, shows them again.
@@ -1149,7 +1149,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await play("R U");
   await next();
   const shape = await probe("guide");
-  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows > 0 && shape.paths.every((t) => !/ (lands|dashed)/.test(t)) && shape.pathsOut < 0.15 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, only the cubelets it applies to glow, and those that move have plain paths (${JSON.stringify(shape)})`);
+  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows > 0 && shape.paths.every((t) => !/ (lands|dashed)/.test(t)) && shape.pathsOut < 0.45 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, only the cubelets it applies to glow, and those that move have plain paths (${JSON.stringify(shape)})`);
   // Playing the step and asking again carries the count on: step 2 of the same total, in its own box.
   const total = shape.after + 1;
   await page.click("#last");
@@ -1242,7 +1242,7 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   // bend is a little shorter than the path), on every path; and no path leaves the view.
   const gaps = g.pathPoints.map((path) => path.slice(1).map((q, i) => Math.hypot(q[0] - path[i][0], q[1] - path[i][1], q[2] - path[i][2])));
   const uneven = Math.max(...gaps.map((d) => Math.max(...d) / Math.min(...d)));
-  check(gaps.length === g.arrows && uneven < 1.35 && g.pathsOut < 0.05, `a flying copy neither lingers nor rushes (its longest stride is ${uneven.toFixed(2)} of its shortest), and stays in view (${g.pathsOut.toFixed(2)} out)`);
+  check(gaps.length === g.arrows && uneven < 1.35 && g.pathsOut < 0.45, `a flying copy neither lingers nor rushes (its longest stride is ${uneven.toFixed(2)} of its shortest), and leaves the view by little if at all (${g.pathsOut.toFixed(2)} out)`);
   check(sharpest(g) < 50, `no path bends sharply (${sharpest(g).toFixed(0)} degrees at most between one stride and the next)`);
   // A cubelet with several stickers is followed by the one that needs no bend to get
   // started: here a corner hops along the front face, and its front sticker is followed,
