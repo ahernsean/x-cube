@@ -3070,6 +3070,7 @@ function drawGuide() {
   clearGlowPaint();
   if (guideArrows) {
     pivot.remove(guideArrows);
+    disposeTree(guideArrows);
     guideArrows = null;
   }
   if (within) {
@@ -3266,6 +3267,20 @@ function makeArrows(paths: StickerPath[]) {
 
 /** The color of a path that follows no sticker: a core double edge's unit. */
 const NEUTRAL_PATH = 0x8f979b;
+
+/**
+ * Frees the graphics memory of everything in a group that nothing else uses: each
+ * geometry and material once (a geometry is shared by a mesh's two drawings). Only for
+ * groups that make their own, as the guide's paths and flying copies do.
+ */
+function disposeTree(group: any) {
+  const owned = new Set<any>();
+  group.traverse((o: any) => {
+    if (o.geometry) owned.add(o.geometry);
+    for (const m of [o.material].flat()) if (m) owned.add(m);
+  });
+  for (const x of owned) x.dispose();
+}
 
 /** Glow materials that draw nothing, for cubelets a step doesn't apply to (made on first use, once THREE is loaded). */
 let noGlow: any[] | null = null;
@@ -3960,6 +3975,8 @@ function installProbe() {
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
     /** The step guide: its step, the slots (now) of the cubelets it applies to, how many stickers are drawn gray at each level, and the arrows showing. */
+    /** Geometries the renderer holds right now, to check that the guide frees its own. */
+    geometries: () => renderer.info.memory.geometries,
     guide: () => {
       if (!guide) return null;
       const grays = [1, 2].map((level) => guideDimmed.filter((m) => stickerMesh3d.includes(m) && CUBELETS.some((c) => c.stickers.some((col) => col && grayMaterial!(col, level as 1 | 2).sticker === m.material))).length);

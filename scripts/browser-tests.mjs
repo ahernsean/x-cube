@@ -1338,6 +1338,24 @@ labTest("guide: a parity turn has one arc around the outside of its layer", asyn
   check(g.stage === "parity" && g.alg === "U" && g.arrows === 1 && g.runners === 0 && pts.every(([x, y, z]) => Math.abs(y - 1) < 0.01 && Math.hypot(x, z) > 2.5) && Math.abs(around - 90) < 2, `the parity turn U has one arc, level with the top layer and outside it, a quarter of the way around, and no flying copy (${g.alg}; ${g.paths.join("; ")}; ${around?.toFixed(0)} degrees; ${JSON.stringify(pts.filter((_, k) => k % 6 === 0))})`);
 });
 
+labTest("guide: dropping a step frees its paths' graphics memory", async ({ page, check, probe, settle, play }) => {
+  // Each Next step builds new paths and flying copies; Stop drops them. The renderer's count
+  // of geometries is back where it was each time, so using the guide doesn't pile them up.
+  const { next } = guideHelpers(page, settle);
+  await play("(F' L' F) r (F' L F) r'");
+  const counts = [];
+  for (let i = 0; i < 4; i++) {
+    await next();
+    await page.waitForTimeout(200); // a few frames, so the paths are drawn and their geometry uploaded
+    const shown = await probe("geometries");
+    await page.click("#guide-stop");
+    await settle();
+    counts.push([shown, await probe("geometries")]);
+  }
+  const after = counts.map(([, a]) => a);
+  check(counts.every(([shown, a]) => shown > a) && after.every((a) => a === after[0]), `each step's paths add geometries while shown and free them when dropped (shown, then dropped: ${counts.map((c) => c.join(" > ")).join("; ")})`);
+});
+
 /** The sharpest bend, in degrees, between one stride and the next of any path's 24 strides. */
 function sharpest(g) {
   let worst = 0;
