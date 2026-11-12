@@ -299,8 +299,10 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   button gives the stage and goal, then "Turns:" with the turns as the solver writes them
   (`[setup: cycle]`), then "Step 2 of 9 to solved" (counted from when the guide was started; a step taken
   from anywhere but the end of the one before starts the count again), each on its own line. Until the step has
-  been played through, the cubelets it applies to keep their colors, the cubelets it leaves alone are gray, and the ones it may leave
-  anywhere are darker gray (stickers and flat-view tiles; one gray for every color at each
+  been played through, its colors picture what its turns do (`stepColors`): the cubelets it applies to that it moves or
+  turns keep their colors (with the extension cubelets moving with them as a unit), every other cubelet it moves or turns is
+  darker gray (left for later steps), and every cubelet it leaves as it was is gray, even one it applies to that is not yet
+  where it belongs (stickers and flat-view tiles; one gray for every color at each
   level, so a gray white can't be taken for a white). Before the step's first turn, **paths** in the 3D view
   show where each cubelet it moves will go and how it will be turned: a path follows one of
   the cubelet's stickers, in that sticker's color with a dark casing, leaving the sticker and
