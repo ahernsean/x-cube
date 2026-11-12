@@ -267,6 +267,12 @@ test("solve: the stages come as needed", () => {
   assert.equal(cycle.alg, "r (F' L' F) r' (F' L F)", "one 3-cycle is undone by its inverse, with no setup, written as a commutator");
   assert.match(cycle.goal, /All three end up solved/);
   assert.equal(cycle.lands.length, 3);
+  // So is the mirrored one, with R inside for a right-handed person.
+  for (const [kind, alg, undo] of [["corners", "(F R F') l' (F R' F') l", "l' (F R F') l (F R' F')"], ["edges", "(F M' F') l' (F M F') l", "l' (F M' F') l (F M F')"]]) {
+    const mirrored = nextStep(after(alg))!;
+    assert.equal(mirrored.stage, kind);
+    assert.equal(mirrored.alg, undo, `the mirrored ${kind} cycle is undone by its own inverse`);
+  }
   // The hold step only brings white up; whichever side is in front then is the grip, and
   // the rest is solved from there. Later steps turn the whole puzzle only about its
   // vertical axis, so white stays up.

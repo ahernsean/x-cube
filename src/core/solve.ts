@@ -97,11 +97,12 @@ function slotPerm(t: Turn): Int16Array {
 // ---------------------------------------------------------------- ease and grip
 
 /**
- * How hard each kind of turn is on the hands (lower is easier), by move name. F is a
- * little harder than R, L and U: the owner would rather regrip and turn R than turn F
- * several times. Whole numbers, since the tables below sort by them.
+ * How hard each kind of turn is on the hands (lower is easier), by move name; an outer
+ * turn is as hard as the inner turn of its face. F is harder than R, L and U: the owner
+ * would rather regrip and turn R than turn F several times. L is a little harder than R
+ * (the owner is right-handed). Whole numbers, since the tables below sort by them.
  */
-const EASE: Record<string, number> = { U: 4, R: 4, L: 4, F: 7, r: 4, l: 4, f: 4, M: 4, D: 8, d: 8, u: 8, H: 12, S: 12, E: 12, B: 16, b: 16, x: 8, y: 8, z: 8 };
+const EASE: Record<string, number> = { U: 4, R: 4, L: 5, F: 7, r: 4, l: 5, f: 7, M: 4, D: 8, d: 8, u: 8, H: 12, S: 12, E: 12, B: 16, b: 16, x: 8, y: 8, z: 8 };
 const ease = (turns: readonly Turn[]) => turns.reduce((sum, t) => sum + EASE[MOVE_DEFS[t.def].name], 0);
 const ALL_TURNS: Turn[] = MOVE_DEFS.flatMap((_, def) => ([1, 2, 3] as const).map((amount) => ({ def, amount })));
 
@@ -567,18 +568,20 @@ const LAYER_GOAL: ((n: number) => string)[] = [
 // 16 spots, solved with 3-cycles when it is even.
 
 /**
- * The 3-cycles the method uses, one per kind. Each is a commutator, "(A) o (A undone) o
+ * The 3-cycles the method uses, two per kind. Each is a commutator, "(A) o (A undone) o
  * undone", with A three face or slice turns and o an outer turn, and is written grouped
- * that way. They are Dave Baum's cycles turned a quarter around the puzzle, which puts
- * them on the front, left and right: no back turn, and M in place of S.
+ * that way. The second of each is Dave Baum's cycle turned a quarter around the puzzle,
+ * which puts it on the front, left and right: no back turn, and M in place of S. The
+ * first is its mirror image, left for right, with R inside for a right-handed person.
+ * A step takes whichever, with its setup, is easiest; on a tie, the first.
  */
-export const CYCLES: Record<"outerCorner" | "outerEdge", { a: string; o: string }> = {
-  outerCorner: { a: "F' L' F", o: "r" },
-  outerEdge: { a: "F' M' F", o: "r" },
+export const CYCLES: Record<"outerCorner" | "outerEdge", { a: string; o: string }[]> = {
+  outerCorner: [{ a: "F R F'", o: "l'" }, { a: "F' L' F", o: "r" }],
+  outerEdge: [{ a: "F M' F'", o: "l'" }, { a: "F' M' F", o: "r" }],
 };
 /** A cycle, or its inverse, in notation. */
-function cycleAlg(kind: "outerCorner" | "outerEdge", inverse: boolean): string {
-  const a = parseAlg(CYCLES[kind].a), o = parseAlg(CYCLES[kind].o);
+function cycleAlg(kind: "outerCorner" | "outerEdge", v: number, inverse: boolean): string {
+  const a = parseAlg(CYCLES[kind][v].a), o = parseAlg(CYCLES[kind][v].o);
   const [A, Au, O, Ou] = [a, invertTurns(a), o, invertTurns(o)].map((t) => formatAlg(t));
   return inverse ? `${O} (${A}) ${Ou} (${Au})` : `(${A}) ${O} (${Au}) ${Ou}`;
 }
@@ -592,11 +595,11 @@ interface CycleTable {
 }
 const cycleTables = new Map<string, CycleTable>();
 
-function cycleTable(kind: "outerCorner" | "outerEdge"): CycleTable {
-  const known = cycleTables.get(kind);
+function cycleTable(kind: "outerCorner" | "outerEdge", v: number): CycleTable {
+  const known = cycleTables.get(kind + v);
   if (known) return known;
   const after = SOLVED.clone();
-  applyTurns(after, parseAlg(cycleAlg(kind, false)));
+  applyTurns(after, parseAlg(cycleAlg(kind, v, false)));
   const to = (s: number) => after.occ.indexOf(SOLVED.occ[s]);
   const first = SLOTS.find((s) => SOLVED.occ[s] >= 0 && to(s) !== s)!;
   const triple = [first, to(first), to(to(first))];
@@ -623,7 +626,7 @@ function cycleTable(kind: "outerCorner" | "outerEdge"): CycleTable {
       }
   }
   const table = { setups };
-  cycleTables.set(kind, table);
+  cycleTables.set(kind + v, table);
   return table;
 }
 
@@ -714,15 +717,18 @@ function cycleStep(st: State, group: Group): SolveStep | null {
   const has = (slot: number) => group.has(toRef.indexOf(slot));
   const unsolved = [...home.keys()].filter((s) => home.get(s) !== s);
   if (!unsolved.some((s) => has(home.get(s)!))) return null;
-  const table = cycleTable(kind);
-  const cyclePerms = [false, true].map((inverse) => parseAlg(cycleAlg(kind, inverse)).map(turnPerm));
+  const variants = CYCLES[kind].map((_, v) => ({
+    table: cycleTable(kind, v),
+    perms: [false, true].map((inverse) => parseAlg(cycleAlg(kind, v, inverse)).map(turnPerm)),
+    ease: ease(parseAlg(cycleAlg(kind, v, false))),
+  }));
   const yellowUp = centerAt(st, DOWN) === UP;
   // Each candidate sends the cubelet in a home (to b), the one in b on to c, and the one in
   // c back to a, for any other unsolved spot c: a cubelet already home is never moved. It
   // must bring a cubelet of this group home. Prefer the step that sends the most cubelets
   // home, then the easiest: its setup, done and undone, the regrip it begins with, and how
   // much of the step its three cubelets spend where they are hard to see (unseen).
-  let best: { triple: number[]; setup: Turn[]; inverse: boolean; landing: number; cost: number; regrip: number } | null = null;
+  let best: { triple: number[]; setup: Turn[]; inverse: boolean; v: number; landing: number; cost: number; regrip: number } | null = null;
   for (const a of unsolved) {
     const b = home.get(a)!;
     for (const c of unsolved) {
@@ -731,22 +737,23 @@ function cycleStep(st: State, group: Group): SolveStep | null {
       if (!lands.some((to) => has(to))) continue;
       const landing = lands.length;
       if (best && landing < best.landing) continue;
-      for (let m = 0; m < GRIPS.length; m++)
-        for (const t of [[a, b, c], [b, c, a], [c, a, b]]) {
-          const at = t.map((s) => GRIP_PERM[m][s]);
-          const found = table.setups.get(at.join());
-          if (!found) continue;
-          const better = (cost: number) => !best || landing > best.landing || (landing === best.landing && cost < best.cost);
-          let cost = 2 * found.cost + ease(GRIPS[m]) + (m >= 4 ? FLIP_COST : 0) + layerDown(group.target, yellowUp !== m >= 4, 2 * found.setup.length + 8);
-          if (!better(cost)) continue;
-          const setup = found.setup.map(turnPerm);
-          cost += unseen(at, [...setup, ...cyclePerms[+found.inverse], ...invertTurns(found.setup).map(turnPerm)], false);
-          if (better(cost)) best = { triple: [a, b, c], setup: found.setup, inverse: found.inverse, landing, cost, regrip: m };
-        }
+      for (let v = 0; v < variants.length; v++)
+        for (let m = 0; m < GRIPS.length; m++)
+          for (const t of [[a, b, c], [b, c, a], [c, a, b]]) {
+            const at = t.map((s) => GRIP_PERM[m][s]);
+            const found = variants[v].table.setups.get(at.join());
+            if (!found) continue;
+            const better = (cost: number) => !best || landing > best.landing || (landing === best.landing && cost < best.cost);
+            let cost = variants[v].ease + 2 * found.cost + ease(GRIPS[m]) + (m >= 4 ? FLIP_COST : 0) + layerDown(group.target, yellowUp !== m >= 4, 2 * found.setup.length + 8);
+            if (!better(cost)) continue;
+            const setup = found.setup.map(turnPerm);
+            cost += unseen(at, [...setup, ...variants[v].perms[+found.inverse], ...invertTurns(found.setup).map(turnPerm)], false);
+            if (better(cost)) best = { triple: [a, b, c], setup: found.setup, inverse: found.inverse, v, landing, cost, regrip: m };
+          }
     }
   }
   if (!best) throw new Error(`no setup reaches the next three ${OUTER_NAME[kind][1]}`);
-  const cycle = cycleAlg(kind, best.inverse);
+  const cycle = cycleAlg(kind, best.v, best.inverse);
   const [a, b, c] = best.triple;
   const { landing } = best;
   const moved: [number, number][] = [[a, b], [b, c], [c, a]];

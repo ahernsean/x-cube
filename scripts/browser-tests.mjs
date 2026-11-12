@@ -739,7 +739,7 @@ labTest("algorithms: one can be deleted, and the turn list saved as one and load
   await page.click(`[data-alg-load="${mine}"]`);
   const loadedMine = { base: await page.$eval("#base-label", (e) => e.textContent), alg: await turnList(), counter: await counter() };
   check(
-    algsBefore.length === 5 && algsBefore.includes("Corner 3-cycle (Baum)") && !afterDelete.includes("Corner 3-cycle (Baum)") && afterDelete.length === 4 && fieldAfterLoad === "" && afterSave.at(-1) === "Sexy move" && loadedMine.base === "Sexy move" && loadedMine.alg === "R U R' U'" && loadedMine.counter === "0/4",
+    algsBefore.length === 9 && algsBefore.includes("Corner 3-cycle (Baum)") && !afterDelete.includes("Corner 3-cycle (Baum)") && afterDelete.length === 8 && fieldAfterLoad === "" && afterSave.at(-1) === "Sexy move" && loadedMine.base === "Sexy move" && loadedMine.alg === "R U R' U'" && loadedMine.counter === "0/4",
     `algorithms: delete one (${algsBefore.length} -> ${afterDelete.length}), save one ("${afterSave.at(-1)}"), and load it back ("${loadedMine.alg}", ${loadedMine.counter})`,
   );
 });

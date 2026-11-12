@@ -138,7 +138,7 @@ step. Stages, in order:
 4. **parity**: when the outer corners or the outer edges need an odd number of swaps, `r`
    (both odd), `U` (edges only: it moves the four edges in one ring and the eight corners
    in two) or `U r` (corners only) makes both even.
-5. **corners**, 6. **edges**: three at a time. Each step is one fixed 3-cycle (`CYCLES`,
+5. **corners**, 6. **edges**: three at a time. Each step is one of two fixed 3-cycles per kind (`CYCLES`,
    or its inverse) inside setup turns that keep the shape, written `[setup: cycle]`. An
    outer cubelet is turned one way in each spot, so placing it is all there is to do.
 
@@ -164,9 +164,11 @@ positions, the two modes come out about the same length (177 and 180 turns on av
 **Ease, the owner's priorities for turns** (`EASE` in `solve.ts`), most important first:
 avoid the back (`B`, `b`); then the bottom (`D`); then `H` and `S`; `M` is fine (a person
 does it as `L' R x'`); `R` is preferred to `F` (F costs 7 to R's 4, so `y' R U R' U R U2 R'`
-beats `F U F' U F U2 F'`); and regular, repeating patterns are easier to memorize. The
-weights are whole numbers (the tables sort by them): `U R L M` and the outer turns 4, `F`
-7, `D` 8, a rotation 8, `H S` 12, `B` 16. So:
+beats `F U F' U F U2 F'`); the owner is right-handed, so `L` is a little harder than `R`;
+an outer turn is as hard as its face's inner turn (`r` like `R`, `f` like `F`); and
+regular, repeating patterns are easier to memorize. The weights are whole numbers (the
+tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H S` 12,
+`B b` 16. So:
 
 - Turns are chosen by ease, not by number: setups and the core stage take the easiest
   way, and the shape stage weighs every way with the fewest turns, and with one more.
@@ -204,7 +206,12 @@ weights are whole numbers (the tables sort by them): `U R L M` and the outer tur
 - **The cycles are commutators, written grouped:** corners `(F' L' F) r (F' L F) r'`,
   edges `(F' M' F) r (F' M F) r'` (inverses: `r (F' L' F) r' (F' L F)` and likewise).
   They are Baum's two turned a quarter around the puzzle, which takes out `b` and `S`.
-  The edge cycle's two `M` turns undo each other, but between them the side centers are moved.
+  Each has a mirror image, left for right, the owner's: corners `(F R F') l' (F R' F') l`
+  (Lx.DF, Fx.UR, Lx.UF), edges `(F M' F') l' (F M F') l` (Lx.D, Fx.R, Lx.F). A step takes
+  whichever of the two, with its setup and the rest of its cost, is easiest (the mirror on
+  a tie); with two to choose from, setups are shorter (183 turns a solve in `kinds` instead
+  of 191). The edge cycle's two `M` turns undo each other, but between them the side centers are moved.
+  `ALGORITHMS.md` and the Lab's Algorithms list have all four.
 - Setups reach every one of the 3,360 ordered triples of spots for each kind, which with
   the parity fixes makes the outer stages complete; `test/solve.test.ts` solves scrambled
   positions and positions from the color editor, and checks each step changes only what

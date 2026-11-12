@@ -61,3 +61,22 @@ regrip by a center between steps. Holding the cube turned half around (y2) inste
 the opposite layers: on "Confusing edge" that makes a second flipped edge at bottom back.
 
 The Lab lists this algorithm under Algorithms, with "Confusing edge" as its position. `test/algorithms.test.ts` checks every listed algorithm from its position.
+
+## Outer stages: the solver's 3-cycles
+
+The step-by-step solver places outer cubelets three at a time with these four cycles (or
+their inverses), each inside setup turns that keep the X shape. Each is a commutator,
+written grouped, and keeps the X shape; from solved it moves only the three cubelets named.
+
+| Cycle | Turns | Cubelets, from solved |
+|---|---|---|
+| Corners | `(F' L' F) r (F' L F) r'` | Fx.UL -> Rx.UF -> Rx.DF |
+| Corners, mirrored | `(F R F') l' (F R' F') l` | Lx.DF -> Fx.UR -> Lx.UF |
+| Edges | `(F' M' F) r (F' M F) r'` | Fx.L -> Rx.F -> Rx.D |
+| Edges, mirrored | `(F M' F') l' (F M F') l` | Lx.D -> Fx.R -> Lx.F |
+
+The first of each pair is Dave Baum's cycle turned a quarter around the puzzle, which
+takes out the back turns. The mirrored ones are the owner's: left for right, so a
+right-handed person turns R inside the commutator. The solver takes whichever cycle,
+with its setup, is easiest. The Lab lists all four under Algorithms, and
+`test/algorithms.test.ts` checks each is a 3-cycle that keeps the shape.
