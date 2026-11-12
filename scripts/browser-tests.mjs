@@ -145,6 +145,17 @@ async function openLab({ url = pageUrl, context: contextOptions = labContext(), 
   return { page, context, errors, close, ...h };
 }
 
+/** The step guide's line, and Next step (opening the guide first if it is closed). */
+function guideHelpers(page, settle) {
+  const line = () => page.$eval("#guide-line", (e) => e.textContent);
+  const next = async () => {
+    await page.evaluate(() => (document.getElementById("guide").open = true));
+    await page.click("#next-step");
+    await settle();
+  };
+  return { line, next };
+}
+
 // A test of the Lab: `body` gets the open page, its helpers and `check`. Every test also
 // checks that the page reported no errors.
 function labTest(name, body, options = {}) {
@@ -1051,12 +1062,7 @@ labTest("color editing: colors that turns can't reach", async ({ page, check, pr
 // ---- The step guide.
 
 labTest("guide: Next step loads one step, grays what it leaves alone, and shows where cubelets go", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
-  const line = () => page.$eval("#guide-line", (e) => e.textContent);
-  const next = async () => {
-    await page.evaluate(() => (document.getElementById("guide").open = true));
-    await page.click("#next-step");
-    await settle();
-  };
+  const { line, next } = guideHelpers(page, settle);
   // One corner 3-cycle away from solved: the step is that cycle undone, written as a commutator.
   await play("(F' L' F) r (F' L F) r'");
   await next();
@@ -1132,8 +1138,11 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await settle();
   await next();
   check((await probe("guide")) === null && /^Solved/.test(await line()), `from solved there is no step ("${await line()}")`);
+});
+
+labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, and an edit before the step", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
+  const { line, next } = guideHelpers(page, settle);
   // A puzzle tipped over gets a Regrip step, which grays nothing: the center colors are what it goes by.
-  await startFresh();
   await play("x");
   await next();
   const holdStep = { g: await probe("guide"), line: await line() };
@@ -1184,11 +1193,11 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await page.click("#load");
   await settle();
   check(listed.startsWith("R U ") && (await probe("guide")) === null && (await line()) === "" && (await page.$$("#history .step-box")).length === 0, "editing a turn before the step drops the step and its box");
-  await page.click("#last");
-  await settle();
-  await next();
+});
+
+labTest("guide: dashed paths, the order switch, a layered core step, and a turn by hand", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
+  const { line, next } = guideHelpers(page, settle);
   // A cubelet only passing through has a dashed path, in several pieces, and no ring.
-  await startFresh();
   await play("(F' L' F) r (F' L F) r' f (F' L' F) r (F' L F) r' f'");
   await next();
   const passing = await probe("guide");
