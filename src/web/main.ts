@@ -3335,9 +3335,26 @@ function makeArrows(paths: StickerPath[]) {
       [new THREE.TubeGeometry(stem, 4, 0.022, 6), paint, 5],
       [new THREE.CircleGeometry(DISC + RIM, 48), ink, 4, onDisc(-0.002)],
       [new THREE.CircleGeometry(DISC, 48), flat(0xf4f4f2, 1), 5, onDisc(0)],
-      // Angles go counterclockwise about the disc's normal (the axis), as a right-handed turn does.
-      [new THREE.CircleGeometry(DISC - 0.02, 48, Math.PI / 2 - (angle > 0 ? 0 : share), share), ink, 6, onDisc(0.002)],
+      // Angles go counterclockwise about the disc's normal (the axis), as a right-handed turn
+      // does. The share to turn is in the page's highlight blue.
+      [new THREE.CircleGeometry(DISC - 0.02, 48, Math.PI / 2 - (angle > 0 ? 0 : share), share), flat(TWIST_BLUE, 1), 6, onDisc(0.002)],
     ];
+    // An arrow just outside the disc's rim, from where the blue share starts to where it
+    // ends, the way the cubelet turns.
+    const ARROW = DISC + RIM + 0.11, TIP = 0.26;
+    const onRim = (a: number) => new THREE.Vector3(Math.cos(a) * ARROW, Math.sin(a) * ARROW, 0.004).applyQuaternion(face).add(center);
+    const reach = share - TIP / ARROW;
+    const rim = new THREE.CatmullRomCurve3(Array.from({ length: 25 }, (_, k) => onRim(Math.PI / 2 + Math.sign(angle) * (reach * k) / 24)));
+    const point = onRim(Math.PI / 2 + angle), heading = point.clone().sub(rim.getPoint(1)).normalize();
+    const blue = flat(TWIST_BLUE, 1), r = 0.05;
+    parts.push(
+      [new THREE.TubeGeometry(rim, 32, r + 0.03, 8), ink, 4],
+      [new THREE.TubeGeometry(rim, 32, r, 8), blue, 5],
+      ...[[TIP + 0.06, r * 2.8 + 0.035, ink, 4], [TIP, r * 2.8, blue, 5]].map(([h, w, mats, order]: any) => [new THREE.ConeGeometry(w, h, 14), mats, order, (m: any) => {
+        m.position.copy(point).addScaledVector(heading, -h / 2);
+        m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), heading);
+      }] as [any, any, number, (m: any) => void]),
+    );
     for (const [geo, mats, order, place] of parts) {
       both(group, geo, mats, order, place);
       group.userData.drawn++;
@@ -3359,6 +3376,9 @@ function makeArrows(paths: StickerPath[]) {
   }
   return group;
 }
+
+/** The share of a whole turn a cubelet turns in place, on its disc: the page's highlight blue (--accent). */
+const TWIST_BLUE = 0x1d5fd6;
 
 /** The color of a path that follows no sticker: a core double edge's unit. */
 const NEUTRAL_PATH = 0x8f979b;
