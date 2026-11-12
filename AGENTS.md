@@ -513,6 +513,8 @@ context a cold reader doesn't have.
 
 ### Pull requests
 
+- Open every pull request as a **draft**, and leave it a draft until the owner says it is
+  ready. Only then mark it ready for review (which also starts the Codex review).
 - The description has a **Summary** section only, describing what changed and why.
 - Keep the title and description current with every push; never leave them describing
   only some of the commits.
