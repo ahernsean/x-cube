@@ -2959,7 +2959,7 @@ function nextStep() {
     index,
     start: app.cursor,
     from: st.clone(),
-    focus: new Set(step.moved.map(([from]) => st.occ[from])),
+    focus: new Set(step.moved.flatMap(([from]) => [from, ...attached(st, from)]).map((s) => st.occ[s])),
     free: new Set(step.free.map((s) => st.occ[s])),
     arrows: stickerPaths(st, step),
   };
@@ -3200,7 +3200,7 @@ function makeArrows(paths: StickerPath[]) {
     const radius = p.dashed ? 0.055 : 0.075, opacity = p.dashed ? 0.75 : 1;
     // The dark casing is left out of the faint drawing: behind the puzzle it would only
     // outline where the path goes in.
-    const ink = flat(0x101214, opacity).slice(0, 1), paint = flat(STICKER[p.color], opacity);
+    const ink = flat(0x101214, opacity).slice(0, 1), paint = flat(p.color ? STICKER[p.color] : NEUTRAL_PATH, opacity);
     // A cubelet only passing through gets a dashed path: the shaft in short pieces.
     const pieces = !p.dashed ? [[0, 1]] : [...Array(9).keys()].map((k) => [k / 9, k / 9 + 0.6 / 9]);
     const shafts = pieces.map(([t0, t1]) => new THREE.CatmullRomCurve3([...Array(9).keys()].map((k) => shaftCurve.getPoint(t0 + ((t1 - t0) * k) / 8))));
@@ -3236,20 +3236,35 @@ function makeArrows(paths: StickerPath[]) {
     // solid although, like the path, it is drawn over everything.
     if (!reduceMotion) {
       const copy = new THREE.Group();
-      both(copy, new THREE.BoxGeometry(0.46, 0.46, 0.46), solid(0x3a4042), 6);
-      CUBELETS[p.cubelet].stickers.forEach((color, d) => {
-        if (!color) return;
-        both(copy, new THREE.PlaneGeometry(0.36, 0.36), solid(STICKER[color]), 7, (m) => {
-          m.position.copy(dir(d).multiplyScalar(0.232));
-          m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir(d));
+      const small = (to: any, cubelet: number) => {
+        both(to, new THREE.BoxGeometry(0.46, 0.46, 0.46), solid(0x3a4042), 6);
+        CUBELETS[cubelet].stickers.forEach((color, d) => {
+          if (!color) return;
+          both(to, new THREE.PlaneGeometry(0.36, 0.36), solid(STICKER[color]), 7, (m) => {
+            m.position.copy(dir(d).multiplyScalar(0.232));
+            m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir(d));
+          });
         });
-      });
+      };
+      small(copy, p.cubelet);
+      // The rest of a unit, placed and turned as it is beside this cubelet.
+      const undo = oriQuaternion(p.fromOri).invert();
+      for (const other of p.unit ?? []) {
+        const part = new THREE.Group();
+        part.position.set(...other.offset).multiplyScalar(0.47).applyQuaternion(undo);
+        part.quaternion.copy(undo).multiply(oriQuaternion(other.ori));
+        small(part, other.cubelet);
+        copy.add(part);
+      }
       group.add(copy);
       group.userData.runners.push({ copy, curve, turns: runnerTurns(curve, dir(p.fromDir), dir(p.toDir), oriQuaternion(p.fromOri), oriQuaternion(p.toOri)) });
     }
   }
   return group;
 }
+
+/** The color of a path that follows no sticker: a core double edge's unit. */
+const NEUTRAL_PATH = 0x8f979b;
 
 /** Glow materials that draw nothing, for cubelets a step doesn't apply to (made on first use, once THREE is loaded). */
 let noGlow: any[] | null = null;
@@ -3263,7 +3278,10 @@ interface StickerPath {
   fromDir: number;
   to: number;
   toDir: number;
-  color: Color;
+  /** The sticker's color, or null for the neutral path of a cubelet with no sticker. */
+  color: Color | null;
+  /** The other cubelets flying with it as one unit: each one's id, how it is turned, and where it is from this one (in slots). */
+  unit?: { cubelet: number; ori: number; offset: Vec3 }[];
   /** Whether the cubelet ends solved: in its place, turned as solved (drawn with a ring). */
   lands: boolean;
   /** Whether it is only passing through: a cycle moves it, but not to where it ends up solved (drawn dashed). */
@@ -3356,7 +3374,7 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
   // tight route is then let spring like a stiff rod: each point moves to lessen the
   // bending around it (much) and the length (a little), still kept clear of the
   // cubelets. Bends spread over about WIDTH, so the route stands off a corner it rounds.
-  const WIDTH = 1.1;
+  const WIDTH = 1.6;
   const stiffen = (taut: any[]) => {
     const tight = new THREE.CatmullRomCurve3(taut, false, "centripetal");
     const length = tight.getLength();
@@ -3365,7 +3383,7 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
     const bend = 0.06, pull = bend * (length / (n - 1) / WIDTH) ** 2;
     const lap = pts.map(() => new THREE.Vector3());
     const mid = new THREE.Vector3();
-    for (let pass = 0; pass < 400; pass++) {
+    for (let pass = 0; pass < 700; pass++) {
       for (let i = 1; i < n - 1; i++) lap[i].copy(pts[i - 1]).addScaledVector(pts[i], -2).add(pts[i + 1]);
       for (let i = 1; i < n - 1; i++) {
         const p = pts[i];
@@ -3446,6 +3464,17 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
  * puzzle with the shortest path, favoring a little one that starts and ends on the faces
  * the Home view shows (up, front, right).
  */
+/**
+ * The slots of the extension cubelets against a core double edge in slot s (none for any
+ * other cubelet). A double edge has no sticker and is never seen, so the guide shows it
+ * and these two as one unit: they keep their colors, and they fly together.
+ */
+function attached(st: State, s: number): number[] {
+  if (st.occ[s] < 0 || CUBELETS[st.occ[s]].kind !== "doubleEdge") return [];
+  const p = SLOT_POS[s];
+  return DIRS.map((d) => slotAtXYZ(p[0] + d[0], p[1] + d[1], p[2] + d[2])).filter((n) => n >= 0 && st.occ[n] >= 0 && SLOT_POS[n].some((v) => Math.abs(v) === 2));
+}
+
 function stickerPaths(st: State, step: SolveStep): StickerPath[] {
   // A parity step turns whole layers: paths for every cubelet in them would only tangle.
   if (step.stage === "parity") return [];
@@ -3471,6 +3500,19 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
       const score = r.cost - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
       if (score < bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from), dashed: cycle && !step.lands.includes(from), cubelet: c.id, fromOri: st.ori[from], toOri: after.ori[to], curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
     });
+    // A core double edge has no sticker: its unit's path follows the outward sticker of
+    // one of the extension cubelets against it, in a neutral color.
+    const unit = attached(st, from);
+    for (const u of unit) {
+      const pu = SLOT_POS[u], pf = SLOT_POS[from];
+      const fromDir = dirIndex([pu[0] - pf[0], pu[1] - pf[1], pu[2] - pf[2]]);
+      const local = [0, 1, 2, 3, 4, 5].find((d) => ROT_DIR[st.ori[u] * 6 + d] === fromDir)!;
+      const toU = after.occ.indexOf(st.occ[u]), toDir = ROT_DIR[after.ori[toU] * 6 + local];
+      const r = route(st, u, fromDir, toU, toDir);
+      const score = r.cost - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
+      const others = [from, ...unit.filter((x) => x !== u)].map((x) => ({ cubelet: st.occ[x], ori: st.ori[x], offset: [SLOT_POS[x][0] - pu[0], SLOT_POS[x][1] - pu[1], SLOT_POS[x][2] - pu[2]] as Vec3 }));
+      if (score < bestScore) [best, bestScore] = [{ from: u, fromDir, to: toU, toDir, color: null, lands: false, dashed: false, cubelet: st.occ[u], fromOri: st.ori[u], toOri: after.ori[toU], unit: others, curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
+    }
     if (best) out.push(best);
   }
   return out;

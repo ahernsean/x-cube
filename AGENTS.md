@@ -308,7 +308,10 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   cubelet that ends up solved has a full path and a ring where its sticker lands;
   one only passing through has a dashed path. In a shape or core step, which solves no
   cubelet, each cubelet it applies to that moves or turns has a plain path (no ring), read
-  from where it ends; a core double edge has no sticker and so no path. A path goes
+  from where it ends. A core double edge has no sticker and is never seen, so it is shown
+  as a unit with the two extension cubelets against it (`attached`): those keep their
+  colors, and the unit's path, in a neutral gray, follows the outward sticker of one of
+  them, with all three flying together. A path goes
   around the puzzle, never through it (`route`). It starts as an arc well outside the
   puzzle (the short way around; for opposite sides, also by way of each of the six
   directions) and is pulled tight like an elastic band: each point moves toward the
