@@ -3050,7 +3050,7 @@ function refreshGuide() {
     alg.className = "known-alg";
     alg.textContent = step.alg;
     // Three lines: what the step does, its turns, and how far there is to go.
-    line.append(head, `${step.goal}. `, document.createElement("br"), "Turns: ", alg, " ", document.createElement("br"), `Step ${index} of ${index + after} to solved.`);
+    line.append(head, `${step.goal}. `, document.createElement("br"), Object.assign(document.createElement("b"), { textContent: "Turns:" }), " ", alg, " ", document.createElement("br"), `Step ${index} of ${index + after} to solved.`);
   } else line.textContent = guideLine;
 }
 
@@ -3118,7 +3118,9 @@ drawGuide.key = "";
  */
 const RUNNER_STEPS = 48;
 function runnerTurns(curve: any, n0: any, n1: any, from: any, to: any): any[] {
-  const reach = Math.min(1, curve.getLength() / 3); // a short hop has no "along the way"
+  // A short hop has no "along the way", and a sticker that faces the same way at both
+  // ends keeps facing that way throughout.
+  const reach = Math.min(1, curve.getLength() / 3) * Math.min(1, 1 - n0.dot(n1));
   const facing = (e: number) => {
     const out = curve.getPointAt(e).normalize().multiplyScalar(reach * Math.sin(Math.PI * e) ** 2);
     const n = n0.clone().lerp(n1, e * e * (3 - 2 * e)).multiplyScalar(1 - out.length()).add(out);
@@ -3306,8 +3308,8 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
   const ROOM = 3.1;
   // A route keeps this far from every cubelet, except near its ends, where it need only
   // be LEAN times as far from them as from the end: so it leaves a sticker, and comes
-  // onto a face, within about 40 degrees of straight out.
-  const MARGIN = 0.32, LEAN = 0.75, POINTS = 40;
+  // onto a face, within 60 degrees of straight out.
+  const MARGIN = 0.32, LEAN = 0.5, POINTS = 40;
   // What is in the way: every cubelet and the puzzle's solid center, as boxes. No sticker
   // is ever covered, so the way out of the sticker is clear. The spot the new face looks
   // into may be filled now by a cubelet the step takes away, so that one doesn't count.
@@ -3362,11 +3364,18 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
     const pts = Array.from({ length: n }, (_, i) => tight.getPointAt(i / (n - 1)));
     const bend = 0.06, pull = bend * (length / (n - 1) / WIDTH) ** 2;
     const lap = pts.map(() => new THREE.Vector3());
+    const mid = new THREE.Vector3();
     for (let pass = 0; pass < 400; pass++) {
       for (let i = 1; i < n - 1; i++) lap[i].copy(pts[i - 1]).addScaledVector(pts[i], -2).add(pts[i + 1]);
       for (let i = 1; i < n - 1; i++) {
         const p = pts[i];
         p.addScaledVector(lap[i], pull + 2 * bend).addScaledVector(lap[i - 1], -bend).addScaledVector(lap[i + 1], -bend);
+        // Convex: away from its ends a route never bows in toward the puzzle. A point
+        // nearer the puzzle's center than the middle of its neighbors moves out to there.
+        if (i > 2 && i < n - 3) {
+          mid.addVectors(pts[i - 1], pts[i + 1]).multiplyScalar(0.5).sub(p);
+          if (mid.dot(p) > 0) p.add(mid);
+        }
         for (let k = 0; k < 3; k++) {
           const need = Math.min(MARGIN, LEAN * Math.min(p.distanceTo(a), p.distanceTo(b)));
           const d = clearance(p);

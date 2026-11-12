@@ -304,7 +304,7 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   level, so a gray white can't be taken for a white). Before the step's first turn, **paths** in the 3D view
   show where each cubelet it moves will go and how it will be turned: a path follows one of
   the cubelet's stickers, in that sticker's color with a dark casing, leaving the sticker and
-  coming onto the face the sticker will be on within about 40 degrees of straight out. A
+  coming onto the face the sticker will be on within 60 degrees of straight out. A
   cubelet that ends up solved has a full path and a ring where its sticker lands;
   one only passing through has a dashed path. In a shape or core step, which solves no
   cubelet, each cubelet it applies to that moves or turns has a plain path (no ring), read
@@ -315,7 +315,8 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   middle of its neighbors and back out of whatever it is pulled into, keeping a margin
   from every cubelet, so the path is straight where nothing is near and rounded where it
   bends around a cubelet. It is then let spring like a stiff rod, which spreads each bend
-  over about a cubelet's width. No sticker is ever covered, so the start is clear; the spot the
+  over about a cubelet's width and keeps it convex (away from its ends it never bows in
+  toward the puzzle). No sticker is ever covered, so the start is clear; the spot the
   new face looks into may be filled until the step takes that cubelet away, so that one
   cubelet doesn't count (the path is drawn faintly through it). Of the routes, the one
   costing least is taken: leaving the room the 3D view shows (a sphere around the puzzle,
@@ -323,7 +324,8 @@ does it as `L' R x'`); and regular, repeating patterns are easier to memorize. S
   its length and how much it turns. A flying copy moves by distance along its path, so
   its speed is even (eased at the ends). It turns the way its path goes: the followed
   sticker faces out of its face at the start, away from the puzzle's center along the
-  way, and out of its new face at the end, and any spin about that sticker still needed
+  way, and out of its new face at the end (a sticker facing the same way at both ends
+  keeps facing that way), and any spin about that sticker still needed
   is spread evenly along the path. The sticker
   followed is the one whose route costs least, so a hop to a neighboring spot stays a
   short hop and the sticker facing the way the cubelet goes is preferred to one whose
