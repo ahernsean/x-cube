@@ -270,8 +270,10 @@ details[open] summary { margin-bottom: 8px; }
 /* Phones: one screen, no page scrolling. The 3D view and the playback strip stay put; the
    panels below are a carousel, one at a time, picked by the tab row or a sideways swipe. */
 @media (max-width: 899px) {
-  html, body { height: 100%; overflow: hidden; }
-  body { margin: 0; display: flex; flex-direction: column; height: 100dvh; padding-block: max(8px, env(safe-area-inset-top, 0px)) 0; }
+  /* The root keeps clear of the safe areas (as the artifact host's skeleton also does), and
+     the body fills what is left: the safe-area insets are counted once. */
+  :root { height: 100dvh; overflow: hidden; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  body { margin: 0; display: flex; flex-direction: column; height: 100%; overflow: hidden; padding-block: 8px 0; }
   header { display: none; }
   .wrap { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; flex-direction: column; gap: 8px; }
   .stage-col, .tabs { flex: none; }
@@ -284,7 +286,7 @@ details[open] summary { margin-bottom: 8px; }
   .message { top: calc(44px + env(safe-area-inset-top, 0px)); bottom: auto; }
   .stack { flex: 1 1 auto; min-height: 0; display: flex; gap: 16px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
   .stack::-webkit-scrollbar { display: none; }
-  .stack > .panel { flex: 0 0 100%; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-align: start; scroll-snap-stop: always; margin-bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
+  .stack > .panel { flex: 0 0 100%; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-align: start; scroll-snap-stop: always; margin-bottom: 8px; }
   /* The tab row names the panel, so the panels' own headings step aside. */
   .stack > .panel > h2, .stack .turn-head h2, .stack .view-head h2, .stack .row > h2 { display: none; }
   .stack .view-head .view-tools { margin-left: auto; }

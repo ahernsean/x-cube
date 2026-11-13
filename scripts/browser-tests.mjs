@@ -484,6 +484,25 @@ labTest(
 );
 
 labTest(
+  "layout: on a phone the safe areas are kept clear once, and the page still fits one screen",
+  async ({ page, check }) => {
+    // Stand-ins for an iPhone's safe-area insets, as the artifact host's skeleton pads the
+    // root by them (in the Claude app the top one also covers the app's own bar).
+    await page.addStyleTag({ content: ":root { padding-top: 100px !important; padding-bottom: 34px !important; }" });
+    await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+    await page.waitForTimeout(300);
+    const m = await page.evaluate(() => {
+      const stage = document.querySelector(".stage").getBoundingClientRect();
+      const stack = document.getElementById("stack-col").getBoundingClientRect();
+      return { stageTop: Math.round(stage.top), stackBottom: Math.round(stack.bottom), h: innerHeight, scroll: document.documentElement.scrollHeight };
+    });
+    check(m.stageTop >= 100 && m.stageTop <= 112, `the 3D view starts just below the top inset, not two insets down (${m.stageTop} px)`);
+    check(m.stackBottom <= m.h - 34 && m.scroll <= m.h, `the panels end above the bottom inset and the page is one screen tall (${m.stackBottom} of ${m.h} px; page ${m.scroll} px)`);
+  },
+  { expand: false },
+);
+
+labTest(
   "layout: on a wide screen the panels stack beside the 3D view, with no tabs, and each collapses from its heading",
   async ({ page, check }) => {
     const wide = await page.evaluate(() => {

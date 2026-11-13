@@ -259,7 +259,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   beside the 3D view's heading shows this help.
 - **Display panel:** the Display button beside the 3D view's heading (on phones, over the
   view's top right corner) opens the Edge glow, Shading, Shadows and Gloss switches, over the view.
-- **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. At the
+- **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. The
+  root is padded by the safe-area insets (as the artifact host's skeleton also pads it; in
+  the Claude app the top inset covers the app's own bar too) and the body fills the rest,
+  so each inset is counted once. At the
   top, the 3D view (34% of the screen's height), the view buttons, the hold line, and the
   **playback strip**: the turn list on one row that scrolls sideways (kept so the current
   turn and the next two things after it show), the playback buttons with the counter, and
