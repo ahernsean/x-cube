@@ -1227,6 +1227,8 @@ function resize() {
 // Edge labels: which face of the puzzle points up, down, left, right and at you.
 const COMPASS_FACES = ["R", "L", "U", "D", "F", "B"];
 let compassKey = "";
+/** Label scale for an axis pointing straight away from you and straight at you. */
+const COMPASS_MIN = 0.85, COMPASS_MAX = 1.35;
 /**
  * Edge labels that move with the cube: each face's label sits where that face's axis
  * (its outward normal from the center), as seen on screen, meets the edge of the 3D
@@ -1249,7 +1251,7 @@ function updateCompass() {
   const [ox, oy] = toScreenXY(new THREE.Vector3(0, 0, 0));
   // Work out each label's spot on the edge, then place the most visible first and slide
   // any label that would cover an already placed one along its edge.
-  const items: { el: HTMLElement; x: number; y: number; vis: number; away: boolean; vertical: boolean; hw: number; hh: number }[] = [];
+  const items: { el: HTMLElement; x: number; y: number; vis: number; away: boolean; vertical: boolean; hw: number; hh: number; scale: number; z: number }[] = [];
   for (let d = 0; d < 6; d++) {
     const el = document.getElementById(`compass-${d}`);
     if (!el) continue;
@@ -1268,11 +1270,14 @@ function updateCompass() {
       dx /= len;
       dy /= len;
     }
-    const hw = el.offsetWidth / 2 + 6, hh = el.offsetHeight / 2 + 6;
+    // Foreshortened: a label on an axis toward you is drawn larger, one away from you
+    // smaller (no smaller than COMPASS_MIN, so it stays legible).
+    const scale = COMPASS_MIN + ((COMPASS_MAX - COMPASS_MIN) * (dir.z + 1)) / 2;
+    const hw = (el.offsetWidth * scale) / 2 + 6, hh = (el.offsetHeight * scale) / 2 + 6;
     const t = Math.min(dx ? (w / 2 - hw) / Math.abs(dx) : Infinity, dy ? (h / 2 - hh) / Math.abs(dy) : Infinity);
     const x = w / 2 + dx * (isFinite(t) ? t : 0), y = h / 2 + dy * (isFinite(t) ? t : 0);
     const vertical = Math.abs(Math.abs(x - w / 2) - (w / 2 - hw)) < 1; // on the left or right edge
-    items.push({ el, x, y, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4 });
+    items.push({ el, x, y, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4, scale, z: dir.z });
   }
   items.sort((a, b) => b.vis - a.vis);
   const placed: typeof items = [];
@@ -1289,7 +1294,8 @@ function updateCompass() {
       }
       placed.push(it);
     }
-    it.el.style.transform = `translate(${it.x}px, ${it.y}px) translate(-50%, -50%)`;
+    it.el.style.transform = `translate(${it.x}px, ${it.y}px) translate(-50%, -50%) scale(${it.scale.toFixed(3)})`;
+    it.el.style.zIndex = String(Math.round((it.z + 1) * 10)); // nearer labels over farther ones
     it.el.style.opacity = String(it.vis * (it.away ? 0.6 : 1));
     it.el.style.pointerEvents = it.vis > 0.3 ? "auto" : "none";
     it.el.classList.toggle("away", it.away);
@@ -2477,7 +2483,9 @@ function render() {
         )
         .join("")
     : `<li class="hint">No saved states yet. Save the current position to come back to it later.</li>`;
-  ($("code-out") as HTMLTextAreaElement).value = encodeState(st);
+  // The field shows this position's code, except while it holds a code being typed or pasted.
+  const codeField = $("code") as HTMLTextAreaElement;
+  if (!codeTyped) codeField.value = encodeState(st);
   // Only a position turns can't reach (from an X1 code or edited colors) has no letter
   // code. The note keeps its line either way, so the page doesn't shift.
   const why = unreachableReason(st);
@@ -2486,6 +2494,9 @@ function render() {
   note.title = why ?? "";
   renderAlgorithms();
 }
+
+/** The state code field holds a code typed or pasted in, not yet loaded. */
+let codeTyped = false;
 
 const NET_COLOR: Record<string, string> = { W: "#f3f3ee", Y: "#f5d00f", G: "#17a34a", B: "#1d5fd6", R: "#c8202b", O: "#f47a12", "#": "var(--unstickered)" };
 
@@ -2791,21 +2802,33 @@ function bindUI() {
     saveCurrent(n.value.trim(), "");
     n.value = "";
   });
+  const codeField = $("code") as HTMLTextAreaElement;
+  codeField.addEventListener("input", () => {
+    codeTyped = codeField.value.trim() !== "";
+  });
+  codeField.addEventListener("blur", () => {
+    if (!codeTyped) render(); // an emptied field shows this position's code again
+  });
   $("copy-code").addEventListener("click", async () => {
-    const ta = $("code-out") as HTMLTextAreaElement;
+    // Copy is always this position's code, so a half-typed one is put back first.
+    codeTyped = false;
+    render();
+    const ta = codeField;
     try {
       await navigator.clipboard.writeText(ta.value);
       setMessage("State code copied", "ok");
     } catch {
       ta.select();
-      setMessage("Select and copy the code below", "info");
+      setMessage("Select and copy the code", "info");
     }
     render();
   });
   $("import").addEventListener("click", () => {
-    const v = ($("code-in") as HTMLTextAreaElement).value.trim();
+    const v = codeField.value.trim();
     try {
-      setBase(decodeState(v), "Imported state");
+      const st = decodeState(v);
+      codeTyped = false;
+      setBase(st, "Imported state");
       setMessage("Imported", "ok");
     } catch (err) {
       setMessage(`Couldn't import: ${(err as Error).message}`, "error");
@@ -3078,12 +3101,12 @@ function refreshGuide() {
     const { step, after, index, start } = guide;
     const done = app.cursor >= start + step.turns.length;
     const head = document.createElement("strong");
-    head.textContent = `${STAGE_NAME[step.stage]}${done ? " (done)" : ""}: `;
+    head.textContent = `Step ${index} of ${index + after} · ${STAGE_NAME[step.stage]}${done ? " (done)" : ""}: `;
     const alg = document.createElement("span");
     alg.className = "known-alg";
     alg.textContent = step.alg;
-    // Three lines: what the step does, its turns, and how far there is to go.
-    line.append(head, `${step.goal}. `, document.createElement("br"), Object.assign(document.createElement("b"), { textContent: "Turns:" }), " ", alg, " ", document.createElement("br"), `Step ${index} of ${index + after} to solved.`);
+    // Two parts: how far along, the stage and what the step does; then its turns.
+    line.append(head, `${step.goal}. `, document.createElement("br"), Object.assign(document.createElement("b"), { textContent: "Turns:" }), " ", alg);
   } else line.textContent = guideLine;
 }
 

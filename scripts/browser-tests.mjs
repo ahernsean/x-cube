@@ -585,11 +585,14 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
     const r = document.getElementById("scene").getBoundingClientRect();
     return [...document.querySelectorAll(".cmp")].map((el) => {
       const b = el.getBoundingClientRect();
-      return { text: el.textContent, shown: Number(getComputedStyle(el).opacity) > 0.05, inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1 };
+      return { text: el.textContent, height: Math.round(b.height * 10) / 10, shown: Number(getComputedStyle(el).opacity) > 0.05, inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1 };
     });
   });
   const letters = labels.map((l) => l.text).sort().join("");
   check(letters === "BDFLRU" && labels.filter((l) => l.shown).every((l) => l.inside) && labels.filter((l) => l.shown).length >= 3, `edge labels: ${letters}, ${labels.filter((l) => l.shown).length} shown, all inside the view`);
+  // Foreshortened: from Home, F, R and U point toward you and are drawn larger than B, L and D.
+  const size = Object.fromEntries(labels.map((l) => [l.text, l.height]));
+  check(["F", "R", "U"].every((n) => ["B", "L", "D"].every((m) => size[n] > size[m] * 1.1)), `labels toward you are larger than those away (${JSON.stringify(size)})`);
   await page.click('[data-view="front"]');
   await settle();
   const frontView = await probe("view");
@@ -781,35 +784,38 @@ labTest("clear: empties the turn list, and the position shown becomes the start"
   check(cleared.counter === "0/0" && cleared.state === ruState && /^Turns cleared/.test(cleared.msg) && (await page.$eval("#clear", (b) => b.textContent)) === "Clear", `Clear empties the turn list and keeps the position shown as the start (${cleared.counter})`);
 });
 
-labTest("state codes: the current position's code is shown and copied, and a code imports as the start", async ({ page, check, probe, startFresh, counter, play, sweep3d }) => {
+labTest("state codes: one field shows the current position's code and takes a code to import as the start", async ({ page, check, probe, startFresh, counter, play, sweep3d }) => {
   await play("R U");
   const ruState = await probe("state");
   await page.locator("summary", { hasText: "State code" }).click(); // the codes sit in a closed disclosure
-  const shown = await page.$eval("#code-out", (t) => t.value);
+  const shown = await page.$eval("#code", (t) => t.value);
   check(shown === ruState, "the state code shown is the current position's");
   check(/^[A-Z]{4}( [A-Z]{4}){10}$/.test(shown) && (await page.$eval("#code-note", (n) => n.textContent === "")), `the code is 44 letters in groups of 4, with no note (${shown})`);
   await page.click("#copy-code");
   // Copying is asynchronous (the clipboard may ask for permission); wait for its message.
   const copyMsg = await page
-    .waitForFunction(() => /State code copied|Select and copy the code below/.test(document.getElementById("message").textContent), null, { timeout: 10000 })
+    .waitForFunction(() => /State code copied|Select and copy the code/.test(document.getElementById("message").textContent), null, { timeout: 10000 })
     .then(() => page.$eval("#message", (m) => m.textContent))
     .catch(() => page.$eval("#message", (m) => m.textContent));
-  check(/State code copied|Select and copy the code below/.test(copyMsg), `Copy confirms, or asks to copy by hand where the clipboard is not allowed ("${copyMsg}")`);
+  check(/State code copied|Select and copy the code/.test(copyMsg), `Copy confirms, or asks to copy by hand where the clipboard is not allowed ("${copyMsg}")`);
   await startFresh();
-  await page.fill("#code-in", "  " + ruState + "\n");
+  await page.fill("#code", "  " + ruState + "\n");
   await page.click("#import");
   const imported = { state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent), counter: await counter() };
   check(imported.state === ruState && imported.msg === "Imported" && imported.counter === "0/0", `importing a state code makes it the start (${imported.msg})`);
-  await page.fill("#code-in", "X1:not a code");
+  await page.fill("#code", "X1:not a code");
   await page.click("#import");
   const refused = { state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent) };
   check(refused.state === ruState && /^Couldn't import: /.test(refused.msg), `a malformed code is refused and changes nothing ("${refused.msg}")`);
+  check((await page.$eval("#code", (t) => t.value)) === "X1:not a code", "a refused code stays in the field to be fixed");
+  await page.click("#copy-code");
+  check((await page.$eval("#code", (t) => t.value)) === ruState, "Copy puts this position's code back in the field");
   await startFresh();
-  await page.fill("#code-in", ruState.toLowerCase().replace(/ /g, "-"));
+  await page.fill("#code", ruState.toLowerCase().replace(/ /g, "-"));
   await page.click("#import");
   check((await probe("state")) === ruState, "a code typed in lower case with dashes imports the same position");
   const typo = (ruState[0] === "A" ? "B" : "A") + ruState.slice(1);
-  await page.fill("#code-in", typo);
+  await page.fill("#code", typo);
   await page.click("#import");
   const typoMsg = await page.$eval("#message", (m) => m.textContent);
   check((await probe("state")) === ruState && /typo/.test(typoMsg), `a code with a typo is refused and changes nothing ("${typoMsg}")`);
@@ -817,11 +823,11 @@ labTest("state codes: the current position's code is shown and copied, and a cod
   // by hand) has no letter code: it keeps its X1 code, with a note saying why.
   const turnedCenter =
     "X1:AaBaCaDaEaFaGaHaIa......JaKaLaMaNaOaPaQaRaSaTaUaVaWaXa............YaZaaabacadaeafagahaiajakala............manaoapaqarasatauavawaxayaza0a......1a2a3a4a5b6a7a8a9a";
-  await page.fill("#code-in", turnedCenter);
+  await page.fill("#code", turnedCenter);
   await page.click("#import");
-  const kept = { code: await page.$eval("#code-out", (t) => t.value), note: await page.$eval("#code-note", (n) => n.textContent + " (" + n.title + ")") };
+  const kept = { code: await page.$eval("#code", (t) => t.value), note: await page.$eval("#code-note", (n) => n.textContent + " (" + n.title + ")") };
   check(kept.code === turnedCenter && /extension center is turned/.test(kept.note), `a position turns can't reach keeps its X1 code, with a note ("${kept.note}")`);
-  await page.fill("#code-in", ruState);
+  await page.fill("#code", ruState);
   await page.click("#import");
   const sw = await sweep3d();
   check(sw.wrong.length === 0, `the imported position is drawn as the model has it${sw.wrong.length ? ": " + sw.wrong.slice(0, 3).join("; ") : ""}`);
@@ -1069,7 +1075,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   const g = await probe("guide");
   const loaded = { counter: await counter(), line: await line(), wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(
-    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners\. All three end up solved\. Turns: r \(F' L' F\) r' \(F' L F\) Step 1 of 1 to solved\.$/.test(loaded.line) && loaded.wide <= 0,
+    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Step 1 of 1 · Corners: Cycle three X-face corners\. All three end up solved\. Turns: r \(F' L' F\) r' \(F' L F\)$/.test(loaded.line) && loaded.wide <= 0,
     `Next step loads the step's turns unplayed and says what it applies to ("${loaded.line}", ${loaded.counter})`,
   );
   // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
@@ -1116,7 +1122,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await settle();
   const played = { g: await probe("guide"), status: await status(), line: await line(), wrong: (await sweep3d()).wrong.length };
   check(
-    grayDrawn > 0 && played.wrong === 0 && played.g?.gray === 0 && played.g.arrows === 0 && /Solved/.test(played.status) && /^Corners \(done\)/.test(played.line),
+    grayDrawn > 0 && played.wrong === 0 && played.g?.gray === 0 && played.g.arrows === 0 && /Solved/.test(played.status) && /^Step \d+ of \d+ · Corners \(done\)/.test(played.line),
     `playing the step solves the puzzle and returns every sticker's color (${grayDrawn} gray stickers seen before, ${played.wrong} wrong after; ${played.status}; "${played.line}")`,
   );
   // The step is boxed in the turn list behind a tag. Step start, and the tag, go back to
@@ -1147,7 +1153,7 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   await next();
   const holdStep = { g: await probe("guide"), line: await line() };
   check(
-    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Regrip: Turn the whole puzzle so the white center is up \(now \w+ is up\)\. Nothing else moves\. Turns: x' Step 1 of 1 to solved\.$/.test(holdStep.line),
+    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Step 1 of 1 · Regrip: Turn the whole puzzle so the white center is up \(now \w+ is up\)\. Nothing else moves\. Turns: x'$/.test(holdStep.line),
     `a Regrip step says to turn the whole puzzle, and keeps every color ("${holdStep.line}")`,
   );
   // Out of shape, the step applies to the core cubelets that are wrong; it may leave the
@@ -1166,7 +1172,7 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   await next();
   const second = await probe("guide");
   const boxes = await page.$$eval("#history .step-box", (els) => els.map((e) => e.classList.contains("on")).join());
-  check(second?.index === 2 && second.index + second.after === total && new RegExp(`Step 2 of ${total} to solved\\.$`).test(await line()) && boxes === "false,true", `the next step after a played one is step 2 of the same ${total}, boxed after the first ("${await line()}", boxes ${boxes})`);
+  check(second?.index === 2 && second.index + second.after === total && new RegExp(`^Step 2 of ${total} · `).test(await line()) && boxes === "false,true", `the next step after a played one is step 2 of the same ${total}, boxed after the first ("${await line()}", boxes ${boxes})`);
   // In the turn list a cycle step's setup turns, and their undoing, are marked.
   const marks = await page.$$eval("#history .step-box.on .tok", (els) => els.map((e) => (e.className.match(/part-(\w+)/) ?? [])[1]).join());
   const want = /\[(.+):/.exec(second.alg) ? /^(regrip,)*(setup,)+(cycle,){8}(undo,?)+$/ : /^(regrip,)*(cycle,?){8}$/;
@@ -1213,14 +1219,14 @@ labTest("guide: dashed paths, the order switch, a layered core step, and a turn 
   await next();
   const byLayer = await probe("guide");
   const kept = await page.evaluate(() => localStorage.getItem("xcube.guideMode"));
-  check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Top corners: For the white X-face's corners: cycle three X-face corners\. All three end up solved\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
+  check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Step \d+ of \d+ · Top corners: For the white X-face's corners: cycle three X-face corners\. All three end up solved\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
   // Out of shape, top to bottom starts with the core, a cubelet at a time: a short step,
   // one or two paths, and the line counts the cubelets placed.
   await startFresh();
   await play("R U F' L2");
   await next();
   const core = await probe("guide");
-  check(core?.stage.startsWith("core") && core.turns <= 9 && core.arrows >= 1 && core.arrows <= 3 && /^Top core edges: Put a white core edge in the top layer, white up \([1-4] of 4\)\./.test(await line()), `top to bottom places the core a cubelet at a time (${core?.alg}, ${core?.arrows} paths; "${await line()}")`);
+  check(core?.stage.startsWith("core") && core.turns <= 9 && core.arrows >= 1 && core.arrows <= 3 && /^Step \d+ of \d+ · Top core edges: Put a white core edge in the top layer, white up \([1-4] of 4\)\./.test(await line()), `top to bottom places the core a cubelet at a time (${core?.alg}, ${core?.arrows} paths; "${await line()}")`);
   await page.click('[data-guide-mode="kinds"]');
   await startFresh();
   await play("R U");
@@ -1236,7 +1242,7 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   // edge from the bottom of the right side to its top. The spot above where its white
   // sticker will be is filled until the turn takes that cubelet away.
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
+  await page.fill("#code", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
   await page.click("#import");
   await settle();
   await page.locator("#guide > summary").click();
@@ -1272,7 +1278,7 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   // Top to bottom from the owner's position: the first step (R2), and later the third
   // white core corner (U R' D2 R) and a core double edge (R2 U2 L U2 R2).
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
+  await page.fill("#code", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
   await page.click("#import");
   await settle();
   await page.locator("#guide > summary").click();
@@ -1332,7 +1338,7 @@ labTest("guide: a flying cubelet turns only about the axis its sticker turns abo
   // right, so the white sticker, turning from back to up, must stay square to the right
   // all the way, rather than lean out toward it with the path.
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "KLSM RMQS NGSD YZPP ELND KEFV WOPY KHDX CARB ZUAG LCMZ");
+  await page.fill("#code", "KLSM RMQS NGSD YZPP ELND KEFV WOPY KHDX CARB ZUAG LCMZ");
   await page.click("#import");
   await settle();
   await page.locator("#guide > summary").click();
@@ -1349,7 +1355,7 @@ labTest("guide: a cubelet turning in place has a disc, and its unit rises past i
   // Top to bottom's next step here turns one white core corner a third of a turn in place,
   // with its two extension cubelets.
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "MKCT OOXD PDQK ZTIX BSRG LFFL MBXH TUNQ CCAY TMCT GMUR");
+  await page.fill("#code", "MKCT OOXD PDQK ZTIX BSRG LFFL MBXH TUNQ CCAY TMCT GMUR");
   await page.click("#import");
   await settle();
   await page.locator("#guide > summary").click();
@@ -1374,7 +1380,7 @@ labTest("guide: only the cubelets a step moves or turns keep their colors", asyn
   // at DBL and DFL, each with its two extension cubelets. The white core corners at UBL and
   // UFL are not yet white up either, but the step leaves them as they are: light gray.
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "JOJT HKNW MEZE HNZG NDXA YKTH CBNN CGVJ JLAC BAPV SSXJ");
+  await page.fill("#code", "JOJT HKNW MEZE HNZG NDXA YKTH CBNN CGVJ JLAC BAPV SSXJ");
   await page.click("#import");
   await settle();
   await page.locator("#guide > summary").click();

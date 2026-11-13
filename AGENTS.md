@@ -244,7 +244,13 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Views:** Home (three-quarter), Front, Back, Left, Right, Up, Down. The side views tip
   the top 16.6 degrees toward the viewer (from the owner's saved view).
 - **Edge labels:** the six face letters, each placed where that face's axis, as projected on
-  screen, meets the edge of the 3D view; tapping one turns the view to that face.
+  screen, meets the edge of the 3D view; tapping one turns the view to that face. They are
+  foreshortened: a label on an axis toward the viewer is drawn larger, one pointing away
+  smaller (scale 0.85 to 1.35, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top.
+- **Highlight color:** the page's accent blue marks every selected or active control (the
+  turn amount, Order, an inverted turn button, the playing transport button).
+- **Disclosure triangles:** one shape for section headings and `details` summaries, drawn
+  in CSS (the browser's own marker is hidden).
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
   two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ button
@@ -264,7 +270,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Turn buttons:** tap for the shown turn; long press flips it to the inverse (U to U');
   slide off to cancel.
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
-  orthographic cameras, so it animates. Its ⓘ button explains how to read it.
+  orthographic cameras, so it animates, centered in its panel. Its ⓘ button explains how to read it.
+- **State code** (a disclosure in Saved states): one field shows the current position's
+  code and takes a typed or pasted code; Load makes that the start, Copy copies the
+  current position's code (putting it back in the field). A code that fails to load stays
+  in the field to be fixed.
 - **Edge glow:** a soft band at a depth discontinuity, in the color of the sticker around
   the edge. No glow means that side has no sticker. Only shown where the side face points
   away from the viewer or is edge-on. Where two visible faces of one cubelet meet, the
@@ -331,9 +341,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Step guide:** "Solve step by step", a disclosure in the Run an algorithm panel. **Next
   step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
   the position shown, adds its turns at the current step, unplayed, and a line under the
-  button gives the stage and goal, then "Turns:" with the turns as the solver writes them
-  (`[setup: cycle]`), then "Step 2 of 9 to solved" (counted from when the guide was started; a step taken
-  from anywhere but the end of the one before starts the count again), each on its own line. Until the step has
+  button gives "Step 2 of 9" (counted from when the guide was started; a step taken
+  from anywhere but the end of the one before starts the count again), the stage and the goal,
+  then on its own line "Turns:" with the turns as the solver writes them (`[setup: cycle]`). Until the step has
   been played through, its colors picture what its turns do (`stepColors`): the cubelets it applies to that it moves or
   turns keep their colors (with the extension cubelets moving with them as a unit), every other cubelet it moves or turns is
   darker gray (left for later steps), and every cubelet it leaves as it was is gray, even one it applies to that is not yet

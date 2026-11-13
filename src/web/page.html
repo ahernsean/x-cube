@@ -126,10 +126,13 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .alg-row { display: flex; gap: 8px; }
 .alg-row input { flex: 1; min-width: 0; }
 input[type="text"], textarea { font: 15px var(--f-mono); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; width: 100%; }
-textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: break-all; }
+/* The state code: one field shows the current position's code and takes one to load. */
+.code-row { display: flex; gap: 8px; align-items: stretch; }
+.code-row textarea { flex: 1; min-width: 0; font-size: 13px; resize: none; overflow-wrap: anywhere; }
+.code-btns { display: grid; gap: 6px; align-content: start; }
 .mods { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .mods button { font: 600 15px var(--f-mono); padding: 6px 14px; border: 0; background: var(--panel); color: var(--ink); cursor: pointer; min-height: 38px; }
-.mods button.sel { background: var(--ink); color: var(--panel); }
+.mods button.sel { background: var(--accent); color: var(--accent-ink); }
 .pad { display: grid; gap: 10px; margin-top: 10px; }
 .pad-group { display: grid; grid-template-columns: 74px 1fr; gap: 8px; align-items: center; }
 .pad-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); }
@@ -144,7 +147,7 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .mv.outer { border-style: dashed; }
 .mv.blocked { opacity: 0.38; }
 .mv { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
-.mv.inverted { background: var(--ink); color: var(--panel); border-color: var(--ink); opacity: 1; }
+.mv.inverted { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); opacity: 1; }
 .turn-head { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
 /* Heading and Undo line up with the 40px-tall turn-amount selector (its first row). */
 .turn-head h2 { margin: 0; line-height: 40px; }
@@ -153,7 +156,7 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .keep { display: flex; gap: 6px; align-items: center; }
 .tp { min-width: 44px; font-size: 15px; }
 .tp sub { font-size: 9px; margin-left: 1px; }
-.tp.stop { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.tp.stop { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .history { position: relative; display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
 .tok { font: 13px var(--f-mono); border: 0; background: var(--off-bg); color: var(--muted); border-radius: 5px; padding: 3px 6px; cursor: pointer; }
 /* A step the guide loaded: its turns in a box, behind a tag that goes to the step's start. */
@@ -170,7 +173,7 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .transport { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .counter { font: 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
 .hint { color: var(--muted); font-size: 13px; }
-.net { display: grid; grid-template-columns: repeat(4, minmax(0, 100px)); grid-template-rows: repeat(3, auto); gap: 6px; justify-content: start; }
+.net { display: grid; grid-template-columns: repeat(4, minmax(0, 100px)); grid-template-rows: repeat(3, auto); gap: 6px; justify-content: center; }
 .net-wrap { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 .net-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .netface { position: relative; display: grid; grid-template-columns: 0.55fr repeat(5, 1fr) 0.55fr; grid-template-rows: 0.55fr repeat(5, 1fr) 0.55fr; gap: 1px; aspect-ratio: 1; max-width: 100%; }
@@ -194,7 +197,7 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .known summary { cursor: pointer; font-weight: 600; }
 /* A fixed height, so a step's text never moves what is below it. */
 .guide-modes button { font: 600 13px var(--f-body); padding: 6px 10px; min-height: 34px; }
-.guide-line { margin: 8px 0 0; height: 7.4em; overflow-y: auto; font-size: 14px; }
+.guide-line { margin: 8px 0 0; height: 5.85em; overflow-y: auto; font-size: 14px; }
 .known-alg { font: 13px var(--f-mono); overflow-wrap: anywhere; }
 .saved { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .saved li { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
@@ -204,15 +207,17 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .saved-actions { display: flex; gap: 4px; flex-shrink: 0; }
 /* Collapsible sections: the heading toggles; collapsed shows only the heading row. */
 .sec-toggle { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; user-select: none; -webkit-user-select: none; }
-.sec-toggle::before { content: ""; width: 0; height: 0; border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; transform: rotate(90deg); transition: transform 0.15s; }
-[data-sec].collapsed .sec-toggle::before { transform: rotate(0deg); }
+/* One disclosure triangle for section headings and details: points right when closed, down when open. */
+.sec-toggle::before, details > summary::before { content: ""; flex: none; width: 0; height: 0; border-left: 8px solid currentColor; border-top: 5px solid transparent; border-bottom: 5px solid transparent; transform: rotate(90deg); transition: transform 0.15s; }
+[data-sec].collapsed .sec-toggle::before, details:not([open]) > summary::before { transform: rotate(0deg); }
 .sec-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 [data-sec].collapsed > :not(.sec-head) { display: none !important; }
 [data-sec].collapsed .turn-head > :not(h2) { display: none !important; }
 [data-sec].collapsed .sec-head > :not(h2) { display: none !important; }
 .sec-title { margin: 0 0 6px; }
-@media (prefers-reduced-motion: reduce) { .sec-toggle::before { transition: none; } }
-details summary { cursor: pointer; font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-size: 15px; }
+@media (prefers-reduced-motion: reduce) { .sec-toggle::before, details > summary::before { transition: none; } }
+details summary { cursor: pointer; display: flex; align-items: center; gap: 6px; list-style: none; font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-size: 15px; }
+details summary::-webkit-details-marker { display: none; }
 details[open] summary { margin-bottom: 8px; }
 .legend { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
 .legend code { font-family: var(--f-mono); color: var(--ink); }
@@ -373,12 +378,12 @@ details[open] summary { margin-bottom: 8px; }
       <ul class="saved" id="saved-list"></ul>
       <details style="margin-top:12px">
         <summary>State code</summary>
-        <p class="hint" style="margin:0 0 6px">A text copy of the current position: 44 letters, short enough to type on another device. Paste it into a chat with Claude, or import one here.</p>
-        <textarea id="code-out" readonly aria-label="Current state code"></textarea>
+        <p class="hint" style="margin:0 0 6px">This position as text. Paste a code here to load it.</p>
+        <div class="code-row">
+          <textarea id="code" rows="2" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="State code"></textarea>
+          <div class="code-btns"><button class="btn" id="copy-code" title="Copy this position's code">Copy</button><button class="btn" id="import" title="Make the position in the field the start">Load</button></div>
+        </div>
         <p class="hint" id="code-note" style="margin:4px 0 0; height:1.5em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></p>
-        <div class="row" style="margin:6px 0 10px"><button class="btn small" id="copy-code">Copy</button></div>
-        <textarea id="code-in" placeholder="Type or paste a state code (case, spaces and dashes don't matter)" aria-label="State code to import"></textarea>
-        <div class="row" style="margin-top:6px"><button class="btn small" id="import">Import as start</button></div>
       </details>
     </section>
   </div>
