@@ -368,7 +368,9 @@ labTest(
       renderOpen.shown && renderOpen.boxes === 4 && infoOpen.shown && infoOpen.renderClosed && flatOpen.shown && flatOpen.infoClosed && /no sticker/.test(flatOpen.text) && flatLegendInFlow === 0 && allClosed && renderOpen.height === h0 && infoOpen.height === h0 && flatOpen.height === h0,
       `the Display panel and both ⓘ panels (3D and flat view) open over the views without moving the page (height ${h0} px), one at a time, and close on a tap elsewhere`,
     );
-    await page.evaluate(() => document.getElementById("copy-code").click()); // only a message changes
+    // A message that shows at once (copying waits on the clipboard, which may never answer here).
+    await page.evaluate(() => document.getElementById("shuffle").click());
+    await page.waitForFunction(() => !document.getElementById("message").hidden, null, { timeout: 5000 }).catch(() => {});
     const floating = { shown: await isShown("message"), fixed: await page.$eval("#message", (e) => getComputedStyle(e).position), height: await pageHeight() };
     await page.click("#message");
     const msgGone = !(await isShown("message"));
