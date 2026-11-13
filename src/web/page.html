@@ -115,16 +115,34 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .transport > .status { flex: none; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; overflow: hidden; }
 /* Next step, in place of ▶ once a solve's step has played through: a move from one state
    to the next, in the highlight color so it can't be taken for Play. */
-.tp.next-tp { color: var(--accent); }
+
 /* The playback buttons as one strip: one rounded outline, faint lines between the buttons. */
 .tp-group { display: flex; flex: 0 1 auto; min-width: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
 .tp-group > .btn.tp { border: 0; border-radius: 0; min-height: 32px; min-width: 38px; padding: 0 8px; }
 .tp-group > .tp + .tp { border-left: 1px solid var(--line); }
-.tp-group > .tp:hover { background: var(--off-bg); }
+@media (hover: hover) { .tp-group > .tp:not(.stop):not(:disabled):hover { background: var(--off-bg); } }
 .tp.next-tp[hidden], .tp[hidden] { display: none; }
 .tp .ico { width: 20px; height: 18px; display: block; margin: 0 auto; }
 /* The Solve panel: the order and Start solving until a solve starts; then the step's controls. */
 #guide:not(.solving) .solve-only, #guide.solving .solve-idle { display: none; }
+/* The turn list's ✕: one tap arms it ("Clear?"), a second clears. */
+.list-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.list-row > .history { flex: 1 1 auto; min-width: 0; }
+.list-clear { flex: none; min-width: 26px; height: 24px; padding: 0 6px; border: 0; border-radius: 999px; background: var(--off-bg); color: var(--muted); font: 600 12px var(--f-body); cursor: pointer; }
+.list-clear[hidden] { display: none; }
+.list-clear.armed { background: var(--bad-bg); color: var(--bad); }
+.confirm { position: fixed; z-index: 40; left: 50%; top: 30%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); padding: 12px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); display: grid; gap: 10px; }
+.confirm[hidden] { display: none; }
+.confirm p { margin: 0; font-weight: 600; }
+/* The solve's steps, newest at the top, under the shown step's text; Stop solving at the foot. */
+.solve-steps { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
+.steps-head { margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+.steps-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 220px; overflow-y: auto; }
+.step-row { width: 100%; display: flex; justify-content: space-between; gap: 8px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 14px var(--f-body); text-align: left; cursor: pointer; }
+.step-row:hover { background: var(--off-bg); }
+.step-row.on { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.step-row .n { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stop-solve { width: 100%; margin-top: 10px; }
 .sub-head .chip { text-transform: none; letter-spacing: 0; font: 12px var(--f-mono); }
 #panel-start .base-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .sub-head { display: flex; justify-content: space-between; align-items: center; margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font: 600 13px var(--f-display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
@@ -138,6 +156,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .corner.tr { top: 4px; right: 4px; }
 .corner.br { bottom: 4px; right: 4px; }
 .stage > .pop { z-index: 60; } /* above the edge labels */
+#render-pop { width: max-content; }
 .stage > .pop.near-top { top: 40px; right: 6px; }
 .stage > .pop.near-bottom { top: auto; bottom: 40px; right: 6px; }
 /* Outer turns: one tiny letter chip each, green when it can turn, gray when it can't. */
@@ -205,7 +224,16 @@ input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); 
 .mv.outer { border-style: dashed; }
 .mv.blocked { opacity: 0.38; }
 .mv { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
-.mv.inverted { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); opacity: 1; }
+.mv.inverted { background-color: var(--accent); color: var(--accent-ink); border-color: var(--accent); opacity: 1; }
+/* The rotations' axes, drawn behind their letters: x across (like R), y up and down (like U),
+   z end-on, a ring around the letter (the axis points at you). */
+.mv[data-move="x"], .mv[data-move="y"], .mv[data-move="z"] { --axis: color-mix(in srgb, var(--muted) 70%, transparent); background-repeat: no-repeat; background-position: center; }
+.mv[data-move="x"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 100% 1.5px; }
+.mv[data-move="y"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 1.5px 100%; }
+.mv[data-move="z"] { background-image: radial-gradient(circle, transparent 10.5px, var(--axis) 11px, var(--axis) 12.25px, transparent 12.75px); }
+/* A button that doesn't apply right now is grayed out. */
+.btn:disabled, .btn:disabled:hover { opacity: 0.4; cursor: not-allowed; border-color: var(--line); }
+.tp-group > .btn.tp:disabled { opacity: 1; color: color-mix(in srgb, var(--muted) 45%, transparent); }
 .turn-head { display: flex; align-items: center; gap: 8px; }
 /* Heading and Undo line up with the 40px-tall turn-amount selector (its first row). */
 .turn-head h2 { margin: 0; line-height: 40px; }
@@ -323,7 +351,7 @@ details[open] summary { margin-bottom: 8px; }
   .views > .btn.small:not([data-view="home"]) { display: none; }
   .views > .btn.small { min-height: 26px; padding: 2px 8px; }
   .hold { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stage > .pop { width: min(330px, calc(100vw - 32px)); max-width: none; }
+  #info-pop { width: min(330px, calc(100vw - 32px)); max-width: none; }
   #scene { height: clamp(170px, 32dvh, 520px); }
   .history { min-height: 22px; }
   .stage-col > .dock { gap: 3px; }
@@ -343,6 +371,10 @@ details[open] summary { margin-bottom: 8px; }
   .stack > .panel > h2, .stack .turn-head h2, .stack .view-head h2, .stack .row > h2 { display: none; }
   .stack .row:has(> h2) { justify-content: flex-end !important; }
   .guide-btns .btn { min-height: 36px; }
+  .stack > #guide.solving { display: flex; flex-direction: column; overflow: hidden; }
+  #guide.solving .solve-steps { flex: 1 1 auto; min-height: 60px; display: flex; flex-direction: column; }
+  #guide.solving .steps-list { flex: 1 1 auto; min-height: 0; max-height: none; }
+  #guide.solving .guide-line { flex: none; }
   /* The turn buttons all fit above the fold: one row of Undo and the turn amount, then
      four rows of buttons. Which outer turns are allowed shows on the buttons themselves. */
   .pad { gap: 6px; margin-top: 8px; }
@@ -414,7 +446,7 @@ details[open] summary { margin-bottom: 8px; }
       <p class="hint">Pick a color, then tap stickers on the cube to paint them. Drag to turn the view.</p>
     </div>
     <div class="dock" id="dock" aria-label="Turn list and playback">
-      <div class="history" id="history"></div>
+      <div class="list-row"><div class="history" id="history"></div><button class="list-clear" id="list-clear" title="Clear the turn list" aria-label="Clear the turn list" hidden>✕</button></div>
       <div class="transport">
         <div class="tp-group" role="group" aria-label="Playback">
           <button class="btn small tp" id="first" aria-label="Back to the start" title="Back to the start"><i class="tp-bar" aria-hidden="true"></i>◀</button>
@@ -422,7 +454,7 @@ details[open] summary { margin-bottom: 8px; }
           <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
           <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
           <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
-          <button class="btn small tp next-tp" id="strip-next" aria-label="Next step" title="Load the next step" hidden><svg class="ico" viewBox="0 0 20 18" aria-hidden="true"><circle cx="4" cy="13.5" r="2.4" fill="currentColor"/><circle cx="16" cy="13.5" r="2.4" fill="currentColor"/><path d="M4.4 9.6C5.2 3.6 13.6 3 15.2 8.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12.4 7.4 15.4 9.2 16.6 5.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="btn small tp next-tp" id="strip-next" aria-label="Next step" title="Load the next step" hidden><svg class="ico" viewBox="0 0 20 18" aria-hidden="true"><circle cx="4" cy="13.5" r="2.4" fill="currentColor"/><circle cx="16" cy="13.5" r="2.4" fill="currentColor"/><path d="M4.4 9.6C5.2 3.8 12.4 3.2 14.4 7.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M11.6 7.6 17.2 9.6 17 3.8z" fill="currentColor"/></svg></button>
         </div>
         <span class="counter" id="counter">0 / 0</span>
         <div class="status" id="status" aria-live="polite"><span class="chip" id="shape-chip"></span><span class="outer-grid" id="outer-grid" aria-label="Outer turns"></span></div>
@@ -430,6 +462,7 @@ details[open] summary { margin-bottom: 8px; }
       <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
     </div>
     <p class="message" id="message" hidden></p>
+    <div class="confirm" id="confirm" role="alertdialog" aria-labelledby="confirm-text" hidden><p id="confirm-text">End the solve in progress?</p><div class="row"><button class="btn small primary" id="confirm-yes">End solve</button><button class="btn small" id="confirm-no">Keep solving</button></div></div>
   </div>
 
   <div class="tabs" id="tabs" role="tablist" aria-label="Panels">
@@ -510,8 +543,10 @@ details[open] summary { margin-bottom: 8px; }
       <h2>Solve step by step</h2>
       <!-- Not solving: pick the order, then start. Solving: the step's buttons and its text. -->
       <div class="row solve-idle"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
-      <div class="row guide-btns"><button class="btn primary" id="next-step">Start solving</button><button class="btn solve-only" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn solve-only" id="guide-show" title="Turn the view to where this step's paths begin and end">Show</button><button class="btn solve-only" id="guide-stop" title="Stop solving: drop the step and its grays; the turn list stays as it is">Stop</button></div>
+      <div class="row guide-btns"><button class="btn primary" id="next-step">Start solving</button><button class="btn solve-only" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn solve-only" id="guide-show" title="Turn the view to where this step's paths begin and end">Show step</button></div>
       <p class="guide-line" id="guide-line" aria-live="polite"></p>
+      <div class="solve-steps solve-only"><p class="steps-head" id="steps-head"></p><ol class="steps-list" id="steps-list" aria-label="The steps of this solve, newest first"></ol></div>
+      <button class="btn solve-only stop-solve" id="guide-stop" title="Stop solving: drop the step and its grays; the turn list stays as it is">Stop solving</button>
     </section>
 
     <section class="panel" data-sec="flat" id="panel-flat" role="tabpanel">

@@ -2377,7 +2377,7 @@ function bindAlgorithms() {
     const el = (e.target as HTMLElement).closest<HTMLElement>("button");
     const ds = el?.dataset;
     if (!ds) return;
-    if (ds.algLoad) loadAlgorithm(ds.algLoad);
+    if (ds.algLoad) endingSolve(() => loadAlgorithm(ds.algLoad!));
     else if (ds.algDel) {
       pendingAlgDelete = ds.algDel;
       render();
@@ -2468,6 +2468,19 @@ function render() {
   back.setAttribute("aria-label", playing && playingBack ? "Stop" : "Play backward to the start");
   back.classList.toggle("stop", playing && playingBack);
   $("base-label").textContent = app.baseLabel;
+  // Each button is grayed out when it can't do anything right now.
+  const len = app.history.length, at = app.cursor;
+  const dis = (id: string, off: boolean) => (($(id) as HTMLButtonElement).disabled = off);
+  dis("first", at === 0 && !playing);
+  dis("rewind", at === 0 && !(playing && playingBack));
+  dis("back", at === 0);
+  dis("fwd", at >= len);
+  dis("last", at >= len && !(playing && !playingBack));
+  dis("load", !editingTurns && !algField().value.trim());
+  dis("alg-save", !len);
+  dis("clear", !len);
+  dis("reset", !len && isSolved(app.current));
+  $("list-clear").hidden = !len || shuffling;
 
   // modifier buttons
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-mod]")) b.classList.toggle("sel", Number(b.dataset.mod) === app.modifier);
@@ -2859,7 +2872,7 @@ function bindUI() {
   $("guide-start").addEventListener("click", () => goToStep(guide ?? undefined));
   $("guide-show").addEventListener("click", () => showGuide());
   bindViewTools();
-  $("edit-start").addEventListener("click", () => startEdit());
+  $("edit-start").addEventListener("click", () => endingSolve(() => startEdit()));
   $("edit-done").addEventListener("click", () => endEdit(true));
   $("edit-cancel").addEventListener("click", () => endEdit(false));
   $("edit-status").addEventListener("click", (e) => {
@@ -2895,6 +2908,7 @@ function bindUI() {
     else if (ds.guideMode) setGuideMode(ds.guideMode as Mode);
     else if (ds.load) {
       const s = saved.find((x) => x.id === ds.load);
+      if (s && solving) return endingSolve(() => t.click());
       if (s) {
         try {
           setBase(decodeState(s.code), s.name);
@@ -2924,17 +2938,45 @@ function bindUI() {
   $("last").addEventListener("click", () => (playing ? stopPlaying() : playToEnd()));
   $("rewind").addEventListener("click", () => (playing ? stopPlaying() : playToStart()));
   $("undo").addEventListener("click", () => undoLast());
-  $("shuffle").addEventListener("click", () => shuffle());
-  $("reset").addEventListener("click", () => {
-    setBase(State.solved(), "Solved");
-    setMessage("Reset to solved", "ok");
-    render();
+  $("shuffle").addEventListener("click", () => endingSolve(() => shuffle()));
+  $("reset").addEventListener("click", () =>
+    endingSolve(() => {
+      setBase(State.solved(), "Solved");
+      setMessage("Reset to solved", "ok");
+      render();
+    }),
+  );
+  const clearTurns = () =>
+    endingSolve(() => {
+      setBase(app.current, "Current position");
+      setMessage("Turns cleared. This position is now the start", "ok");
+      render();
+    });
+  $("clear").addEventListener("click", clearTurns);
+  // The turn list's ✕: the first tap arms it, a second tap (within 3 seconds) clears.
+  const listClear = $("list-clear");
+  let armTimer = 0;
+  const disarm = () => {
+    clearTimeout(armTimer);
+    listClear.classList.remove("armed");
+    listClear.textContent = "✕";
+  };
+  listClear.addEventListener("click", () => {
+    if (!listClear.classList.contains("armed")) {
+      listClear.classList.add("armed");
+      listClear.textContent = "Clear?";
+      armTimer = window.setTimeout(disarm, 3000);
+      return;
+    }
+    disarm();
+    clearTurns();
   });
-  $("clear").addEventListener("click", () => {
-    setBase(app.current, "Current position");
-    setMessage("Turns cleared. This position is now the start", "ok");
-    render();
+  document.addEventListener("pointerdown", (e) => {
+    if (e.target !== listClear) disarm();
   });
+  $("confirm-yes").addEventListener("click", () => answerConfirm(true));
+  $("confirm-no").addEventListener("click", () => answerConfirm(false));
+  $("alg").addEventListener("input", () => render());
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-view]"))
     b.addEventListener("click", () => {
       const name = b.dataset.view!;
@@ -3048,7 +3090,8 @@ function bindUI() {
     }
     render();
   });
-  $("import").addEventListener("click", () => {
+  $("import").addEventListener("click", () => endingSolve(importCode));
+  function importCode() {
     const v = codeField.value.trim();
     try {
       const st = decodeState(v);
@@ -3059,7 +3102,7 @@ function bindUI() {
       setMessage(`Couldn't import: ${(err as Error).message}`, "error");
     }
     render();
-  });
+  }
 }
 
 // ------------------------------------------------------------------ color editing
@@ -3194,6 +3237,27 @@ function setGuideMode(mode: Mode) {
 let guideDimmed: any[] = []; // meshes drawn gray
 let guideArrows: any = null;
 
+/**
+ * Runs an action that sets a new start (Shuffle, Reset, Edit colors, a code, a saved position,
+ * an algorithm, clearing the turn list). During a solve it asks first, and ends the solve.
+ */
+let confirmAction: (() => void) | null = null;
+function endingSolve(action: () => void) {
+  if (!solving) return action();
+  confirmAction = () => {
+    stopGuide();
+    action();
+  };
+  $("confirm").hidden = false;
+  ($("confirm-yes") as HTMLButtonElement).focus();
+}
+function answerConfirm(yes: boolean) {
+  $("confirm").hidden = true;
+  const act = confirmAction;
+  confirmAction = null;
+  if (yes && act) act();
+}
+
 /** A solve is under way: from Start solving until Stop. The order can be chosen only between solves. */
 let solving = false;
 const SOLVED_LINE = "Solved. Nothing left to do.";
@@ -3286,6 +3350,21 @@ function showGuide() {
   showFaces(app.current, faces);
 }
 
+/** The solve's steps so far, newest at the top, with the running count of turns. */
+function renderSteps() {
+  const list = $("steps-list");
+  const turns = trail.reduce((n, g) => n + g.step.turns.length, 0);
+  $("steps-head").textContent = trail.length ? `${trail.length} ${trail.length === 1 ? "step" : "steps"}, ${turns} ${turns === 1 ? "turn" : "turns"}` : "No steps yet";
+  list.innerHTML = [...trail]
+    .reverse()
+    .map((g) => {
+      const done = app.cursor >= g.start + g.step.turns.length;
+      const n = g.step.turns.length;
+      return `<li><button class="step-row ${g === guide ? "on" : ""}" data-step="${g.start}" title="Go to the start of this step"><span>${g.index}. ${STAGE_NAME[g.step.stage]}${done ? " ✓" : ""}</span><span class="n">${n} ${n === 1 ? "turn" : "turns"}</span></button></li>`;
+    })
+    .join("");
+}
+
 /** Step start, or a step's tag in the turn list: shows that step again, at the position it starts from. */
 function goToStep(g: Guide | undefined) {
   if (!g || edit) return;
@@ -3327,11 +3406,16 @@ function refreshGuide() {
   $("next-step").textContent = solving ? "Next step" : "Start solving";
   // In the playback strip, once a solve's turns have all played, ▶ gives way to Next step.
   const atEnd = app.cursor >= app.history.length;
-  const showNext = solving && atEnd && !playing && guideLine !== SOLVED_LINE;
+  const solvedNow = isSolved(app.current);
+  const showNext = solving && atEnd && !playing && guideLine !== SOLVED_LINE && !solvedNow;
+  // Next step loads the step after the one played; with turns still to play, play them first.
+  ($("next-step") as HTMLButtonElement).disabled = solvedNow || (solving && !atEnd);
   $("strip-next").hidden = !showNext;
   $("last").hidden = showNext;
   ($("guide-start") as HTMLButtonElement).disabled = !guide || app.cursor === guide.start;
-  ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold";
+  // The paths show only before the step's first turn, so Show step applies only there.
+  ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold" || app.cursor !== guide.start;
+  renderSteps();
   const line = $("guide-line");
   line.textContent = "";
   if (guide) {

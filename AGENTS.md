@@ -288,7 +288,13 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   amount, the turn buttons, and the turn field), **Algorithms**, **Solve** (the step
   guide), **Flat** (the flat view). The Lab opens on Start.
 - **Playback:** the buttons form one strip (one rounded outline, faint lines between the
-  buttons), and the counter ("7/9") sits right after it. ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
+  buttons), and the counter ("7/9") sits right after it. **Every button is grayed out
+  (disabled) when it can't do anything** right now: the backward buttons at the start, the
+  forward ones at the end (▶ stays live as ■ while playing), Load with an empty turn field,
+  Start from here and Save (algorithm) with no turns, Reset with the puzzle solved and no
+  turns, Next step while the step's turns are still to play or once solved, Show step after
+  the step's first turn. The turn list ends in a ✕ (while there are turns): one tap turns
+  it into "Clear?", a second within 3 seconds clears the list as Start from here does. ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
   draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1
   forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
 - **Start from here** (`#clear`, in the Start panel): empties the turn list; the position
@@ -299,7 +305,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   list says "Shuffling…" while they play), which would give the way back away (the probe's
   `shuffleTurns` has them for the tests).
 - **Turn buttons:** tap for the shown turn; long press flips it to the inverse (U to U');
-  slide off to cancel.
+  slide off to cancel. The rotations show their axes behind the letter, in mid gray: a line
+  across x, a line up and down y, and a ring around z (its axis points at you).
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
   orthographic cameras, so it animates, centered in its panel. Its ⓘ button explains how to read it.
 - **State code** (a disclosure in Saved states): one single-line field, with Copy and Load
@@ -380,8 +387,13 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   (halo on all six centers that show). A cube painted as the real one shows is always
   valid, so any problem means a sticker painted wrong.
 - **Step guide:** the Solve panel, in two modes. Between solves it shows **Order** and
-  **Start solving**; during a solve (from Start solving until **Stop**) it shows Next step,
-  Step start, Show and Stop, and the step's line, and the order can't change. In the
+  **Start solving**; during a solve (from Start solving until **Stop solving**, across the
+  panel's foot) it shows Next step, Step start and Show step, the step's line, and the
+  **steps so far**, newest at the top, each with its turn count (tap one to go to its
+  start), under a running total ("3 steps, 13 turns"); on phones the list scrolls between
+  the step's line and Stop solving. The order can't change during a solve. Anything that
+  sets a new start (Shuffle, Reset, Edit colors, a code, a saved position, an algorithm,
+  clearing the turn list) asks "End the solve in progress?" first, and ends it. In the
   playback strip, once a solve's turns have all played, ▶ gives way to a **Next step**
   button (two dots with an arrow from one to the other, in the highlight blue), which
   loads the next step; ▶ comes back with it. **Next

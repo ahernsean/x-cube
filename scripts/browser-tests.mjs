@@ -145,6 +145,13 @@ async function openLab({ url = pageUrl, context: contextOptions = labContext(), 
   return { page, context, errors, close, ...h };
 }
 
+/** Reset to solved, if it applies (it is grayed out when solved with no turns), ending a solve if one is under way. */
+async function resetToSolved(page) {
+  if (await page.$eval("#reset", (b) => b.disabled)) return;
+  await page.evaluate(() => document.getElementById("reset").click());
+  if (!(await page.$eval("#confirm", (d) => d.hidden))) await page.click("#confirm-yes");
+}
+
 /** Picks the solve's order, stopping a solve under way first (the order is chosen between solves). */
 async function setOrder(page, mode) {
   if (!(await page.$eval("#guide-stop", (b) => b.disabled))) await page.click("#guide-stop");
@@ -197,7 +204,7 @@ function helpers(page) {
   };
   // Clicking a button scrolls the page to it, so bring the 3D view back before aiming at it.
   const startFresh = async () => {
-    await page.click("#reset");
+    await resetToSolved(page);
     await page.evaluate(() => document.querySelector('[data-view="home"]').click());
     await page.locator("#scene").scrollIntoViewIfNeeded();
     await settle();
@@ -361,8 +368,7 @@ labTest(
       renderOpen.shown && renderOpen.boxes === 4 && infoOpen.shown && infoOpen.renderClosed && flatOpen.shown && flatOpen.infoClosed && /no sticker/.test(flatOpen.text) && flatLegendInFlow === 0 && allClosed && renderOpen.height === h0 && infoOpen.height === h0 && flatOpen.height === h0,
       `the Display panel and both ⓘ panels (3D and flat view) open over the views without moving the page (height ${h0} px), one at a time, and close on a tap elsewhere`,
     );
-    await page.fill("#alg", "");
-    await page.click("#load"); // nothing to load: only a message changes
+    await page.evaluate(() => document.getElementById("copy-code").click()); // only a message changes
     const floating = { shown: await isShown("message"), fixed: await page.$eval("#message", (e) => getComputedStyle(e).position), height: await pageHeight() };
     await page.click("#message");
     const msgGone = !(await isShown("message"));
@@ -620,14 +626,14 @@ labTest("turns: an algorithm plays and is listed; a blocked outer turn is refuse
   check(cur.outline === "none" && cur.shadow.includes("inset") && cur.inside, `current turn is marked inside its chip, so the list can't clip it (outline ${cur.outline}, shadow "${cur.shadow}")`);
 
   // A blocked outer turn is refused with a reason.
-  await page.click("#reset");
+  await resetToSolved(page);
   await page.fill("#alg", "R f");
   await page.click("#load");
   const msg = await page.$eval("#message", (m) => m.textContent ?? "");
   check(/f\)?: extension has 6\/9 cubelets/.test(msg), `outer turn after R is refused (message: "${msg}")`);
 
   // Baum's edge 3-cycle (white-up grip) returns to the X shape.
-  await page.click("#reset");
+  await resetToSolved(page);
   await page.fill("#alg", "R' S' R b R' S R b'");
   await page.click("#load");
   await page.click("#last");
@@ -944,7 +950,7 @@ labTest("algorithms: one can be deleted, and the turn list saved as one and load
   await page.fill("#alg-name", "Sexy move");
   await page.click("#alg-save");
   const afterSave = await algNames();
-  await page.click("#reset");
+  await resetToSolved(page);
   const mine = await page.evaluate(() => [...document.querySelectorAll("#known-list li")].find((li) => li.textContent.includes("Sexy move"))?.querySelector("[data-alg-load]")?.dataset.algLoad);
   await page.click(`[data-alg-load="${mine}"]`);
   const loadedMine = { base: await page.$eval("#base-label", (e) => e.textContent), alg: await turnList(), counter: await counter() };
@@ -1560,7 +1566,7 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   // One corner cycle from solved: a white X-face corner hops along the top, white up at
   // both ends, and its flying copy keeps white up all the way.
   await page.click("#guide-stop");
-  await page.click("#reset");
+  await resetToSolved(page);
   await settle();
   await setOrder(page, "kinds");
   await page.fill("#alg", "(F' L' F) r (F' L F) r'");
@@ -1657,6 +1663,62 @@ labTest("guide: the order is chosen between solves; once a step has played, Next
   await page.click("#guide-stop");
   const stopped = await page.evaluate(() => ({ order: !!document.querySelector(".guide-modes").getClientRects().length, btn: document.getElementById("next-step").textContent, next: !document.getElementById("strip-next").hidden }));
   check(stopped.order && stopped.btn === "Start solving" && !stopped.next, `Stop ends the solve: the order and Start solving are back (${JSON.stringify(stopped)})`);
+});
+
+labTest("controls: buttons gray out when they don't apply; the turn list's ✕ asks first; a new start asks before ending a solve; the solve lists its steps", async ({ page, check, settle, counter }) => {
+  const off = () => page.evaluate(() => Object.fromEntries(["first", "rewind", "back", "fwd", "last", "load", "clear", "reset", "alg-save"].map((id) => [id, document.getElementById(id).disabled])));
+  const fresh = await off();
+  check(Object.values(fresh).every(Boolean), `solved with no turns, every playback button, Load, Start from here, Reset and Save are grayed out (${JSON.stringify(fresh)})`);
+  await page.fill("#alg", "R U");
+  check(!(await page.$eval("#load", (b) => b.disabled)), "typing turns makes Load available");
+  await page.click("#load");
+  const loaded = await off();
+  check(loaded.first && loaded.back && !loaded.fwd && !loaded.last && !loaded.clear && !loaded.reset, `at the start of two loaded turns, only the forward buttons apply (${JSON.stringify(loaded)})`);
+  await page.click("#last");
+  await page.waitForFunction(() => document.getElementById("counter").textContent === "2/2" && window.xcubeProbe.idle(), null, { timeout: 30000 });
+  const end = await off();
+  check(!end.first && !end.back && end.fwd && end.last, `at the end, only the backward buttons apply (${JSON.stringify(end)})`);
+  // The ✕ at the end of the turn list: one tap asks, a second clears.
+  await page.click("#list-clear");
+  const armed = { text: await page.$eval("#list-clear", (b) => b.textContent), counter: await counter() };
+  await page.click("#list-clear");
+  check(armed.text === "Clear?" && armed.counter === "2/2" && (await counter()) === "0/0" && (await page.$eval("#list-clear", (b) => b.hidden)), `the turn list's ✕ asks "Clear?" first, then clears it (${JSON.stringify(armed)})`);
+  // During a solve, Shuffle asks before ending it; Keep solving keeps it, End solve ends it.
+  await page.fill("#alg", "R U");
+  await page.click("#load");
+  await page.click("#last");
+  await page.waitForFunction(() => document.getElementById("counter").textContent === "2/2" && window.xcubeProbe.idle(), null, { timeout: 30000 });
+  await page.click("#clear");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  const solving = await page.evaluate(() => ({ next: document.getElementById("next-step").disabled, show: document.getElementById("guide-show").disabled, head: document.getElementById("steps-head").textContent, rows: [...document.querySelectorAll("#steps-list .step-row")].map((r) => r.textContent) }));
+  check(solving.next && !solving.show && /^1 step, \d+ turns?$/.test(solving.head) && solving.rows.length === 1, `with a step's turns still to play, Next step is grayed out and Show step applies; the step list has it (${JSON.stringify(solving)})`);
+  await page.evaluate(() => document.getElementById("shuffle").click());
+  const asked = await page.$eval("#confirm", (d) => !d.hidden);
+  await page.click("#confirm-no");
+  const kept = await page.evaluate(() => document.getElementById("guide").classList.contains("solving"));
+  await page.evaluate(() => document.getElementById("shuffle").click());
+  await page.click("#confirm-yes");
+  await page.waitForFunction(() => /^Shuffled/.test(document.getElementById("message")?.textContent ?? ""), null, { timeout: 60000 });
+  const ended = await page.evaluate(() => document.getElementById("guide").classList.contains("solving"));
+  check(asked && kept && !ended, `Shuffle during a solve asks first; Keep solving keeps it, End solve ends it and shuffles (${JSON.stringify({ asked, kept, ended })})`);
+  // Two steps: the newer is listed first, with the running total.
+  await page.click("#next-step");
+  await settle();
+  await page.click("#last");
+  await page.waitForFunction(() => !document.getElementById("strip-next").hidden, null, { timeout: 60000 });
+  await page.click("#strip-next");
+  await settle();
+  const two = await page.evaluate(() => ({ head: document.getElementById("steps-head").textContent, rows: [...document.querySelectorAll("#steps-list .step-row")].map((r) => r.textContent) }));
+  check(/^2 steps, \d+ turns$/.test(two.head) && /^2\./.test(two.rows[0]) && /^1\..*✓/.test(two.rows[1]), `the step list shows the newest first, the played one ticked, and the total (${JSON.stringify(two)})`);
+  await page.click("#steps-list .step-row:last-child");
+  // Axis marks on x, y and z, and a Display panel no wider than its switches.
+  const marks = await page.evaluate(() => ["x", "y", "z"].map((m) => getComputedStyle(document.querySelector(`[data-move="${m}"]`)).backgroundImage.slice(0, 15)));
+  check(marks[0].startsWith("linear") && marks[1].startsWith("linear") && marks[2].startsWith("radial"), `x and y have a line drawn behind them, z a ring (${marks})`);
+  await page.click("#render-btn");
+  const w = await page.evaluate(() => [document.getElementById("render-pop").getBoundingClientRect().width, document.querySelector(".stage").getBoundingClientRect().width]);
+  check(w[0] < w[1] * 0.6, `the Display panel fits its switches (${Math.round(w[0])} of ${Math.round(w[1])} px)`);
 });
 
 labTest("guide: a parity turn has one arc around the outside of its layer", async ({ page, check, probe, settle, play }) => {
