@@ -1386,15 +1386,17 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   const box = await page.$$eval("#history .step-box", (els) => els.map((e) => `${e.querySelector(".step-tag").textContent}:${e.querySelectorAll(".tok").length}:${e.classList.contains("on")}`).join());
   await page.click("#guide-start");
   await settle();
-  const backAtStart = { counter: await counter(), g: await probe("guide"), off: await page.$eval("#guide-start", (b) => b.disabled) };
-  await page.click("#last");
+  const backAtStart = { counter: await counter(), g: await probe("guide"), label: await page.$eval("#guide-start", (b) => (b.disabled ? "off" : b.textContent)) };
+  // At the step's start the same button plays the step.
+  await page.click("#guide-start");
   await settle();
+  const playedStep = { counter: await counter(), label: await page.$eval("#guide-start", (b) => b.textContent) };
   await page.click("#history .step-tag");
   await settle();
   const byTag = { counter: await counter(), arrows: (await probe("guide")).arrows };
   check(
-    box === "1. Corners:8:true" && backAtStart.counter === "8/16" && backAtStart.g.arrows === 3 && backAtStart.g.gray === 93 && backAtStart.off && byTag.counter === "8/16" && byTag.arrows === 3,
-    `the step is boxed in the turn list (${box}); Step start and its tag go back to its start (${backAtStart.counter}, ${byTag.counter})`,
+    box === "1. Corners:8:true" && backAtStart.counter === "8/16" && backAtStart.g.arrows === 3 && backAtStart.g.gray === 93 && backAtStart.label === "Play step" && playedStep.counter === "16/16" && playedStep.label === "Step start" && byTag.counter === "8/16" && byTag.arrows === 3,
+    `the step is boxed in the turn list (${box}); Step start and its tag go back to its start (${backAtStart.counter}, ${byTag.counter}); there it reads Play step and plays it (${JSON.stringify(playedStep)})`,
   );
   await page.click("#last");
   await settle();
@@ -1748,6 +1750,9 @@ labTest("controls: buttons gray out when they don't apply; the turn list's ✕ a
   await page.click("#steps-list li:last-child .step-row");
   // Axis marks on x, y and z, and a Display panel no wider than its switches.
   const marks = await page.evaluate(() => ["x", "y", "z"].map((m) => getComputedStyle(document.querySelector(`[data-move="${m}"]`)).backgroundImage.slice(0, 15)));
+  // The z's ink is moved to the middle of its button, where the ring is, by the font's own measures.
+  const zPad = await page.$eval('[data-move="z"]', (e) => e.style.paddingBottom || e.style.paddingTop);
+  check(/^[\d.]+px$/.test(zPad), `the z is raised by its font's measured offset (${zPad})`);
   check(marks[0].startsWith("linear") && marks[1].startsWith("linear") && marks[2].startsWith("radial"), `x and y have a line drawn behind them, z a ring (${marks})`);
   await page.click("#render-btn");
   const w = await page.evaluate(() => [document.getElementById("render-pop").getBoundingClientRect().width, document.querySelector(".stage").getBoundingClientRect().width]);

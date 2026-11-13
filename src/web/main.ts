@@ -2098,9 +2098,9 @@ function jump(to: number) {
   render();
 }
 
-function playToEnd() {
+function playToEnd(to = app.history.length) {
   flushAnimations();
-  for (let i = app.cursor; i < app.history.length; i++) enqueue(app.history[i], true);
+  for (let i = app.cursor; i < Math.min(to, app.history.length); i++) enqueue(app.history[i], true);
   playing = queue.length > 0;
   render();
 }
@@ -2907,7 +2907,13 @@ function bindUI() {
   $("next-step").addEventListener("click", () => nextStep());
   $("strip-next").addEventListener("click", () => nextStep());
   $("guide-stop").addEventListener("click", () => stopGuide());
-  $("guide-start").addEventListener("click", () => goToStep(guide ?? undefined));
+  $("guide-start").addEventListener("click", () => {
+    if (guide && app.cursor === guide.start) playToEnd(guide.start + guide.step.turns.length);
+    else goToStep(guide ?? undefined);
+  });
+  centerAxisLetters();
+  document.fonts?.ready.then(() => centerAxisLetters());
+  document.fonts?.addEventListener?.("loadingdone", () => centerAxisLetters());
   $("guide-show").addEventListener("click", () => showGuide());
   bindViewTools();
   $("edit-start").addEventListener("click", () => endingSolve(() => startEdit()));
@@ -3439,6 +3445,29 @@ function showStepIdle(): boolean {
   return Math.abs(q.dot(showTarget)) > 0.9999;
 }
 
+/**
+ * Moves the x and z letters so their ink, not their line box, sits at the middle of the
+ * button, where the axis line and the ring are drawn. A lowercase letter's ink sits below
+ * its line box's middle by an amount that depends on the font, so it is measured from the
+ * font the button is drawn in.
+ */
+function centerAxisLetters() {
+  const g = document.createElement("canvas").getContext("2d");
+  if (!g) return;
+  for (const m of ["x", "z"]) {
+    const b = document.querySelector<HTMLElement>(`.mv[data-move="${m}"]`);
+    if (!b) continue;
+    const cs = getComputedStyle(b);
+    g.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const t = g.measureText(m);
+    if (!t.fontBoundingBoxAscent) continue; // the font's metrics aren't known here
+    // How far below the line box's middle the ink's middle is (the leading splits evenly).
+    const low = (t.fontBoundingBoxAscent - t.fontBoundingBoxDescent) / 2 - (t.actualBoundingBoxAscent - t.actualBoundingBoxDescent) / 2;
+    b.style.paddingBottom = low > 0 ? `${(2 * low).toFixed(2)}px` : "";
+    b.style.paddingTop = low < 0 ? `${(-2 * low).toFixed(2)}px` : "";
+  }
+}
+
 /** The solve's steps so far, newest at the top, with the running count of turns. */
 let stepsKey = "";
 function renderSteps() {
@@ -3528,7 +3557,11 @@ function refreshGuide() {
   ($("next-step") as HTMLButtonElement).disabled = solvedNow || (solving && !atEnd);
   $("strip-next").hidden = !showNext;
   $("last").hidden = showNext;
-  ($("guide-start") as HTMLButtonElement).disabled = !guide || app.cursor === guide.start;
+  // At the step's start the button plays the step; anywhere else it goes back to the start.
+  const atStepStart = !!guide && app.cursor === guide.start;
+  $("guide-start").textContent = atStepStart ? "Play step" : "Step start";
+  $("guide-start").title = atStepStart ? "Play this step's turns" : "Go back to where this step begins";
+  ($("guide-start") as HTMLButtonElement).disabled = !guide || (atStepStart && playing);
   // The paths show only before the step's first turn, so Show step applies only there.
   updateShowTarget();
   ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold" || app.cursor !== guide.start || showStepIdle();

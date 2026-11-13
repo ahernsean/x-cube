@@ -235,7 +235,7 @@ input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); 
 .mv[data-move="x"], .mv[data-move="y"], .mv[data-move="z"] { --axis: color-mix(in srgb, var(--muted) 70%, transparent); background-repeat: no-repeat; background-position: center; }
 .mv[data-move="x"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 100% 1.5px; }
 .mv[data-move="y"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 1.5px 100%; }
-.mv[data-move="z"] { background-image: radial-gradient(circle, transparent 6.9px, var(--axis) 7.4px, var(--axis) 8.6px, transparent 9.1px); padding-bottom: 2px; } /* a lowercase letter's ink sits low: raise it 1px into the ring's middle */
+.mv[data-move="z"] { background-image: radial-gradient(circle, transparent 6.9px, var(--axis) 7.4px, var(--axis) 8.6px, transparent 9.1px); }
 /* A button that doesn't apply right now is grayed out. */
 .btn:disabled, .btn:disabled:hover { opacity: 0.4; cursor: not-allowed; border-color: var(--line); }
 .tp-group > .btn.tp:disabled { opacity: 1; color: color-mix(in srgb, var(--muted) 45%, transparent); }

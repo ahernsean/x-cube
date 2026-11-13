@@ -310,7 +310,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   `shuffleTurns` has them for the tests).
 - **Turn buttons:** tap for the shown turn; long press flips it to the inverse (U to U');
   slide off to cancel. The rotations show their axes behind the letter, in mid gray: a line
-  across x, a line up and down y, and a ring around z (its axis points at you).
+  across x, a line up and down y, and a ring around z (its axis points at you). The x and z
+  letters are moved so their ink sits at the button's middle (`centerAxisLetters`): a
+  lowercase letter's ink sits below its line box's middle by an amount that depends on
+  the font, so it is measured, by canvas text metrics, from the font the button draws with.
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
   orthographic cameras, so it animates, centered in its panel. Its ⓘ button explains how to read it.
 - **State code** (a disclosure in Saved states): one single-line field, with Copy and Load
@@ -480,7 +483,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag
   ("3. Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
   undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows
-  that step again at the position it begins from.
+  that step again at the position it begins from. At the step's start that button reads
+  **Play step** and plays the step's turns (only its own, if later steps follow).
   **Stop** drops the step, its grays and its line and leaves
   the turn list alone; Next step starts again from the position shown. Playing the step returns the colors and the line reads "(done)". Any change that
   takes the step's turns out of the turn list (a turn by hand, Clear, Edit) drops the step,
