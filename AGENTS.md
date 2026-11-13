@@ -565,8 +565,9 @@ Never do any of these without an explicit instruction from the owner:
   - Use CI as your test runner: after pushing, read the check results (the GitHub tools give
     the check runs and job logs) and fix what fails. Reproduce a CI failure locally with the
     narrowest run that shows it, then show that same run passing.
-  - A push to a pull request cancels CI still running on its previous commit, and that
-    run's `all checks` then fails because a job was cancelled. That is not a failure. When
+  - A push to a pull request cancels CI still running on its previous commit; that run's
+    `all checks` is then skipped (it runs only if the run wasn't cancelled), not failed.
+    A replaced run is part of the normal process, not a failure. When
     a check result or any other CI notice is for a commit that is no longer the pull
     request's head, say nothing about it to the owner: no report, no "nothing to act on",
     no mention in a later summary. Check which commit it is for, and if it is superseded,
