@@ -58,7 +58,8 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
 .tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* The playback strip: the turn list on one sideways-scrolling row, the buttons, the speed. */
-.dock { display: grid; gap: 6px; margin-top: 8px; }
+.dock { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin-top: 8px; }
+.tp { white-space: nowrap; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
 .stack { display: grid; gap: 14px; min-width: 0; }
 .stage { position: relative; background: var(--stage); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; }
@@ -87,7 +88,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .btn.tool-btn { min-height: 32px; padding: 4px 10px; color: var(--muted); }
 .btn.tool-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--muted); }
 /* The ⓘ is its own sign that it can be tapped: no button edge or fill. */
-.btn.tool-btn.info { border-color: transparent; background: transparent; box-shadow: none; padding: 4px 6px; min-width: 32px; font-size: 20px; line-height: 1; }
+.btn.tool-btn.info { border-color: transparent; background: transparent; box-shadow: none; padding: 4px; min-width: 32px; display: grid; place-items: center; }
 .btn.tool-btn.info[aria-expanded="true"] { border-color: transparent; color: var(--accent); }
 .pop { position: absolute; top: calc(100% + 4px); right: 0; z-index: 15; max-width: min(300px, 100%); padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); display: grid; gap: 8px; }
 .pop[hidden] { display: none; }
@@ -112,7 +113,22 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .edit-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .transport > .status { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; justify-content: center; overflow: hidden; }
-.tool-btn .short { display: none; }
+/* Small round buttons in the 3D view's corners, with no button edge or fill. */
+.stage { overflow: visible; }
+#scene { border-radius: 10px; }
+.btn.tool-btn.corner { position: absolute; z-index: 6; width: 34px; height: 34px; min-width: 0; min-height: 0; padding: 0; display: grid; place-items: center; }
+.btn.tool-btn.corner[hidden] { display: none; }
+.tool-btn .ico { width: 24px; height: 24px; display: block; }
+.corner.tl { top: 4px; left: 4px; }
+.corner.tr { top: 4px; right: 4px; }
+.corner.br { bottom: 4px; right: 4px; }
+.stage > .pop.near-top { top: 40px; right: 6px; }
+.stage > .pop.near-bottom { top: auto; bottom: 40px; right: 6px; }
+/* Outer turns: one tiny letter chip each, green when it can turn, gray when it can't. */
+.outer-grid { display: grid; grid-template-columns: repeat(3, auto); gap: 2px; }
+.outer-grid .chip { font-size: 10px; line-height: 1; padding: 2px 4px; border-radius: 4px; text-align: center; }
+#shape-chip.off { text-decoration: none; }
+.chip.off-plain { background: var(--off-bg); color: var(--muted); opacity: 0.55; }
 .outer-status { margin-top: 10px; }
 .outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }
 .chip { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--off-bg); color: var(--muted); white-space: nowrap; }
@@ -278,30 +294,27 @@ details[open] summary { margin-bottom: 8px; }
   header { display: none; }
   .wrap { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; flex-direction: column; gap: 6px; }
   .stage-col, .tabs { flex: none; }
-  /* Under the 3D view, one row: Home, how the puzzle is held, the ⓘ and Display buttons.
+  /* Under the 3D view, one row: Home and how the puzzle is held.
      The other views are a tap on an edge label away, so their buttons are left out. */
-  .stage-col { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 6px; row-gap: 5px; align-items: center; }
+  .stage-col { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; row-gap: 2px; align-items: center; }
   .stage-col > .stage { grid-area: 1 / 1 / 2 / -1; }
   .stage-col > .views { grid-area: 2 / 1; margin: 0; }
   .stage-col > .hold-row { grid-area: 2 / 2; margin: 0; }
-  .stage-col > .view-head { grid-area: 2 / 3; margin: 0; }
+  .stage-col > .view-head { display: none; }
   .stage-col > .edit-bar { grid-area: 3 / 1 / 4 / -1; margin: 0; }
   .stage-col > .dock { grid-area: 4 / 1 / 5 / -1; margin: 0; gap: 4px; }
   .views > .btn.small:not([data-view="home"]) { display: none; }
-  .views > .btn.small { min-height: 28px; padding: 3px 8px; }
+  .views > .btn.small { min-height: 26px; padding: 2px 8px; }
   .hold { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .hold-pre { display: none; }
-  .stage-col > .view-head h2 { display: none; }
-  .stage-col > .view-head .view-tools { gap: 2px; }
-  .stage-col > .view-head .btn.tool-btn { min-height: 28px; min-width: 30px; padding: 2px 6px; }
-  .stage-col > .view-head .pop { width: min(330px, calc(100vw - 32px)); max-width: none; }
-  .tool-btn .long { display: none; }
-  .tool-btn .short { display: inline; font-size: 16px; line-height: 1; }
+  .stage > .pop { width: min(330px, calc(100vw - 32px)); max-width: none; }
   #scene { height: clamp(170px, 32dvh, 520px); }
-  .history { min-height: 28px; }
+  .history { min-height: 22px; }
+  .stage-col > .dock { gap: 3px; }
   .transport { gap: 4px; }
-  .tp { min-width: 36px; min-height: 30px; padding-inline: 6px; }
-  .transport .chip { font-size: 11px; padding: 3px 6px; }
+  .tp { min-width: 34px; min-height: 30px; padding-inline: 4px; }
+  .transport > .status { gap: 4px; }
+  #shape-chip { font: 600 11px var(--f-body); padding: 3px 6px; }
+  .counter { font-size: 12px; }
   .speed { font-size: 12px; }
   .tabs button { min-height: 30px; padding: 4px; }
   /* Messages float over the top of the 3D view, clear of the panel being read. */
@@ -318,7 +331,6 @@ details[open] summary { margin-bottom: 8px; }
   .pad { gap: 6px; margin-top: 8px; }
   .pad-group { grid-template-columns: 52px 1fr; }
   .mv { min-height: 36px; }
-  .outer-status { display: none; }
   .add-turns { margin-top: 8px; }
   /* The flat view is sized to show whole in its panel, with its ⓘ over its empty corner. */
   .stack > [data-sec="flat"] { container-type: size; }
@@ -339,23 +351,22 @@ details[open] summary { margin-bottom: 8px; }
   <div class="stage-col" data-sec="view3d">
     <div class="view-head">
       <h2 class="sec-title">3D view</h2>
-      <div class="view-tools">
-        <button class="btn small tool-btn info" id="info-btn" aria-label="How to use the 3D view" aria-expanded="false" aria-controls="info-pop">ⓘ</button>
-        <button class="btn small tool-btn" id="render-btn" aria-expanded="false" aria-controls="render-pop" aria-label="Display options"><span class="long">Display ▾</span><span class="short" aria-hidden="true">◐</span></button>
-      </div>
-      <div class="pop" id="info-pop" hidden>
+    </div>
+    <div class="stage">
+      <canvas id="scene" aria-label="3D view of the X-Cube"></canvas>
+      <button class="btn small tool-btn info corner tr" id="info-btn" aria-label="How to use the 3D view" aria-expanded="false" aria-controls="info-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="7.4" r="1.3" fill="currentColor"/><path d="M12 10.6v6.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      <button class="btn small tool-btn info corner br" id="render-btn" aria-label="Display options" title="Display options" aria-expanded="false" aria-controls="render-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg></button>
+      <button class="btn small tool-btn info corner tl" id="undo" aria-label="Undo the last turn" title="Undo the last turn" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <div class="pop near-top" id="info-pop" hidden>
         <p class="hint">Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes.</p>
         <p class="hint"><strong>During a solve step</strong>, only the cubelets the step applies to keep their colors; gray ones don't move, dark gray ones may end up anywhere. Each colored cubelet has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the cubelet flies along it. With a ring: the cubelet ends up solved. Dashed: it is passing through and moves again later. Plain: a shape or core step moves it; it is solved later.</p>
       </div>
-      <div class="pop" id="render-pop" hidden title="Applies to the 3D view and the flat view">
+      <div class="pop near-bottom" id="render-pop" hidden title="Applies to the 3D view and the flat view">
         <label class="keep" for="glow"><input type="checkbox" id="glow"> Edge glow</label>
         <label class="keep" for="shade"><input type="checkbox" id="shade"> Shading</label>
         <label class="keep" for="shadows"><input type="checkbox" id="shadows"> Shadows</label>
         <label class="keep" for="gloss"><input type="checkbox" id="gloss"> Gloss</label>
       </div>
-    </div>
-    <div class="stage">
-      <canvas id="scene" aria-label="3D view of the X-Cube"></canvas>
       <div class="compass" role="group" aria-label="Look at a face">
         <button class="cmp" id="compass-0"></button>
         <button class="cmp" id="compass-1"></button>
@@ -393,7 +404,7 @@ details[open] summary { margin-bottom: 8px; }
         <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
         <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
         <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
-        <div class="status" id="status" aria-live="polite"></div>
+        <div class="status" id="status" aria-live="polite"><span class="chip" id="shape-chip"></span><span class="outer-grid" id="outer-grid" aria-label="Outer turns"></span></div>
         <span class="counter" id="counter">0 / 0</span>
       </div>
       <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
@@ -423,7 +434,6 @@ details[open] summary { margin-bottom: 8px; }
     <section class="panel" data-sec="turn" id="panel-turn" role="tabpanel">
       <div class="turn-head">
         <h2>Turn the puzzle</h2>
-        <button class="btn small" id="undo" title="Undo the last turn">Undo</button>
         <div class="mod-col">
           <label class="hint keep" for="sticky-mod" title="Keep ′ or 2 selected after a turn"><input type="checkbox" id="sticky-mod"> Keep ′ or 2</label>
           <div class="mods" role="group" aria-label="Turn amount">
@@ -447,7 +457,6 @@ details[open] summary { margin-bottom: 8px; }
           <span class="pad-note" id="rotate-note"><span><code>x</code> like <code>R</code>,</span> <span><code>y</code> like <code>U</code>,</span> <span><code>z</code> like <code>F</code></span></span>
         </div></div>
       </div>
-      <div class="status outer-status" id="outer-status" aria-live="polite"></div>
       <div class="alg-row add-turns">
         <span class="field"><input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Turns to add"><button class="field-clear" type="button" aria-label="Clear the turns typed">×</button></span>
         <button class="btn primary" id="load" title="Add the turns at the current step, then play them with ▶ or step through them">Load</button>
@@ -469,7 +478,7 @@ details[open] summary { margin-bottom: 8px; }
       <div class="view-head">
         <h2>Flat view</h2>
         <div class="view-tools">
-          <button class="btn small tool-btn info" id="flat-info-btn" aria-label="How to read the flat view" aria-expanded="false" aria-controls="flat-info-pop">ⓘ</button>
+          <button class="btn small tool-btn info" id="flat-info-btn" aria-label="How to read the flat view" aria-expanded="false" aria-controls="flat-info-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="7.4" r="1.3" fill="currentColor"/><path d="M12 10.6v6.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
         </div>
         <div class="pop" id="flat-info-pop" hidden>
           <p class="hint">The first face you'd see looking straight at each side. Dark squares are cubelet faces with no sticker. A glow along an edge shows the sticker color around the corner. No glow there means that side has no sticker.</p>

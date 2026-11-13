@@ -1282,7 +1282,13 @@ function updateCompass() {
     items.push({ el, x, y, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4, scale, z: dir.z });
   }
   items.sort((a, b) => b.vis - a.vis);
-  const placed: typeof items = [];
+  // The buttons in the view's corners are in place first, so a label slides clear of them.
+  const placed: { x: number; y: number; hw: number; hh: number }[] = [];
+  const cr = canvas.getBoundingClientRect();
+  for (const el of document.querySelectorAll<HTMLElement>(".stage > .corner:not([hidden])")) {
+    const r = el.getBoundingClientRect();
+    if (r.width) placed.push({ x: r.left - cr.left + r.width / 2, y: r.top - cr.top + r.height / 2, hw: r.width / 2, hh: r.height / 2 });
+  }
   for (const it of items) {
     if (it.vis > 0.05) {
       for (let tries = 0; tries < 8; tries++) {
@@ -2409,13 +2415,20 @@ function render() {
   const st = app.current;
   refreshGuide();
   // status
-  const shape = isHomeX(st) ? chip("X shape", "good") : isXShape(st) ? chip("X shape, tipped", "good") : chip("Out of shape", "warn");
-  const solved = isSolved(st) ? chip("Solved", "good") : "";
-  const outer = outerAvailability(st)
-    .map(([n, c]) => chip(c === 9 ? n : `${n} ${c}/9`, c === 9 ? "on" : "off", c === 9 ? `${n} can turn` : `${n} refuses: ${c} of 9 cubelets`))
+  // One chip for the shape: "Solved", or "X shape" lit when in shape and gray when not.
+  const solvedNow = isSolved(st), inShape = isXShape(st);
+  const shapeChip = $("shape-chip");
+  shapeChip.textContent = solvedNow ? "Solved" : "X shape";
+  shapeChip.className = `chip ${inShape ? "good" : "off"}`;
+  shapeChip.title = solvedNow ? "Solved" : isHomeX(st) ? "In the X shape" : inShape ? "In the X shape, tipped" : "Out of shape";
+  $("status").dataset.shape = isHomeX(st) ? "in" : inShape ? "tipped" : "out";
+  $("status").dataset.solved = String(solvedNow);
+  // A letter for each outer turn, green when it can turn.
+  $("outer-grid").innerHTML = outerAvailability(st)
+    .map(([n, c]) => `<span class="chip ${c === 9 ? "on" : "off-plain"}" data-outer="${n}" title="${c === 9 ? `${n} can turn` : `${n} refuses: ${c} of 9 cubelets`}">${n}</span>`)
     .join("");
-  $("status").innerHTML = `${shape}${solved}`;
-  $("outer-status").innerHTML = `<span class="outer-label">Outer turns</span>${outer}`;
+  // Undo, over the 3D view's corner, only while there is a turn to undo.
+  $("undo").hidden = app.cursor <= 0 || shuffling;
 
   // hold: which center colors face up, toward you and to your right, as they are now
   const side = (d: number) => {
@@ -2438,7 +2451,8 @@ function render() {
 
   // history strip
   const hist = turnListHtml();
-  $("history").innerHTML = hist || `<span class="hint">Turns you make or load appear here; tap one to go to it.</span>`;
+  // A shuffle's turns would give the way back away, so they are not shown while it plays.
+  $("history").innerHTML = shuffling ? `<span class="hint">Shuffling…</span>` : hist || `<span class="hint">Turns you make or load appear here; tap one to go to it.</span>`;
   keepTurnInSight();
   $("counter").textContent = `${app.cursor} / ${app.history.length}`;
   $("load").textContent = editingTurns ? "Update" : "Load";

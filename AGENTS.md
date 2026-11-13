@@ -247,26 +247,29 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   screen, meets the edge of the 3D view; tapping one turns the view to that face. They are
   foreshortened: a label on an axis toward the viewer is drawn larger, one pointing away
   smaller (scale 0.85 to 1.5, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top. A label
-  slides along its edge only to clear another label, so nothing else is put over the 3D
-  view: each label stays near where its axis meets the edge.
+  slides along its edge only to clear another label or a corner button, so it stays near
+  where its axis meets the edge.
+- **Corner buttons** of the 3D view, round icons with no button edge (drawn as SVG, so the
+  ⓘ and ◐ circles match): ⓘ (help) top right, ◐ (Display) bottom right, and ↶ (Undo, the
+  last turn however it was made) top left, shown only while there is a turn to undo.
 - **Highlight color:** the page's accent blue marks every selected or active control (the
   turn amount, Order, an inverted turn button, the playing transport button).
 - **Disclosure triangles:** one shape for section headings and `details` summaries, drawn
   in CSS (the browser's own marker is hidden).
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
-  two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ button
-  beside the 3D view's heading shows this help.
-- **Display panel:** the Display button beside the 3D view's heading (on phones a ◐ button
-  in the row under the view) opens the Edge glow, Shading, Shadows and Gloss switches, over the page.
+  two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ in the
+  3D view's corner shows this help.
+- **Display panel:** the ◐ in the 3D view's corner opens the Edge glow, Shading, Shadows
+  and Gloss switches, over the view.
 - **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. The
   root is padded by the safe-area insets (as the artifact host's skeleton also pads it; in
   the Claude app the top inset covers the app's own bar too) and the body fills the rest,
   so each inset is counted once. Vertical space is the scarce thing: an
   element earns a row only if it is used while solving. At the
-  top, the 3D view (32% of the screen's height, with nothing over it but the edge labels),
-  one row with Home (the other view buttons are left out: a tap on an edge label does the
-  same), the hold line without its "Hold:" and the ⓘ and ◐ (Display) buttons, and the
+  top, the 3D view (32% of the screen's height, with only the edge labels and the corner
+  buttons over it), one row with Home (the other view buttons are left out: a tap on an
+  edge label does the same) and the hold line, and the
   **playback strip**: the turn list on one row that scrolls sideways (kept so the current
   turn and the next two things after it show), the playback buttons with the status chips
   and the counter, and the speed slider. Below, a row of **tabs** (Solve, Turn, Algorithms, Flat, Saved) and the
@@ -281,8 +284,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   view and the strip on the left, staying put, and the panels stacked in a column on the
   right, each collapsing from its heading; no tabs.
 - **Panels:** **Solve** (the step guide, then Start, Clear, Reset, Shuffle and Edit
-  colors, then Order), **Turn** (Undo and the turn amount, the turn buttons, which outer
-  turns are allowed (wide screens only; the buttons dim on phones), and the turn field), **Algorithms**, **Flat** (the flat view), **Saved** (saved states and
+  colors, then Order), **Turn** (the turn amount, the turn buttons, and the turn field), **Algorithms**, **Flat** (the flat view), **Saved** (saved states and
   the state code).
 - **Playback:** ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
   draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1
@@ -290,8 +292,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Clear:** empties the turn list; the position shown becomes the start ("Current position").
 - **Shuffle:** 30 random legal turns (inner, slices, outer when complete; never the same
   layer twice in a row; no rotations) played at 70 ms per quarter turn; the result becomes
-  the new start ("Shuffled"). The message doesn't show the turns, which would give the way
-  back away (the probe's `shuffleTurns` has them for the tests).
+  the new start ("Shuffled"). Neither the message nor the turn list shows the turns (the
+  list says "Shuffling…" while they play), which would give the way back away (the probe's
+  `shuffleTurns` has them for the tests).
 - **Turn buttons:** tap for the shown turn; long press flips it to the inverse (U to U');
   slide off to cancel.
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
@@ -306,7 +309,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   flashes and a message says so. Its ✕ puts the current code back.
 - **Text fields** each have a ✕ at the right end while they hold text; it empties the field.
   Their text is 16px: iOS zooms the page into a focused field with smaller text.
-- **Status chips** (X shape, Solved, in the playback row; an outer turn that is allowed) are green: green means
+- **Status chips**, in the playback row: one shape chip ("Solved", or "X shape", green in
+  shape and gray out of it), and a 3 by 2 grid of one-letter chips for the outer turns
+  (r l u / d f b), green when that turn can be made and gray when not. Green: green means
   a state is good, blue (the highlight) means a control is selected or active.
 - **Edge glow:** a soft band at a depth discontinuity, in the color of the sticker around
   the edge. No glow means that side has no sticker. Only shown where the side face points

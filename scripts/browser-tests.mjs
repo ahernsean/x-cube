@@ -196,7 +196,13 @@ function helpers(page) {
     await page.locator("#scene").scrollIntoViewIfNeeded();
     await settle();
   };
-  const status = () => page.$eval("#status", (s) => s.textContent ?? "");
+  // The status chips in words: "Solved", "X shape" or "Out of shape", and the outer turns that can turn.
+  const status = () =>
+    page.$eval("#status", (s) => {
+      const shape = s.dataset.solved === "true" ? "Solved X shape" : s.dataset.shape === "out" ? "Out of shape" : "X shape";
+      const outer = [...s.querySelectorAll("[data-outer]")].filter((c) => c.classList.contains("on")).map((c) => c.dataset.outer).join("");
+      return `${shape}; outer ${outer}`;
+    });
   const counter = () => page.$eval("#counter", (c) => c.textContent.replace(/\s/g, ""));
   const hold = () => page.$eval("#hold", (e) => e.textContent);
   const turnList = () => page.$$eval("#history .tok", (els) => els.map((e) => e.textContent).join(" "));
@@ -403,7 +409,7 @@ labTest(
     const infoLook = await page.$$eval(".tool-btn.info", (els) =>
       els.map((e) => { const cs = getComputedStyle(e); return [cs.borderTopColor, cs.backgroundColor].join("/"); }),
     );
-    check(infoLook.length === 2 && infoLook.every((v) => v === "rgba(0, 0, 0, 0)/rgba(0, 0, 0, 0)"), "both ⓘ buttons show just the ⓘ, with no button edge or fill");
+    check(infoLook.length === 4 && infoLook.every((v) => v === "rgba(0, 0, 0, 0)/rgba(0, 0, 0, 0)"), "the ⓘ, Display and Undo buttons show just their icons, with no button edge or fill");
     check(unitsWhole, "the notes break lines only between units like \"M like L,\", never inside one");
     check(notes.every(Boolean) && (await page.$$eval("[data-sec=turn] .legend", (els) => els.length)) === 0, `the H/M/S and x/y/z notes sit beside their buttons (${notes})`);
     // The turn field's example text fits inside it at phone width.
@@ -492,8 +498,10 @@ labTest(
     await page.waitForTimeout(300);
     const views = await page.$$eval(".views .btn", (els) => els.filter((e) => e.getBoundingClientRect().width > 0).map((e) => e.textContent).join());
     check(views === "Home", `of the view buttons only Home shows; the edge labels give the rest (${views})`);
-    const over = await page.$$eval(".stage > *", (els) => els.map((e) => e.className || e.id).join());
-    check(over === "compass" || over === ",compass" || /^(scene)?,?compass$/.test(over), `nothing but the edge labels sits over the 3D view (${over})`);
+    // Over the 3D view: the edge labels, and small buttons in its corners (ⓘ, Display, and Undo
+    // once there is a turn to undo); the edge labels keep clear of the buttons.
+    const corners = await page.$$eval(".stage > .corner", (els) => els.map((e) => `${e.id}:${e.hidden ? "hidden" : "shown"}`).join());
+    check(corners === "info-btn:shown,render-btn:shown,undo:hidden", `the ⓘ and Display buttons sit in the 3D view's corners, and Undo shows only with a turn to undo (${corners})`);
     // Part-way through a swipe to the next panel, its tab is already the marked one.
     const mid = await page.evaluate(async () => {
       const stack = document.getElementById("stack-col");
@@ -511,10 +519,10 @@ labTest(
     await page.waitForTimeout(800);
     const turn = await page.evaluate(() => {
       const box = document.getElementById("stack-col").getBoundingClientRect();
-      const keys = [...document.querySelectorAll("#panel-turn .mv, #undo, [data-mod]")].map((b) => b.getBoundingClientRect());
+      const keys = [...document.querySelectorAll("#panel-turn .mv, [data-mod]")].map((b) => b.getBoundingClientRect());
       return { n: keys.length, shown: keys.every((r) => r.top >= box.top && r.bottom <= box.bottom && r.left >= box.left - 1 && r.right <= box.right + 1) };
     });
-    check(turn.n === 22 && turn.shown, `Undo, the turn amount and all ${turn.n - 4} turn buttons show without scrolling`);
+    check(turn.n === 21 && turn.shown, `the turn amount and all ${turn.n - 3} turn buttons show without scrolling`);
     await page.click(`[data-tab="flat"]`);
     await page.waitForTimeout(800);
     const flat = await page.evaluate(() => {
@@ -608,8 +616,10 @@ labTest("turns: an algorithm plays and is listed; a blocked outer turn is refuse
 });
 
 labTest("undo: takes back the last turn, and a turn pressed while an undo waits also takes effect", async ({ page, check, status, waitForCounter }) => {
+  check(await page.$eval("#undo", (b) => b.hidden), "with no turn to undo, there is no Undo button");
   await page.evaluate(() => document.querySelector('[data-move="R"]').click());
   await waitForCounter("1/1", 30000);
+  check(!(await page.$eval("#undo", (b) => b.hidden)), "after a turn, Undo shows in the 3D view's corner");
   await page.click("#undo");
   await waitForCounter("0/0", 30000);
   await page.waitForTimeout(1000);
@@ -625,8 +635,8 @@ labTest("undo: takes back the last turn, and a turn pressed while an undo waits 
   });
   await page.waitForTimeout(1500);
   const afterRace = await page.$$eval("#history .tok", (els) => els.map((e) => e.textContent).join(" "));
-  const raceStatus = await page.$eval("#outer-status", (s) => s.textContent ?? ""); // which outer turns are allowed
-  check(afterRace === "F" && /l 6\/9/.test(raceStatus) && /r 6\/9/.test(raceStatus), `undo then an immediate F leaves just F (turns "${afterRace}")`);
+  const raceStatus = await page.$$eval("#status [data-outer]", (els) => els.map((e) => e.title).join("; ")); // which outer turns are allowed
+  check(afterRace === "F" && /l refuses: 6 of 9/.test(raceStatus) && /r refuses: 6 of 9/.test(raceStatus), `undo then an immediate F leaves just F (turns "${afterRace}"; ${raceStatus})`);
 });
 
 // ---- What is drawn where (window.xcubeProbe, see the end of src/web/main.ts).
@@ -785,6 +795,8 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
 
 labTest("shuffle: plays 30 legal turns, and the result becomes the new start", async ({ page, check, settle, startFresh }) => {
   await page.click("#shuffle");
+  const during = await page.evaluate(() => ({ list: document.getElementById("history").textContent, toks: document.querySelectorAll("#history .tok").length }));
+  check(during.list === "Shuffling…" && during.toks === 0, `while the shuffle plays, the turn list doesn't show its turns ("${during.list}")`);
   await page.waitForFunction(() => /^Shuffled/.test(document.getElementById("message")?.textContent ?? ""), null, { timeout: 60000 });
   await settle();
   const shuffled = await page.evaluate(() => ({ msg: document.getElementById("message").textContent, state: window.xcubeProbe.state(), turns: window.xcubeProbe.turns() }));
