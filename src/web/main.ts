@@ -3552,14 +3552,16 @@ function refreshGuide() {
   // In the playback strip, once a solve's turns have all played, ▶ gives way to Next step.
   const atEnd = app.cursor >= app.history.length;
   const solvedNow = nothingToSolve();
-  const showNext = solving && atEnd && !playing && guideLine !== SOLVED_LINE && !solvedNow;
+  const showNext = solving && atEnd && !playing && !shuffling && guideLine !== SOLVED_LINE && !solvedNow;
   // Next step loads the step after the one played; with turns still to play, play them first.
-  ($("next-step") as HTMLButtonElement).disabled = solvedNow || (solving && !atEnd);
+  // Not during a shuffle either: a step loaded partway through one would cut it short.
+  ($("next-step") as HTMLButtonElement).disabled = shuffling || solvedNow || (solving && !atEnd);
   $("strip-next").hidden = !showNext;
   $("last").hidden = showNext;
   // At the step's start the button plays the step; anywhere else it goes back to the start.
   const atStepStart = !!guide && app.cursor === guide.start;
   $("guide-start").textContent = atStepStart ? "Play step" : "Step start";
+  $("guide-start").classList.toggle("primary", atStepStart); // the next thing to press
   $("guide-start").title = atStepStart ? "Play this step's turns" : "Go back to where this step begins";
   ($("guide-start") as HTMLButtonElement).disabled = !guide || (atStepStart && playing);
   // The paths show only before the step's first turn, so Show step applies only there.

@@ -829,7 +829,8 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
 
 labTest("shuffle: plays 30 legal turns, and the result becomes the new start", async ({ page, check, settle, startFresh }) => {
   await page.click("#shuffle");
-  const during = await page.evaluate(() => ({ list: document.getElementById("history").textContent, toks: document.querySelectorAll("#history .tok").length }));
+  const during = await page.evaluate(() => ({ list: document.getElementById("history").textContent, toks: document.querySelectorAll("#history .tok").length, solve: document.getElementById("next-step").disabled }));
+  check(during.solve, "while the shuffle plays, Start solving is grayed out (a step loaded then would cut the shuffle short)");
   check(during.list === "Shuffling…" && during.toks === 0, `while the shuffle plays, the turn list doesn't show its turns ("${during.list}")`);
   await page.waitForFunction(() => /^Shuffled/.test(document.getElementById("message")?.textContent ?? ""), null, { timeout: 60000 });
   await settle();
@@ -1386,7 +1387,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   const box = await page.$$eval("#history .step-box", (els) => els.map((e) => `${e.querySelector(".step-tag").textContent}:${e.querySelectorAll(".tok").length}:${e.classList.contains("on")}`).join());
   await page.click("#guide-start");
   await settle();
-  const backAtStart = { counter: await counter(), g: await probe("guide"), label: await page.$eval("#guide-start", (b) => (b.disabled ? "off" : b.textContent)) };
+  const backAtStart = { counter: await counter(), g: await probe("guide"), label: await page.$eval("#guide-start", (b) => (b.disabled ? "off" : b.textContent + (b.classList.contains("primary") ? " (blue)" : ""))) };
   // At the step's start the same button plays the step.
   await page.click("#guide-start");
   await settle();
@@ -1395,7 +1396,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await settle();
   const byTag = { counter: await counter(), arrows: (await probe("guide")).arrows };
   check(
-    box === "1. Corners:8:true" && backAtStart.counter === "8/16" && backAtStart.g.arrows === 3 && backAtStart.g.gray === 93 && backAtStart.label === "Play step" && playedStep.counter === "16/16" && playedStep.label === "Step start" && byTag.counter === "8/16" && byTag.arrows === 3,
+    box === "1. Corners:8:true" && backAtStart.counter === "8/16" && backAtStart.g.arrows === 3 && backAtStart.g.gray === 93 && backAtStart.label === "Play step (blue)" && playedStep.counter === "16/16" && playedStep.label === "Step start" && byTag.counter === "8/16" && byTag.arrows === 3,
     `the step is boxed in the turn list (${box}); Step start and its tag go back to its start (${backAtStart.counter}, ${byTag.counter}); there it reads Play step and plays it (${JSON.stringify(playedStep)})`,
   );
   await page.click("#last");
