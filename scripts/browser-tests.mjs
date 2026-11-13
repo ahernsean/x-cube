@@ -557,7 +557,7 @@ labTest("undo: takes back the last turn, and a turn pressed while an undo waits 
   });
   await page.waitForTimeout(1500);
   const afterRace = await page.$$eval("#history .tok", (els) => els.map((e) => e.textContent).join(" "));
-  const raceStatus = await status();
+  const raceStatus = await page.$eval("#outer-status", (s) => s.textContent ?? ""); // which outer turns are allowed
   check(afterRace === "F" && /l 6\/9/.test(raceStatus) && /r 6\/9/.test(raceStatus), `undo then an immediate F leaves just F (turns "${afterRace}")`);
 });
 
