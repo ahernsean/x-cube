@@ -1230,7 +1230,7 @@ function resize() {
 const COMPASS_FACES = ["R", "L", "U", "D", "F", "B"];
 let compassKey = "";
 /** Label scale for an axis pointing straight away from you and straight at you. */
-const COMPASS_MIN = 0.85, COMPASS_MAX = 2;
+const COMPASS_MIN = 0.85, COMPASS_MAX = 1.5;
 /**
  * Edge labels that move with the cube: each face's label sits where that face's axis
  * (its outward normal from the center), as seen on screen, meets the edge of the 3D
@@ -1282,15 +1282,7 @@ function updateCompass() {
     items.push({ el, x, y, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4, scale, z: dir.z });
   }
   items.sort((a, b) => b.vis - a.vis);
-  // What else sits over the view (the status chips; on phones the ⓘ and Display buttons)
-  // is in place first, so a label slides clear of it too.
-  const placed: { x: number; y: number; hw: number; hh: number }[] = [];
-  const cr = canvas.getBoundingClientRect();
-  for (const el of document.querySelectorAll<HTMLElement>(".stage > .status, .stage-col > .view-head .view-tools")) {
-    const r = el.getBoundingClientRect();
-    if (!r.width || r.bottom < cr.top || r.top > cr.bottom) continue;
-    placed.push({ x: r.left - cr.left + r.width / 2, y: r.top - cr.top + r.height / 2, hw: r.width / 2 + 2, hh: r.height / 2 + 2 });
-  }
+  const placed: typeof items = [];
   for (const it of items) {
     if (it.vis > 0.05) {
       for (let tries = 0; tries < 8; tries++) {
@@ -1589,7 +1581,7 @@ function shuffle() {
 function finishShuffle() {
   shuffling = false;
   setBase(app.current, "Shuffled");
-  setMessage(`Shuffled with ${SHUFFLE_TURNS} turns: ${shuffleAlg}`, "ok");
+  setMessage("Shuffled", "ok"); // without the turns, which would give the way back away
 }
 
 /** Undo the last turn (Undo button, or a double tap on the 3D view). */
@@ -2430,7 +2422,7 @@ function render() {
     const c = faceCenterColor(st, d);
     return c ? COLOR_NAME[c] : "?";
   };
-  $("hold").textContent = `Hold: ${side(2)} up, ${side(4)} front, ${side(0)} right`;
+  $("hold").innerHTML = `<span class="hold-pre">Hold: </span>${side(2)} up, ${side(4)} front, ${side(0)} right`;
   $("hold").title = "Up, toward you, and on your right, by the center colors as they are now";
 
   // message
@@ -2690,10 +2682,13 @@ function setupTabs() {
       /* storage unavailable */
     }
   };
+  // While a tab's own scroll is under way its tab stays marked, though other panels pass by.
+  let heading: HTMLButtonElement | null = null;
   const show = (t: HTMLButtonElement, smooth: boolean) => {
     mark(t);
     if (WIDE.matches) return;
     const left = offsetIn(panelOf(t), stack);
+    heading = Math.abs(left - stack.scrollLeft) < 2 ? null : t;
     stack.scrollTo({ left, behavior: smooth && !reduceMotion ? "smooth" : "auto" });
   };
   let saved = "solve";
@@ -2704,15 +2699,24 @@ function setupTabs() {
   }
   show(tabs.find((t) => t.dataset.tab === saved) ?? tabs[0], false);
   for (const t of tabs) t.addEventListener("click", () => show(t, true));
-  // A swipe across the panels: the panel nearest in view is the selected one.
-  let settleTimer = 0;
+  // A swipe across the panels: the tab of the panel nearest in view is marked at once, as
+  // the panels move, not when they come to rest.
+  const nearest = () => tabs.reduce((a, b) => (Math.abs(offsetIn(panelOf(a), stack) - stack.scrollLeft) <= Math.abs(offsetIn(panelOf(b), stack) - stack.scrollLeft) ? a : b));
   stack.addEventListener("scroll", () => {
     if (WIDE.matches) return;
-    clearTimeout(settleTimer);
-    settleTimer = window.setTimeout(() => {
-      const near = tabs.reduce((a, b) => (Math.abs(offsetIn(panelOf(a), stack) - stack.scrollLeft) <= Math.abs(offsetIn(panelOf(b), stack) - stack.scrollLeft) ? a : b));
-      if (near.getAttribute("aria-selected") !== "true") mark(near);
-    }, 80);
+    const near = nearest();
+    if (heading) {
+      if (near === heading && Math.abs(offsetIn(panelOf(near), stack) - stack.scrollLeft) < 2) heading = null;
+      return;
+    }
+    if (near.getAttribute("aria-selected") !== "true") mark(near);
+  });
+  // A finger on the panels takes over from a tab's scroll.
+  for (const type of ["touchstart", "pointerdown", "wheel"]) stack.addEventListener(type, () => (heading = null), { passive: true });
+  stack.addEventListener("scrollend", () => {
+    heading = null;
+    const near = nearest();
+    if (!WIDE.matches && near.getAttribute("aria-selected") !== "true") mark(near);
   });
   // Sliding along the tab row selects each tab under the finger.
   const row = $("tabs");
@@ -4381,6 +4385,8 @@ function installProbe() {
     idle: () => !anim && !queue.length && !settle && !live && !tween,
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
+    /** The turns of the last shuffle (the page doesn't show them). */
+    shuffleTurns: () => shuffleAlg,
     /** The step guide: its step, the slots (now) of the cubelets it applies to, how many stickers are drawn gray at each level, and the arrows showing. */
     /** Geometries the renderer holds right now, to check that the guide frees its own. */
     geometries: () => renderer.info.memory.geometries,

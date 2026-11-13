@@ -192,7 +192,7 @@ function helpers(page) {
   // Clicking a button scrolls the page to it, so bring the 3D view back before aiming at it.
   const startFresh = async () => {
     await page.click("#reset");
-    await page.click('[data-view="home"]');
+    await page.evaluate(() => document.querySelector('[data-view="home"]').click());
     await page.locator("#scene").scrollIntoViewIfNeeded();
     await settle();
   };
@@ -364,14 +364,14 @@ labTest(
     const tabs = await page.$$eval("#tabs [data-tab]", (els) => els.map((t) => `${t.textContent}>${document.getElementById(t.getAttribute("aria-controls"))?.dataset.sec}`).join());
     const panels = await page.$$eval("#stack-col > .panel", (els) => els.map((e) => e.dataset.sec).join());
     check(tabs === "Solve>solve,Turn>turn,Algorithms>algs,Flat>flat,Saved>saved" && panels === "solve,turn,algs,flat,saved", `the tabs name the panels in order (${tabs}; ${panels})`);
-    // The solve panel reads top to bottom: the step buttons, the step's text, the order, then
-    // Clear, Reset and Shuffle.
+    // The solve panel reads top to bottom: the step buttons, the step's text, then Clear, Reset,
+    // Shuffle and Edit colors, then the order.
     const solveOrder = await page.evaluate(() => {
       const sec = document.getElementById("guide");
-      const els = ["#next-step", "#guide-line", ".guide-modes", ".base-actions"].map((q) => sec.querySelector(q));
+      const els = ["#next-step", "#guide-line", ".base-actions", "#edit-start", ".guide-modes"].map((q) => sec.querySelector(q));
       return els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
     });
-    check(solveOrder, "the solve panel shows the step buttons, the step's text, the order, then Clear/Reset/Shuffle");
+    check(solveOrder, "the solve panel shows the step buttons, the step's text, Clear/Reset/Shuffle/Edit colors, then the order");
     const btnRows = await page.$$eval(".guide-btns .btn", (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size);
     check(btnRows === 1, "the four step buttons share one row at phone width");
     // iOS zooms into a focused text field whose text is under 16px.
@@ -481,6 +481,55 @@ labTest(
     check(reloaded.sel === "algs" && reloaded.inView === "algs", `the panel shown is kept after a reload (${JSON.stringify(reloaded)})`);
   },
   { expand: false },
+);
+
+labTest(
+  "layout: on an iPhone-sized screen the tab follows a swipe as it moves, every turn button shows, and the flat view shows whole",
+  async ({ page, check }) => {
+    // An iPhone in the Claude app: 844 px tall, less the app's bar and the home indicator.
+    await page.addStyleTag({ content: ":root { padding-top: 100px !important; padding-bottom: 34px !important; }" });
+    await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+    await page.waitForTimeout(300);
+    const views = await page.$$eval(".views .btn", (els) => els.filter((e) => e.getBoundingClientRect().width > 0).map((e) => e.textContent).join());
+    check(views === "Home", `of the view buttons only Home shows; the edge labels give the rest (${views})`);
+    const over = await page.$$eval(".stage > *", (els) => els.map((e) => e.className || e.id).join());
+    check(over === "compass" || over === ",compass" || /^(scene)?,?compass$/.test(over), `nothing but the edge labels sits over the 3D view (${over})`);
+    // Part-way through a swipe to the next panel, its tab is already the marked one.
+    const mid = await page.evaluate(async () => {
+      const stack = document.getElementById("stack-col");
+      stack.style.scrollSnapType = "none";
+      const to = document.getElementById("panel-turn").getBoundingClientRect().left - stack.getBoundingClientRect().left + stack.scrollLeft;
+      stack.dispatchEvent(new Event("touchstart"));
+      stack.scrollLeft = to * 0.6;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const out = { sel: document.querySelector('#tabs [aria-selected="true"]').dataset.tab, at: Math.round((stack.scrollLeft / to) * 100) };
+      stack.style.scrollSnapType = "";
+      return out;
+    });
+    check(mid.sel === "turn" && mid.at > 50 && mid.at < 70, `60% of the way to the next panel its tab is marked (${JSON.stringify(mid)})`);
+    await page.click(`[data-tab="turn"]`);
+    await page.waitForTimeout(800);
+    const turn = await page.evaluate(() => {
+      const box = document.getElementById("stack-col").getBoundingClientRect();
+      const keys = [...document.querySelectorAll("#panel-turn .mv, #undo, [data-mod]")].map((b) => b.getBoundingClientRect());
+      return { n: keys.length, shown: keys.every((r) => r.top >= box.top && r.bottom <= box.bottom && r.left >= box.left - 1 && r.right <= box.right + 1) };
+    });
+    check(turn.n === 22 && turn.shown, `Undo, the turn amount and all ${turn.n - 4} turn buttons show without scrolling`);
+    await page.click(`[data-tab="flat"]`);
+    await page.waitForTimeout(800);
+    const flat = await page.evaluate(() => {
+      const panel = document.getElementById("panel-flat"), pr = panel.getBoundingClientRect();
+      const faces = [...document.querySelectorAll("#net .netface")].map((f) => f.getBoundingClientRect());
+      const info = document.getElementById("flat-info-btn").getBoundingClientRect(), wrap = document.querySelector(".net-wrap").getBoundingClientRect();
+      return {
+        whole: panel.scrollHeight <= panel.clientHeight + 1 && faces.every((r) => r.top >= pr.top && r.bottom <= pr.bottom),
+        infoInside: info.top >= wrap.top && info.bottom <= wrap.bottom && info.right <= wrap.right,
+        clear: faces.every((r) => r.right <= info.left || r.top >= info.bottom || r.bottom <= info.top),
+      };
+    });
+    check(flat.whole && flat.infoInside && flat.clear, `the flat view shows whole, with its ⓘ inside it and clear of the faces (${JSON.stringify(flat)})`);
+  },
+  { expand: false, context: { viewport: { width: 390, height: 844 } } },
 );
 
 labTest(
@@ -718,10 +767,10 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
   // Foreshortened: from Home, F, R and U point toward you and are drawn larger than B, L and D.
   const size = Object.fromEntries(labels.map((l) => [l.text, l.height]));
   check(["F", "R", "U"].every((n) => ["B", "L", "D"].every((m) => size[n] > size[m] * 1.1)), `labels toward you are larger than those away (${JSON.stringify(size)})`);
-  await page.click('[data-view="front"]');
+  await page.evaluate(() => document.querySelector('[data-view="front"]').click());
   await settle();
   const frontView = await probe("view");
-  await page.click('[data-view="home"]');
+  await page.evaluate(() => document.querySelector('[data-view="home"]').click());
   await page.locator("#scene").scrollIntoViewIfNeeded();
   await settle();
   await page.evaluate(() => document.getElementById("compass-4").click()); // the F label
@@ -736,10 +785,11 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
 
 labTest("shuffle: plays 30 legal turns, and the result becomes the new start", async ({ page, check, settle, startFresh }) => {
   await page.click("#shuffle");
-  await page.waitForFunction(() => /^Shuffled with/.test(document.getElementById("message")?.textContent ?? ""), null, { timeout: 60000 });
+  await page.waitForFunction(() => /^Shuffled/.test(document.getElementById("message")?.textContent ?? ""), null, { timeout: 60000 });
   await settle();
   const shuffled = await page.evaluate(() => ({ msg: document.getElementById("message").textContent, state: window.xcubeProbe.state(), turns: window.xcubeProbe.turns() }));
-  const scramble = shuffled.msg.replace(/^Shuffled with 30 turns: /, "");
+  check(shuffled.msg === "Shuffled", `the message doesn't give the turns away ("${shuffled.msg}")`);
+  const scramble = await page.evaluate(() => window.xcubeProbe.shuffleTurns());
   await startFresh();
   await page.fill("#alg", scramble);
   await page.click("#load");
@@ -1117,14 +1167,14 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   // the line) tumbles the 3D view to show all their stickers, again after any tumble;
   // Hide removes the halo.
   const seenBoth = async () => `${await probe("facesSeen", "Fx.U")},${await probe("facesSeen", "Rx.U")}`;
-  await page.click('[data-view="bottom"]');
+  await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await settle();
   const lit = { slots: (await probe("highlighted")).sort().join(), seen: await seenBoth(), px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), flatD: await probe("haloPixels", "D"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
   check(lit.slots === "Fx.U,Rx.U" && lit.seen === "0,0" && lit.px3d > 0 && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `a problem haloes the cubelets it names by itself, without turning the view (${JSON.stringify(lit)})`);
   await page.click("#edit-status");
   await settle();
   const shownAt = await seenBoth();
-  await page.click('[data-view="bottom"]');
+  await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await settle();
   await page.click('[data-halo="show"]');
   await settle();
@@ -1133,7 +1183,7 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await page.click('[data-halo="hide"]');
   const unlit = { slots: (await probe("highlighted")).length, px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
   check(unlit.slots === 0 && unlit.px3d === 0 && unlit.flatU === 0 && unlit.buttons === "Show", `Hide removes the halo (${JSON.stringify(unlit)})`);
-  await page.click('[data-view="home"]');
+  await page.evaluate(() => document.querySelector('[data-view="home"]').click());
   await settle();
   await paint("G", "Rx.U", "R");
   const swapped = { line: await editLine(), off: await doneOff() };
@@ -1153,7 +1203,7 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   const swipeAt = await probe("sticker", "Fx", "F");
   await swipe(swipeAt, 0, -70);
   check((await probe("turns")) === "", "a swipe while editing doesn't turn a layer");
-  await page.click('[data-view="home"]'); // the swipe tumbled the view
+  await page.evaluate(() => document.querySelector('[data-view="home"]').click()); // the swipe tumbled the view
   await settle();
   await page.click("#edit-done");
   const appliedGlow = [(await probe("glowColors", "Fx.U", "F")).join(), (await probe("glowColors", "Rx.U", "R")).join()].join(" ");
@@ -1248,7 +1298,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   // A small copy of each cubelet flies along its path (unless the device asks for less motion). Show turns the
   // view so that every path's sticker, and the face it is going to, can be seen.
   const motion = await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches);
-  await page.click('[data-view="bottom"]');
+  await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await settle();
   const seenPath = async (t) => {
     const [, from, to] = t.match(/^\w ([\w.]+\/\w) > ([\w.]+\/\w)/);
@@ -1266,7 +1316,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await settle();
   const hiddenAfter = (await Promise.all(g.paths.map(seenPath))).flat().filter((x) => !x).length;
   check(g.runners === (motion ? 3 : 0) && hiddenBefore > 0 && hiddenAfter === 0, `Show turns the view to where the paths begin and end (${hiddenBefore} of 6 ends hidden from below, ${hiddenAfter} after Show; ${g.paths.join("; ")}); ${g.runners} copies fly`);
-  await page.click('[data-view="home"]');
+  await page.evaluate(() => document.querySelector('[data-view="home"]').click());
   await settle();
   // One turn forward hides the arrows; one turn back, to the step's start, shows them again.
   await page.click("#fwd");
