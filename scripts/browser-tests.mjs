@@ -1378,7 +1378,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await settle();
   const played = { g: await probe("guide"), status: await status(), line: await line(), wrong: (await sweep3d()).wrong.length };
   check(
-    grayDrawn > 0 && played.wrong === 0 && played.g?.gray === 0 && played.g.arrows === 0 && /Solved/.test(played.status) && /^Step \d+ of \d+ — Corners \(done\)/.test(played.line),
+    grayDrawn > 0 && played.wrong === 0 && played.g?.gray === 0 && played.g.arrows === 0 && /Solved/.test(played.status) && /^Step \d+ of \d+ — Corners: /.test(played.line) && !/done/.test(played.line),
     `playing the step solves the puzzle and returns every sticker's color (${grayDrawn} gray stickers seen before, ${played.wrong} wrong after; ${played.status}; "${played.line}")`,
   );
   // The step is boxed in the turn list behind a tag. Step start, and the tag, go back to
@@ -1701,7 +1701,7 @@ labTest("controls: buttons gray out when they don't apply; the turn list's ✕ a
   await page.click("#next-step");
   await settle();
   const solving = await page.evaluate(() => ({ next: document.getElementById("next-step").disabled, show: document.getElementById("guide-show").disabled, head: document.getElementById("steps-head").textContent, rows: [...document.querySelectorAll("#steps-list .step-row")].map((r) => r.textContent) }));
-  check(solving.next && !solving.show && /^1 step, \d+ turns?$/.test(solving.head) && solving.rows.length === 1, `with a step's turns still to play, Next step is grayed out and Show step applies; the step list has it (${JSON.stringify(solving)})`);
+  check(solving.next && !solving.show && /^1 \/ \d+ steps, \d+ \/ \d+ total turns$/.test(solving.head) && solving.rows.length === 1, `with a step's turns still to play, Next step is grayed out and Show step applies; the step list has it (${JSON.stringify(solving)})`);
   await page.evaluate(() => document.getElementById("shuffle").click());
   const asked = await page.$eval("#confirm", (d) => !d.hidden);
   await page.click("#confirm-no");
@@ -1718,8 +1718,20 @@ labTest("controls: buttons gray out when they don't apply; the turn list's ✕ a
   await page.waitForFunction(() => !document.getElementById("strip-next").hidden, null, { timeout: 60000 });
   await page.click("#strip-next");
   await settle();
-  const two = await page.evaluate(() => ({ head: document.getElementById("steps-head").textContent, rows: [...document.querySelectorAll("#steps-list .step-row")].map((r) => r.textContent) }));
-  check(/^2 steps, \d+ turns$/.test(two.head) && /^2\./.test(two.rows[0]) && /^1\..*✓/.test(two.rows[1]), `the step list shows the newest first, the played one ticked, and the total (${JSON.stringify(two)})`);
+  await page.waitForTimeout(400); // the older rows slide down
+  const two = await page.evaluate(() => ({ head: document.getElementById("steps-head").textContent, rows: [...document.querySelectorAll("#steps-list .step-row")].map((r) => r.textContent), topGap: Math.round(document.querySelector("#steps-list .step-row").getBoundingClientRect().top - document.getElementById("steps-list").getBoundingClientRect().top) }));
+  // Show step turns the view to the step, and is then grayed out until the view moves again.
+  const showBefore = await page.$eval("#guide-show", (b) => b.disabled);
+  if (!showBefore) {
+    await page.click("#guide-show");
+    await settle();
+  }
+  const showAfter = await page.$eval("#guide-show", (b) => b.disabled);
+  await page.evaluate(() => document.querySelector('[data-view="top"]').click());
+  await settle();
+  const showMoved = await page.$eval("#guide-show", (b) => b.disabled);
+  check(showAfter && (showBefore || !showMoved), `Show step is grayed out once the view shows the step, and back when the view moves (${JSON.stringify({ showBefore, showAfter, showMoved })})`);
+  check(/^2 \/ \d+ steps, \d+ \/ \d+ total turns$/.test(two.head) && /^2\./.test(two.rows[0]) && /^1\..*✓/.test(two.rows[1]) && two.topGap < 6, `the step list shows the newest first at its top, the played one ticked, and the counts of all planned (${JSON.stringify(two)})`);
   // A step's Save… goes to Algorithms with a suggested name, selected, and Save saves that step.
   await page.click("#steps-list li:first-child .step-save");
   await page.waitForTimeout(600);

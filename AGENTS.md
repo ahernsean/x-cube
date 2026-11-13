@@ -295,7 +295,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   turns, Next step (and Start solving) while the step's turns are still to play or when the solver
   has nothing to do (solved and held as it wants; a solved puzzle tipped over still gets a
   Regrip step), Show step after
-  the step's first turn. The turn list ends in a ✕ (while there are turns): one tap turns
+  the step's first turn or while the view already shows what it would show. When a step is
+  loaded, the turn list scrolls (smoothly) to show as much of it as fits, with the current
+  turn just before it; only if the step is too long does its right end go off the edge. The turn list ends in a ✕ (while there are turns): one tap turns
   it into "Clear?", a second within 3 seconds clears the list as Start from here does. ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
   draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1
   forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
@@ -394,7 +396,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   **steps so far**, newest at the top, each with its turn count (tap one to go to its
   start, or its **Save…** to save it as an algorithm: that goes to the Algorithms panel with
   a suggested name, selected and focused, and its Save then saves the step's turns from
-  where the step starts), under a running total ("3 steps, 13 turns"); on phones the list scrolls between
+  where the step starts), under the counts ("3 / 17 steps, 18 / 183 total turns": the newest step's number of
+  the steps the solver planned when it was loaded, and the turns so far of the turns those
+  steps add up to); the list is top-aligned, the newest step always at its top, and when a
+  step is added the older ones slide down to make room; on phones the list scrolls between
   the step's line and Stop solving. The order can't change during a solve. Anything that
   sets a new start (Shuffle, Reset, Edit colors, a code, a saved position, an algorithm,
   clearing the turn list) asks "End the solve in progress?" first, and ends it. In the
@@ -403,7 +408,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   loads the next step; ▶ comes back with it. **Next
   step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
   the position shown, adds its turns at the current step, unplayed, and a line under the
-  button gives "Step 2 of 9 —" (counted from when the guide was started; a step taken
+  button gives "Step 2 of 9 —" (no "(done)" once played: the step list's ✓ says that; counted from when the guide was started; a step taken
   from anywhere but the end of the one before starts the count again), the stage and the goal,
   then on its own line "Turns:" with the turns as the solver writes them (`[setup: cycle]`). Until the step has
   been played through, its colors picture what its turns do (`stepColors`): the cubelets it applies to that it moves or

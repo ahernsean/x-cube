@@ -1350,6 +1350,10 @@ function frame() {
     }
   }
   const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
+  if (showTarget) {
+    const btn = document.getElementById("guide-show") as HTMLButtonElement | null;
+    if (btn && guide && app.cursor === guide.start) btn.disabled = showStepIdle();
+  }
   if (view3dOpen) updateCompass();
   renderNetAnimation();
   if (view3dOpen) renderer.render(scene, camera);
@@ -2560,8 +2564,20 @@ function render() {
  * The turn list is one row that scrolls sideways: keep the current turn (or, before a
  * step's first turn, its tag) in sight, with a little of what comes next.
  */
+let scrollToStep = false;
 function keepTurnInSight() {
   const list = $("history");
+  const box = list.querySelector<HTMLElement>(".step-box.on");
+  if (scrollToStep && box) {
+    scrollToStep = false;
+    // The whole step if it fits; if it doesn't, its start, with the current turn just before it.
+    const cur = list.querySelector<HTMLElement>(".tok.cur");
+    const from = (cur ? offsetIn(cur, list) : offsetIn(box, list)) - 8; // keep this at the left edge or right of it
+    const end = offsetIn(box, list) + box.offsetWidth + 8 - list.clientWidth; // scrolled at least this far, all of the box shows
+    const left = end <= from ? Math.min(Math.max(list.scrollLeft, end), from) : from;
+    list.scrollTo({ left: Math.max(0, left), behavior: reduceMotion ? "auto" : "smooth" });
+    return;
+  }
   // The current turn and the next two things after it (a step's tag and its first turn,
   // say), or the start of the list before the first turn.
   const items = [...list.querySelectorAll<HTMLElement>(".tok, .step-tag")];
@@ -3244,6 +3260,8 @@ interface Guide {
   free: Set<number>;
   /** A path for each cubelet the step moves to another spot. */
   arrows: StickerPath[];
+  /** Turns of this step and every step the solver planned after it, when it was loaded. */
+  planned: number;
 }
 /** Every step the guide has put in the turn list that is still there, in order; `guide` is the one being shown, if any. */
 let trail: Guide[] = [];
@@ -3346,8 +3364,10 @@ function nextStep() {
     from: st.clone(),
     ...stepColors(st, step),
     arrows: stickerPaths(st, step),
+    planned: steps.reduce((n, s) => n + s.turns.length, 0),
   };
   trail.push(guide);
+  scrollToStep = true;
   app.history = app.history.slice(0, app.cursor).concat(step.turns);
   setMessage(`${step.turns.length} ${step.turns.length === 1 ? "turn" : "turns"} loaded`, "ok");
   render();
@@ -3395,19 +3415,47 @@ function stopGuide() {
 }
 
 /** Show: turns the 3D view to where the shown step's paths begin and end. */
+function guideFaces(g: Guide): [number, number][] {
+  return g.arrows.length ? g.arrows.flatMap((p) => [[p.from, p.fromDir], [p.to, p.toDir]] as [number, number][]) : [...g.focus].flatMap((id) => [0, 1, 2, 3, 4, 5].map((d) => [app.current.occ.indexOf(id), d] as [number, number]).filter(([s, d]) => isExposed(app.current, s, d) && app.current.colorAt(s, d)));
+}
 function showGuide() {
   if (!guide) return;
   if (app.cursor !== guide.start) jump(guide.start);
+  showFaces(app.current, guideFaces(guide));
+}
+/** The view Show step turns to, for the step shown at its start (null otherwise); Show step is grayed out once the view is there. */
+let showTarget: any = null;
+let showTargetKey = "";
+function updateShowTarget() {
   const g = guide;
-  const faces: [number, number][] = g.arrows.length ? g.arrows.flatMap((p) => [[p.from, p.fromDir], [p.to, p.toDir]] as [number, number][]) : [...g.focus].flatMap((id) => [0, 1, 2, 3, 4, 5].map((d) => [app.current.occ.indexOf(id), d] as [number, number]).filter(([s, d]) => isExposed(app.current, s, d) && app.current.colorAt(s, d)));
-  showFaces(app.current, faces);
+  const key = g && app.cursor === g.start && g.step.stage !== "hold" ? `${g.start}|${encodeState(app.current)}` : "";
+  if (key === showTargetKey) return;
+  showTargetKey = key;
+  showTarget = key ? bestView(app.current, guideFaces(g!)) : null;
+}
+function showStepIdle(): boolean {
+  if (!showTarget) return false;
+  const q = tween ? tween.to : pivot.quaternion;
+  return Math.abs(q.dot(showTarget)) > 0.9999;
 }
 
 /** The solve's steps so far, newest at the top, with the running count of turns. */
+let stepsKey = "";
 function renderSteps() {
   const list = $("steps-list");
   const turns = trail.reduce((n, g) => n + g.step.turns.length, 0);
-  $("steps-head").textContent = trail.length ? `${trail.length} ${trail.length === 1 ? "step" : "steps"}, ${turns} ${turns === 1 ? "turn" : "turns"}` : "No steps yet";
+  // "5 / 17 steps, 30 / 122 total turns": the newest step's number of all the steps the solver
+  // planned then, and the turns so far of those the steps so far and the planned rest add up to.
+  const last = trail[trail.length - 1];
+  const planned = last ? turns - last.step.turns.length + last.planned : 0;
+  const head = last ? `${last.index} / ${last.index + last.after} steps, ${turns} / ${planned} total turns` : "No steps yet";
+  const key = head + "|" + trail.map((g) => `${g.start}:${g === guide}:${app.cursor >= g.start + g.step.turns.length}`).join();
+  if (key === stepsKey) return;
+  const grew = trail.length > list.children.length && list.children.length > 0;
+  stepsKey = key;
+  $("steps-head").textContent = head;
+  // Where each row was, so the older ones can slide down from there to make room for a new one.
+  const before = new Map([...list.querySelectorAll<HTMLElement>(".step-row")].map((r) => [r.dataset.step, r.getBoundingClientRect().top]));
   list.innerHTML = [...trail]
     .reverse()
     .map((g) => {
@@ -3416,6 +3464,21 @@ function renderSteps() {
       return `<li><button class="step-row ${g === guide ? "on" : ""}" data-step="${g.start}" title="Go to the start of this step"><span>${g.index}. ${STAGE_NAME[g.step.stage]}${done ? " ✓" : ""}</span><span class="n">${n} ${n === 1 ? "turn" : "turns"}</span></button><button class="btn small step-save" data-step-save="${g.start}" title="Save this step as an algorithm">Save…</button></li>`;
     })
     .join("");
+  if (!grew || reduceMotion) return;
+  for (const li of list.children as HTMLCollectionOf<HTMLElement>) {
+    const row = li.querySelector<HTMLElement>(".step-row")!;
+    const was = before.get(row.dataset.step);
+    const dy = was === undefined ? null : was - row.getBoundingClientRect().top;
+    li.style.transition = "none";
+    if (dy === null) {
+      li.style.opacity = "0";
+      li.style.transform = "translateY(-12px)";
+    } else li.style.transform = `translateY(${dy}px)`;
+    li.getBoundingClientRect();
+    li.style.transition = "transform 0.28s ease, opacity 0.28s ease";
+    li.style.transform = "";
+    li.style.opacity = "";
+  }
 }
 
 /** Step start, or a step's tag in the turn list: shows that step again, at the position it starts from. */
@@ -3467,7 +3530,8 @@ function refreshGuide() {
   $("last").hidden = showNext;
   ($("guide-start") as HTMLButtonElement).disabled = !guide || app.cursor === guide.start;
   // The paths show only before the step's first turn, so Show step applies only there.
-  ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold" || app.cursor !== guide.start;
+  updateShowTarget();
+  ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold" || app.cursor !== guide.start || showStepIdle();
   renderSteps();
   const line = $("guide-line");
   line.textContent = "";
@@ -3475,7 +3539,7 @@ function refreshGuide() {
     const { step, after, index, start } = guide;
     const done = app.cursor >= start + step.turns.length;
     const head = document.createElement("strong");
-    head.textContent = `Step ${index} of ${index + after} — ${STAGE_NAME[step.stage]}${done ? " (done)" : ""}: `;
+    head.textContent = `Step ${index} of ${index + after} — ${STAGE_NAME[step.stage]}: `;
     const alg = document.createElement("span");
     alg.className = "known-alg";
     alg.textContent = step.alg;
@@ -4325,6 +4389,12 @@ function showHighlighted() {
 function showFaces(st: State, faces: [number, number][]) {
   if (!faces.length) return;
   if (tween) (pivot.quaternion.copy(tween.to), (tween = null));
+  const best = bestView(st, faces);
+  goToView([best.x, best.y, best.z, best.w]);
+}
+/** The view that shows the given sticker faces best (see showFaces). */
+function bestView(st: State, faces: [number, number][]): any {
+  if (!faces.length) return pivot.quaternion.clone();
   const score = () => {
     const seen = faces.map(([s, d]) => faceView(st, s, d)).filter((c) => c > 0);
     return seen.length * 10 + seen.reduce((a, b) => a + b, 0) / faces.length;
@@ -4345,7 +4415,7 @@ function showFaces(st: State, faces: [number, number][]) {
   }
   pivot.quaternion.copy(own);
   pivot.updateMatrixWorld(true);
-  goToView([best.x, best.y, best.z, best.w]);
+  return best.clone();
 }
 
 /** The halo shows the first problem's slots, unless Hide was used on those same slots. */
