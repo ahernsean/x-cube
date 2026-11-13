@@ -290,7 +290,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   orthographic cameras, so it animates, centered in its panel. Its ⓘ button explains how to read it.
 - **State code** (a disclosure in Saved states): one single-line field, with Copy and Load
   beside the heading. It shows the current position's code as a read-out (no fill), drawn
-  over the field at the size that fits it on one line (13px at most, about 9.6px on an iPhone);
+  over the field at the size that fits it on one line, measured (13px at most, about 9.5px on an iPhone);
   tapping into it empties it for a code to be pasted or typed, and leaving it empty shows
   the code again. Typed text that isn't a code gets a thick red outline and Load stays
   off. Copy copies the current position's code (putting it back in the field). If the

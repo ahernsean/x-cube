@@ -147,10 +147,9 @@ input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); 
 .code-box { position: relative; }
 .code-btns { position: absolute; top: 0; right: 0; display: flex; gap: 6px; }
 .code-btns .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.code-box .field { container-type: inline-size; }
 .code-box .field.showing input { background: transparent; color: transparent; }
-/* The current code, drawn over the field at the size that fits it on one line (13px at most). */
-.code-readout { display: none; position: absolute; inset: 0; padding: 0 11px; align-items: center; pointer-events: none; font-family: var(--f-mono); font-size: 9px; font-size: min(13px, calc((100cqw - 22px) / 32.6)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+/* The current code, drawn over the field; fitCodeReadout sizes it to fit one line (13px at most). */
+.code-readout { display: none; position: absolute; inset: 0; padding: 0 11px; align-items: center; pointer-events: none; font-family: var(--f-mono); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .code-box .field.showing .code-readout { display: flex; }
 .code-box .field input.invalid { outline: 3px solid var(--bad); outline-offset: 0; border-color: var(--bad); }
 .code-box .field.replaced input { animation: code-replaced 1.6s ease-out; }

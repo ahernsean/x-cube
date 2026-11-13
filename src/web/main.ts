@@ -2510,6 +2510,7 @@ function render() {
   if (!codeTyped && !blankForTyping) codeField.value = code;
   $("code-readout").textContent = code;
   codeBox.classList.toggle("showing", !codeTyped && !blankForTyping);
+  fitCodeReadout();
   const typedOk = codeTyped && codeIsValid(codeField.value);
   codeField.classList.toggle("invalid", codeTyped && !typedOk);
   ($("import") as HTMLButtonElement).disabled = !typedOk;
@@ -2542,6 +2543,19 @@ function keepTurnInSight() {
 /** An element's left edge in a scrolling container's content. */
 function offsetIn(el: HTMLElement, container: HTMLElement): number {
   return el.getBoundingClientRect().left - container.getBoundingClientRect().left + container.scrollLeft;
+}
+
+/**
+ * The current code is drawn at the largest size up to 13px that fits it on one line,
+ * measured, since the width of the code's font differs from one fallback font to another.
+ */
+function fitCodeReadout() {
+  const r = $("code-readout");
+  r.style.fontSize = "13px";
+  if (!r.clientWidth) return; // not laid out (its disclosure is closed)
+  const room = r.clientWidth - parseFloat(getComputedStyle(r).paddingLeft) - parseFloat(getComputedStyle(r).paddingRight);
+  const need = r.scrollWidth - parseFloat(getComputedStyle(r).paddingLeft) - parseFloat(getComputedStyle(r).paddingRight);
+  if (need > room) r.style.fontSize = `${Math.max(7, Math.floor(((13 * room) / need) * 10) / 10)}px`;
 }
 
 /** The state code field holds a code typed or pasted in, not yet loaded. */
@@ -2970,6 +2984,9 @@ function bindUI() {
   codeField.addEventListener("keydown", (e) => {
     if ((e as KeyboardEvent).key === "Enter" && !($("import") as HTMLButtonElement).disabled) $("import").click();
   });
+  document.querySelector(".code-box")!.addEventListener("toggle", () => fitCodeReadout());
+  window.addEventListener("resize", () => fitCodeReadout());
+  document.fonts?.ready.then(() => fitCodeReadout());
   $("code-clear").addEventListener("click", () => {
     codeTyped = false;
     codeField.blur();
