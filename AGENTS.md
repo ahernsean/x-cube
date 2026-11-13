@@ -287,7 +287,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   colors and Start from here, then saved positions and the state code), **Turn** (the turn
   amount, the turn buttons, and the turn field), **Algorithms**, **Solve** (the step
   guide), **Flat** (the flat view). The Lab opens on Start.
-- **Playback:** the counter ("7/9") sits right after the buttons. ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
+- **Playback:** the buttons form one strip (one rounded outline, faint lines between the
+  buttons), and the counter ("7/9") sits right after it. ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
   draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1
   forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
 - **Start from here** (`#clear`, in the Start panel): empties the turn list; the position

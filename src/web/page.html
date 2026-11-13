@@ -115,9 +115,14 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .transport > .status { flex: none; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; overflow: hidden; }
 /* Next step, in place of ▶ once a solve's step has played through: a move from one state
    to the next, in the highlight color so it can't be taken for Play. */
-.tp.next-tp { color: var(--accent); border-color: var(--accent); }
+.tp.next-tp { color: var(--accent); }
+/* The playback buttons as one strip: one rounded outline, faint lines between the buttons. */
+.tp-group { display: flex; flex: 0 1 auto; min-width: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.tp-group > .btn.tp { border: 0; border-radius: 0; min-height: 32px; min-width: 38px; padding: 0 8px; }
+.tp-group > .tp + .tp { border-left: 1px solid var(--line); }
+.tp-group > .tp:hover { background: var(--off-bg); }
 .tp.next-tp[hidden], .tp[hidden] { display: none; }
-.tp .ico { width: 24px; height: 18px; display: block; margin: auto; }
+.tp .ico { width: 20px; height: 18px; display: block; margin: 0 auto; }
 /* The Solve panel: the order and Start solving until a solve starts; then the step's controls. */
 #guide:not(.solving) .solve-only, #guide.solving .solve-idle { display: none; }
 .sub-head .chip { text-transform: none; letter-spacing: 0; font: 12px var(--f-mono); }
@@ -323,7 +328,7 @@ details[open] summary { margin-bottom: 8px; }
   .history { min-height: 22px; }
   .stage-col > .dock { gap: 3px; }
   .transport { gap: 4px; }
-  .tp { flex: 1 1 34px; min-width: 30px; max-width: 44px; min-height: 30px; padding-inline: 2px; }
+  .tp-group > .btn.tp { min-width: 34px; min-height: 30px; padding: 0 6px; }
   .transport > .status { gap: 4px; }
   #shape-chip { font: 600 11px var(--f-body); padding: 3px 6px; }
   .counter { font-size: 12px; }
@@ -411,12 +416,14 @@ details[open] summary { margin-bottom: 8px; }
     <div class="dock" id="dock" aria-label="Turn list and playback">
       <div class="history" id="history"></div>
       <div class="transport">
-        <button class="btn small tp" id="first" aria-label="Back to the start" title="Back to the start"><i class="tp-bar" aria-hidden="true"></i>◀</button>
-        <button class="btn small tp" id="rewind" aria-label="Play backward to the start" title="Play backward / stop">◀</button>
-        <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
-        <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
-        <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
-        <button class="btn small tp next-tp" id="strip-next" aria-label="Next step" title="Load the next step" hidden><svg class="ico" viewBox="0 0 28 20" aria-hidden="true"><circle cx="5" cy="15" r="3" fill="currentColor"/><circle cx="23" cy="15" r="3" fill="currentColor"/><path d="M5.5 10.5C7 3 19 2 21.6 9.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17.6 8.2 21.9 10.4 23.4 5.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <div class="tp-group" role="group" aria-label="Playback">
+          <button class="btn small tp" id="first" aria-label="Back to the start" title="Back to the start"><i class="tp-bar" aria-hidden="true"></i>◀</button>
+          <button class="btn small tp" id="rewind" aria-label="Play backward to the start" title="Play backward / stop">◀</button>
+          <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
+          <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
+          <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
+          <button class="btn small tp next-tp" id="strip-next" aria-label="Next step" title="Load the next step" hidden><svg class="ico" viewBox="0 0 20 18" aria-hidden="true"><circle cx="4" cy="13.5" r="2.4" fill="currentColor"/><circle cx="16" cy="13.5" r="2.4" fill="currentColor"/><path d="M4.4 9.6C5.2 3.6 13.6 3 15.2 8.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12.4 7.4 15.4 9.2 16.6 5.9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
         <span class="counter" id="counter">0 / 0</span>
         <div class="status" id="status" aria-live="polite"><span class="chip" id="shape-chip"></span><span class="outer-grid" id="outer-grid" aria-label="Outer turns"></span></div>
       </div>
