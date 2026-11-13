@@ -135,19 +135,19 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .confirm[hidden] { display: none; }
 .confirm p { margin: 0; font-weight: 600; }
 /* The solve's steps, newest at the top, under the shown step's text; Stop solving at the foot. */
-.solve-steps { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
-.steps-head { margin: 0 0 4px; font-size: 13px; color: var(--muted); }
+.solve-steps { margin-top: 4px; border-top: 1px solid var(--line); padding-top: 3px; }
+.steps-head { margin: 0 0 2px; font-size: 13px; line-height: 1.3; color: var(--muted); }
 .steps-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; align-content: start; max-height: 220px; overflow-y: auto; }
 .steps-list li { display: flex; gap: 4px; align-items: center; }
-.step-save { flex: none; min-height: 28px; padding: 2px 8px; }
+.steps-list .btn.step-save { flex: none; min-height: 24px; padding: 0 8px; font-size: 13px; }
 .alg-save-note { margin: 6px 0 0; }
 .alg-save-note[hidden] { display: none; }
 .link-btn { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
-.step-row { flex: 1 1 auto; min-width: 0; width: 100%; display: flex; justify-content: space-between; gap: 8px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 14px var(--f-body); text-align: left; cursor: pointer; }
+.step-row { flex: 1 1 auto; min-width: 0; width: 100%; display: flex; justify-content: space-between; gap: 8px; padding: 2px 8px; line-height: 1.3; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 14px var(--f-body); text-align: left; cursor: pointer; }
 .step-row:hover { background: var(--off-bg); }
 .step-row.on { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .step-row .n { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.stop-solve { width: 100%; margin-top: 10px; }
+.stop-solve { width: 100%; margin-top: 4px; }
 .sub-head .chip { text-transform: none; letter-spacing: 0; font: 12px var(--f-mono); }
 #panel-start .base-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .sub-head { display: flex; justify-content: space-between; align-items: center; margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font: 600 13px var(--f-display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
@@ -295,7 +295,7 @@ input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); 
 .guide-btns { flex-wrap: nowrap; gap: 6px; }
 .guide-btns .btn { flex: 1 1 auto; min-width: 0; padding-inline: 6px; white-space: nowrap; }
 .guide-modes button { font: 600 13px var(--f-body); padding: 6px 10px; min-height: 34px; }
-.guide-line { margin: 8px 0 0; font-size: 14px; }
+.guide-line { margin: 6px 0 0; font-size: 14px; line-height: 1.35; }
 .guide-line:empty::before { content: "Start solving loads the first step, ready to play with ▶ above. Once a step has played, ▶ becomes Next step. The ⓘ on the 3D view explains the paths."; color: var(--muted); font-size: 13px; }
 #guide.solving .guide-line:empty::before { content: "Next step loads one step toward solved, from the position shown."; }
 .known-alg { font: 13px var(--f-mono); overflow-wrap: anywhere; }
