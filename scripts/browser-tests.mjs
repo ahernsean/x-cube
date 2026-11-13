@@ -402,6 +402,12 @@ labTest(
       }, [secId, qs]);
     check(await inOrder("panel-start", ["#shuffle", "#reset", "#edit-start", "#clear", "#saved-list", "details.code-box"]), "the Start panel has Shuffle, Solved, Edit colors and Start from here, then saved positions and the state code");
     check(await inOrder("guide", [".guide-modes", "#next-step", "#guide-line"]), "the Solve panel has the order, Start solving, then the step's text");
+    check(await page.$eval("#next-step", (b) => b.disabled), "with the puzzle solved, Start solving is grayed out");
+    await page.fill("#alg", "R U");
+    await page.click("#load");
+    await page.click("#fwd");
+    await page.click("#fwd");
+    await page.click("#clear");
     await page.click("#next-step");
     await page.waitForFunction(() => window.xcubeProbe.idle(), null, { timeout: 30000 });
     const btnRows = await page.$$eval(".guide-btns .btn", (els) => new Set(els.filter((e) => e.getBoundingClientRect().width > 0).map((e) => Math.round(e.getBoundingClientRect().top))).size);
