@@ -2454,7 +2454,7 @@ function render() {
   // A shuffle's turns would give the way back away, so they are not shown while it plays.
   $("history").innerHTML = shuffling ? `<span class="hint">Shuffling…</span>` : hist || `<span class="hint">Turns you make or load appear here; tap one to go to it.</span>`;
   keepTurnInSight();
-  $("counter").textContent = `${app.cursor} / ${app.history.length}`;
+  $("counter").textContent = `${app.cursor}/${app.history.length}`;
   $("load").textContent = editingTurns ? "Update" : "Load";
   $("alg-edit").textContent = editingTurns ? "Cancel" : "Edit";
   ($("alg-edit") as HTMLButtonElement).disabled = !editingTurns && !app.history.length;
@@ -2705,9 +2705,10 @@ function setupTabs() {
     heading = Math.abs(left - stack.scrollLeft) < 2 ? null : t;
     stack.scrollTo({ left, behavior: smooth && !reduceMotion ? "smooth" : "auto" });
   };
-  let saved = "solve";
+  let saved = "start";
   try {
-    saved = localStorage.getItem(TAB_KEY) || "solve";
+    saved = localStorage.getItem(TAB_KEY) || "start";
+    if (saved === "saved") saved = "start";
   } catch {
     /* storage unavailable */
   }
@@ -2853,6 +2854,7 @@ function bindViewTools() {
 function bindUI() {
   bindAlgorithms();
   $("next-step").addEventListener("click", () => nextStep());
+  $("strip-next").addEventListener("click", () => nextStep());
   $("guide-stop").addEventListener("click", () => stopGuide());
   $("guide-start").addEventListener("click", () => goToStep(guide ?? undefined));
   $("guide-show").addEventListener("click", () => showGuide());
@@ -3192,9 +3194,13 @@ function setGuideMode(mode: Mode) {
 let guideDimmed: any[] = []; // meshes drawn gray
 let guideArrows: any = null;
 
+/** A solve is under way: from Start solving until Stop. The order can be chosen only between solves. */
+let solving = false;
+const SOLVED_LINE = "Solved. Nothing left to do.";
 function nextStep() {
   if (edit) return;
   flushAnimations();
+  solving = true;
   let steps: SolveStep[];
   try {
     steps = solveSteps(app.current, guideMode);
@@ -3210,7 +3216,7 @@ function nextStep() {
   const index = prev ? prev.index + 1 : 1;
   clearGuide();
   if (!steps.length) {
-    guideLine = "Solved. Nothing left to do.";
+    guideLine = SOLVED_LINE;
     return render();
   }
   const [step] = steps;
@@ -3264,7 +3270,8 @@ function clearGuide() {
 
 /** Stop, or closing the disclosure: drops the shown step's grays, arrows and line. The turn list keeps its turns and its step boxes. */
 function stopGuide() {
-  if (!guide && !guideLine) return;
+  if (!solving && !guide && !guideLine) return;
+  solving = false;
   clearGuide();
   guideLine = "";
   render();
@@ -3315,7 +3322,14 @@ function refreshGuide() {
   }
   drawGuide();
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-guide-mode]")) b.classList.toggle("sel", b.dataset.guideMode === guideMode);
-  ($("guide-stop") as HTMLButtonElement).disabled = !guide && !guideLine;
+  ($("guide-stop") as HTMLButtonElement).disabled = !solving;
+  $("guide").classList.toggle("solving", solving);
+  $("next-step").textContent = solving ? "Next step" : "Start solving";
+  // In the playback strip, once a solve's turns have all played, ▶ gives way to Next step.
+  const atEnd = app.cursor >= app.history.length;
+  const showNext = solving && atEnd && !playing && guideLine !== SOLVED_LINE;
+  $("strip-next").hidden = !showNext;
+  $("last").hidden = showNext;
   ($("guide-start") as HTMLButtonElement).disabled = !guide || app.cursor === guide.start;
   ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold";
   const line = $("guide-line");

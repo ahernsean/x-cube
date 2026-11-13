@@ -145,6 +145,12 @@ async function openLab({ url = pageUrl, context: contextOptions = labContext(), 
   return { page, context, errors, close, ...h };
 }
 
+/** Picks the solve's order, stopping a solve under way first (the order is chosen between solves). */
+async function setOrder(page, mode) {
+  if (!(await page.$eval("#guide-stop", (b) => b.disabled))) await page.click("#guide-stop");
+  await page.click(`[data-guide-mode="${mode}"]`);
+}
+
 /** The step guide's line, and Next step (opening the guide first if it is closed). */
 function guideHelpers(page, settle) {
   const line = () => page.$eval("#guide-line", (e) => e.textContent);
@@ -330,6 +336,16 @@ labTest(
     const isShown = (id) => page.$eval(`#${id}`, (e) => !e.hidden && getComputedStyle(e).display !== "none");
     const h0 = await pageHeight();
     await page.click("#render-btn");
+    // Where an edge label lies under the Display panel, the panel is what shows.
+    const covered = await page.evaluate(() => {
+      const pop = document.getElementById("render-pop").getBoundingClientRect();
+      return [...document.querySelectorAll(".cmp")].flatMap((c) => {
+        const r = c.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        if (x < pop.left || x > pop.right || y < pop.top || y > pop.bottom || getComputedStyle(c).opacity === "0") return [];
+        return [document.elementFromPoint(x, y)?.closest("#render-pop") ? "pop" : c.textContent];
+      });
+    });
+    check(covered.every((c) => c === "pop"), `the Display panel draws over the edge labels (${covered.join() || "none under it"})`);
     const renderOpen = { shown: await isShown("render-pop"), boxes: await page.$$eval("#render-pop input[type=checkbox]", (els) => els.length), height: await pageHeight() };
     await page.click("#info-btn");
     const infoOpen = { shown: await isShown("info-pop"), renderClosed: !(await isShown("render-pop")), height: await pageHeight() };
@@ -369,17 +385,21 @@ labTest(
     check(strip, "the strip holds the turn list, the playback buttons and the speed, outside the panels");
     const tabs = await page.$$eval("#tabs [data-tab]", (els) => els.map((t) => `${t.textContent}>${document.getElementById(t.getAttribute("aria-controls"))?.dataset.sec}`).join());
     const panels = await page.$$eval("#stack-col > .panel", (els) => els.map((e) => e.dataset.sec).join());
-    check(tabs === "Solve>solve,Turn>turn,Algorithms>algs,Flat>flat,Saved>saved" && panels === "solve,turn,algs,flat,saved", `the tabs name the panels in order (${tabs}; ${panels})`);
-    // The solve panel reads top to bottom: the step buttons, the step's text, then Clear, Reset,
-    // Shuffle and Edit colors, then the order.
-    const solveOrder = await page.evaluate(() => {
-      const sec = document.getElementById("guide");
-      const els = ["#next-step", "#guide-line", ".base-actions", "#edit-start", ".guide-modes"].map((q) => sec.querySelector(q));
-      return els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
-    });
-    check(solveOrder, "the solve panel shows the step buttons, the step's text, Clear/Reset/Shuffle/Edit colors, then the order");
-    const btnRows = await page.$$eval(".guide-btns .btn", (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size);
-    check(btnRows === 1, "the four step buttons share one row at phone width");
+    check(tabs === "Start>start,Turn>turn,Algorithms>algs,Solve>solve,Flat>flat" && panels === "start,turn,algs,solve,flat", `the tabs name the panels in order (${tabs}; ${panels})`);
+    // The Start panel: the ways to set the start, then saved positions and the state code. The
+    // Solve panel: the order and Start solving, then the step's buttons and its text.
+    const inOrder = (secId, qs) =>
+      page.evaluate(([id, list]) => {
+        const sec = document.getElementById(id);
+        const els = list.map((q) => sec.querySelector(q));
+        return els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+      }, [secId, qs]);
+    check(await inOrder("panel-start", ["#shuffle", "#reset", "#edit-start", "#clear", "#saved-list", "details.code-box"]), "the Start panel has Shuffle, Solved, Edit colors and Start from here, then saved positions and the state code");
+    check(await inOrder("guide", [".guide-modes", "#next-step", "#guide-line"]), "the Solve panel has the order, Start solving, then the step's text");
+    await page.click("#next-step");
+    await page.waitForFunction(() => window.xcubeProbe.idle(), null, { timeout: 30000 });
+    const btnRows = await page.$$eval(".guide-btns .btn", (els) => new Set(els.filter((e) => e.getBoundingClientRect().width > 0).map((e) => Math.round(e.getBoundingClientRect().top))).size);
+    check(btnRows === 1, "while solving, the four step buttons share one row at phone width");
     // iOS zooms into a focused text field whose text is under 16px.
     const small = await page.$$eval('input[type="text"]', (els) => els.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16).map((e) => e.id));
     check(small.length === 0, `every text field's text is at least 16px, so iOS doesn't zoom in (${small.join() || "none smaller"})`);
@@ -453,7 +473,7 @@ labTest(
         )
         .catch(() => {});
     const seen = [];
-    for (const tab of ["turn", "algs", "flat", "saved", "solve"]) {
+    for (const tab of ["turn", "algs", "solve", "flat", "start"]) {
       await page.click(`[data-tab="${tab}"]`);
       await landed(tab);
       const st = await state();
@@ -471,7 +491,7 @@ labTest(
     check(swiped.sel === "flat" && swiped.inView === "flat", `scrolling the panels selects the tab of the one in view (${JSON.stringify(swiped)})`);
     // Sliding a finger along the tab row selects each tab it passes.
     const at = (tab) => page.$eval(`[data-tab="${tab}"]`, (b) => { const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
-    const a = await at("solve"), b = await at("algs");
+    const a = await at("start"), b = await at("algs");
     await page.mouse.move(a.x, a.y);
     await page.mouse.down();
     for (let i = 1; i <= 6; i++) await page.mouse.move(a.x + ((b.x - a.x) * i) / 6, a.y);
@@ -968,7 +988,7 @@ labTest("clear: empties the turn list, and the position shown becomes the start"
   const ruState = await probe("state");
   await page.click("#clear");
   const cleared = { counter: await counter(), state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent) };
-  check(cleared.counter === "0/0" && cleared.state === ruState && /^Turns cleared/.test(cleared.msg) && (await page.$eval("#clear", (b) => b.textContent)) === "Clear", `Clear empties the turn list and keeps the position shown as the start (${cleared.counter})`);
+  check(cleared.counter === "0/0" && cleared.state === ruState && /^Turns cleared/.test(cleared.msg) && (await page.$eval("#clear", (b) => b.textContent)) === "Start from here", `Clear empties the turn list and keeps the position shown as the start (${cleared.counter})`);
 });
 
 labTest("state codes: one field shows the current position's code and takes a code to import as the start", async ({ page, check, probe, startFresh, counter, play, sweep3d }) => {
@@ -1439,7 +1459,7 @@ labTest("guide: dashed paths, the order switch, a layered core step, and a turn 
   await play("(F' L' F) r (F' L F) r'");
   await next();
   const byKind = (await probe("guide")).stage;
-  await page.click('[data-guide-mode="layers"]');
+  await setOrder(page, "layers");
   await next();
   const byLayer = await probe("guide");
   const kept = await page.evaluate(() => localStorage.getItem("xcube.guideMode"));
@@ -1451,7 +1471,7 @@ labTest("guide: dashed paths, the order switch, a layered core step, and a turn 
   await next();
   const core = await probe("guide");
   check(core?.stage.startsWith("core") && core.turns <= 9 && core.arrows >= 1 && core.arrows <= 3 && /^Step \d+ of \d+ — Top core edges: Put a white core edge in the top layer, white up \([1-4] of 4\)\./.test(await line()), `top to bottom places the core a cubelet at a time (${core?.alg}, ${core?.arrows} paths; "${await line()}")`);
-  await page.click('[data-guide-mode="kinds"]');
+  await setOrder(page, "kinds");
   await startFresh();
   await play("R U");
   await next();
@@ -1470,7 +1490,7 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   await page.click("#import");
   await settle();
   await page.click(`[data-tab="solve"]`);
-  await page.click('[data-guide-mode="layers"]');
+  await setOrder(page, "layers");
   await page.click("#next-step");
   await settle();
   const g = await probe("guide");
@@ -1487,7 +1507,7 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   // started: here a corner hops along the front face, and its front sticker is followed,
   // not the one on its side, whose path would have to turn back on itself.
   await page.click("#guide-stop");
-  await page.click('[data-guide-mode="kinds"]');
+  await setOrder(page, "kinds");
   for (let i = 0; i < 3; i++) {
     await page.click("#next-step");
     await settle();
@@ -1506,7 +1526,7 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   await page.click("#import");
   await settle();
   await page.click(`[data-tab="solve"]`);
-  await page.click('[data-guide-mode="layers"]');
+  await setOrder(page, "layers");
   const FACE = { R: [1, 0, 0], L: [-1, 0, 0], U: [0, 1, 0], D: [0, -1, 0], F: [0, 0, 1], B: [0, 0, -1] };
   const angle = (u, v) => (Math.acos(Math.max(-1, Math.min(1, (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (Math.hypot(...u) * Math.hypot(...v))))) * 180) / Math.PI;
   const sub = (a, b) => a.map((x, k) => x - b[k]);
@@ -1542,7 +1562,7 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   await page.click("#guide-stop");
   await page.click("#reset");
   await settle();
-  await page.click('[data-guide-mode="kinds"]');
+  await setOrder(page, "kinds");
   await page.fill("#alg", "(F' L' F) r (F' L F) r'");
   await page.click("#load");
   await page.click("#last");
@@ -1566,7 +1586,7 @@ labTest("guide: a flying cubelet turns only about the axis its sticker turns abo
   await page.click("#import");
   await settle();
   await page.click(`[data-tab="solve"]`);
-  await page.click('[data-guide-mode="layers"]');
+  await setOrder(page, "layers");
   await page.click("#next-step");
   await settle();
   const g = await probe("guide");
@@ -1583,7 +1603,7 @@ labTest("guide: a cubelet turning in place has a disc, and its unit rises past i
   await page.click("#import");
   await settle();
   await page.click(`[data-tab="solve"]`);
-  await page.click('[data-guide-mode="layers"]');
+  await setOrder(page, "layers");
   await page.click("#next-step");
   await settle();
   const g = await probe("guide");
@@ -1608,12 +1628,35 @@ labTest("guide: only the cubelets a step moves or turns keep their colors", asyn
   await page.click("#import");
   await settle();
   await page.click(`[data-tab="solve"]`);
-  await page.click('[data-guide-mode="layers"]');
+  await setOrder(page, "layers");
   await page.click("#next-step");
   await settle();
   const g = await probe("guide");
   check(g.alg === "R' D2 R" && g.focus.length === 6 && ["DBL", "DFL"].every((s) => g.focus.includes(s)) && !g.focus.some((s) => ["UBL", "UFL"].includes(s)), `only the moved corners and their extension cubelets keep their colors (${g.focus.join(" ")})`);
   check(g.darkGray > 0 && g.gray > 0, `what else the turns move is darker gray, and what they leave alone lighter (${g.darkGray} darker, ${g.gray} lighter)`);
+});
+
+labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ page, check, settle, play, counter }) => {
+  await play("R U");
+  await page.click(`[data-tab="solve"]`);
+  const idle = await page.evaluate(() => ({ order: !!document.querySelector(".guide-modes").getClientRects().length, btn: document.getElementById("next-step").textContent, stop: !!document.getElementById("guide-stop").getClientRects().length }));
+  check(idle.order && idle.btn === "Start solving" && !idle.stop, `before a solve: the order and Start solving show, Stop doesn't (${JSON.stringify(idle)})`);
+  await page.click("#next-step");
+  await settle();
+  const solving = await page.evaluate(() => ({ order: !!document.querySelector(".guide-modes").getClientRects().length, btn: document.getElementById("next-step").textContent, stop: !!document.getElementById("guide-stop").getClientRects().length, play: !document.getElementById("last").hidden, next: !document.getElementById("strip-next").hidden }));
+  check(!solving.order && solving.btn === "Next step" && solving.stop && solving.play && !solving.next, `while solving: no order, Next step and Stop show; with turns to play, ▶ is there (${JSON.stringify(solving)})`);
+  const before = await counter();
+  await page.click("#last");
+  await page.waitForFunction(() => !document.getElementById("strip-next").hidden, null, { timeout: 60000 });
+  await settle();
+  const played = { play: await page.$eval("#last", (b) => b.hidden), counter: await counter() };
+  await page.click("#strip-next");
+  await settle();
+  const next = { g: await page.evaluate(() => window.xcubeProbe.guide()?.index), counter: await counter(), play: !(await page.$eval("#last", (b) => b.hidden)) };
+  check(played.play && next.g === 2 && next.counter !== played.counter && next.play, `the step played through (${before} to ${played.counter}), Next step took ▶'s place and loaded step 2 (${next.counter}), and ▶ is back`);
+  await page.click("#guide-stop");
+  const stopped = await page.evaluate(() => ({ order: !!document.querySelector(".guide-modes").getClientRects().length, btn: document.getElementById("next-step").textContent, next: !document.getElementById("strip-next").hidden }));
+  check(stopped.order && stopped.btn === "Start solving" && !stopped.next, `Stop ends the solve: the order and Start solving are back (${JSON.stringify(stopped)})`);
 });
 
 labTest("guide: a parity turn has one arc around the outside of its layer", async ({ page, check, probe, settle, play }) => {

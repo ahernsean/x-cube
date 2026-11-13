@@ -261,7 +261,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ in the
   3D view's corner shows this help.
 - **Display panel:** the ◐ in the 3D view's corner opens the Edge glow, Shading, Shadows
-  and Gloss switches, over the view.
+  and Gloss switches, over the view and over the edge labels.
 - **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. The
   root is padded by the safe-area insets (as the artifact host's skeleton also pads it; in
   the Claude app the top inset covers the app's own bar too) and the body fills the rest,
@@ -271,8 +271,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   buttons over it), one row with Home (the other view buttons are left out: a tap on an
   edge label does the same) and the hold line, and the
   **playback strip**: the turn list on one row that scrolls sideways (kept so the current
-  turn and the next two things after it show), the playback buttons with the status chips
-  and the counter, and the speed slider. Below, a row of **tabs** (Solve, Turn, Algorithms, Flat, Saved) and the
+  turn and the next two things after it show), the playback buttons with the counter beside
+  them and the status chips at the right end, and the speed slider. Below, a row of **tabs** (Start, Turn, Algorithms, Solve, Flat) and the
   **panels**, side by side in a carousel that shows one at a time: a tap on a tab, a
   sideways swipe across the panels, or a finger slid along the tabs picks one (the tab
   marked follows a swipe as the panels move; during a tab's own scroll its tab stays marked); each panel
@@ -283,13 +283,15 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   4 seconds (8 for errors) or a tap. **Wide** (900 px and up, an iPad in landscape): the 3D
   view and the strip on the left, staying put, and the panels stacked in a column on the
   right, each collapsing from its heading; no tabs.
-- **Panels:** **Solve** (the step guide, then Start, Clear, Reset, Shuffle and Edit
-  colors, then Order), **Turn** (the turn amount, the turn buttons, and the turn field), **Algorithms**, **Flat** (the flat view), **Saved** (saved states and
-  the state code).
-- **Playback:** ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
+- **Panels:** **Start** (everything that sets the start: Shuffle, Reset to solved, Edit
+  colors and Start from here, then saved positions and the state code), **Turn** (the turn
+  amount, the turn buttons, and the turn field), **Algorithms**, **Solve** (the step
+  guide), **Flat** (the flat view). The Lab opens on Start.
+- **Playback:** the counter ("7/9") sits right after the buttons. ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
   draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1
   forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
-- **Clear:** empties the turn list; the position shown becomes the start ("Current position").
+- **Start from here** (`#clear`, in the Start panel): empties the turn list; the position
+  shown becomes the start ("Current position").
 - **Shuffle:** 30 random legal turns (inner, slices, outer when complete; never the same
   layer twice in a row; no rotations) played at 70 ms per quarter turn; the result becomes
   the new start ("Shuffled"). Neither the message nor the turn list shows the turns (the
@@ -340,7 +342,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   dents, patches of more and less shine), turned and offset differently on each sticker. Only the
   coat carries the crinkles, so they show in reflections while the color stays smooth.
   The Gloss switch turns it off.
-- **Color editing:** Edit colors in the Solve panel, beside Shuffle. Pick a color, then tap stickers to paint
+- **Color editing:** Edit colors in the Start panel. Pick a color, then tap stickers to paint
   them; drags tumble the view, and the other controls are set aside. The shape stays as it
   is. A painted sticker's edge glow takes the paint too. Each paint is refit to cubelets
   (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
@@ -376,7 +378,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   the centers that should be opposite) or "Wrong center color order"
   (halo on all six centers that show). A cube painted as the real one shows is always
   valid, so any problem means a sticker painted wrong.
-- **Step guide:** the Solve panel. **Next
+- **Step guide:** the Solve panel, in two modes. Between solves it shows **Order** and
+  **Start solving**; during a solve (from Start solving until **Stop**) it shows Next step,
+  Step start, Show and Stop, and the step's line, and the order can't change. In the
+  playback strip, once a solve's turns have all played, ▶ gives way to a **Next step**
+  button (two dots with an arrow from one to the other, in the highlight blue), which
+  loads the next step; ▶ comes back with it. **Next
   step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
   the position shown, adds its turns at the current step, unplayed, and a line under the
   button gives "Step 2 of 9 —" (counted from when the guide was started; a step taken

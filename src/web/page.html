@@ -112,7 +112,17 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .edit-actions { display: flex; gap: 8px; }
 .edit-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.transport > .status { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; justify-content: center; overflow: hidden; }
+.transport > .status { flex: none; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; overflow: hidden; }
+/* Next step, in place of ▶ once a solve's step has played through: a move from one state
+   to the next, in the highlight color so it can't be taken for Play. */
+.tp.next-tp { color: var(--accent); border-color: var(--accent); }
+.tp.next-tp[hidden], .tp[hidden] { display: none; }
+.tp .ico { width: 24px; height: 18px; display: block; margin: auto; }
+/* The Solve panel: the order and Start solving until a solve starts; then the step's controls. */
+#guide:not(.solving) .solve-only, #guide.solving .solve-idle { display: none; }
+.sub-head .chip { text-transform: none; letter-spacing: 0; font: 12px var(--f-mono); }
+#panel-start .base-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.sub-head { display: flex; justify-content: space-between; align-items: center; margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font: 600 13px var(--f-display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 /* Small round buttons in the 3D view's corners, with no button edge or fill. */
 .stage { overflow: visible; }
 #scene { border-radius: 10px; }
@@ -122,6 +132,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .corner.tl { top: 4px; left: 4px; }
 .corner.tr { top: 4px; right: 4px; }
 .corner.br { bottom: 4px; right: 4px; }
+.stage > .pop { z-index: 60; } /* above the edge labels */
 .stage > .pop.near-top { top: 40px; right: 6px; }
 .stage > .pop.near-bottom { top: auto; bottom: 40px; right: 6px; }
 /* Outer turns: one tiny letter chip each, green when it can turn, gray when it can't. */
@@ -218,7 +229,7 @@ input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); 
 .tok.done { background: var(--good-bg); color: var(--good); }
 .tok.cur { box-shadow: inset 0 0 0 2px var(--good); } /* inside the chip: .history clips anything drawn outside */
 .transport { display: flex; gap: 6px; align-items: center; }
-.counter { flex: none; white-space: nowrap; font: 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
+.counter { flex: none; white-space: nowrap; font: 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 4px; }
 .hint { color: var(--muted); font-size: 13px; }
 .net { display: grid; grid-template-columns: repeat(4, minmax(0, 100px)); grid-template-rows: repeat(3, auto); gap: 6px; justify-content: center; }
 .net-wrap { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
@@ -247,7 +258,8 @@ input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); 
 .guide-btns .btn { flex: 1 1 auto; min-width: 0; padding-inline: 6px; white-space: nowrap; }
 .guide-modes button { font: 600 13px var(--f-body); padding: 6px 10px; min-height: 34px; }
 .guide-line { margin: 8px 0 0; font-size: 14px; }
-.guide-line:empty::before { content: "Next step loads one step toward solved, ready to play with ▶ above. The ⓘ on the 3D view explains the paths."; color: var(--muted); font-size: 13px; }
+.guide-line:empty::before { content: "Start solving loads the first step, ready to play with ▶ above. Once a step has played, ▶ becomes Next step. The ⓘ on the 3D view explains the paths."; color: var(--muted); font-size: 13px; }
+#guide.solving .guide-line:empty::before { content: "Next step loads one step toward solved, from the position shown."; }
 .known-alg { font: 13px var(--f-mono); overflow-wrap: anywhere; }
 .saved { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .saved li { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
@@ -311,7 +323,7 @@ details[open] summary { margin-bottom: 8px; }
   .history { min-height: 22px; }
   .stage-col > .dock { gap: 3px; }
   .transport { gap: 4px; }
-  .tp { min-width: 34px; min-height: 30px; padding-inline: 4px; }
+  .tp { flex: 1 1 34px; min-width: 30px; max-width: 44px; min-height: 30px; padding-inline: 2px; }
   .transport > .status { gap: 4px; }
   #shape-chip { font: 600 11px var(--f-body); padding: 3px 6px; }
   .counter { font-size: 12px; }
@@ -404,8 +416,9 @@ details[open] summary { margin-bottom: 8px; }
         <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
         <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
         <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
-        <div class="status" id="status" aria-live="polite"><span class="chip" id="shape-chip"></span><span class="outer-grid" id="outer-grid" aria-label="Outer turns"></span></div>
+        <button class="btn small tp next-tp" id="strip-next" aria-label="Next step" title="Load the next step" hidden><svg class="ico" viewBox="0 0 28 20" aria-hidden="true"><circle cx="5" cy="15" r="3" fill="currentColor"/><circle cx="23" cy="15" r="3" fill="currentColor"/><path d="M5.5 10.5C7 3 19 2 21.6 9.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17.6 8.2 21.9 10.4 23.4 5.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <span class="counter" id="counter">0 / 0</span>
+        <div class="status" id="status" aria-live="polite"><span class="chip" id="shape-chip"></span><span class="outer-grid" id="outer-grid" aria-label="Outer turns"></span></div>
       </div>
       <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
     </div>
@@ -413,22 +426,34 @@ details[open] summary { margin-bottom: 8px; }
   </div>
 
   <div class="tabs" id="tabs" role="tablist" aria-label="Panels">
-    <button role="tab" data-tab="solve" aria-controls="guide">Solve</button><button role="tab" data-tab="turn" aria-controls="panel-turn">Turn</button><button role="tab" data-tab="algs" aria-controls="panel-algs">Algorithms</button><button role="tab" data-tab="flat" aria-controls="panel-flat">Flat</button><button role="tab" data-tab="saved" aria-controls="panel-saved">Saved</button>
+    <button role="tab" data-tab="start" aria-controls="panel-start">Start</button><button role="tab" data-tab="turn" aria-controls="panel-turn">Turn</button><button role="tab" data-tab="algs" aria-controls="panel-algs">Algorithms</button><button role="tab" data-tab="solve" aria-controls="guide">Solve</button><button role="tab" data-tab="flat" aria-controls="panel-flat">Flat</button>
   </div>
 
   <div class="stack" id="stack-col">
-    <section class="panel" data-sec="solve" id="guide" role="tabpanel">
-      <h2>Solve step by step</h2>
-      <div class="row guide-btns"><button class="btn primary" id="next-step">Next step</button><button class="btn" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn" id="guide-show" title="Turn the view to where this step's paths begin and end">Show</button><button class="btn" id="guide-stop" title="Drop the step and its grays; the turn list stays as it is">Stop</button></div>
-      <p class="guide-line" id="guide-line" aria-live="polite"></p>
+
+    <section class="panel" data-sec="start" id="panel-start" role="tabpanel">
+      <h2>Start</h2>
       <p class="hint base-line" title="The position the turn list starts from">Start: <strong id="base-label">Solved</strong></p>
       <div class="base-actions">
-        <button class="btn small ghost" id="clear" title="Clear the turn list; the position shown becomes the start">Clear</button>
-        <button class="btn small ghost" id="reset" title="Reset to solved">Reset</button>
         <button class="btn small" id="shuffle">Shuffle</button>
+        <button class="btn small" id="reset">Reset to solved</button>
         <button class="btn small edit-btn" id="edit-start" title="Paint the stickers to match a real cube"><span aria-hidden="true">✎</span> Edit colors</button>
+        <button class="btn small" id="clear" title="The position shown becomes the start, and the turn list empties">Start from here</button>
       </div>
-      <div class="row" style="margin-top:8px"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
+      <p class="hint" style="margin:4px 0 0">Start from here keeps the puzzle as shown and empties the turn list.</p>
+      <div class="sub-head"><span>Saved positions</span><span class="chip" id="store-kind">Loading</span></div>
+      <div class="alg-row" style="margin-top:8px">
+        <span class="field"><input type="text" id="save-name" placeholder="Name this position" autocomplete="off"><button class="field-clear" type="button" aria-label="Clear the name">×</button></span>
+        <button class="btn primary" id="save">Save</button>
+      </div>
+      <ul class="saved" id="saved-list"></ul>
+      <details class="code-box" style="margin-top:12px">
+        <summary>State code</summary>
+        <div class="code-btns"><button class="btn" id="copy-code" title="Copy the current position's code">Copy</button><button class="btn" id="import" title="Make the position typed in the field the start">Load</button></div>
+        <p class="hint" style="margin:0 0 6px">The current position as text.</p>
+        <span class="field showing" id="code-field"><input type="text" id="code" placeholder="Paste or type a state code" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="State code"><span class="code-readout" id="code-readout" aria-hidden="true"></span><button class="field-clear" type="button" id="code-clear" aria-label="Put back the current position's code">×</button></span>
+        <p class="hint" id="code-note" style="margin:4px 0 0; height:1.5em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></p>
+      </details>
     </section>
 
     <section class="panel" data-sec="turn" id="panel-turn" role="tabpanel">
@@ -474,6 +499,14 @@ details[open] summary { margin-bottom: 8px; }
       <ul class="saved" id="known-list"></ul>
     </section>
 
+    <section class="panel" data-sec="solve" id="guide" role="tabpanel">
+      <h2>Solve step by step</h2>
+      <!-- Not solving: pick the order, then start. Solving: the step's buttons and its text. -->
+      <div class="row solve-idle"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
+      <div class="row guide-btns"><button class="btn primary" id="next-step">Start solving</button><button class="btn solve-only" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn solve-only" id="guide-show" title="Turn the view to where this step's paths begin and end">Show</button><button class="btn solve-only" id="guide-stop" title="Stop solving: drop the step and its grays; the turn list stays as it is">Stop</button></div>
+      <p class="guide-line" id="guide-line" aria-live="polite"></p>
+    </section>
+
     <section class="panel" data-sec="flat" id="panel-flat" role="tabpanel">
       <div class="view-head">
         <h2>Flat view</h2>
@@ -487,21 +520,6 @@ details[open] summary { margin-bottom: 8px; }
       <div class="net-wrap"><div class="net" id="net"></div><canvas id="net-canvas" class="net-canvas" aria-hidden="true"></canvas></div>
     </section>
 
-    <section class="panel" data-sec="saved" id="panel-saved" role="tabpanel">
-      <div class="row" style="justify-content:space-between"><h2 style="margin:0">Saved states</h2><span class="chip" id="store-kind">Loading</span></div>
-      <div class="alg-row" style="margin-top:8px">
-        <span class="field"><input type="text" id="save-name" placeholder="Name this position" autocomplete="off"><button class="field-clear" type="button" aria-label="Clear the name">×</button></span>
-        <button class="btn primary" id="save">Save</button>
-      </div>
-      <ul class="saved" id="saved-list"></ul>
-      <details class="code-box" style="margin-top:12px">
-        <summary>State code</summary>
-        <div class="code-btns"><button class="btn" id="copy-code" title="Copy the current position's code">Copy</button><button class="btn" id="import" title="Make the position typed in the field the start">Load</button></div>
-        <p class="hint" style="margin:0 0 6px">The current position as text.</p>
-        <span class="field showing" id="code-field"><input type="text" id="code" placeholder="Paste or type a state code" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="State code"><span class="code-readout" id="code-readout" aria-hidden="true"></span><button class="field-clear" type="button" id="code-clear" aria-label="Put back the current position's code">×</button></span>
-        <p class="hint" id="code-note" style="margin:4px 0 0; height:1.5em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></p>
-      </details>
-    </section>
   </div>
 </div>
 
