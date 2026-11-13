@@ -246,7 +246,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Edge labels:** the six face letters, each placed where that face's axis, as projected on
   screen, meets the edge of the 3D view; tapping one turns the view to that face. They are
   foreshortened: a label on an axis toward the viewer is drawn larger, one pointing away
-  smaller (scale 0.85 to 2.7, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top.
+  smaller (scale 0.85 to 2, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top. A label
+  slides along its edge clear of the other labels and of what sits over the view (the status
+  chips, and on phones the ⓘ and Display buttons).
 - **Highlight color:** the page's accent blue marks every selected or active control (the
   turn amount, Order, an inverted turn button, the playing transport button).
 - **Disclosure triangles:** one shape for section headings and `details` summaries, drawn
@@ -255,12 +257,26 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
   two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ button
   beside the 3D view's heading shows this help.
-- **Display panel:** the Display button beside the 3D view's heading opens the Edge glow,
-  Shading, Shadows and Gloss switches, over the view.
-- **Layout rule:** on a phone, nothing appears or disappears in the page's flow except
-  through a disclosure triangle (and the turn list, which grows with the turns). Help and
-  switches open in panels over the views; messages float near the bottom of the screen and
-  fade after 4 seconds (8 for errors) or a tap. The browser tests check the page height.
+- **Display panel:** the Display button beside the 3D view's heading (on phones, over the
+  view's top right corner) opens the Edge glow, Shading, Shadows and Gloss switches, over the view.
+- **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. At the
+  top, the 3D view (34% of the screen's height), the view buttons, the hold line, and the
+  **playback strip**: the turn list on one row that scrolls sideways (kept so the current
+  turn and the next two things after it show), the playback buttons with the counter, and
+  the speed slider. Below, a row of **tabs** (Solve, Turn, Algorithms, Flat, Saved) and the
+  **panels**, side by side in a carousel that shows one at a time: a tap on a tab, a
+  sideways swipe across the panels, or a finger slid along the tabs picks one; each panel
+  scrolls up and down by itself, and the one shown is kept on the device. The panels' own
+  headings are hidden (the tabs name them). The status chips (X shape, Solved) sit over the
+  3D view's top left corner. Help and switches open in panels over the views; messages float
+  over the top of the 3D view (on wide screens, near the bottom of the screen) and fade after
+  4 seconds (8 for errors) or a tap. **Wide** (900 px and up, an iPad in landscape): the 3D
+  view and the strip on the left, staying put, and the panels stacked in a column on the
+  right, each collapsing from its heading; no tabs.
+- **Panels:** **Solve** (the step guide, then Start, Clear, Reset to solved and Shuffle),
+  **Turn** (Undo and the turn amount, the turn buttons, which outer turns are allowed, and
+  the turn field), **Algorithms**, **Flat** (the flat view), **Saved** (saved states and
+  the state code).
 - **Playback:** ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
   draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1
   forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
@@ -273,13 +289,15 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
   orthographic cameras, so it animates, centered in its panel. Its ⓘ button explains how to read it.
 - **State code** (a disclosure in Saved states): one single-line field, with Copy and Load
-  beside the heading. It shows the current position's code as a read-out (no fill);
+  beside the heading. It shows the current position's code as a read-out (no fill), drawn
+  over the field at the size that fits it on one line (13px at most, about 9.6px on an iPhone);
   tapping into it empties it for a code to be pasted or typed, and leaving it empty shows
   the code again. Typed text that isn't a code gets a thick red outline and Load stays
   off. Copy copies the current position's code (putting it back in the field). If the
   position changes while typed text waits, the text is replaced by the new code, the field
   flashes and a message says so. Its ✕ puts the current code back.
 - **Text fields** each have a ✕ at the right end while they hold text; it empties the field.
+  Their text is 16px: iOS zooms the page into a focused field with smaller text.
 - **Status chips** (X shape, Solved, an outer turn that is allowed) are green: green means
   a state is good, blue (the highlight) means a control is selected or active.
 - **Edge glow:** a soft band at a depth discontinuity, in the color of the sticker around
@@ -345,7 +363,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   the centers that should be opposite) or "Wrong center color order"
   (halo on all six centers that show). A cube painted as the real one shows is always
   valid, so any problem means a sticker painted wrong.
-- **Step guide:** "Solve step by step", a disclosure in the Run an algorithm panel. **Next
+- **Step guide:** the Solve panel. **Next
   step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
   the position shown, adds its turns at the current step, unplayed, and a line under the
   button gives "Step 2 of 9 —" (counted from when the guide was started; a step taken
@@ -421,19 +439,20 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   ("3. Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
   undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows
   that step again at the position it begins from.
-  **Stop**, or closing the disclosure, drops the step, its grays and its line and leaves
+  **Stop** drops the step, its grays and its line and leaves
   the turn list alone; Next step starts again from the position shown. Playing the step returns the colors and the line reads "(done)". Any change that
   takes the step's turns out of the turn list (a turn by hand, Clear, Edit) drops the step,
-  its grays and its line; so does Edit colors. The line has a fixed height (layout rule).
+  its grays and its line; so does Edit colors. Going to another panel keeps the step. With
+  no step, the line says what Next step does (drawn by CSS, so it isn't in the line's text).
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.
-- **Turn field:** in the Run an algorithm panel, under Clear. Load adds the typed turns at
+- **Turn field:** in the Turn panel, under the turn buttons. Load adds the typed turns at
   the current step (replacing any after it) and empties the field, so the turn list is the
   one record of the turns. Edit puts the whole turn list in the field and Load reads Update:
   it replaces the list, keeping the position where the old and new lists agree; Cancel
   leaves the list as it was.
-- **Algorithms list:** in the Run an algorithm panel. Load makes an algorithm's position
+- **Algorithms list:** the Algorithms panel. Load makes an algorithm's position
   the start, with its turns loaded and unplayed; Save keeps the turn list with the
   current start position; ✕ deletes (after Delete or Keep). Kept like saved states: the shared
   database's `algorithms` collection (`name`, `alg`, `code` for the start position, `note`,

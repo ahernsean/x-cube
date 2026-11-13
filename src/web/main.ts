@@ -501,6 +501,8 @@ function initScene(canvas: HTMLCanvasElement) {
   bindOrbit(canvas);
   resize();
   window.addEventListener("resize", resize);
+  // The phone layout sizes the view by the screen's height, which changes as Safari's bars come and go.
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => resize()).observe(renderer.domElement);
   syncMeshes(app.current);
   frame();
 }
@@ -1228,7 +1230,7 @@ function resize() {
 const COMPASS_FACES = ["R", "L", "U", "D", "F", "B"];
 let compassKey = "";
 /** Label scale for an axis pointing straight away from you and straight at you. */
-const COMPASS_MIN = 0.85, COMPASS_MAX = 2.7;
+const COMPASS_MIN = 0.85, COMPASS_MAX = 2;
 /**
  * Edge labels that move with the cube: each face's label sits where that face's axis
  * (its outward normal from the center), as seen on screen, meets the edge of the 3D
@@ -1280,7 +1282,15 @@ function updateCompass() {
     items.push({ el, x, y, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4, scale, z: dir.z });
   }
   items.sort((a, b) => b.vis - a.vis);
-  const placed: typeof items = [];
+  // What else sits over the view (the status chips; on phones the ⓘ and Display buttons)
+  // is in place first, so a label slides clear of it too.
+  const placed: { x: number; y: number; hw: number; hh: number }[] = [];
+  const cr = canvas.getBoundingClientRect();
+  for (const el of document.querySelectorAll<HTMLElement>(".stage > .status, .stage-col > .view-head .view-tools")) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || r.bottom < cr.top || r.top > cr.bottom) continue;
+    placed.push({ x: r.left - cr.left + r.width / 2, y: r.top - cr.top + r.height / 2, hw: r.width / 2 + 2, hh: r.height / 2 + 2 });
+  }
   for (const it of items) {
     if (it.vis > 0.05) {
       for (let tries = 0; tries < 8; tries++) {
@@ -1312,6 +1322,8 @@ function faceCenterColor(st: State, d: number): Color | null {
 }
 
 let view3dSection: HTMLElement | null = null;
+/** Wide screens show the panels in a column (and sections collapse); phones, a carousel. */
+const WIDE = window.matchMedia("(min-width: 900px)");
 function frame() {
   view3dSection ??= document.querySelector<HTMLElement>("[data-sec=view3d]");
   if (tween) {
@@ -1339,7 +1351,7 @@ function frame() {
       r.copy.quaternion.copy(r.turns[k]).slerp(r.turns[k + 1], at - k);
     }
   }
-  const view3dOpen = !view3dSection?.classList.contains("collapsed");
+  const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
   if (view3dOpen) updateCompass();
   renderNetAnimation();
   if (view3dOpen) renderer.render(scene, camera);
@@ -2063,7 +2075,7 @@ function runAlg(src: string, play: boolean): boolean {
   const startCursor = app.cursor;
   app.history = app.history.slice(0, app.cursor).concat(turns.slice(0, ok));
   if (why) setMessage(stopsAt(turns, ok, why), "error");
-  else setMessage(`${turns.length} turns loaded`, "ok");
+  else setMessage(`${turns.length} ${turns.length === 1 ? "turn" : "turns"} loaded`, "ok");
   if (play) for (let i = startCursor; i < app.history.length; i++) enqueue(app.history[i], true);
   playing = play && queue.length > 0;
   render();
@@ -2410,7 +2422,8 @@ function render() {
   const outer = outerAvailability(st)
     .map(([n, c]) => chip(c === 9 ? n : `${n} ${c}/9`, c === 9 ? "on" : "off", c === 9 ? `${n} can turn` : `${n} refuses: ${c} of 9 cubelets`))
     .join("");
-  $("status").innerHTML = `${shape}${solved}<span class="outer-label">Outer turns</span>${outer}`;
+  $("status").innerHTML = `${shape}${solved}`;
+  $("outer-status").innerHTML = `<span class="outer-label">Outer turns</span>${outer}`;
 
   // hold: which center colors face up, toward you and to your right, as they are now
   const side = (d: number) => {
@@ -2433,11 +2446,8 @@ function render() {
 
   // history strip
   const hist = turnListHtml();
-  $("history").innerHTML = hist || `<span class="hint">Turns you make or load appear here. Tap one to jump to it.</span>`;
-  // Keep the shown step's box, or else the current turn, in sight within the list.
-  const list = $("history");
-  const shown = list.querySelector<HTMLElement>(".step-box.on") ?? list.querySelector<HTMLElement>(".tok.cur");
-  if (shown && (shown.offsetTop < list.scrollTop || shown.offsetTop + shown.offsetHeight > list.scrollTop + list.clientHeight)) list.scrollTop = shown.offsetTop;
+  $("history").innerHTML = hist || `<span class="hint">Turns you make or load appear here; tap one to go to it.</span>`;
+  keepTurnInSight();
   $("counter").textContent = `${app.cursor} / ${app.history.length}`;
   $("load").textContent = editingTurns ? "Update" : "Load";
   $("alg-edit").textContent = editingTurns ? "Cancel" : "Edit";
@@ -2493,11 +2503,12 @@ function render() {
     codeBox.classList.remove("replaced");
     void codeBox.offsetWidth; // restart the flash
     codeBox.classList.add("replaced");
-    setMessage("The puzzle moved, so the code you typed was replaced by this position's", "info");
+    setMessage("The puzzle moved, so the code you typed was replaced by the current position's", "info");
   }
   codeShown = code;
   const blankForTyping = !codeTyped && codeBlank;
   if (!codeTyped && !blankForTyping) codeField.value = code;
+  $("code-readout").textContent = code;
   codeBox.classList.toggle("showing", !codeTyped && !blankForTyping);
   const typedOk = codeTyped && codeIsValid(codeField.value);
   codeField.classList.toggle("invalid", codeTyped && !typedOk);
@@ -2509,6 +2520,28 @@ function render() {
   note.textContent = why === null ? "" : "No letter code: turns can't reach this position.";
   note.title = why ?? "";
   renderAlgorithms();
+}
+
+/**
+ * The turn list is one row that scrolls sideways: keep the current turn (or, before a
+ * step's first turn, its tag) in sight, with a little of what comes next.
+ */
+function keepTurnInSight() {
+  const list = $("history");
+  // The current turn and the next two things after it (a step's tag and its first turn,
+  // say), or the start of the list before the first turn.
+  const items = [...list.querySelectorAll<HTMLElement>(".tok, .step-tag")];
+  const at = items.findIndex((e) => e.classList.contains("cur"));
+  const shown = items.slice(Math.max(0, at), at + 3);
+  if (!shown.length) return;
+  const left = offsetIn(shown[0], list), last = shown[shown.length - 1];
+  const right = Math.min(offsetIn(last, list) + last.offsetWidth, left + list.clientWidth - 8), room = list.clientWidth;
+  if (left < list.scrollLeft + 4) list.scrollLeft = Math.max(0, left - 24);
+  else if (right > list.scrollLeft + room - 4) list.scrollLeft = right - room + 24;
+}
+/** An element's left edge in a scrolling container's content. */
+function offsetIn(el: HTMLElement, container: HTMLElement): number {
+  return el.getBoundingClientRect().left - container.getBoundingClientRect().left + container.scrollLeft;
 }
 
 /** The state code field holds a code typed or pasted in, not yet loaded. */
@@ -2615,6 +2648,91 @@ function bindMoveButtons() {
 }
 
 /** Each section's heading collapses and expands it; the choice is remembered on this device. */
+// Panel tabs (phones). The panels sit side by side in a sideways-scrolling row that snaps to
+// one panel; a tab scrolls to its panel, and scrolling (a swipe) selects the tab of the panel
+// in view. Sliding a finger along the tab row selects each tab it passes. The panel shown
+// is kept on the device.
+const TAB_KEY = "xcube-lab-tab";
+function setupTabs() {
+  const stack = $("stack-col");
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>("#tabs [data-tab]")];
+  const panelOf = (t: HTMLButtonElement) => document.getElementById(t.getAttribute("aria-controls")!)!;
+  const mark = (on: HTMLButtonElement) => {
+    for (const t of tabs) {
+      t.setAttribute("aria-selected", String(t === on));
+      t.tabIndex = t === on ? 0 : -1;
+    }
+    try {
+      localStorage.setItem(TAB_KEY, on.dataset.tab!);
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const show = (t: HTMLButtonElement, smooth: boolean) => {
+    mark(t);
+    if (WIDE.matches) return;
+    const left = offsetIn(panelOf(t), stack);
+    stack.scrollTo({ left, behavior: smooth && !reduceMotion ? "smooth" : "auto" });
+  };
+  let saved = "solve";
+  try {
+    saved = localStorage.getItem(TAB_KEY) || "solve";
+  } catch {
+    /* storage unavailable */
+  }
+  show(tabs.find((t) => t.dataset.tab === saved) ?? tabs[0], false);
+  for (const t of tabs) t.addEventListener("click", () => show(t, true));
+  // A swipe across the panels: the panel nearest in view is the selected one.
+  let settleTimer = 0;
+  stack.addEventListener("scroll", () => {
+    if (WIDE.matches) return;
+    clearTimeout(settleTimer);
+    settleTimer = window.setTimeout(() => {
+      const near = tabs.reduce((a, b) => (Math.abs(offsetIn(panelOf(a), stack) - stack.scrollLeft) <= Math.abs(offsetIn(panelOf(b), stack) - stack.scrollLeft) ? a : b));
+      if (near.getAttribute("aria-selected") !== "true") mark(near);
+    }, 80);
+  });
+  // Sliding along the tab row selects each tab under the finger.
+  const row = $("tabs");
+  let sliding = false;
+  const under = (e: PointerEvent) =>
+    tabs.find((b) => {
+      const r = b.getBoundingClientRect();
+      return e.clientX >= r.left && e.clientX < r.right;
+    });
+  const pick = (e: PointerEvent) => {
+    const t = under(e);
+    if (t && t.getAttribute("aria-selected") !== "true") show(t, true);
+  };
+  // The row captures the pointer, so a tap selects on the way down rather than by click.
+  row.addEventListener("pointerdown", (e) => {
+    sliding = true;
+    row.setPointerCapture?.(e.pointerId);
+    pick(e);
+  });
+  row.addEventListener("pointermove", (e) => {
+    if (sliding) pick(e);
+  });
+  const end = () => (sliding = false);
+  row.addEventListener("pointerup", end);
+  row.addEventListener("pointercancel", end);
+  // Arrow keys move between tabs.
+  row.addEventListener("keydown", (e) => {
+    const i = tabs.findIndex((t) => t.getAttribute("aria-selected") === "true");
+    const j = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : -2;
+    if (j >= 0 && j < tabs.length) {
+      e.preventDefault();
+      show(tabs[j], true);
+      tabs[j].focus();
+    }
+  });
+  // Turning the phone, or the layout switching, keeps the selected panel in view.
+  window.addEventListener("resize", () => {
+    const on = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+    if (on) show(on, false);
+  });
+}
+
 const SEC_KEY = "xcube-lab-collapsed";
 function setupCollapsibles() {
   let closed: string[] = [];
@@ -2698,9 +2816,6 @@ function bindUI() {
   $("guide-stop").addEventListener("click", () => stopGuide());
   $("guide-start").addEventListener("click", () => goToStep(guide ?? undefined));
   $("guide-show").addEventListener("click", () => showGuide());
-  $("guide").addEventListener("toggle", () => {
-    if (!($("guide") as HTMLDetailsElement).open) stopGuide();
-  });
   bindViewTools();
   $("edit-start").addEventListener("click", () => startEdit());
   $("edit-done").addEventListener("click", () => endEdit(true));
@@ -2725,6 +2840,7 @@ function bindUI() {
     });
   }
   setupCollapsibles();
+  setupTabs();
   document.addEventListener("click", async (e) => {
     const t = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null;
     if (!t) return;
@@ -2934,7 +3050,7 @@ function startEdit() {
   const colors = visibleColors(st);
   edit = { shape: st, colors, fit: fitColors(st, colors), shown: st.clone(), paint: "W", painted: [], highlight: null, hidden: null, selected: "" };
   document.body.classList.add("editing");
-  ($("stack-col") as HTMLElement & { inert: boolean }).inert = true;
+  for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = true;
   renderEdit();
 }
 
@@ -3065,7 +3181,7 @@ function nextStep() {
   };
   trail.push(guide);
   app.history = app.history.slice(0, app.cursor).concat(step.turns);
-  setMessage(`${step.turns.length} turns loaded`, "ok");
+  setMessage(`${step.turns.length} ${step.turns.length === 1 ? "turn" : "turns"} loaded`, "ok");
   render();
 }
 
@@ -4114,7 +4230,7 @@ function endEdit(apply: boolean) {
   edit = null;
   placeHalos();
   document.body.classList.remove("editing");
-  ($("stack-col") as HTMLElement & { inert: boolean }).inert = false;
+  for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
   if (apply && e.fit.level === "reachable" && e.fit.state) {
     const changed = !e.fit.state.equals(app.current);
     if (changed) setBase(e.fit.state, "Edited colors");

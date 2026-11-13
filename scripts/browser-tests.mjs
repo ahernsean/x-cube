@@ -327,6 +327,9 @@ labTest(
     const renderOpen = { shown: await isShown("render-pop"), boxes: await page.$$eval("#render-pop input[type=checkbox]", (els) => els.length), height: await pageHeight() };
     await page.click("#info-btn");
     const infoOpen = { shown: await isShown("info-pop"), renderClosed: !(await isShown("render-pop")), height: await pageHeight() };
+    await page.mouse.click(5, 600); // a tap elsewhere closes the open panel
+    await page.click(`[data-tab="flat"]`);
+    await page.waitForTimeout(800);
     await page.click("#flat-info-btn");
     const flatOpen = { shown: await isShown("flat-info-pop"), infoClosed: !(await isShown("info-pop")), height: await pageHeight(), text: await page.$eval("#flat-info-pop", (e) => e.textContent) };
     await page.mouse.click(5, h0 - 5 > 600 ? 600 : 300);
@@ -347,16 +350,45 @@ labTest(
 );
 
 labTest(
-  "layout: the algorithm and turn panels' order, notes and buttons",
+  "layout: the playback strip, the panels' order, notes and buttons",
   async ({ page, check }) => {
-    // The algorithm panel reads top to bottom: the turn list and playback, then Clear, Reset
-    // and Shuffle, then the ways to add turns (typing, and the algorithms list).
-    const runOrder = await page.evaluate(() => {
-      const sec = document.querySelector("[data-sec=run]");
-      const ids = ["#history", ".transport", ".base-actions", "#alg", "details.known"];
-      const els = ids.map((q) => sec.querySelector(q));
+    // The strip under the 3D view holds the turn list, the playback buttons and the speed,
+    // outside the panels. The tabs name the panels in their order.
+    const strip = await page.evaluate(() => {
+      const dock = document.getElementById("dock");
+      const els = ["#history", ".transport", "#speed"].map((q) => dock.querySelector(q));
+      const inOrder = els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+      return inOrder && !document.getElementById("stack-col").contains(dock);
+    });
+    check(strip, "the strip holds the turn list, the playback buttons and the speed, outside the panels");
+    const tabs = await page.$$eval("#tabs [data-tab]", (els) => els.map((t) => `${t.textContent}>${document.getElementById(t.getAttribute("aria-controls"))?.dataset.sec}`).join());
+    const panels = await page.$$eval("#stack-col > .panel", (els) => els.map((e) => e.dataset.sec).join());
+    check(tabs === "Solve>solve,Turn>turn,Algorithms>algs,Flat>flat,Saved>saved" && panels === "solve,turn,algs,flat,saved", `the tabs name the panels in order (${tabs}; ${panels})`);
+    // The solve panel reads top to bottom: the step buttons, the step's text, the order, then
+    // Clear, Reset and Shuffle.
+    const solveOrder = await page.evaluate(() => {
+      const sec = document.getElementById("guide");
+      const els = ["#next-step", "#guide-line", ".guide-modes", ".base-actions"].map((q) => sec.querySelector(q));
       return els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
     });
+    check(solveOrder, "the solve panel shows the step buttons, the step's text, the order, then Clear/Reset/Shuffle");
+    const btnRows = await page.$$eval(".guide-btns .btn", (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size);
+    check(btnRows === 1, "the four step buttons share one row at phone width");
+    // iOS zooms into a focused text field whose text is under 16px.
+    const small = await page.$$eval('input[type="text"]', (els) => els.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16).map((e) => e.id));
+    check(small.length === 0, `every text field's text is at least 16px, so iOS doesn't zoom in (${small.join() || "none smaller"})`);
+    // The turn list is one row that scrolls sideways, keeping the current turn in sight.
+    await page.fill("#alg", "(R U R' U')6");
+    await page.click("#load");
+    await page.click("#fwd");
+    for (let i = 0; i < 20; i++) await page.click("#fwd");
+    await page.waitForFunction(() => window.xcubeProbe.idle(), null, { timeout: 30000 });
+    const row = await page.evaluate(() => {
+      const h = document.getElementById("history"), cur = h.querySelector(".tok.cur");
+      const hr = h.getBoundingClientRect(), cr = cur.getBoundingClientRect();
+      return { oneRow: h.scrollHeight <= h.clientHeight + 1 && hr.height < 44, scrolls: h.scrollWidth > h.clientWidth, curShown: cr.left >= hr.left - 1 && cr.right <= hr.right + 1 };
+    });
+    check(row.oneRow && row.scrolls && row.curShown, `the turn list is one row, scrolled to keep the current turn in sight (${JSON.stringify(row)})`);
     check((await page.$eval("[data-sec=turn] h2", (h) => h.textContent)) === "Turn the puzzle", 'the turn buttons\' panel is "Turn the puzzle"');
     // The slice and rotate notes sit to the right of their buttons, on the same row, no taller than it.
     const notes = await page.evaluate(() =>
@@ -374,8 +406,6 @@ labTest(
     check(infoLook.length === 2 && infoLook.every((v) => v === "rgba(0, 0, 0, 0)/rgba(0, 0, 0, 0)"), "both ⓘ buttons show just the ⓘ, with no button edge or fill");
     check(unitsWhole, "the notes break lines only between units like \"M like L,\", never inside one");
     check(notes.every(Boolean) && (await page.$$eval("[data-sec=turn] .legend", (els) => els.length)) === 0, `the H/M/S and x/y/z notes sit beside their buttons (${notes})`);
-    check(runOrder, "the algorithm panel shows the turn list and playback first, then Clear/Reset/Shuffle, then typing and the algorithms list");
-
     // The turn field's example text fits inside it at phone width.
     const hintFit = await page.evaluate(() => {
       const el = document.getElementById("alg");
@@ -390,12 +420,88 @@ labTest(
   { expand: false },
 );
 
-labTest("layout: every section collapses from its heading", async ({ page, check }) => {
-  const sections = await page.$$eval("[data-sec]", (els) => els.map((e) => e.getAttribute("data-sec")));
-  for (const s of sections) await page.click(`[data-sec=${s}] h2`);
-  const collapsed = await page.$$eval("[data-sec].collapsed", (els) => els.length);
-  check(collapsed === sections.length && sections.length > 0, `all ${sections.length} sections collapse`);
-});
+labTest(
+  "layout: on a phone the page doesn't scroll; tabs, swipes and a slide along the tabs pick the panel; the 3D view stays put",
+  async ({ page, check }) => {
+    const fits = await page.evaluate(() => [document.documentElement.scrollHeight, innerHeight]);
+    check(fits[0] <= fits[1], `the page is one screen tall (${fits[0]} of ${fits[1]} px)`);
+    const scene0 = await page.$eval("#scene", (e) => JSON.stringify(e.getBoundingClientRect()));
+    const state = () =>
+      page.evaluate(() => {
+        const stack = document.getElementById("stack-col").getBoundingClientRect();
+        const sel = document.querySelector('#tabs [aria-selected="true"]')?.dataset.tab;
+        const inView = [...document.querySelectorAll("#stack-col > .panel")].filter((p) => Math.abs(p.getBoundingClientRect().left - stack.left) < 3).map((p) => p.dataset.sec);
+        return { sel, inView: inView.join() };
+      });
+    // Waits until the panel in view stops moving (a smooth scroll can take a while here).
+    const landed = (tab) =>
+      page
+        .waitForFunction(
+          (t) => {
+            const stack = document.getElementById("stack-col");
+            const p = document.querySelector(`#stack-col > [data-sec="${t}"]`);
+            return Math.abs(p.getBoundingClientRect().left - stack.getBoundingClientRect().left) < 3 && document.querySelector('#tabs [aria-selected="true"]')?.dataset.tab === t;
+          },
+          tab,
+          { timeout: 5000 },
+        )
+        .catch(() => {});
+    const seen = [];
+    for (const tab of ["turn", "algs", "flat", "saved", "solve"]) {
+      await page.click(`[data-tab="${tab}"]`);
+      await landed(tab);
+      const st = await state();
+      seen.push(st.sel === tab && st.inView === tab);
+    }
+    const scene1 = await page.$eval("#scene", (e) => JSON.stringify(e.getBoundingClientRect()));
+    check(seen.every(Boolean) && scene0 === scene1, `each tab brings its panel into view, and the 3D view stays put (${seen})`);
+    // A swipe across the panels selects the tab of the panel it lands on.
+    await page.evaluate(() => {
+      const stack = document.getElementById("stack-col");
+      stack.scrollLeft = document.getElementById("panel-flat").getBoundingClientRect().left - stack.getBoundingClientRect().left + stack.scrollLeft;
+    });
+    await landed("flat");
+    const swiped = await state();
+    check(swiped.sel === "flat" && swiped.inView === "flat", `scrolling the panels selects the tab of the one in view (${JSON.stringify(swiped)})`);
+    // Sliding a finger along the tab row selects each tab it passes.
+    const at = (tab) => page.$eval(`[data-tab="${tab}"]`, (b) => { const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    const a = await at("solve"), b = await at("algs");
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) await page.mouse.move(a.x + ((b.x - a.x) * i) / 6, a.y);
+    await page.mouse.up();
+    await landed("algs");
+    const slid = await state();
+    check(slid.sel === "algs" && slid.inView === "algs", `a slide along the tabs selects the tab it ends on (${JSON.stringify(slid)})`);
+    // The panel shown is kept on the device.
+    await page.reload();
+    await page.waitForFunction(() => window.xcubeProbe?.idle(), null, { timeout: 60000 });
+    await landed("algs");
+    const reloaded = await state();
+    check(reloaded.sel === "algs" && reloaded.inView === "algs", `the panel shown is kept after a reload (${JSON.stringify(reloaded)})`);
+  },
+  { expand: false },
+);
+
+labTest(
+  "layout: on a wide screen the panels stack beside the 3D view, with no tabs, and each collapses from its heading",
+  async ({ page, check }) => {
+    const wide = await page.evaluate(() => {
+      const scene = document.getElementById("scene").getBoundingClientRect();
+      const stack = document.getElementById("stack-col").getBoundingClientRect();
+      const tabs = getComputedStyle(document.getElementById("tabs")).display;
+      const panels = [...document.querySelectorAll("#stack-col > .panel")].map((p) => p.getBoundingClientRect());
+      const stacked = panels.every((r, i) => i === 0 || r.top >= panels[i - 1].bottom - 1);
+      return { beside: stack.left >= scene.right, tabs, stacked };
+    });
+    check(wide.beside && wide.tabs === "none" && wide.stacked, `the panels stack in a column right of the 3D view, and the tabs are hidden (${JSON.stringify(wide)})`);
+    const sections = await page.$$eval("[data-sec]", (els) => els.map((e) => e.getAttribute("data-sec")));
+    for (const s of sections) await page.click(`[data-sec=${s}] h2`);
+    const collapsed = await page.$$eval("[data-sec].collapsed", (els) => els.length);
+    check(collapsed === sections.length && sections.length > 0, `all ${sections.length} sections collapse`);
+  },
+  { expand: false, context: { viewport: { width: 1200, height: 900 } } },
+);
 
 // ---- Turns and undo.
 
@@ -706,7 +812,7 @@ labTest("hold line: names the centers up, toward you and on your right, as they 
 // ---- Algorithms, the turn field, Clear and state codes.
 
 labTest("algorithms: a known algorithm loads its position and turns, and playing them does what it says", async ({ page, check, settle, status, counter, hold, turnList, waitForCounter }) => {
-  await page.locator("summary", { hasText: "Algorithms" }).click();
+  await page.click(`[data-tab="algs"]`);
   await page.click('[data-alg-load="flip-df-white-top"]');
   const baseLine = await page.$eval(".base-line", (e) => [e.scrollHeight, e.clientHeight, Math.round(e.getBoundingClientRect().height)]);
   check(baseLine[2] <= 24 && baseLine[0] <= baseLine[1] + 1, `a long start name stays on one line (${baseLine[2]} px tall)`);
@@ -724,7 +830,7 @@ labTest("algorithms: a known algorithm loads its position and turns, and playing
 
 labTest("algorithms: one can be deleted, and the turn list saved as one and loaded back", async ({ page, check, startFresh, counter, turnList }) => {
   // Saved like saved states; on this device the list starts as the known algorithms.
-  await page.locator("summary", { hasText: "Algorithms" }).click();
+  await page.click(`[data-tab="algs"]`);
   const algNames = () => page.$$eval("#known-list .saved-name", (els) => els.map((e) => e.textContent));
   const algsBefore = await algNames();
   await page.click('[data-alg-del="baum-corner"]');
@@ -791,6 +897,8 @@ labTest("state codes: one field shows the current position's code and takes a co
   const shown = await page.$eval("#code", (t) => t.value);
   check(shown === ruState, "the state code shown is the current position's");
   check(/^[A-Z]{4}( [A-Z]{4}){10}$/.test(shown) && (await page.$eval("#code-note", (n) => n.textContent === "")), `the code is 44 letters in groups of 4, with no note (${shown})`);
+  const fit = await page.$eval("#code-readout", (r) => ({ text: r.textContent, fits: r.scrollWidth <= r.clientWidth + 1, px: parseFloat(getComputedStyle(r).fontSize) }));
+  check(fit.text === shown && fit.fits && fit.px >= 8, `the code shows whole on one line at phone width (${fit.px.toFixed(1)}px)`);
   await page.click("#copy-code");
   // Copying is asynchronous (the clipboard may ask for permission); wait for its message.
   const copyMsg = await page
@@ -1210,17 +1318,19 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   const marks = await page.$$eval("#history .step-box.on .tok", (els) => els.map((e) => (e.className.match(/part-(\w+)/) ?? [])[1]).join());
   const want = /\[(.+):/.exec(second.alg) ? /^(regrip,)*(setup,)+(cycle,){8}(undo,?)+$/ : /^(regrip,)*(cycle,?){8}$/;
   check((["corners", "edges"].includes(second.stage) ? want : /^(regrip,)*(turns,?)+$/).test(marks), `the step's turns are marked by part (${second.alg}: ${marks})`);
-  // Stop drops the step's grays and line, and leaves the turn list and its boxes alone; so
-  // does closing the section. Next step starts again from the position shown, counting on.
+  // Stop drops the step's grays and line, and leaves the turn list and its boxes alone.
+  // Next step starts again from the position shown, counting on. Going to another panel and
+  // back keeps the step.
   const before = await turnList();
   await page.click("#guide-stop");
   const stopped = { g: await probe("guide"), line: await line(), list: await turnList(), off: await page.$eval("#guide-stop", (b) => b.disabled) };
   await next();
   const again = await probe("guide");
-  await page.evaluate(() => (document.getElementById("guide").open = false));
+  await page.click(`[data-tab="turn"]`);
+  await page.click(`[data-tab="solve"]`);
   await settle();
-  const closed = await probe("guide");
-  check(stopped.g === null && stopped.line === "" && stopped.list === before && stopped.off && again?.index === 2 && again.alg === second.alg && closed === null, `Stop and closing the section end the guide without touching the turn list; Next step starts it again (${JSON.stringify({ stopped: stopped.g, again: again?.index, closed })})`);
+  const kept = await probe("guide");
+  check(stopped.g === null && stopped.line === "" && stopped.list === before && stopped.off && again?.index === 2 && again.alg === second.alg && kept?.index === 2, `Stop ends the guide without touching the turn list; Next step starts it again; another panel and back keeps it (${JSON.stringify({ stopped: stopped.g, again: again?.index, kept: kept?.index })})`);
   // Editing a turn before a step changes the position it starts from, so the step no
   // longer applies, though its own turns are still in the list.
   await startFresh();
@@ -1278,7 +1388,7 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   await page.fill("#code", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
   await page.click("#import");
   await settle();
-  await page.locator("#guide > summary").click();
+  await page.click(`[data-tab="solve"]`);
   await page.click('[data-guide-mode="layers"]');
   await page.click("#next-step");
   await settle();
@@ -1314,7 +1424,7 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   await page.fill("#code", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
   await page.click("#import");
   await settle();
-  await page.locator("#guide > summary").click();
+  await page.click(`[data-tab="solve"]`);
   await page.click('[data-guide-mode="layers"]');
   const FACE = { R: [1, 0, 0], L: [-1, 0, 0], U: [0, 1, 0], D: [0, -1, 0], F: [0, 0, 1], B: [0, 0, -1] };
   const angle = (u, v) => (Math.acos(Math.max(-1, Math.min(1, (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (Math.hypot(...u) * Math.hypot(...v))))) * 180) / Math.PI;
@@ -1374,7 +1484,7 @@ labTest("guide: a flying cubelet turns only about the axis its sticker turns abo
   await page.fill("#code", "KLSM RMQS NGSD YZPP ELND KEFV WOPY KHDX CARB ZUAG LCMZ");
   await page.click("#import");
   await settle();
-  await page.locator("#guide > summary").click();
+  await page.click(`[data-tab="solve"]`);
   await page.click('[data-guide-mode="layers"]');
   await page.click("#next-step");
   await settle();
@@ -1391,7 +1501,7 @@ labTest("guide: a cubelet turning in place has a disc, and its unit rises past i
   await page.fill("#code", "MKCT OOXD PDQK ZTIX BSRG LFFL MBXH TUNQ CCAY TMCT GMUR");
   await page.click("#import");
   await settle();
-  await page.locator("#guide > summary").click();
+  await page.click(`[data-tab="solve"]`);
   await page.click('[data-guide-mode="layers"]');
   await page.click("#next-step");
   await settle();
@@ -1416,7 +1526,7 @@ labTest("guide: only the cubelets a step moves or turns keep their colors", asyn
   await page.fill("#code", "JOJT HKNW MEZE HNZG NDXA YKTH CBNN CGVJ JLAC BAPV SSXJ");
   await page.click("#import");
   await settle();
-  await page.locator("#guide > summary").click();
+  await page.click(`[data-tab="solve"]`);
   await page.click('[data-guide-mode="layers"]');
   await page.click("#next-step");
   await settle();
@@ -1426,7 +1536,7 @@ labTest("guide: only the cubelets a step moves or turns keep their colors", asyn
 });
 
 labTest("guide: a parity turn has one arc around the outside of its layer", async ({ page, check, probe, settle, play }) => {
-  await page.locator("#guide > summary").click();
+  await page.click(`[data-tab="solve"]`);
   await play("U");
   await page.click("#next-step");
   await settle();

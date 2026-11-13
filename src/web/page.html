@@ -51,7 +51,14 @@ h1 { font-family: var(--f-display); font-weight: 700; font-size: 28px; letter-sp
 h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 8px; color: var(--muted); }
 .sub { color: var(--muted); font-size: 13px; }
 .wrap { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
-@media (min-width: 900px) { .wrap { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; } .stage-col { position: sticky; top: env(safe-area-inset-top, 0px); } }
+.stage-col { position: relative; }
+/* The panel tabs (phones): tap one, or slide a finger along the row. */
+.tabs { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--off-bg); touch-action: none; -webkit-user-select: none; user-select: none; }
+.tabs button { flex: 1 1 auto; min-width: 0; min-height: 34px; padding: 6px 4px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: 600 13px var(--f-body); cursor: pointer; white-space: nowrap; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The playback strip: the turn list on one sideways-scrolling row, the buttons, the speed. */
+.dock { display: grid; gap: 6px; margin-top: 8px; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
 .stack { display: grid; gap: 14px; min-width: 0; }
 .stage { position: relative; background: var(--stage); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; }
@@ -103,7 +110,9 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .edit-show { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 2px 0; margin-left: 6px; text-decoration: underline; white-space: nowrap; cursor: pointer; }
 .edit-actions { display: flex; gap: 8px; }
 .edit-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.stage > .status { position: absolute; top: 6px; left: 6px; z-index: 4; pointer-events: none; }
+.outer-status { margin-top: 10px; }
 .outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }
 .chip { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--off-bg); color: var(--muted); white-space: nowrap; }
 .chip.good { background: var(--good-bg); color: var(--good); font-family: var(--f-body); font-weight: 700; }
@@ -131,14 +140,18 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .field-clear { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font: 400 22px/1 var(--f-body); cursor: pointer; }
 .field-clear:hover { color: var(--ink); }
 .field input:placeholder-shown + .field-clear, .field.showing .field-clear { display: none; }
-input[type="text"], textarea { font: 15px var(--f-mono); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; width: 100%; }
+/* 16px: iOS zooms the page into a focused field with smaller text. */
+input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; width: 100%; }
 /* The state code: one field shows the current position's code (a read-out, no fill) and
    takes one typed or pasted (a field like the others). Its buttons sit beside the heading. */
 .code-box { position: relative; }
 .code-btns { position: absolute; top: 0; right: 0; display: flex; gap: 6px; }
 .code-btns .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.code-box .field input { font-size: 13px; }
-.code-box .field.showing input { background: transparent; }
+.code-box .field { container-type: inline-size; }
+.code-box .field.showing input { background: transparent; color: transparent; }
+/* The current code, drawn over the field at the size that fits it on one line (13px at most). */
+.code-readout { display: none; position: absolute; inset: 0; padding: 0 11px; align-items: center; pointer-events: none; font-family: var(--f-mono); font-size: 9px; font-size: min(13px, calc((100cqw - 22px) / 32.6)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.code-box .field.showing .code-readout { display: flex; }
 .code-box .field input.invalid { outline: 3px solid var(--bad); outline-offset: 0; border-color: var(--bad); }
 .code-box .field.replaced input { animation: code-replaced 1.6s ease-out; }
 @keyframes code-replaced { 0%, 30% { background: var(--warn-bg); border-color: var(--warn); } 100% { background: transparent; } }
@@ -172,10 +185,13 @@ input[type="text"], textarea { font: 15px var(--f-mono); background: var(--bg); 
 /* The start bar is drawn, so ⏮ is the same ◀ as its neighbors (iOS draws ⏮ as an emoji). */
 .tp-bar { display: inline-block; width: 2.5px; height: 0.78em; margin-right: 1px; background: currentColor; vertical-align: -0.06em; }
 .tp.stop { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-.history { position: relative; display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
+.history { position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: 2px; min-height: 32px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; }
+.history::-webkit-scrollbar { display: none; }
+.history > *, .step-box > * { flex: none; }
+.history > .hint { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tok { font: 13px var(--f-mono); border: 0; background: var(--off-bg); color: var(--muted); border-radius: 5px; padding: 3px 6px; cursor: pointer; }
 /* A step the guide loaded: its turns in a box, behind a tag that goes to the step's start. */
-.step-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
+.step-box { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
 .step-box.on { border-color: var(--accent); }
 /* The setup and its undoing are marked alike, under the turn; a regrip is ringed. */
 .tok.part-setup, .tok.part-undo { box-shadow: inset 0 -2px 0 var(--accent); }
@@ -185,7 +201,7 @@ input[type="text"], textarea { font: 15px var(--f-mono); background: var(--bg); 
 .step-tag { font: 700 11px var(--f-body); border: 0; background: none; color: var(--accent); padding: 3px 4px; cursor: pointer; white-space: nowrap; }
 .tok.done { background: var(--good-bg); color: var(--good); }
 .tok.cur { box-shadow: inset 0 0 0 2px var(--good); } /* inside the chip: .history clips anything drawn outside */
-.transport { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.transport { display: flex; gap: 6px; align-items: center; }
 .counter { font: 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
 .hint { color: var(--muted); font-size: 13px; }
 .net { display: grid; grid-template-columns: repeat(4, minmax(0, 100px)); grid-template-rows: repeat(3, auto); gap: 6px; justify-content: center; }
@@ -210,9 +226,12 @@ input[type="text"], textarea { font: 15px var(--f-mono); background: var(--bg); 
 .add-turns { margin-top: 10px; }
 .known { margin-top: 10px; }
 .known summary { cursor: pointer; font-weight: 600; }
-/* A fixed height, so a step's text never moves what is below it. */
+/* The four step buttons share one row, even on a phone. */
+.guide-btns { flex-wrap: nowrap; gap: 6px; }
+.guide-btns .btn { flex: 1 1 auto; min-width: 0; padding-inline: 6px; white-space: nowrap; }
 .guide-modes button { font: 600 13px var(--f-body); padding: 6px 10px; min-height: 34px; }
-.guide-line { margin: 8px 0 0; height: 5.85em; overflow-y: auto; font-size: 14px; }
+.guide-line { margin: 8px 0 0; font-size: 14px; }
+.guide-line:empty::before { content: "Next step loads one step toward solved, ready to play with ▶ above. The ⓘ on the 3D view explains the paths."; color: var(--muted); font-size: 13px; }
 .known-alg { font: 13px var(--f-mono); overflow-wrap: anywhere; }
 .saved { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .saved li { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
@@ -226,9 +245,11 @@ input[type="text"], textarea { font: 15px var(--f-mono); background: var(--bg); 
 .sec-toggle::before, details > summary::before { content: ""; flex: none; width: 0; height: 0; border-left: 8px solid currentColor; border-top: 5px solid transparent; border-bottom: 5px solid transparent; transform: rotate(90deg); transition: transform 0.15s; }
 [data-sec].collapsed .sec-toggle::before, details:not([open]) > summary::before { transform: rotate(0deg); }
 .sec-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-[data-sec].collapsed > :not(.sec-head) { display: none !important; }
-[data-sec].collapsed .turn-head > :not(h2) { display: none !important; }
-[data-sec].collapsed .sec-head > :not(h2) { display: none !important; }
+@media (min-width: 900px) {
+  [data-sec].collapsed > :not(.sec-head) { display: none !important; }
+  [data-sec].collapsed .turn-head > :not(h2) { display: none !important; }
+  [data-sec].collapsed .sec-head > :not(h2) { display: none !important; }
+}
 .sec-title { margin: 0 0 6px; }
 @media (prefers-reduced-motion: reduce) { .sec-toggle::before, details > summary::before { transition: none; } }
 details summary { cursor: pointer; display: flex; align-items: center; gap: 6px; list-style: none; font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-size: 15px; }
@@ -239,12 +260,46 @@ details[open] summary { margin-bottom: 8px; }
 .speed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); flex: 1 1 auto; min-width: 0; }
 .speed input { flex: 1 1 auto; min-width: 0; }
 @media (prefers-reduced-motion: reduce) { .mv:active { transform: none; } }
+/* Wide screens: the 3D view and the playback strip on the left, the panels stacked in a
+   column on the right, each collapsing from its heading. */
+@media (min-width: 900px) {
+  .wrap { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; }
+  .stage-col { position: sticky; top: env(safe-area-inset-top, 0px); }
+  .tabs { display: none !important; }
+  #scene { height: clamp(260px, calc(100dvh - 330px), 640px) !important; }
+}
+/* Phones: one screen, no page scrolling. The 3D view and the playback strip stay put; the
+   panels below are a carousel, one at a time, picked by the tab row or a sideways swipe. */
+@media (max-width: 899px) {
+  html, body { height: 100%; overflow: hidden; }
+  body { margin: 0; display: flex; flex-direction: column; height: 100dvh; padding-block: max(8px, env(safe-area-inset-top, 0px)) 0; }
+  header { display: none; }
+  .wrap { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; flex-direction: column; gap: 8px; }
+  .stage-col, .tabs { flex: none; }
+  .stage-col > .view-head { position: absolute; top: 4px; right: 4px; z-index: 25; margin: 0; }
+  .stage-col > .view-head .pop { width: min(330px, calc(100vw - 48px)); max-width: none; }
+  .stage-col > .view-head h2 { display: none; }
+  .stage-col > .view-head .btn.tool-btn:not(.info) { background: color-mix(in srgb, var(--panel) 75%, transparent); }
+  #scene { height: clamp(180px, 34dvh, 520px); }
+  /* Messages float over the top of the 3D view, clear of the panel being read. */
+  .message { top: calc(44px + env(safe-area-inset-top, 0px)); bottom: auto; }
+  .stack { flex: 1 1 auto; min-height: 0; display: flex; gap: 16px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .stack::-webkit-scrollbar { display: none; }
+  .stack > .panel { flex: 0 0 100%; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-align: start; scroll-snap-stop: always; margin-bottom: max(8px, env(safe-area-inset-bottom, 0px)); }
+  /* The tab row names the panel, so the panels' own headings step aside. */
+  .stack > .panel > h2, .stack .turn-head h2, .stack .view-head h2, .stack .row > h2 { display: none; }
+  .stack .view-head .view-tools { margin-left: auto; }
+  .stack .row:has(> h2) { justify-content: flex-end !important; }
+}
 </style>
 
 <header>
   <h1>X-Cube Lab</h1>
 </header>
 
+<!-- Phones: the 3D view and the playback strip stay at the top; the panels below are a
+     carousel, one at a time, chosen by the tab row or a sideways swipe. Wide screens: the
+     3D view and strip on the left, the panels stacked in a column on the right. -->
 <div class="wrap">
   <div class="stage-col" data-sec="view3d">
     <div class="view-head">
@@ -266,6 +321,7 @@ details[open] summary { margin-bottom: 8px; }
     </div>
     <div class="stage">
       <canvas id="scene" aria-label="3D view of the X-Cube"></canvas>
+      <div class="status" id="status" aria-live="polite"></div>
       <div class="compass" role="group" aria-label="Look at a face">
         <button class="cmp" id="compass-0"></button>
         <button class="cmp" id="compass-1"></button>
@@ -296,13 +352,7 @@ details[open] summary { margin-bottom: 8px; }
       <div class="edit-actions"><button class="btn small primary" id="edit-done">Done</button><button class="btn small" id="edit-cancel">Cancel</button></div>
       <p class="hint">Pick a color, then tap stickers on the cube to paint them. Drag to turn the view.</p>
     </div>
-    <div class="status" id="status" aria-live="polite"></div>
-    <p class="message" id="message" hidden></p>
-  </div>
-
-  <div class="stack" id="stack-col">
-    <section class="panel" data-sec="run">
-      <h2>Run an algorithm</h2>
+    <div class="dock" id="dock" aria-label="Turn list and playback">
       <div class="history" id="history"></div>
       <div class="transport">
         <button class="btn small tp" id="first" aria-label="Back to the start" title="Back to the start"><i class="tp-bar" aria-hidden="true"></i>◀</button>
@@ -310,39 +360,32 @@ details[open] summary { margin-bottom: 8px; }
         <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
         <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
         <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
-        <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
         <span class="counter" id="counter">0 / 0</span>
       </div>
+      <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
+    </div>
+    <p class="message" id="message" hidden></p>
+  </div>
+
+  <div class="tabs" id="tabs" role="tablist" aria-label="Panels">
+    <button role="tab" data-tab="solve" aria-controls="guide">Solve</button><button role="tab" data-tab="turn" aria-controls="panel-turn">Turn</button><button role="tab" data-tab="algs" aria-controls="panel-algs">Algorithms</button><button role="tab" data-tab="flat" aria-controls="panel-flat">Flat</button><button role="tab" data-tab="saved" aria-controls="panel-saved">Saved</button>
+  </div>
+
+  <div class="stack" id="stack-col">
+    <section class="panel" data-sec="solve" id="guide" role="tabpanel">
+      <h2>Solve step by step</h2>
+      <div class="row guide-btns"><button class="btn primary" id="next-step">Next step</button><button class="btn" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn" id="guide-show" title="Turn the view to where this step's paths begin and end">Show</button><button class="btn" id="guide-stop" title="Drop the step and its grays; the turn list stays as it is">Stop</button></div>
+      <p class="guide-line" id="guide-line" aria-live="polite"></p>
+      <div class="row" style="margin-top:8px"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
       <p class="hint base-line" title="The position the turn list starts from">Start: <strong id="base-label">Solved</strong></p>
       <div class="base-actions">
         <button class="btn small ghost" id="clear" title="Clear the turn list; the position shown becomes the start">Clear</button>
         <button class="btn small ghost" id="reset">Reset to solved</button>
         <button class="btn small" id="shuffle">Shuffle</button>
       </div>
-      <div class="alg-row add-turns">
-        <span class="field"><input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Turns to add"><button class="field-clear" type="button" aria-label="Clear the turns typed">×</button></span>
-        <button class="btn primary" id="load" title="Add the turns at the current step, then play them with ▶ or step through them">Load</button>
-        <button class="btn" id="alg-edit" title="Edit the whole turn list here">Edit</button>
-      </div>
-      <details class="known" id="guide">
-        <summary>Solve step by step</summary>
-        <p class="hint" style="margin:6px 0 0">Next step loads one step toward solved, ready to play. The cubelets it applies to keep their colors, and paths show where they go (the ⓘ beside the 3D view says how to read them). In the turn list, a step's tag goes back to its start.</p>
-        <div class="row" style="margin-top:8px"><button class="btn primary" id="next-step">Next step</button><button class="btn" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn" id="guide-show" title="Turn the view to where this step's paths begin and end">Show</button><button class="btn" id="guide-stop" title="Drop the step and its grays; the turn list stays as it is">Stop</button></div>
-        <div class="row" style="margin-top:8px"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
-        <p class="guide-line" id="guide-line" aria-live="polite"></p>
-      </details>
-      <details class="known">
-        <summary>Algorithms</summary>
-        <p class="hint" style="margin:6px 0 0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turn list with its start position.</p>
-        <div class="alg-row" style="margin-top:8px">
-          <span class="field"><input type="text" id="alg-name" placeholder="Name algorithm" autocomplete="off"><button class="field-clear" type="button" aria-label="Clear the name">×</button></span>
-          <button class="btn" id="alg-save">Save</button>
-        </div>
-        <ul class="saved" id="known-list"></ul>
-      </details>
     </section>
 
-    <section class="panel" data-sec="turn">
+    <section class="panel" data-sec="turn" id="panel-turn" role="tabpanel">
       <div class="turn-head">
         <h2>Turn the puzzle</h2>
         <button class="btn small" id="undo">Undo last turn</button>
@@ -369,9 +412,25 @@ details[open] summary { margin-bottom: 8px; }
           <span class="pad-note" id="rotate-note">The whole puzzle: <span><code>x</code> like <code>R</code>,</span> <span><code>y</code> like <code>U</code>,</span> <span><code>z</code> like <code>F</code></span></span>
         </div></div>
       </div>
+      <div class="status outer-status" id="outer-status" aria-live="polite"></div>
+      <div class="alg-row add-turns">
+        <span class="field"><input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Turns to add"><button class="field-clear" type="button" aria-label="Clear the turns typed">×</button></span>
+        <button class="btn primary" id="load" title="Add the turns at the current step, then play them with ▶ or step through them">Load</button>
+        <button class="btn" id="alg-edit" title="Edit the whole turn list here">Edit</button>
+      </div>
     </section>
 
-    <section class="panel" data-sec="flat">
+    <section class="panel" data-sec="algs" id="panel-algs" role="tabpanel">
+      <h2>Algorithms</h2>
+      <p class="hint" style="margin:0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turn list with its start position.</p>
+      <div class="alg-row" style="margin-top:8px">
+        <span class="field"><input type="text" id="alg-name" placeholder="Name algorithm" autocomplete="off"><button class="field-clear" type="button" aria-label="Clear the name">×</button></span>
+        <button class="btn" id="alg-save">Save</button>
+      </div>
+      <ul class="saved" id="known-list"></ul>
+    </section>
+
+    <section class="panel" data-sec="flat" id="panel-flat" role="tabpanel">
       <div class="view-head">
         <h2>Flat view</h2>
         <div class="view-tools">
@@ -384,7 +443,7 @@ details[open] summary { margin-bottom: 8px; }
       <div class="net-wrap"><div class="net" id="net"></div><canvas id="net-canvas" class="net-canvas" aria-hidden="true"></canvas></div>
     </section>
 
-    <section class="panel" data-sec="saved">
+    <section class="panel" data-sec="saved" id="panel-saved" role="tabpanel">
       <div class="row" style="justify-content:space-between"><h2 style="margin:0">Saved states</h2><span class="chip" id="store-kind">Loading</span></div>
       <div class="alg-row" style="margin-top:8px">
         <span class="field"><input type="text" id="save-name" placeholder="Name this position" autocomplete="off"><button class="field-clear" type="button" aria-label="Clear the name">×</button></span>
@@ -393,9 +452,9 @@ details[open] summary { margin-bottom: 8px; }
       <ul class="saved" id="saved-list"></ul>
       <details class="code-box" style="margin-top:12px">
         <summary>State code</summary>
-        <div class="code-btns"><button class="btn" id="copy-code" title="Copy this position's code">Copy</button><button class="btn" id="import" title="Make the position typed in the field the start">Load</button></div>
-        <p class="hint" style="margin:0 0 6px">This position as text.</p>
-        <span class="field showing" id="code-field"><input type="text" id="code" placeholder="Paste or type a state code" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="State code"><button class="field-clear" type="button" id="code-clear" aria-label="Put back this position's code">×</button></span>
+        <div class="code-btns"><button class="btn" id="copy-code" title="Copy the current position's code">Copy</button><button class="btn" id="import" title="Make the position typed in the field the start">Load</button></div>
+        <p class="hint" style="margin:0 0 6px">The current position as text.</p>
+        <span class="field showing" id="code-field"><input type="text" id="code" placeholder="Paste or type a state code" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="State code"><span class="code-readout" id="code-readout" aria-hidden="true"></span><button class="field-clear" type="button" id="code-clear" aria-label="Put back the current position's code">×</button></span>
         <p class="hint" id="code-note" style="margin:4px 0 0; height:1.5em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></p>
       </details>
     </section>
