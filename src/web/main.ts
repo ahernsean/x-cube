@@ -3258,6 +3258,25 @@ function answerConfirm(yes: boolean) {
   if (yes && act) act();
 }
 
+/**
+ * The solver has no step to give: solved and held as the solver wants it (a solved puzzle
+ * held some other way still gets a Regrip step). Only a solved puzzle is asked, once per position.
+ */
+let nothingKey = "", nothingVal = false;
+function nothingToSolve(): boolean {
+  if (!isSolved(app.current)) return false;
+  const key = encodeState(app.current) + guideMode;
+  if (key !== nothingKey) {
+    nothingKey = key;
+    try {
+      nothingVal = solveSteps(app.current, guideMode).length === 0;
+    } catch {
+      nothingVal = false;
+    }
+  }
+  return nothingVal;
+}
+
 /** A solve is under way: from Start solving until Stop. The order can be chosen only between solves. */
 let solving = false;
 const SOLVED_LINE = "Solved. Nothing left to do.";
@@ -3406,7 +3425,7 @@ function refreshGuide() {
   $("next-step").textContent = solving ? "Next step" : "Start solving";
   // In the playback strip, once a solve's turns have all played, ▶ gives way to Next step.
   const atEnd = app.cursor >= app.history.length;
-  const solvedNow = isSolved(app.current);
+  const solvedNow = nothingToSolve();
   const showNext = solving && atEnd && !playing && guideLine !== SOLVED_LINE && !solvedNow;
   // Next step loads the step after the one played; with turns still to play, play them first.
   ($("next-step") as HTMLButtonElement).disabled = solvedNow || (solving && !atEnd);

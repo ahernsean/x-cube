@@ -1396,8 +1396,8 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   );
   await page.click("#last");
   await settle();
-  await next();
-  check((await probe("guide")) === null && /^Solved/.test(await line()), `from solved there is no step ("${await line()}")`);
+  const solvedEnd = await page.evaluate(() => ({ next: document.getElementById("next-step").disabled, strip: document.getElementById("strip-next").hidden, play: document.getElementById("last").disabled }));
+  check(solvedEnd.next && solvedEnd.strip && solvedEnd.play, `once solved, Next step is grayed out and ▶ (grayed out) doesn't give way to it (${JSON.stringify(solvedEnd)})`);
 });
 
 labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, and an edit before the step", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {

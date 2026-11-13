@@ -292,7 +292,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   (disabled) when it can't do anything** right now: the backward buttons at the start, the
   forward ones at the end (▶ stays live as ■ while playing), Load with an empty turn field,
   Start from here and Save (algorithm) with no turns, Reset with the puzzle solved and no
-  turns, Next step while the step's turns are still to play or once solved, Show step after
+  turns, Next step (and Start solving) while the step's turns are still to play or when the solver
+  has nothing to do (solved and held as it wants; a solved puzzle tipped over still gets a
+  Regrip step), Show step after
   the step's first turn. The turn list ends in a ✕ (while there are turns): one tap turns
   it into "Clear?", a second within 3 seconds clears the list as Start from here does. ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
   draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1
