@@ -897,8 +897,8 @@ labTest("state codes: one field shows the current position's code and takes a co
   const shown = await page.$eval("#code", (t) => t.value);
   check(shown === ruState, "the state code shown is the current position's");
   check(/^[A-Z]{4}( [A-Z]{4}){10}$/.test(shown) && (await page.$eval("#code-note", (n) => n.textContent === "")), `the code is 44 letters in groups of 4, with no note (${shown})`);
-  const fit = await page.$eval("#code-readout", (r) => ({ text: r.textContent, fits: r.scrollWidth <= r.clientWidth + 1, px: parseFloat(getComputedStyle(r).fontSize) }));
-  check(fit.text === shown && fit.fits && fit.px >= 8, `the code shows whole on one line at phone width (${fit.px.toFixed(1)}px)`);
+  const fit = await page.$eval("#code-readout", (r) => ({ text: r.textContent, fits: r.scrollWidth <= r.clientWidth + 1, px: parseFloat(getComputedStyle(r).fontSize), sw: r.scrollWidth, cw: r.clientWidth }));
+  check(fit.text === shown && fit.fits && fit.px >= 8, `the code shows whole on one line at phone width (${fit.px.toFixed(1)}px, ${fit.sw} of ${fit.cw} px)`);
   await page.click("#copy-code");
   // Copying is asynchronous (the clipboard may ask for permission); wait for its message.
   const copyMsg = await page

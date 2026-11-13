@@ -2553,9 +2553,17 @@ function fitCodeReadout() {
   const r = $("code-readout");
   r.style.fontSize = "13px";
   if (!r.clientWidth) return; // not laid out (its disclosure is closed)
-  const room = r.clientWidth - parseFloat(getComputedStyle(r).paddingLeft) - parseFloat(getComputedStyle(r).paddingRight);
-  const need = r.scrollWidth - parseFloat(getComputedStyle(r).paddingLeft) - parseFloat(getComputedStyle(r).paddingRight);
-  if (need > room) r.style.fontSize = `${Math.max(7, Math.floor(((13 * room) / need) * 10) / 10)}px`;
+  const pad = parseFloat(getComputedStyle(r).paddingLeft) + parseFloat(getComputedStyle(r).paddingRight);
+  const room = r.clientWidth - pad;
+  const need = r.scrollWidth - pad;
+  if (need <= room) return;
+  // Text width isn't quite in proportion to its size, so check and step down until it fits.
+  let size = Math.floor(((13 * room) / need) * 10) / 10;
+  r.style.fontSize = `${size}px`;
+  while (size > 7 && r.scrollWidth > r.clientWidth) {
+    size = Math.round((size - 0.2) * 10) / 10;
+    r.style.fontSize = `${size}px`;
+  }
 }
 
 /** The state code field holds a code typed or pasted in, not yet loaded. */
@@ -2986,7 +2994,9 @@ function bindUI() {
   });
   document.querySelector(".code-box")!.addEventListener("toggle", () => fitCodeReadout());
   window.addEventListener("resize", () => fitCodeReadout());
+  // A web font that finishes loading changes the width.
   document.fonts?.ready.then(() => fitCodeReadout());
+  document.fonts?.addEventListener?.("loadingdone", () => fitCodeReadout());
   $("code-clear").addEventListener("click", () => {
     codeTyped = false;
     codeField.blur();
