@@ -1729,9 +1729,14 @@ labTest("controls: buttons gray out when they don't apply; the turn list's ✕ a
     await settle();
   }
   const showAfter = await page.$eval("#guide-show", (b) => b.disabled);
-  await page.evaluate(() => document.querySelector('[data-view="top"]').click());
-  await settle();
-  const showMoved = await page.$eval("#guide-show", (b) => b.disabled);
+  // Away from that view (one of the preset views may itself be it), Show step applies again.
+  let showMoved = true;
+  for (const v of ["top", "bottom", "back"]) {
+    await page.evaluate((name) => document.querySelector(`[data-view="${name}"]`).click(), v);
+    await settle();
+    showMoved = await page.$eval("#guide-show", (b) => b.disabled);
+    if (!showMoved) break;
+  }
   check(showAfter && (showBefore || !showMoved), `Show step is grayed out once the view shows the step, and back when the view moves (${JSON.stringify({ showBefore, showAfter, showMoved })})`);
   check(/^2 \/ \d+ steps, \d+ \/ \d+ total turns$/.test(two.head) && /^2\./.test(two.rows[0]) && /^1\..*✓/.test(two.rows[1]) && two.topGap < 6, `the step list shows the newest first at its top, the played one ticked, and the counts of all planned (${JSON.stringify(two)})`);
   // A step's Save… goes to Algorithms with a suggested name, selected, and Save saves that step.
