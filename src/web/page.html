@@ -138,7 +138,12 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .solve-steps { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 6px; }
 .steps-head { margin: 0 0 4px; font-size: 13px; color: var(--muted); }
 .steps-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 220px; overflow-y: auto; }
-.step-row { width: 100%; display: flex; justify-content: space-between; gap: 8px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 14px var(--f-body); text-align: left; cursor: pointer; }
+.steps-list li { display: flex; gap: 4px; align-items: center; }
+.step-save { flex: none; min-height: 28px; padding: 2px 8px; }
+.alg-save-note { margin: 6px 0 0; }
+.alg-save-note[hidden] { display: none; }
+.link-btn { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+.step-row { flex: 1 1 auto; min-width: 0; width: 100%; display: flex; justify-content: space-between; gap: 8px; padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 14px var(--f-body); text-align: left; cursor: pointer; }
 .step-row:hover { background: var(--off-bg); }
 .step-row.on { box-shadow: inset 0 0 0 1.5px var(--accent); }
 .step-row .n { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -230,7 +235,7 @@ input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); 
 .mv[data-move="x"], .mv[data-move="y"], .mv[data-move="z"] { --axis: color-mix(in srgb, var(--muted) 70%, transparent); background-repeat: no-repeat; background-position: center; }
 .mv[data-move="x"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 100% 1.5px; }
 .mv[data-move="y"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 1.5px 100%; }
-.mv[data-move="z"] { background-image: radial-gradient(circle, transparent 10.5px, var(--axis) 11px, var(--axis) 12.25px, transparent 12.75px); }
+.mv[data-move="z"] { background-image: radial-gradient(circle, transparent 10.5px, var(--axis) 11px, var(--axis) 12.25px, transparent 12.75px); background-position: center calc(50% + 1px); }
 /* A button that doesn't apply right now is grayed out. */
 .btn:disabled, .btn:disabled:hover { opacity: 0.4; cursor: not-allowed; border-color: var(--line); }
 .tp-group > .btn.tp:disabled { opacity: 1; color: color-mix(in srgb, var(--muted) 45%, transparent); }
@@ -454,7 +459,7 @@ details[open] summary { margin-bottom: 8px; }
           <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
           <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
           <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
-          <button class="btn small tp next-tp" id="strip-next" aria-label="Next step" title="Load the next step" hidden><svg class="ico" viewBox="0 0 20 18" aria-hidden="true"><circle cx="4" cy="13.5" r="2.4" fill="currentColor"/><circle cx="16" cy="13.5" r="2.4" fill="currentColor"/><path d="M4.4 9.6C5.2 3.8 12.4 3.2 14.4 7.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M11.6 7.6 17.2 9.6 17 3.8z" fill="currentColor"/></svg></button>
+          <button class="btn small tp next-tp" id="strip-next" aria-label="Next step" title="Load the next step" hidden><svg class="ico" viewBox="0 0 20 18" aria-hidden="true"><circle cx="4" cy="13.5" r="2.4" fill="currentColor"/><circle cx="16" cy="13.5" r="2.4" fill="currentColor"/><path d="M4.4 10C5.2 3.6 14.52 3.05 15.2 8.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M15.66 10.98 17.2 7.35 13.24 7.87z" fill="currentColor"/></svg></button>
         </div>
         <span class="counter" id="counter">0 / 0</span>
         <div class="status" id="status" aria-live="polite"><span class="chip" id="shape-chip"></span><span class="outer-grid" id="outer-grid" aria-label="Outer turns"></span></div>
@@ -536,6 +541,7 @@ details[open] summary { margin-bottom: 8px; }
         <span class="field"><input type="text" id="alg-name" placeholder="Name algorithm" autocomplete="off"><button class="field-clear" type="button" aria-label="Clear the name">×</button></span>
         <button class="btn" id="alg-save">Save</button>
       </div>
+      <p class="hint alg-save-note" id="alg-save-note" hidden>Saving <span id="alg-save-what"></span>. <button class="link-btn" id="alg-save-cancel">Cancel</button></p>
       <ul class="saved" id="known-list"></ul>
     </section>
 

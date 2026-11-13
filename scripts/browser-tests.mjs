@@ -1718,7 +1718,20 @@ labTest("controls: buttons gray out when they don't apply; the turn list's ✕ a
   await settle();
   const two = await page.evaluate(() => ({ head: document.getElementById("steps-head").textContent, rows: [...document.querySelectorAll("#steps-list .step-row")].map((r) => r.textContent) }));
   check(/^2 steps, \d+ turns$/.test(two.head) && /^2\./.test(two.rows[0]) && /^1\..*✓/.test(two.rows[1]), `the step list shows the newest first, the played one ticked, and the total (${JSON.stringify(two)})`);
-  await page.click("#steps-list .step-row:last-child");
+  // A step's Save… goes to Algorithms with a suggested name, selected, and Save saves that step.
+  await page.click("#steps-list li:first-child .step-save");
+  await page.waitForTimeout(600);
+  const saving = await page.evaluate(() => {
+    const f = document.getElementById("alg-name");
+    return { tab: document.querySelector('#tabs [aria-selected="true"]').dataset.tab, name: f.value, focused: document.activeElement === f, selected: f.selectionStart === 0 && f.selectionEnd === f.value.length, note: !document.getElementById("alg-save-note").hidden };
+  });
+  check(saving.tab === "algs" && /\(step 2\)$/.test(saving.name) && saving.focused && saving.selected && saving.note, `a step's Save… opens Algorithms with its name suggested and selected (${JSON.stringify(saving)})`);
+  const listed = await page.$$eval("#known-list .saved-name", (els) => els.length);
+  await page.click("#alg-save");
+  const after = await page.$$eval("#known-list li", (els) => els.map((e) => e.textContent));
+  check(after.length === listed + 1 && after.some((t) => /\(step 2\)/.test(t) && /step of a solve/.test(t)), `Save saves the step as an algorithm (${after.length - listed} added)`);
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#steps-list li:last-child .step-row");
   // Axis marks on x, y and z, and a Display panel no wider than its switches.
   const marks = await page.evaluate(() => ["x", "y", "z"].map((m) => getComputedStyle(document.querySelector(`[data-move="${m}"]`)).backgroundImage.slice(0, 15)));
   check(marks[0].startsWith("linear") && marks[1].startsWith("linear") && marks[2].startsWith("radial"), `x and y have a line drawn behind them, z a ring (${marks})`);

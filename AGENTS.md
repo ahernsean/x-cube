@@ -392,7 +392,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   **Start solving**; during a solve (from Start solving until **Stop solving**, across the
   panel's foot) it shows Next step, Step start and Show step, the step's line, and the
   **steps so far**, newest at the top, each with its turn count (tap one to go to its
-  start), under a running total ("3 steps, 13 turns"); on phones the list scrolls between
+  start, or its **Save…** to save it as an algorithm: that goes to the Algorithms panel with
+  a suggested name, selected and focused, and its Save then saves the step's turns from
+  where the step starts), under a running total ("3 steps, 13 turns"); on phones the list scrolls between
   the step's line and Stop solving. The order can't change during a solve. Anything that
   sets a new start (Shuffle, Reset, Edit colors, a code, a saved position, an algorithm,
   clearing the turn list) asks "End the solve in progress?" first, and ends it. In the

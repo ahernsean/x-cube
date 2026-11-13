@@ -2301,13 +2301,19 @@ function watchAlgorithms() {
 }
 
 /** Saves the turn list, with the current start position, under `name`. */
+/** A solve's step waiting to be saved as an algorithm (its Save… in the step list); Save saves it instead of the turn list. */
+let savingStep: Guide | null = null;
 async function saveAlgorithm(name: string) {
-  const turns = app.history;
+  const step = savingStep && trail.includes(savingStep) ? savingStep : null;
+  savingStep = null;
+  const turns = step ? step.step.turns : app.history;
   if (!turns.length) {
     setMessage("Make or load some turns first, then save them.", "error");
     return render();
   }
-  const entry = { name: name || formatAlg(turns), alg: formatAlg(turns), code: encodeState(app.base), note: `From ${app.baseLabel}`, savedAt: Date.now(), source: "page" };
+  const entry = step
+    ? { name: name || formatAlg(turns), alg: formatAlg(turns), code: encodeState(step.from), note: `${STAGE_NAME[step.step.stage]} step of a solve`, savedAt: Date.now(), source: "page" }
+    : { name: name || formatAlg(turns), alg: formatAlg(turns), code: encodeState(app.base), note: `From ${app.baseLabel}`, savedAt: Date.now(), source: "page" };
   if (db) {
     try {
       await db.collection("algorithms").add(entry);
@@ -2391,6 +2397,11 @@ function bindAlgorithms() {
     const n = $("alg-name") as HTMLInputElement;
     saveAlgorithm(n.value.trim());
     n.value = "";
+  });
+  $("alg-save-cancel").addEventListener("click", () => {
+    savingStep = null;
+    ($("alg-name") as HTMLInputElement).value = "";
+    render();
   });
 }
 
@@ -2477,7 +2488,10 @@ function render() {
   dis("fwd", at >= len);
   dis("last", at >= len && !(playing && !playingBack));
   dis("load", !editingTurns && !algField().value.trim());
-  dis("alg-save", !len);
+  if (savingStep && !trail.includes(savingStep)) savingStep = null;
+  dis("alg-save", !len && !savingStep);
+  $("alg-save-note").hidden = !savingStep;
+  if (savingStep) $("alg-save-what").textContent = `step ${savingStep.index}, ${STAGE_NAME[savingStep.step.stage]}: its ${savingStep.step.turns.length} turns, from where it starts`;
   dis("clear", !len);
   dis("reset", !len && isSolved(app.current));
   $("list-clear").hidden = !len || shuffling;
@@ -2694,6 +2708,8 @@ function bindMoveButtons() {
 // in view. Sliding a finger along the tab row selects each tab it passes. The panel shown
 // is kept on the device.
 const TAB_KEY = "xcube-lab-tab";
+/** Brings a panel into view by its tab's name (set up by setupTabs). */
+let showTab: (name: string) => void = () => {};
 function setupTabs() {
   const stack = $("stack-col");
   const tabs = [...document.querySelectorAll<HTMLButtonElement>("#tabs [data-tab]")];
@@ -2726,6 +2742,12 @@ function setupTabs() {
     /* storage unavailable */
   }
   show(tabs.find((t) => t.dataset.tab === saved) ?? tabs[0], false);
+  showTab = (name: string) => {
+    const t = tabs.find((x) => x.dataset.tab === name);
+    if (!t) return;
+    show(t, true);
+    if (WIDE.matches) panelOf(t).scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" });
+  };
   for (const t of tabs) t.addEventListener("click", () => show(t, true));
   // A swipe across the panels: the tab of the panel nearest in view is marked at once, as
   // the panels move, not when they come to rest.
@@ -2905,6 +2927,18 @@ function bindUI() {
       render();
     } else if (ds.jump) jump(Number(ds.jump));
     else if (ds.step) goToStep(trail.find((g) => g.start === Number(ds.step)));
+    else if (ds.stepSave) {
+      const g = trail.find((x) => x.start === Number(ds.stepSave));
+      if (!g) return;
+      savingStep = g;
+      const field = $("alg-name") as HTMLInputElement;
+      field.value = `${STAGE_NAME[g.step.stage]} (step ${g.index})`;
+      render();
+      showTab("algs");
+      // Focus while the tap still counts as the person's own, so iOS brings up the keyboard.
+      field.focus({ preventScroll: true });
+      field.select();
+    }
     else if (ds.guideMode) setGuideMode(ds.guideMode as Mode);
     else if (ds.load) {
       const s = saved.find((x) => x.id === ds.load);
@@ -3379,7 +3413,7 @@ function renderSteps() {
     .map((g) => {
       const done = app.cursor >= g.start + g.step.turns.length;
       const n = g.step.turns.length;
-      return `<li><button class="step-row ${g === guide ? "on" : ""}" data-step="${g.start}" title="Go to the start of this step"><span>${g.index}. ${STAGE_NAME[g.step.stage]}${done ? " ✓" : ""}</span><span class="n">${n} ${n === 1 ? "turn" : "turns"}</span></button></li>`;
+      return `<li><button class="step-row ${g === guide ? "on" : ""}" data-step="${g.start}" title="Go to the start of this step"><span>${g.index}. ${STAGE_NAME[g.step.stage]}${done ? " ✓" : ""}</span><span class="n">${n} ${n === 1 ? "turn" : "turns"}</span></button><button class="btn small step-save" data-step-save="${g.start}" title="Save this step as an algorithm">Save…</button></li>`;
     })
     .join("");
 }
