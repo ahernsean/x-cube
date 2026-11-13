@@ -124,12 +124,25 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .btn.danger { background: var(--bad); border-color: var(--bad); color: var(--panel); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .alg-row { display: flex; gap: 8px; }
-.alg-row input { flex: 1; min-width: 0; }
+.alg-row .field { flex: 1; min-width: 0; }
+/* A text field with a clear button at its right end, shown while the field holds text. */
+.field { position: relative; display: block; min-width: 0; }
+.field input[type="text"]:not(:placeholder-shown) { padding-right: 36px; }
+.field-clear { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font: 400 22px/1 var(--f-body); cursor: pointer; }
+.field-clear:hover { color: var(--ink); }
+.field input:placeholder-shown + .field-clear, .field.showing .field-clear { display: none; }
 input[type="text"], textarea { font: 15px var(--f-mono); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; width: 100%; }
-/* The state code: one field shows the current position's code and takes one to load. */
-.code-row { display: flex; gap: 8px; align-items: stretch; }
-.code-row textarea { flex: 1; min-width: 0; font-size: 13px; resize: none; overflow-wrap: anywhere; }
-.code-btns { display: grid; gap: 6px; align-content: start; }
+/* The state code: one field shows the current position's code (a read-out, no fill) and
+   takes one typed or pasted (a field like the others). Its buttons sit beside the heading. */
+.code-box { position: relative; }
+.code-btns { position: absolute; top: 0; right: 0; display: flex; gap: 6px; }
+.code-btns .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.code-box .field input { font-size: 13px; }
+.code-box .field.showing input { background: transparent; }
+.code-box .field input.invalid { outline: 3px solid var(--bad); outline-offset: 0; border-color: var(--bad); }
+.code-box .field.replaced input { animation: code-replaced 1.6s ease-out; }
+@keyframes code-replaced { 0%, 30% { background: var(--warn-bg); border-color: var(--warn); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .code-box .field.replaced input { animation: none; } }
 .mods { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .mods button { font: 600 15px var(--f-mono); padding: 6px 14px; border: 0; background: var(--panel); color: var(--ink); cursor: pointer; min-height: 38px; }
 .mods button.sel { background: var(--accent); color: var(--accent-ink); }
@@ -156,6 +169,8 @@ input[type="text"], textarea { font: 15px var(--f-mono); background: var(--bg); 
 .keep { display: flex; gap: 6px; align-items: center; }
 .tp { min-width: 44px; font-size: 15px; }
 .tp sub { font-size: 9px; margin-left: 1px; }
+/* The start bar is drawn, so ⏮ is the same ◀ as its neighbors (iOS draws ⏮ as an emoji). */
+.tp-bar { display: inline-block; width: 2.5px; height: 0.78em; margin-right: 1px; background: currentColor; vertical-align: -0.06em; }
 .tp.stop { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .history { position: relative; display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
 .tok { font: 13px var(--f-mono); border: 0; background: var(--off-bg); color: var(--muted); border-radius: 5px; padding: 3px 6px; cursor: pointer; }
@@ -290,7 +305,7 @@ details[open] summary { margin-bottom: 8px; }
       <h2>Run an algorithm</h2>
       <div class="history" id="history"></div>
       <div class="transport">
-        <button class="btn small tp" id="first" aria-label="Back to the start" title="Back to the start">⏮</button>
+        <button class="btn small tp" id="first" aria-label="Back to the start" title="Back to the start"><i class="tp-bar" aria-hidden="true"></i>◀</button>
         <button class="btn small tp" id="rewind" aria-label="Play backward to the start" title="Play backward / stop">◀</button>
         <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
         <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
@@ -305,7 +320,7 @@ details[open] summary { margin-bottom: 8px; }
         <button class="btn small" id="shuffle">Shuffle</button>
       </div>
       <div class="alg-row add-turns">
-        <input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Turns to add">
+        <span class="field"><input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Turns to add"><button class="field-clear" type="button" aria-label="Clear the turns typed">×</button></span>
         <button class="btn primary" id="load" title="Add the turns at the current step, then play them with ▶ or step through them">Load</button>
         <button class="btn" id="alg-edit" title="Edit the whole turn list here">Edit</button>
       </div>
@@ -320,7 +335,7 @@ details[open] summary { margin-bottom: 8px; }
         <summary>Algorithms</summary>
         <p class="hint" style="margin:6px 0 0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turn list with its start position.</p>
         <div class="alg-row" style="margin-top:8px">
-          <input type="text" id="alg-name" placeholder="Name algorithm" autocomplete="off">
+          <span class="field"><input type="text" id="alg-name" placeholder="Name algorithm" autocomplete="off"><button class="field-clear" type="button" aria-label="Clear the name">×</button></span>
           <button class="btn" id="alg-save">Save</button>
         </div>
         <ul class="saved" id="known-list"></ul>
@@ -372,17 +387,15 @@ details[open] summary { margin-bottom: 8px; }
     <section class="panel" data-sec="saved">
       <div class="row" style="justify-content:space-between"><h2 style="margin:0">Saved states</h2><span class="chip" id="store-kind">Loading</span></div>
       <div class="alg-row" style="margin-top:8px">
-        <input type="text" id="save-name" placeholder="Name this position" autocomplete="off">
+        <span class="field"><input type="text" id="save-name" placeholder="Name this position" autocomplete="off"><button class="field-clear" type="button" aria-label="Clear the name">×</button></span>
         <button class="btn primary" id="save">Save</button>
       </div>
       <ul class="saved" id="saved-list"></ul>
-      <details style="margin-top:12px">
+      <details class="code-box" style="margin-top:12px">
         <summary>State code</summary>
-        <p class="hint" style="margin:0 0 6px">This position as text. Paste a code here to load it.</p>
-        <div class="code-row">
-          <textarea id="code" rows="2" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="State code"></textarea>
-          <div class="code-btns"><button class="btn" id="copy-code" title="Copy this position's code">Copy</button><button class="btn" id="import" title="Make the position in the field the start">Load</button></div>
-        </div>
+        <div class="code-btns"><button class="btn" id="copy-code" title="Copy this position's code">Copy</button><button class="btn" id="import" title="Make the position typed in the field the start">Load</button></div>
+        <p class="hint" style="margin:0 0 6px">This position as text.</p>
+        <span class="field showing" id="code-field"><input type="text" id="code" placeholder="Paste or type a state code" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="State code"><button class="field-clear" type="button" id="code-clear" aria-label="Put back this position's code">×</button></span>
         <p class="hint" id="code-note" style="margin:4px 0 0; height:1.5em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></p>
       </details>
     </section>

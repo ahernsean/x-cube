@@ -246,7 +246,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Edge labels:** the six face letters, each placed where that face's axis, as projected on
   screen, meets the edge of the 3D view; tapping one turns the view to that face. They are
   foreshortened: a label on an axis toward the viewer is drawn larger, one pointing away
-  smaller (scale 0.85 to 1.35, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top.
+  smaller (scale 0.85 to 2.7, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top.
 - **Highlight color:** the page's accent blue marks every selected or active control (the
   turn amount, Order, an inverted turn button, the playing transport button).
 - **Disclosure triangles:** one shape for section headings and `details` summaries, drawn
@@ -261,7 +261,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   through a disclosure triangle (and the turn list, which grows with the turns). Help and
   switches open in panels over the views; messages float near the bottom of the screen and
   fade after 4 seconds (8 for errors) or a tap. The browser tests check the page height.
-- **Playback:** ⏮ back to the start, ◀ play backward to the start, ◀1 back one turn, ▶1
+- **Playback:** ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
+  draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1
   forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
 - **Clear:** empties the turn list; the position shown becomes the start ("Current position").
 - **Shuffle:** 30 random legal turns (inner, slices, outer when complete; never the same
@@ -271,10 +272,16 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   slide off to cancel.
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
   orthographic cameras, so it animates, centered in its panel. Its ⓘ button explains how to read it.
-- **State code** (a disclosure in Saved states): one field shows the current position's
-  code and takes a typed or pasted code; Load makes that the start, Copy copies the
-  current position's code (putting it back in the field). A code that fails to load stays
-  in the field to be fixed.
+- **State code** (a disclosure in Saved states): one single-line field, with Copy and Load
+  beside the heading. It shows the current position's code as a read-out (no fill);
+  tapping into it empties it for a code to be pasted or typed, and leaving it empty shows
+  the code again. Typed text that isn't a code gets a thick red outline and Load stays
+  off. Copy copies the current position's code (putting it back in the field). If the
+  position changes while typed text waits, the text is replaced by the new code, the field
+  flashes and a message says so. Its ✕ puts the current code back.
+- **Text fields** each have a ✕ at the right end while they hold text; it empties the field.
+- **Status chips** (X shape, Solved, an outer turn that is allowed) are green: green means
+  a state is good, blue (the highlight) means a control is selected or active.
 - **Edge glow:** a soft band at a depth discontinuity, in the color of the sticker around
   the edge. No glow means that side has no sticker. Only shown where the side face points
   away from the viewer or is edge-on. Where two visible faces of one cubelet meet, the
@@ -341,7 +348,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Step guide:** "Solve step by step", a disclosure in the Run an algorithm panel. **Next
   step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
   the position shown, adds its turns at the current step, unplayed, and a line under the
-  button gives "Step 2 of 9" (counted from when the guide was started; a step taken
+  button gives "Step 2 of 9 —" (counted from when the guide was started; a step taken
   from anywhere but the end of the one before starts the count again), the stage and the goal,
   then on its own line "Turns:" with the turns as the solver writes them (`[setup: cycle]`). Until the step has
   been played through, its colors picture what its turns do (`stepColors`): the cubelets it applies to that it moves or
@@ -411,7 +418,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   guide calls it **Regrip**, and it names the center that is up now ("now blue is up").
   A cycle step's regrip may flip the puzzle over (`x2`); the Hold line then says yellow is up.
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag
-  ("3 Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
+  ("3. Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
   undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows
   that step again at the position it begins from.
   **Stop**, or closing the disclosure, drops the step, its grays and its line and leaves

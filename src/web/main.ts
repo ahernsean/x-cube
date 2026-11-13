@@ -1228,7 +1228,7 @@ function resize() {
 const COMPASS_FACES = ["R", "L", "U", "D", "F", "B"];
 let compassKey = "";
 /** Label scale for an axis pointing straight away from you and straight at you. */
-const COMPASS_MIN = 0.85, COMPASS_MAX = 1.35;
+const COMPASS_MIN = 0.85, COMPASS_MAX = 2.7;
 /**
  * Edge labels that move with the cube: each face's label sits where that face's axis
  * (its outward normal from the center), as seen on screen, meets the edge of the 3D
@@ -2483,9 +2483,25 @@ function render() {
         )
         .join("")
     : `<li class="hint">No saved states yet. Save the current position to come back to it later.</li>`;
-  // The field shows this position's code, except while it holds a code being typed or pasted.
-  const codeField = $("code") as HTMLTextAreaElement;
-  if (!codeTyped) codeField.value = encodeState(st);
+  // The field shows this position's code, except while a code is being typed or pasted.
+  // Typed text is thrown away when the position changes, and the field says so.
+  const code = encodeState(st);
+  const codeField = $("code") as HTMLInputElement;
+  const codeBox = $("code-field");
+  if (codeTyped && code !== codeShown) {
+    codeTyped = false;
+    codeBox.classList.remove("replaced");
+    void codeBox.offsetWidth; // restart the flash
+    codeBox.classList.add("replaced");
+    setMessage("The puzzle moved, so the code you typed was replaced by this position's", "info");
+  }
+  codeShown = code;
+  const blankForTyping = !codeTyped && codeBlank;
+  if (!codeTyped && !blankForTyping) codeField.value = code;
+  codeBox.classList.toggle("showing", !codeTyped && !blankForTyping);
+  const typedOk = codeTyped && codeIsValid(codeField.value);
+  codeField.classList.toggle("invalid", codeTyped && !typedOk);
+  ($("import") as HTMLButtonElement).disabled = !typedOk;
   // Only a position turns can't reach (from an X1 code or edited colors) has no letter
   // code. The note keeps its line either way, so the page doesn't shift.
   const why = unreachableReason(st);
@@ -2497,6 +2513,20 @@ function render() {
 
 /** The state code field holds a code typed or pasted in, not yet loaded. */
 let codeTyped = false;
+/** The position code the field last showed, to notice the position changing under typed text. */
+let codeShown = "";
+/** Copy's fallback selects the shown code for copying by hand; that focus doesn't empty it. */
+let selectingCode = false;
+/** The field was emptied on being tapped into, for a code to be pasted or typed. */
+let codeBlank = false;
+function codeIsValid(text: string): boolean {
+  try {
+    decodeState(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const NET_COLOR: Record<string, string> = { W: "#f3f3ee", Y: "#f5d00f", G: "#17a34a", B: "#1d5fd6", R: "#c8202b", O: "#f47a12", "#": "var(--unstickered)" };
 
@@ -2802,23 +2832,55 @@ function bindUI() {
     saveCurrent(n.value.trim(), "");
     n.value = "";
   });
-  const codeField = $("code") as HTMLTextAreaElement;
+  const codeField = $("code") as HTMLInputElement;
+  // Tapping into the field empties it, ready for a code to be pasted or typed; leaving it
+  // empty shows this position's code again.
+  codeField.addEventListener("focus", () => {
+    if (!codeTyped && !selectingCode) {
+      codeBlank = true;
+      codeField.value = "";
+      render();
+    }
+  });
   codeField.addEventListener("input", () => {
     codeTyped = codeField.value.trim() !== "";
+    $("code-field").classList.remove("replaced");
+    render();
   });
   codeField.addEventListener("blur", () => {
-    if (!codeTyped) render(); // an emptied field shows this position's code again
+    codeBlank = false;
+    render();
   });
+  codeField.addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Enter" && !($("import") as HTMLButtonElement).disabled) $("import").click();
+  });
+  $("code-clear").addEventListener("click", () => {
+    codeTyped = false;
+    codeField.blur();
+    render();
+  });
+  // Every other text field's ✕ empties it.
+  for (const btn of document.querySelectorAll<HTMLButtonElement>(".field-clear:not(#code-clear)")) {
+    btn.addEventListener("click", () => {
+      const input = btn.previousElementSibling as HTMLInputElement;
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    });
+  }
   $("copy-code").addEventListener("click", async () => {
     // Copy is always this position's code, so a half-typed one is put back first.
     codeTyped = false;
+    codeField.blur();
     render();
     const ta = codeField;
     try {
       await navigator.clipboard.writeText(ta.value);
       setMessage("State code copied", "ok");
     } catch {
+      selectingCode = true;
       ta.select();
+      selectingCode = false;
       setMessage("Select and copy the code", "info");
     }
     render();
@@ -3075,7 +3137,7 @@ function turnListHtml(): string {
       out += chip(app.history[i], i++);
       continue;
     }
-    out += `<span class="step-box ${g === guide ? "on" : ""}"><button class="step-tag" data-step="${i}" title="Go to the start of this step">${g.index} ${STAGE_NAME[g.step.stage]}</button>`;
+    out += `<span class="step-box ${g === guide ? "on" : ""}"><button class="step-tag" data-step="${i}" title="Go to the start of this step">${g.index}. ${STAGE_NAME[g.step.stage]}</button>`;
     // A cycle step's parts are told apart: the setup, the cycle, and the setup undone.
     for (const part of g.step.parts) for (let k = 0; k < part.turns; k++, i++) out += chip(app.history[i], i).replace('class="tok ', `title="${PART_TITLE[part.name]}" class="tok part-${part.name} `);
     out += "</span>";
@@ -3101,7 +3163,7 @@ function refreshGuide() {
     const { step, after, index, start } = guide;
     const done = app.cursor >= start + step.turns.length;
     const head = document.createElement("strong");
-    head.textContent = `Step ${index} of ${index + after} · ${STAGE_NAME[step.stage]}${done ? " (done)" : ""}: `;
+    head.textContent = `Step ${index} of ${index + after} — ${STAGE_NAME[step.stage]}${done ? " (done)" : ""}: `;
     const alg = document.createElement("span");
     alg.className = "known-alg";
     alg.textContent = step.alg;
