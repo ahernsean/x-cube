@@ -532,3 +532,105 @@ export function editShape(shape: State, colors: FaceColors, s: number, target?: 
     }
   return { shape: st, colors: out, carries: list };
 }
+
+// A shape being edited may be wrong for a while, as paint may. A draft is a real position
+// (`shape`, with its paint) and the changes tapped since that no moves of real cubelets
+// account for yet: extension cubelets taken away (`removed`) and blank ones put in
+// (`added`). When the changed shape is one the puzzle can have (draftProblems finds
+// nothing), the changes are made by moving real cubelets and the two sets empty.
+
+export interface Draft {
+  shape: State;
+  colors: FaceColors;
+  /** Outer slots filled in `shape` that have been emptied. */
+  removed: Set<number>;
+  /** Outer slots empty in `shape` that have been filled. */
+  added: Set<number>;
+}
+
+/** Whether slot s is filled in the draft's shape. */
+export const draftFilled = (d: Draft, s: number) => (d.shape.occ[s] >= 0 && !d.removed.has(s)) || d.added.has(s);
+
+const EDGE_SLOTS = ALL_SLOTS().filter((s) => outwardDir(s) < 0 && span(s) === 2);
+function ALL_SLOTS() {
+  return [...Array(NUM_SLOTS).keys()];
+}
+const filledOn = (d: Draft, c: number) => outerOf(c).filter((n) => draftFilled(d, n));
+
+/** The empty spots a tap can fill: the bare side of each core edge that has one, and each center without an extension center. */
+export function draftSpots(d: Draft): number[] {
+  return [...EDGE_SLOTS, ...CENTER_SLOTS].flatMap((c) => outerOf(c).filter((n) => !draftFilled(d, n)));
+}
+
+/** What keeps the draft's shape from being one the puzzle can have, apart from the core corners' twists. */
+export function draftProblems(d: Draft): Problem[] {
+  const out: Problem[] = [];
+  const count = (n: number, one: string, many: string, limit: string) =>
+    n > 4 ? `${cap(numberWord(n))} ${many}, but there can be only four` : `${n ? `Only ${numberWord(n)}` : "No"} ${n === 1 ? one : many}, but ${limit}`;
+  const doubles = EDGE_SLOTS.filter((c) => filledOn(d, c).length === 2);
+  if (doubles.length !== 4) out.push(problem(count(doubles.length, "core edge has two extension cubelets", "core edges have two extension cubelets", "there must be four"), doubles.length > 4 ? doubles : []));
+  const bare = CENTER_SLOTS.filter((c) => filledOn(d, c).length === 0);
+  if (bare.length !== 2) out.push(problem(count(6 - bare.length, "center has an extension center", "centers have an extension center", "there must be four"), []));
+  else if (CENTER_SLOTS.indexOf(bare[0]) >> 1 !== CENTER_SLOTS.indexOf(bare[1]) >> 1) out.push(problem("The two centers without an extension center must be opposite each other", bare));
+  return out;
+}
+
+/** Makes the draft's changes by moving real cubelets, if its shape is one the puzzle can have. */
+function settle(d: Draft) {
+  if (!d.removed.size && !d.added.size) return;
+  if (draftProblems(d).length) return;
+  const want = ALL_SLOTS().map((s) => draftFilled(d, s));
+  let { shape, colors } = d;
+  for (let guard = 0; guard < 64; guard++) {
+    // A cubelet that should not be where it is goes where one is missing.
+    let next: ReturnType<typeof editShape> = null;
+    for (const s of ALL_SLOTS()) {
+      if (shape.occ[s] < 0 || want[s] || outwardDir(s) < 0) continue;
+      const tap = shapeTap(shape, s);
+      const target = tap?.kind === "lift" ? tap.targets.find((t) => want[t]) : undefined;
+      if (tap?.kind === "lift" && target === undefined) continue;
+      if ((next = editShape(shape, colors, s, target))) break;
+    }
+    if (!next) break;
+    ({ shape, colors } = next);
+  }
+  if (ALL_SLOTS().some((s) => shape.occ[s] >= 0 !== want[s])) return;
+  d.shape = shape;
+  d.colors = colors;
+  d.removed.clear();
+  d.added.clear();
+}
+
+/**
+ * A tap with the Shape tool on outer slot s, changing only what is there:
+ * - a cubelet on a core corner, or the one cubelet on a core edge, swings to the bare side;
+ * - one of two cubelets on a core edge, or an extension center, goes away;
+ * - an empty spot (draftSpots) gets a cubelet.
+ * Returns null if the tap does nothing; otherwise the real cubelets the tap itself moved, to animate.
+ */
+export function draftTap(d: Draft, s: number): Carry[] | null {
+  if (s < 0 || outwardDir(s) < 0) return null;
+  const c = coreOf(s);
+  const set = (t: number, on: boolean) => {
+    const [undo, mark] = on ? [d.removed, d.added] : [d.added, d.removed];
+    if (!undo.delete(t)) mark.add(t);
+  };
+  let carries: Carry[] = [];
+  if (!draftFilled(d, s)) {
+    if (!draftSpots(d).includes(s)) return null;
+    set(s, true);
+  } else if (span(c) === 3 || (span(c) === 2 && filledOn(d, c).length === 1)) {
+    const real = outerOf(c).every((n) => !d.removed.has(n) && !d.added.has(n));
+    const next = real ? editShape(d.shape, d.colors, s) : null;
+    if (next) {
+      d.shape = next.shape;
+      d.colors = next.colors;
+      carries = next.carries;
+    } else if (span(c) === 2) {
+      set(s, false);
+      set(outerOf(c).find((n) => n !== s)!, true);
+    } else return null;
+  } else set(s, false);
+  settle(d);
+  return carries;
+}
