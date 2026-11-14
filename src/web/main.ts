@@ -2573,8 +2573,15 @@ function slideScroll(el: HTMLElement, to: number) {
     return;
   }
   slideUntil = t0 + ms + 50;
+  // Timed from the first frame's own timestamp: a frame's timestamp is when it began, which
+  // can be before this call, and a negative time would throw the eased position far off.
+  let start = -1;
   const step = (now: number) => {
-    const t = Math.min(1, (now - t0) / ms);
+    if (start < 0) {
+      start = now;
+      slideUntil = Math.max(slideUntil, start + ms + 50);
+    }
+    const t = Math.max(0, Math.min(1, (now - start) / ms));
     const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
     el.scrollLeft = from + (to - from) * e;
     if (t < 1) requestAnimationFrame(step);
