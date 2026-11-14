@@ -238,6 +238,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 
 ## X-Cube Lab vocabulary
 
+- **3D view background:** in light mode a gray gradient (`--stage`), a step darker than
+  white so a white sticker's edge glow shows against it.
 - **3D view:** three.js r186, loaded as ES modules through an import map and a shim that
   exposes a global `THREE`. Color management is off and output is linear, to keep the
   original look; light intensities are scaled by pi for newer three.js light units.
@@ -295,8 +297,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   turns, Next step (and Start solving) while the step's turns are still to play or when the solver
   has nothing to do (solved and held as it wants; a solved puzzle tipped over still gets a
   Regrip step), Show step after
-  the step's first turn or while the view already shows what it would show. When a step is
-  loaded, the turn list scrolls (smoothly) to show as much of it as fits, with the current
+  the step's first turn (while the view already shows what it would show, it reads **Home**
+  instead and turns the view home, so the two views can be toggled). When a step is
+  loaded, or one is tapped in the step list, the turn list slides (animated) to show as much of it as fits, with the current
   turn just before it; only if the step is too long does its right end go off the edge. The turn list ends in a ✕ (while there are turns): one tap turns
   it into "Clear?", a second within 3 seconds clears the list as Start from here does. ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
   draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1

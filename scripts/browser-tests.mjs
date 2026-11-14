@@ -1723,22 +1723,37 @@ labTest("controls: buttons gray out when they don't apply; the turn list's ✕ a
   await settle();
   await page.waitForTimeout(400); // the older rows slide down
   const two = await page.evaluate(() => ({ head: document.getElementById("steps-head").textContent, rows: [...document.querySelectorAll("#steps-list .step-row")].map((r) => r.textContent), topGap: Math.round(document.querySelector("#steps-list .step-row").getBoundingClientRect().top - document.getElementById("steps-list").getBoundingClientRect().top) }));
-  // Show step turns the view to the step, and is then grayed out until the view moves again.
-  const showBefore = await page.$eval("#guide-show", (b) => b.disabled);
-  if (!showBefore) {
+  // Show step turns the view to the step, and then reads Home, which turns it back to Home.
+  const showLabel = () => page.$eval("#guide-show", (b) => (b.disabled ? "off" : b.textContent));
+  const showBefore = await showLabel();
+  if (showBefore === "Show step") {
     await page.click("#guide-show");
     await settle();
   }
-  const showAfter = await page.$eval("#guide-show", (b) => b.disabled);
-  // Away from that view (one of the preset views may itself be it), Show step applies again.
-  let showMoved = true;
-  for (const v of ["top", "bottom", "back"]) {
-    await page.evaluate((name) => document.querySelector(`[data-view="${name}"]`).click(), v);
+  const showAfter = await showLabel();
+  if (showAfter === "Home") {
+    await page.click("#guide-show");
     await settle();
-    showMoved = await page.$eval("#guide-show", (b) => b.disabled);
-    if (!showMoved) break;
   }
-  check(showAfter && (showBefore || !showMoved), `Show step is grayed out once the view shows the step, and back when the view moves (${JSON.stringify({ showBefore, showAfter, showMoved })})`);
+  const showBack = await showLabel();
+  check((showAfter === "Home" && showBack === "Show step") || showAfter === "off", `once the view shows the step, Show step reads Home, and Home goes back (${JSON.stringify({ showBefore, showAfter, showBack })})`);
+  // Tapping an older step slides the turn list to it (not a jump), to show where in the turns it is.
+  const slide = await page.evaluate(async () => {
+    const list = document.getElementById("history");
+    const rows = document.querySelectorAll("#steps-list .step-row");
+    const from = list.scrollLeft;
+    rows[rows.length - 1].click();
+    const seen = [];
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => requestAnimationFrame(r));
+      seen.push(Math.round(list.scrollLeft));
+    }
+    return { from: Math.round(from), seen };
+  });
+  const slideEnd = slide.seen[slide.seen.length - 1];
+  const between = slide.seen.filter((x) => x !== slide.from && x !== slideEnd).length;
+  const monotone = slide.seen.every((x, i) => i === 0 || Math.sign(x - slide.seen[i - 1]) !== -Math.sign(slideEnd - slide.from));
+  check(slide.from === slideEnd || (between > 1 && monotone), `tapping an older step slides the turn list there (${slide.from} then ${slide.seen.join(" ")})`);
   check(/^2 \/ \d+ steps, \d+ \/ \d+ total turns$/.test(two.head) && /^2\./.test(two.rows[0]) && /^1\..*✓/.test(two.rows[1]) && two.topGap < 6, `the step list shows the newest first at its top, the played one ticked, and the counts of all planned (${JSON.stringify(two)})`);
   // A step's Save… goes to Algorithms with a suggested name, selected, and Save saves that step.
   await page.click("#steps-list li:first-child .step-save");

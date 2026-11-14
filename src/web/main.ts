@@ -1350,10 +1350,7 @@ function frame() {
     }
   }
   const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
-  if (showTarget) {
-    const btn = document.getElementById("guide-show") as HTMLButtonElement | null;
-    if (btn && guide && app.cursor === guide.start) btn.disabled = showStepIdle();
-  }
+  if (showTarget) updateShowButton();
   if (view3dOpen) updateCompass();
   renderNetAnimation();
   if (view3dOpen) renderer.render(scene, camera);
@@ -2467,7 +2464,9 @@ function render() {
   // history strip
   const hist = turnListHtml();
   // A shuffle's turns would give the way back away, so they are not shown while it plays.
+  const keepScroll = $("history").scrollLeft; // rebuilding the row would reset it
   $("history").innerHTML = shuffling ? `<span class="hint">Shuffling…</span>` : hist || `<span class="hint">Turns you make or load appear here; tap one to go to it.</span>`;
+  $("history").scrollLeft = keepScroll;
   keepTurnInSight();
   $("counter").textContent = `${app.cursor}/${app.history.length}`;
   $("load").textContent = editingTurns ? "Update" : "Load";
@@ -2565,6 +2564,23 @@ function render() {
  * step's first turn, its tag) in sight, with a little of what comes next.
  */
 let scrollToStep = false;
+let slideUntil = 0;
+/** Scrolls a row sideways to `to` over about a third of a second, eased at both ends. */
+function slideScroll(el: HTMLElement, to: number) {
+  const from = el.scrollLeft, ms = 350, t0 = performance.now();
+  if (reduceMotion || Math.abs(to - from) < 1) {
+    el.scrollLeft = to;
+    return;
+  }
+  slideUntil = t0 + ms + 50;
+  const step = (now: number) => {
+    const t = Math.min(1, (now - t0) / ms);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    el.scrollLeft = from + (to - from) * e;
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
 function keepTurnInSight() {
   const list = $("history");
   const box = list.querySelector<HTMLElement>(".step-box.on");
@@ -2575,9 +2591,11 @@ function keepTurnInSight() {
     const from = (cur ? offsetIn(cur, list) : offsetIn(box, list)) - 8; // keep this at the left edge or right of it
     const end = offsetIn(box, list) + box.offsetWidth + 8 - list.clientWidth; // scrolled at least this far, all of the box shows
     const left = end <= from ? Math.min(Math.max(list.scrollLeft, end), from) : from;
-    list.scrollTo({ left: Math.max(0, left), behavior: reduceMotion ? "auto" : "smooth" });
+    slideScroll(list, Math.max(0, left));
     return;
   }
+  // While that slide plays, setting the scroll would cut it short.
+  if (performance.now() < slideUntil) return;
   // The current turn and the next two things after it (a step's tag and its first turn,
   // say), or the start of the list before the first turn.
   const items = [...list.querySelectorAll<HTMLElement>(".tok, .step-tag")];
@@ -2914,7 +2932,7 @@ function bindUI() {
   centerAxisLetters();
   document.fonts?.ready.then(() => centerAxisLetters());
   document.fonts?.addEventListener?.("loadingdone", () => centerAxisLetters());
-  $("guide-show").addEventListener("click", () => showGuide());
+  $("guide-show").addEventListener("click", () => ($("guide-show").textContent === "Home" ? goToView(VIEWS.home) : showGuide()));
   bindViewTools();
   $("edit-start").addEventListener("click", () => endingSolve(() => startEdit()));
   $("edit-done").addEventListener("click", () => endEdit(true));
@@ -3439,6 +3457,20 @@ function updateShowTarget() {
   showTargetKey = key;
   showTarget = key ? bestView(app.current, guideFaces(g!)) : null;
 }
+/**
+ * Once the view shows the step, Show step becomes Home, so the two views are a tap apart.
+ * (If the step's view is Home itself, there is nowhere else to go: it is grayed out.)
+ */
+function updateShowButton() {
+  const btn = $("guide-show") as HTMLButtonElement;
+  const there = showStepIdle();
+  const h = VIEWS.home;
+  const homeIsIt = !!showTarget && Math.abs(showTarget.dot(new THREE.Quaternion(h[0], h[1], h[2], h[3]))) > 0.9999;
+  const label = there && !homeIsIt ? "Home" : "Show step";
+  if (btn.textContent !== label) btn.textContent = label;
+  btn.title = label === "Home" ? "Turn the view back to Home" : "Turn the view to where this step's paths begin and end";
+  if (there && homeIsIt) btn.disabled = true;
+}
 function showStepIdle(): boolean {
   if (!showTarget) return false;
   const q = tween ? tween.to : pivot.quaternion;
@@ -3514,6 +3546,7 @@ function renderSteps() {
 function goToStep(g: Guide | undefined) {
   if (!g || edit) return;
   guide = g;
+  scrollToStep = true; // the turn list slides there, so it shows where in the turns the step is
   jump(g.start);
 }
 
@@ -3566,7 +3599,8 @@ function refreshGuide() {
   ($("guide-start") as HTMLButtonElement).disabled = !guide || (atStepStart && playing);
   // The paths show only before the step's first turn, so Show step applies only there.
   updateShowTarget();
-  ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold" || app.cursor !== guide.start || showStepIdle();
+  ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold" || app.cursor !== guide.start;
+  updateShowButton();
   renderSteps();
   const line = $("guide-line");
   line.textContent = "";
