@@ -1743,17 +1743,19 @@ labTest("controls: buttons gray out when they don't apply; the turn list's ✕ a
     const rows = document.querySelectorAll("#steps-list .step-row");
     const from = list.scrollLeft;
     rows[rows.length - 1].click();
-    const seen = [];
-    for (let i = 0; i < 20; i++) {
+    const t0 = performance.now(), seen = [], at = [];
+    while (performance.now() - t0 < 800) {
       await new Promise((r) => requestAnimationFrame(r));
       seen.push(Math.round(list.scrollLeft));
+      at.push(Math.round(performance.now() - t0));
     }
-    return { from: Math.round(from), seen };
+    return { from: Math.round(from), seen, at };
   });
+  // Timed, not counted in frames: a slow runner draws only a few frames during the slide.
   const slideEnd = slide.seen[slide.seen.length - 1];
-  const between = slide.seen.filter((x) => x !== slide.from && x !== slideEnd).length;
+  const arrived = slide.at[slide.seen.findIndex((x) => x === slideEnd)];
   const monotone = slide.seen.every((x, i) => i === 0 || Math.sign(x - slide.seen[i - 1]) !== -Math.sign(slideEnd - slide.from));
-  check(slide.from === slideEnd || (between > 1 && monotone), `tapping an older step slides the turn list there (${slide.from} then ${slide.seen.join(" ")})`);
+  check(slide.from === slideEnd || (slide.seen[0] !== slideEnd && arrived >= 250 && monotone), `tapping an older step slides the turn list there (${slide.from} then ${slide.seen.map((x, i) => `${x}@${slide.at[i]}`).join(" ")})`);
   check(/^2 \/ \d+ steps, \d+ \/ \d+ total turns$/.test(two.head) && /^2\./.test(two.rows[0]) && /^1\..*✓/.test(two.rows[1]) && two.topGap < 6, `the step list shows the newest first at its top, the played one ticked, and the counts of all planned (${JSON.stringify(two)})`);
   // A step's Save… goes to Algorithms with a suggested name, selected, and Save saves that step.
   await page.click("#steps-list li:first-child .step-save");
