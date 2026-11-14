@@ -2989,8 +2989,8 @@ function bindUI() {
     else if (ds.guideMode) setGuideMode(ds.guideMode as Mode);
     else if (ds.load) {
       const s = saved.find((x) => x.id === ds.load);
-      if (s && solving) return endingSolve(() => t.click());
-      if (s) {
+      // Loaded directly: ending a solve re-renders the list, so this button is gone by then.
+      if (s) endingSolve(() => {
         try {
           setBase(decodeState(s.code), s.name);
           setMessage(`Started from "${s.name}"`, "ok");
@@ -2998,7 +2998,7 @@ function bindUI() {
           setMessage(`That saved state can't be read: ${err}`, "error");
         }
         render();
-      }
+      });
     } else if (ds.del) {
       pendingDelete = ds.del;
       render();

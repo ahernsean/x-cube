@@ -1866,6 +1866,23 @@ labTest(
       base = await page.$eval("#base-label", (e) => e.textContent);
     }
     check(button === "Load" && base === "Test save", `a saved position's Load button makes it the start ("${button}", start "${base}")`);
+    // During a solve, Load asks first; End solve then loads it (the end re-renders the list, so not by its old button).
+    let during;
+    if (good.listed) {
+      await page.fill("#alg", "R U");
+      await page.click("#load");
+      await page.click("#last");
+      await page.waitForFunction(() => document.getElementById("counter").textContent === "2/2" && window.xcubeProbe.idle(), null, { timeout: 30000 });
+      await page.click("#clear");
+      await page.click(`[data-tab="solve"]`);
+      await page.click("#next-step");
+      await page.click(`[data-tab="start"]`);
+      await page.click("#saved-list [data-load]");
+      const asked = await page.$eval("#confirm", (d) => !d.hidden);
+      await page.click("#confirm-yes");
+      during = { asked, base: await page.$eval("#base-label", (e) => e.textContent), solving: await page.evaluate(() => document.getElementById("guide").classList.contains("solving")) };
+    }
+    check(during?.asked && during.base === "Test save" && !during.solving, `during a solve, Load asks first, and End solve ends it and loads the position (${JSON.stringify(during)})`);
   },
   onThisDevice,
 );
