@@ -102,6 +102,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .edit-bar[hidden] { display: none; }
 .palette { display: flex; gap: 8px; flex-wrap: wrap; }
 .swatch { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--tile-edge); cursor: pointer; padding: 0; }
+.swatch.shape-tool { width: auto; padding: 0 12px; border-radius: 20px; font: inherit; font-size: 14px; font-weight: 600; color: var(--ink, inherit); background: var(--panel); }
 .swatch[aria-checked="true"] { outline: 3px solid var(--accent); outline-offset: 2px; }
 .edit-status { margin: 0; padding: 6px 8px; border-radius: 8px; font-size: 14px; }
 .edit-status.good { background: var(--good-bg); color: var(--good); }
@@ -445,11 +446,11 @@ details[open] summary { margin-bottom: 8px; }
     </div>
     <div class="edit-bar" id="edit-bar" hidden>
       <div class="palette" role="radiogroup" aria-label="Paint color">
-        <button class="swatch" role="radio" data-paint="W" aria-label="White"></button><button class="swatch" role="radio" data-paint="Y" aria-label="Yellow"></button><button class="swatch" role="radio" data-paint="G" aria-label="Green"></button><button class="swatch" role="radio" data-paint="B" aria-label="Blue"></button><button class="swatch" role="radio" data-paint="R" aria-label="Red"></button><button class="swatch" role="radio" data-paint="O" aria-label="Orange"></button>
+        <button class="swatch" role="radio" data-paint="W" aria-label="White"></button><button class="swatch" role="radio" data-paint="Y" aria-label="Yellow"></button><button class="swatch" role="radio" data-paint="G" aria-label="Green"></button><button class="swatch" role="radio" data-paint="B" aria-label="Blue"></button><button class="swatch" role="radio" data-paint="R" aria-label="Red"></button><button class="swatch" role="radio" data-paint="O" aria-label="Orange"></button><button class="swatch shape-tool" role="radio" data-paint="shape" aria-label="Shape" title="Move extension cubelets to match the cube's shape">Shape</button>
       </div>
       <p class="edit-status" id="edit-status" aria-live="polite"></p>
       <div class="edit-actions"><button class="btn small primary" id="edit-done">Done</button><button class="btn small" id="edit-cancel">Cancel</button></div>
-      <p class="hint">Pick a color, then tap stickers on the cube to paint them. Drag to turn the view.</p>
+      <p class="hint" id="edit-hint"></p>
     </div>
     <div class="dock" id="dock" aria-label="Turn list and playback">
       <div class="list-row"><div class="history" id="history"></div><button class="list-clear" id="list-clear" title="Clear the turn list" aria-label="Clear the turn list" hidden>✕</button></div>

@@ -34,7 +34,7 @@
 // right. reachableFit doesn't rely on that argument: it builds the state and has
 // unreachableReason check it.
 
-import { axisRotation, DIRS, NUM_ROT, ROT_DIR, ROT_INV, ROT_MUL } from "./geometry.ts";
+import { axisRotation, DIRS, matVec, NUM_ROT, ROT_DIR, ROT_INV, ROT_MUL, ROTATIONS } from "./geometry.ts";
 import { isExposed } from "./analyze.ts";
 import { COLOR_NAME, CUBELETS, FACE_COLOR, NUM_SLOTS, SLOT_NEIGHBOR, SLOT_POS, State, slotAt, type Color, type Kind } from "./puzzle.ts";
 import { rotsTo, unreachableReason } from "./serialize.ts";
@@ -349,6 +349,10 @@ function reachableFit(shape: State, colors: FaceColors): { state: State; problem
     const t = st.clone();
     if (UNSEEN_CHANGES.every((change, i) => !(set & (1 << i)) || change(t)) && unreachableReason(t) === null) return { state: t };
   }
+  // A shape edit can leave the core corners turned as no turns leave them. Any one of
+  // them may be the one turned wrong, so the problem points at none.
+  if (unreachableReason(st) === "the core corners are twisted")
+    return { state: null, problem: problem("The core corners can't all be turned this way at once. One of them needs another turn", []) };
   return { state: null, problem: problem(`${start} (${unreachableReason(st)})`, []) };
 }
 
@@ -423,3 +427,108 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
   return { level: null, state: null, problems };
 }
 
+
+// ---------------------------------------------------------------- shape editing
+//
+// The shape is which outer spots are filled, and it follows from the core alone: a core
+// corner has outer cubelets on two of its three sides, a core single edge on one of its
+// two, a core double edge on both, and the centers of two opposite faces have no
+// extension center. A shape edit moves real cubelets, each as a rotation of the whole
+// puzzle would carry it, so the result is always a position that can be drawn and fitted;
+// the paint goes with the cubelets. The one thing an edit can leave wrong is the sum of
+// the core corners' twists, which reachableFit reports.
+
+/** The core slot the cubelet in outer slot s rests against. */
+const coreOf = (s: number) => SLOT_NEIGHBOR[s * 6 + (outwardDir(s) ^ 1)];
+/** The outer slots against core slot c. */
+const outerOf = (c: number) => [0, 1, 2, 3, 4, 5].map((d) => SLOT_NEIGHBOR[c * 6 + d]).filter((n) => n >= 0 && outwardDir(n) >= 0);
+/** How many coordinates of slot s are not zero: 3 for a corner, 2 for an edge, 1 for a center. */
+const span = (s: number) => SLOT_POS[s].filter((c) => c !== 0).length;
+const ALL_ROTS = [...Array(NUM_ROT).keys()];
+const carries = (r: number, from: number, to: number) => slotAt(matVec(ROTATIONS[r], SLOT_POS[from])) === to;
+
+/** One cubelet's part in a shape edit: from a slot to a slot, turned by rotation `rot`. */
+interface Carry {
+  from: number;
+  to: number;
+  rot: number;
+}
+
+/**
+ * What tapping the cubelet in slot s with the Shape tool does:
+ * - "swing": it moves at once (around its core corner or core single edge to the bare
+ *   side, or, an extension center, with the one opposite it to the faces that have none);
+ * - "lift": it is against a core double edge and can go to any of `targets`, the bare
+ *   sides of the core single edges;
+ * - null: nothing (an empty slot or a core cubelet).
+ */
+export function shapeTap(shape: State, s: number): { kind: "swing" } | { kind: "lift"; targets: number[] } | null {
+  if (s < 0 || shape.occ[s] < 0 || outwardDir(s) < 0) return null;
+  const c = coreOf(s);
+  if (span(c) !== 2 || outerOf(c).some((n) => shape.occ[n] < 0)) return { kind: "swing" };
+  const targets: number[] = [];
+  for (let e = 0; e < NUM_SLOTS; e++) {
+    if (outwardDir(e) >= 0 || span(e) !== 2) continue;
+    const bare = outerOf(e).filter((n) => shape.occ[n] < 0);
+    if (bare.length === 1) targets.push(bare[0]);
+  }
+  return { kind: "lift", targets };
+}
+
+/** The cubelets a tap on slot s moves (see shapeTap); `target` is where a lifted cubelet goes. */
+function carriesFor(shape: State, s: number, target?: number): Carry[] | null {
+  const tap = shapeTap(shape, s);
+  if (!tap) return null;
+  const c = coreOf(s);
+  if (tap.kind === "lift") {
+    if (target === undefined || !tap.targets.includes(target)) return null;
+    const b = coreOf(target);
+    // The double edge and the single edge trade places, the single edge's sticker to the side left bare.
+    return [
+      { from: s, to: target, rot: ALL_ROTS.find((r) => carries(r, s, target))! },
+      { from: c, to: b, rot: ALL_ROTS.find((r) => carries(r, c, b))! },
+      { from: b, to: c, rot: ALL_ROTS.find((r) => carries(r, b, c) && ROT_DIR[r * 6 + outwardDir(target)] === outwardDir(s))! },
+    ];
+  }
+  if (span(c) === 1) {
+    // A quarter turn of all the centers about the axis that keeps its extension centers.
+    const axis = [0, 1, 2].find((a) => a !== outwardDir(s) >> 1 && shape.occ[SLOT_NEIGHBOR[CENTER_SLOTS[a * 2] * 6 + a * 2]] >= 0);
+    if (axis === undefined) return null;
+    const rot = axisRotation(axis, 1);
+    const moved = CENTER_SLOTS.flatMap((x, d) => [x, SLOT_NEIGHBOR[x * 6 + d]]).filter((x) => x >= 0 && shape.occ[x] >= 0);
+    return moved.map((from) => ({ from, to: slotAt(matVec(ROTATIONS[rot], SLOT_POS[from])), rot }));
+  }
+  // A turn of the core cubelet, with the outer cubelets on it, that leaves side s bare.
+  const bare = outerOf(c).find((n) => shape.occ[n] < 0);
+  if (bare === undefined) return null;
+  const rot = ALL_ROTS.find((r) => carries(r, c, c) && carries(r, bare, s))!;
+  return [c, ...outerOf(c).filter((n) => shape.occ[n] >= 0)].map((from) => ({ from, to: slotAt(matVec(ROTATIONS[rot], SLOT_POS[from])), rot }));
+}
+
+/**
+ * The shape and paint after tapping the cubelet in slot s with the Shape tool (see
+ * shapeTap), or null if the tap does nothing. Paint moves with its cubelet; a face the
+ * edit uncovers takes the color of the cubelet now there.
+ */
+export function editShape(shape: State, colors: FaceColors, s: number, target?: number): { shape: State; colors: FaceColors } | null {
+  const list = carriesFor(shape, s, target);
+  if (!list) return null;
+  const st = shape.clone();
+  const out = colors.slice();
+  for (const { from } of list) {
+    st.occ[from] = -1;
+    for (let d = 0; d < 6; d++) out[from * 6 + d] = undefined;
+  }
+  for (const { from, to, rot } of list) {
+    st.occ[to] = shape.occ[from];
+    st.ori[to] = ROT_MUL[rot * NUM_ROT + shape.ori[from]];
+    for (let d = 0; d < 6; d++) out[to * 6 + ROT_DIR[rot * 6 + d]] = colors[from * 6 + d];
+  }
+  for (let t = 0; t < NUM_SLOTS; t++)
+    for (let d = 0; d < 6; d++) {
+      const i = t * 6 + d;
+      if (st.occ[t] < 0 || !isExposed(st, t, d)) out[i] = undefined;
+      else if (out[i] === undefined) out[i] = st.colorAt(t, d);
+    }
+  return { shape: st, colors: out };
+}
