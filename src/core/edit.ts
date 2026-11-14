@@ -448,7 +448,7 @@ const ALL_ROTS = [...Array(NUM_ROT).keys()];
 const carries = (r: number, from: number, to: number) => slotAt(matVec(ROTATIONS[r], SLOT_POS[from])) === to;
 
 /** One cubelet's part in a shape edit: from a slot to a slot, turned by rotation `rot`. */
-interface Carry {
+export interface Carry {
   from: number;
   to: number;
   rot: number;
@@ -510,7 +510,7 @@ function carriesFor(shape: State, s: number, target?: number): Carry[] | null {
  * shapeTap), or null if the tap does nothing. Paint moves with its cubelet; a face the
  * edit uncovers takes the color of the cubelet now there.
  */
-export function editShape(shape: State, colors: FaceColors, s: number, target?: number): { shape: State; colors: FaceColors } | null {
+export function editShape(shape: State, colors: FaceColors, s: number, target?: number): { shape: State; colors: FaceColors; carries: Carry[] } | null {
   const list = carriesFor(shape, s, target);
   if (!list) return null;
   const st = shape.clone();
@@ -530,5 +530,5 @@ export function editShape(shape: State, colors: FaceColors, s: number, target?: 
       if (st.occ[t] < 0 || !isExposed(st, t, d)) out[i] = undefined;
       else if (out[i] === undefined) out[i] = st.colorAt(t, d);
     }
-  return { shape: st, colors: out };
+  return { shape: st, colors: out, carries: list };
 }

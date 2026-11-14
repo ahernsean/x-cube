@@ -1349,6 +1349,7 @@ function frame() {
       r.copy.quaternion.copy(r.turns[k]).slerp(r.turns[k + 1], at - k);
     }
   }
+  stepShapeAnim();
   const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
   if (showTarget) updateShowButton();
   if (view3dOpen) updateCompass();
@@ -3282,6 +3283,11 @@ function pickGhost(el: HTMLElement, clientX: number, clientY: number, h: CubeHit
 
 function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null) {
   if (!edit) return;
+  if (shapeAnim) {
+    // The tap was aimed at the puzzle as it is mid-move: finish the move and take the tap from there.
+    endShapeAnim();
+    h = pickCube(el, clientX, clientY);
+  }
   const slot = h ? slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]) : -1;
   let next: ReturnType<typeof editShape> = null;
   if (edit.lifted !== null) {
@@ -3300,6 +3306,71 @@ function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit 
     edit.shown = edit.fit.state ?? edit.shape.clone();
   }
   renderEdit();
+  if (next) animateShape(next.carries);
+}
+
+// A shape edit is shown as a move: the meshes are already where they end up, and until
+// the move is over each frame puts the moved ones part-way there. Every edit carries its
+// cubelets as rotations about the puzzle's center, so part-way is part of that rotation,
+// with the cubelets held clear of their neighbors meanwhile:
+// - "lift": a core corner or core single edge with the cubelets on it rises straight out,
+//   turns, and drops back in;
+// - "arc": a cubelet (the centers, or one going from a core double edge to a core single
+//   edge) swings around the outside of the puzzle.
+const SHAPE_MOVE = { liftMs: 800, arcMs: 600, rise: 1.25, bulge: 0.55 };
+interface ShapeAnim {
+  start: number;
+  ms: number;
+  items: { mesh: any; p0: any; q0: any; turn: any; out: any | null }[];
+}
+let shapeAnim: ShapeAnim | null = null;
+const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+
+function rotationQuat(r: number) {
+  const m = ROTATIONS[r];
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().set(m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, 0, 0, 0, 1));
+}
+
+function animateShape(carries: { from: number; to: number; rot: number }[]) {
+  if (!edit || reduceMotionView()) return;
+  const core = (s: number) => SLOT_POS[s].every((c) => Math.abs(c) < 2);
+  // A core cubelet that stays in its slot and turns: the unit on it lifts straight out.
+  const hub = carries.find((c) => c.from === c.to && core(c.from));
+  // A cubelet from a core double edge: only it is seen to move (the two core edges behind trade places unseen).
+  const moved = hub || carries.every((c) => c.rot === carries[0].rot) ? carries : carries.filter((c) => !core(c.from));
+  const out = hub ? new THREE.Vector3(...SLOT_POS[hub.from]).normalize() : null;
+  shapeAnim = {
+    start: performance.now(),
+    ms: hub ? SHAPE_MOVE.liftMs : SHAPE_MOVE.arcMs,
+    items: moved.map((c) => {
+      const turn = rotationQuat(c.rot);
+      const mesh = meshes[edit!.shown.occ[c.to]];
+      return { mesh, p0: new THREE.Vector3(...SLOT_POS[c.from]), q0: turn.clone().invert().multiply(mesh.quaternion), turn, out };
+    }),
+  };
+  stepShapeAnim();
+}
+
+/** Puts the cubelets of a shape edit where they are now in their move; ends it when it is over. */
+function stepShapeAnim() {
+  if (!shapeAnim) return;
+  const t = Math.min(1, (performance.now() - shapeAnim.start) / shapeAnim.ms);
+  const part = (a: number, b: number) => easeInOut(Math.min(1, Math.max(0, (t - a) / (b - a))));
+  for (const it of shapeAnim.items) {
+    const q = new THREE.Quaternion().slerp(it.turn, it.out ? part(0.3, 0.7) : easeInOut(t));
+    it.mesh.quaternion.copy(q).multiply(it.q0);
+    it.mesh.position.copy(it.p0).applyQuaternion(q);
+    if (it.out) it.mesh.position.addScaledVector(it.out, SHAPE_MOVE.rise * (part(0, 0.3) - part(0.7, 1)));
+    else it.mesh.position.multiplyScalar(1 + SHAPE_MOVE.bulge * Math.sin(Math.PI * easeInOut(t)));
+  }
+  if (t >= 1) shapeAnim = null;
+}
+
+/** Ends a shape edit's move at once, the cubelets where they end up. */
+function endShapeAnim() {
+  if (!shapeAnim) return;
+  shapeAnim.start = -Infinity;
+  stepShapeAnim();
 }
 
 /** Draws the shown state, with every face that differs from the paint repainted on top. */
@@ -4583,6 +4654,7 @@ function clearGlowPaint() {
 }
 
 function renderEdit() {
+  endShapeAnim();
   $("edit-bar").hidden = !edit;
   $("edit-start").hidden = !!edit;
   if (!edit) return;
@@ -4640,6 +4712,7 @@ function renderEdit() {
 function endEdit(apply: boolean) {
   if (!edit) return;
   const e = edit;
+  shapeAnim = null;
   for (const m of e.painted) m.material = m.userData.ownMaterial;
   clearGlowPaint();
   edit = null;
@@ -4767,7 +4840,7 @@ function installProbe() {
     throw new Error(`no slot named ${name}`);
   };
   (window as any).xcubeProbe = {
-    idle: () => !anim && !queue.length && !settle && !live && !tween,
+    idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim,
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
     /** The turns of the last shuffle (the page doesn't show them). */
