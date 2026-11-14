@@ -21,7 +21,8 @@
   --off-bg: #e4e8e6;
   --tile-edge: rgba(0, 0, 0, 0.22);
   --unstickered: #2b2f2e;
-  --stage: radial-gradient(circle at 50% 40%, #fbfcfb 0%, #dfe4e2 100%);
+  /* A step darker than white, so a white sticker's edge glow shows against it. */
+  --stage: radial-gradient(circle at 50% 40%, #c9cfcc 0%, #a4adaa 100%);
   --f-display: "Barlow Condensed", "Arial Narrow", sans-serif;
   --f-body: "Atkinson Hyperlegible", system-ui, sans-serif;
   --f-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
@@ -51,7 +52,15 @@ h1 { font-family: var(--f-display); font-weight: 700; font-size: 28px; letter-sp
 h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 8px; color: var(--muted); }
 .sub { color: var(--muted); font-size: 13px; }
 .wrap { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); max-width: 1180px; margin: 0 auto; }
-@media (min-width: 900px) { .wrap { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; } .stage-col { position: sticky; top: env(safe-area-inset-top, 0px); } }
+.stage-col { position: relative; }
+/* The panel tabs (phones): tap one, or slide a finger along the row. */
+.tabs { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--off-bg); touch-action: none; -webkit-user-select: none; user-select: none; }
+.tabs button { flex: 1 1 auto; min-width: 0; min-height: 34px; padding: 6px 4px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font: 600 13px var(--f-body); cursor: pointer; white-space: nowrap; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* The playback strip: the turn list on one sideways-scrolling row, the buttons, the speed. */
+.dock { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin-top: 8px; }
+.tp { white-space: nowrap; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; min-width: 0; }
 .stack { display: grid; gap: 14px; min-width: 0; }
 .stage { position: relative; background: var(--stage); border-radius: 10px; border: 1px solid var(--line); overflow: hidden; }
@@ -61,10 +70,10 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .views > .btn.small { flex: 1 1 auto; min-width: 0; padding: 4px 3px; font-size: 13px; letter-spacing: -0.01em; white-space: nowrap; }
 @media (max-width: 440px) { .views > .btn.small { font-size: 12px; padding: 4px 4px; } }
 @media (max-width: 380px) { .views { gap: 2px; } .views > .btn.small { padding: 4px 2px; letter-spacing: -0.02em; } }
-.hold-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; }
-.btn.edit-btn { border-radius: 999px; border-color: var(--line); color: var(--accent); min-height: 32px; padding: 4px 12px; white-space: nowrap; flex-shrink: 0; }
+.hold-row { display: flex; align-items: center; margin-top: 6px; min-width: 0; }
+.btn.edit-btn { color: var(--accent); }
 .btn.edit-btn[hidden] { display: none; }
-.hold { margin: 0; font-size: 13px; min-width: 0; }
+.hold { margin: 0; font-size: 13px; min-width: 0; flex: 1 1 auto; }
 /* Orientation labels around the 3D view: the face pointing each way. */
 .compass { position: absolute; inset: 0; pointer-events: none; font: 700 13px var(--f-display); letter-spacing: 0.05em; color: var(--muted); }
 .cmp { position: absolute; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 0; border-radius: 999px; font: inherit; color: inherit; letter-spacing: inherit; background: color-mix(in srgb, var(--panel) 75%, transparent); pointer-events: auto; cursor: pointer; }
@@ -80,7 +89,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .btn.tool-btn { min-height: 32px; padding: 4px 10px; color: var(--muted); }
 .btn.tool-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--muted); }
 /* The ⓘ is its own sign that it can be tapped: no button edge or fill. */
-.btn.tool-btn.info { border-color: transparent; background: transparent; box-shadow: none; padding: 4px 6px; min-width: 32px; font-size: 20px; line-height: 1; }
+.btn.tool-btn.info { border-color: transparent; background: transparent; box-shadow: none; padding: 4px; min-width: 32px; display: grid; place-items: center; }
 .btn.tool-btn.info[aria-expanded="true"] { border-color: transparent; color: var(--accent); }
 .pop { position: absolute; top: calc(100% + 4px); right: 0; z-index: 15; max-width: min(300px, 100%); padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); display: grid; gap: 8px; }
 .pop[hidden] { display: none; }
@@ -103,7 +112,65 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .edit-show { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 2px 0; margin-left: 6px; text-decoration: underline; white-space: nowrap; cursor: pointer; }
 .edit-actions { display: flex; gap: 8px; }
 .edit-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+.status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.transport > .status { flex: none; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; overflow: hidden; }
+/* Next step, in place of ▶ once a solve's step has played through: a move from one state
+   to the next, in the highlight color so it can't be taken for Play. */
+
+/* The playback buttons as one strip: one rounded outline, faint lines between the buttons. */
+.tp-group { display: flex; flex: 0 1 auto; min-width: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.tp-group > .btn.tp { border: 0; border-radius: 0; min-height: 32px; min-width: 38px; padding: 0 8px; }
+.tp-group > .tp + .tp { border-left: 1px solid var(--line); }
+@media (hover: hover) { .tp-group > .tp:not(.stop):not(:disabled):hover { background: var(--off-bg); } }
+.tp.next-tp[hidden], .tp[hidden] { display: none; }
+.tp .ico { width: 20px; height: 18px; display: block; margin: 0 auto; }
+/* The Solve panel: the order and Start solving until a solve starts; then the step's controls. */
+#guide:not(.solving) .solve-only, #guide.solving .solve-idle { display: none; }
+/* The turn list's ✕: one tap arms it ("Clear?"), a second clears. */
+.list-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.list-row > .history { flex: 1 1 auto; min-width: 0; }
+.list-clear { flex: none; min-width: 26px; height: 24px; padding: 0 6px; border: 0; border-radius: 999px; background: var(--off-bg); color: var(--muted); font: 600 12px var(--f-body); cursor: pointer; }
+.list-clear[hidden] { display: none; }
+.list-clear.armed { background: var(--bad-bg); color: var(--bad); }
+.confirm { position: fixed; z-index: 40; left: 50%; top: 30%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); padding: 12px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); display: grid; gap: 10px; }
+.confirm[hidden] { display: none; }
+.confirm p { margin: 0; font-weight: 600; }
+/* The solve's steps, newest at the top, under the shown step's text; Stop solving at the foot. */
+.solve-steps { margin-top: 4px; border-top: 1px solid var(--line); padding-top: 3px; }
+.steps-head { margin: 0 0 2px; font-size: 13px; line-height: 1.3; color: var(--muted); }
+.steps-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; align-content: start; max-height: 220px; overflow-y: auto; }
+.steps-list li { display: flex; gap: 4px; align-items: center; }
+.steps-list .btn.step-save { flex: none; min-height: 18px; padding: 0 6px; border-radius: 5px; font: 600 11px/16px var(--f-body); }
+.alg-save-note { margin: 6px 0 0; }
+.alg-save-note[hidden] { display: none; }
+.link-btn { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
+.step-row { flex: 1 1 auto; min-width: 0; width: 100%; display: flex; justify-content: space-between; gap: 8px; padding: 1px 8px; line-height: 1.3; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: 14px var(--f-body); text-align: left; cursor: pointer; }
+.step-row:hover { background: var(--off-bg); }
+.step-row.on { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.step-row .n { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stop-solve { width: 100%; margin-top: 4px; }
+.sub-head .chip { text-transform: none; letter-spacing: 0; font: 12px var(--f-mono); }
+#panel-start .base-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.sub-head { display: flex; justify-content: space-between; align-items: center; margin: 14px 0 0; padding-top: 10px; border-top: 1px solid var(--line); font: 600 13px var(--f-display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+/* Small round buttons in the 3D view's corners, with no button edge or fill. */
+.stage { overflow: visible; }
+#scene { border-radius: 10px; }
+.btn.tool-btn.corner { position: absolute; z-index: 6; width: 34px; height: 34px; min-width: 0; min-height: 0; padding: 0; display: grid; place-items: center; }
+.btn.tool-btn.corner[hidden] { display: none; }
+.tool-btn .ico { width: 24px; height: 24px; display: block; }
+.corner.tl { top: 4px; left: 4px; }
+.corner.tr { top: 4px; right: 4px; }
+.corner.br { bottom: 4px; right: 4px; }
+.stage > .pop { z-index: 60; } /* above the edge labels */
+#render-pop { width: max-content; }
+.stage > .pop.near-top { top: 40px; right: 6px; }
+.stage > .pop.near-bottom { top: auto; bottom: 40px; right: 6px; }
+/* Outer turns: one tiny letter chip each, green when it can turn, gray when it can't. */
+.outer-grid { display: grid; grid-template-columns: repeat(3, auto); gap: 2px; }
+.outer-grid .chip { font-size: 10px; line-height: 1; padding: 2px 4px; border-radius: 4px; text-align: center; }
+#shape-chip.off { text-decoration: none; }
+.chip.off-plain { background: var(--off-bg); color: var(--muted); opacity: 0.55; }
+.outer-status { margin-top: 10px; }
 .outer-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); margin-left: 6px; }
 .chip { font-family: var(--f-mono); font-size: 12px; padding: 3px 8px; border-radius: 999px; background: var(--off-bg); color: var(--muted); white-space: nowrap; }
 .chip.good { background: var(--good-bg); color: var(--good); font-family: var(--f-body); font-weight: 700; }
@@ -124,12 +191,31 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .btn.danger { background: var(--bad); border-color: var(--bad); color: var(--panel); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .alg-row { display: flex; gap: 8px; }
-.alg-row input { flex: 1; min-width: 0; }
-input[type="text"], textarea { font: 15px var(--f-mono); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; width: 100%; }
-textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: break-all; }
+.alg-row .field { flex: 1; min-width: 0; }
+/* A text field with a clear button at its right end, shown while the field holds text. */
+.field { position: relative; display: block; min-width: 0; }
+.field input[type="text"]:not(:placeholder-shown) { padding-right: 36px; }
+.field-clear { position: absolute; top: 50%; right: 4px; transform: translateY(-50%); width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font: 400 22px/1 var(--f-body); cursor: pointer; }
+.field-clear:hover { color: var(--ink); }
+.field input:placeholder-shown + .field-clear, .field.showing .field-clear { display: none; }
+/* 16px: iOS zooms the page into a focused field with smaller text. */
+input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; width: 100%; }
+/* The state code: one field shows the current position's code (a read-out, no fill) and
+   takes one typed or pasted (a field like the others). Its buttons sit beside the heading. */
+.code-box { position: relative; }
+.code-btns { position: absolute; top: 0; right: 0; display: flex; gap: 6px; }
+.code-btns .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.code-box .field.showing input { background: transparent; color: transparent; }
+/* The current code, drawn over the field; fitCodeReadout sizes it to fit one line (13px at most). */
+.code-readout { display: none; position: absolute; inset: 0; padding: 0 11px; align-items: center; pointer-events: none; font-family: var(--f-mono); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.code-box .field.showing .code-readout { display: flex; }
+.code-box .field input.invalid { outline: 3px solid var(--bad); outline-offset: 0; border-color: var(--bad); }
+.code-box .field.replaced input { animation: code-replaced 1.6s ease-out; }
+@keyframes code-replaced { 0%, 30% { background: var(--warn-bg); border-color: var(--warn); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .code-box .field.replaced input { animation: none; } }
 .mods { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .mods button { font: 600 15px var(--f-mono); padding: 6px 14px; border: 0; background: var(--panel); color: var(--ink); cursor: pointer; min-height: 38px; }
-.mods button.sel { background: var(--ink); color: var(--panel); }
+.mods button.sel { background: var(--accent); color: var(--accent-ink); }
 .pad { display: grid; gap: 10px; margin-top: 10px; }
 .pad-group { display: grid; grid-template-columns: 74px 1fr; gap: 8px; align-items: center; }
 .pad-label { font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; font-size: 13px; color: var(--muted); }
@@ -144,20 +230,34 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .mv.outer { border-style: dashed; }
 .mv.blocked { opacity: 0.38; }
 .mv { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
-.mv.inverted { background: var(--ink); color: var(--panel); border-color: var(--ink); opacity: 1; }
-.turn-head { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.mv.inverted { background-color: var(--accent); color: var(--accent-ink); border-color: var(--accent); opacity: 1; }
+/* The rotations' axes, drawn behind their letters: x across (like R), y up and down (like U),
+   z end-on, a ring around the letter (the axis points at you). */
+.mv[data-move="x"], .mv[data-move="y"], .mv[data-move="z"] { --axis: color-mix(in srgb, var(--muted) 70%, transparent); background-repeat: no-repeat; background-position: center; }
+.mv[data-move="x"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 100% 1.5px; }
+.mv[data-move="y"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 1.5px 100%; }
+.mv[data-move="z"] { background-image: radial-gradient(circle, transparent 6.9px, var(--axis) 7.4px, var(--axis) 8.6px, transparent 9.1px); }
+/* A button that doesn't apply right now is grayed out. */
+.btn:disabled, .btn:disabled:hover { opacity: 0.4; cursor: not-allowed; border-color: var(--line); }
+.tp-group > .btn.tp:disabled { opacity: 1; color: color-mix(in srgb, var(--muted) 45%, transparent); }
+.turn-head { display: flex; align-items: center; gap: 8px; }
 /* Heading and Undo line up with the 40px-tall turn-amount selector (its first row). */
 .turn-head h2 { margin: 0; line-height: 40px; }
-.turn-head #undo { margin: 4px auto 0 0; }
-.mod-col { display: grid; justify-items: end; gap: 4px; }
+.turn-head #undo { margin: 0; }
+.mod-col { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .keep { display: flex; gap: 6px; align-items: center; }
 .tp { min-width: 44px; font-size: 15px; }
 .tp sub { font-size: 9px; margin-left: 1px; }
-.tp.stop { background: var(--ink); color: var(--panel); border-color: var(--ink); }
-.history { position: relative; display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0; max-height: 132px; overflow-y: auto; }
+/* The start bar is drawn, so ⏮ is the same ◀ as its neighbors (iOS draws ⏮ as an emoji). */
+.tp-bar { display: inline-block; width: 2.5px; height: 0.78em; margin-right: 1px; background: currentColor; vertical-align: -0.06em; }
+.tp.stop { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.history { position: relative; display: flex; flex-wrap: nowrap; align-items: center; gap: 2px; min-height: 32px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; overscroll-behavior-x: contain; }
+.history::-webkit-scrollbar { display: none; }
+.history > *, .step-box > * { flex: none; }
+.history > .hint { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tok { font: 13px var(--f-mono); border: 0; background: var(--off-bg); color: var(--muted); border-radius: 5px; padding: 3px 6px; cursor: pointer; }
 /* A step the guide loaded: its turns in a box, behind a tag that goes to the step's start. */
-.step-box { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
+.step-box { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; }
 .step-box.on { border-color: var(--accent); }
 /* The setup and its undoing are marked alike, under the turn; a regrip is ringed. */
 .tok.part-setup, .tok.part-undo { box-shadow: inset 0 -2px 0 var(--accent); }
@@ -167,10 +267,10 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .step-tag { font: 700 11px var(--f-body); border: 0; background: none; color: var(--accent); padding: 3px 4px; cursor: pointer; white-space: nowrap; }
 .tok.done { background: var(--good-bg); color: var(--good); }
 .tok.cur { box-shadow: inset 0 0 0 2px var(--good); } /* inside the chip: .history clips anything drawn outside */
-.transport { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.counter { font: 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
+.transport { display: flex; gap: 6px; align-items: center; }
+.counter { flex: none; white-space: nowrap; font: 13px var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 4px; }
 .hint { color: var(--muted); font-size: 13px; }
-.net { display: grid; grid-template-columns: repeat(4, minmax(0, 100px)); grid-template-rows: repeat(3, auto); gap: 6px; justify-content: start; }
+.net { display: grid; grid-template-columns: repeat(4, minmax(0, 100px)); grid-template-rows: repeat(3, auto); gap: 6px; justify-content: center; }
 .net-wrap { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
 .net-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .netface { position: relative; display: grid; grid-template-columns: 0.55fr repeat(5, 1fr) 0.55fr; grid-template-rows: 0.55fr repeat(5, 1fr) 0.55fr; gap: 1px; aspect-ratio: 1; max-width: 100%; }
@@ -192,9 +292,13 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .add-turns { margin-top: 10px; }
 .known { margin-top: 10px; }
 .known summary { cursor: pointer; font-weight: 600; }
-/* A fixed height, so a step's text never moves what is below it. */
+/* The four step buttons share one row, even on a phone. */
+.guide-btns { flex-wrap: nowrap; gap: 6px; }
+.guide-btns .btn { flex: 1 1 auto; min-width: 0; padding-inline: 6px; white-space: nowrap; }
 .guide-modes button { font: 600 13px var(--f-body); padding: 6px 10px; min-height: 34px; }
-.guide-line { margin: 8px 0 0; height: 7.4em; overflow-y: auto; font-size: 14px; }
+.guide-line { margin: 6px 0 0; font-size: 14px; line-height: 1.35; }
+.guide-line:empty::before { content: "Start solving loads the first step, ready to play with ▶ above. Once a step has played, ▶ becomes Next step. The ⓘ on the 3D view explains the paths."; color: var(--muted); font-size: 13px; }
+#guide.solving .guide-line:empty::before { content: "Next step loads one step toward solved, from the position shown."; }
 .known-alg { font: 13px var(--f-mono); overflow-wrap: anywhere; }
 .saved { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
 .saved li { display: flex; gap: 8px; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); padding-top: 6px; }
@@ -204,48 +308,120 @@ textarea { font-size: 11px; resize: vertical; min-height: 54px; word-break: brea
 .saved-actions { display: flex; gap: 4px; flex-shrink: 0; }
 /* Collapsible sections: the heading toggles; collapsed shows only the heading row. */
 .sec-toggle { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; user-select: none; -webkit-user-select: none; }
-.sec-toggle::before { content: ""; width: 0; height: 0; border-left: 5px solid currentColor; border-top: 4px solid transparent; border-bottom: 4px solid transparent; transform: rotate(90deg); transition: transform 0.15s; }
-[data-sec].collapsed .sec-toggle::before { transform: rotate(0deg); }
+/* One disclosure triangle for section headings and details: points right when closed, down when open. */
+.sec-toggle::before, details > summary::before { content: ""; flex: none; width: 0; height: 0; border-left: 8px solid currentColor; border-top: 5px solid transparent; border-bottom: 5px solid transparent; transform: rotate(90deg); transition: transform 0.15s; }
+[data-sec].collapsed .sec-toggle::before, details:not([open]) > summary::before { transform: rotate(0deg); }
 .sec-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-[data-sec].collapsed > :not(.sec-head) { display: none !important; }
-[data-sec].collapsed .turn-head > :not(h2) { display: none !important; }
-[data-sec].collapsed .sec-head > :not(h2) { display: none !important; }
+@media (min-width: 900px) {
+  [data-sec].collapsed > :not(.sec-head) { display: none !important; }
+  [data-sec].collapsed .turn-head > :not(h2) { display: none !important; }
+  [data-sec].collapsed .sec-head > :not(h2) { display: none !important; }
+}
 .sec-title { margin: 0 0 6px; }
-@media (prefers-reduced-motion: reduce) { .sec-toggle::before { transition: none; } }
-details summary { cursor: pointer; font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-size: 15px; }
+@media (prefers-reduced-motion: reduce) { .sec-toggle::before, details > summary::before { transition: none; } }
+details summary { cursor: pointer; display: flex; align-items: center; gap: 6px; list-style: none; font-family: var(--f-display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-size: 15px; }
+details summary::-webkit-details-marker { display: none; }
 details[open] summary { margin-bottom: 8px; }
 .legend { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
 .legend code { font-family: var(--f-mono); color: var(--ink); }
 .speed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); flex: 1 1 auto; min-width: 0; }
 .speed input { flex: 1 1 auto; min-width: 0; }
 @media (prefers-reduced-motion: reduce) { .mv:active { transform: none; } }
+/* Wide screens: the 3D view and the playback strip on the left, the panels stacked in a
+   column on the right, each collapsing from its heading. */
+@media (min-width: 900px) {
+  .wrap { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; }
+  .stage-col { position: sticky; top: env(safe-area-inset-top, 0px); }
+  .tabs { display: none !important; }
+  #scene { height: clamp(260px, calc(100dvh - 330px), 640px) !important; }
+}
+/* Phones: one screen, no page scrolling. The 3D view and the playback strip stay put; the
+   panels below are a carousel, one at a time, picked by the tab row or a sideways swipe. */
+@media (max-width: 899px) {
+  /* The root keeps clear of the safe areas (as the artifact host's skeleton also does), and
+     the body fills what is left: the safe-area insets are counted once. */
+  :root { height: 100dvh; overflow: hidden; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+  body { margin: 0; display: flex; flex-direction: column; height: 100%; overflow: hidden; padding-block: 6px 0; }
+  header { display: none; }
+  .wrap { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; flex-direction: column; gap: 6px; }
+  .stage-col, .tabs { flex: none; }
+  /* Under the 3D view, one row: Home and how the puzzle is held.
+     The other views are a tap on an edge label away, so their buttons are left out. */
+  .stage-col { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; row-gap: 2px; align-items: center; }
+  .stage-col > .stage { grid-area: 1 / 1 / 2 / -1; }
+  .stage-col > .views { grid-area: 2 / 1; margin: 0; }
+  .stage-col > .hold-row { grid-area: 2 / 2; margin: 0; }
+  .stage-col > .view-head { display: none; }
+  .stage-col > .edit-bar { grid-area: 3 / 1 / 4 / -1; margin: 0; }
+  .stage-col > .dock { grid-area: 4 / 1 / 5 / -1; margin: 0; gap: 4px; }
+  .views > .btn.small:not([data-view="home"]) { display: none; }
+  .views > .btn.small { min-height: 26px; padding: 2px 8px; }
+  .hold { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #info-pop { width: min(330px, calc(100vw - 32px)); max-width: none; }
+  #scene { height: clamp(170px, 32dvh, 520px); }
+  .history { min-height: 22px; }
+  .stage-col > .dock { gap: 3px; }
+  .transport { gap: 4px; }
+  .tp-group > .btn.tp { min-width: 34px; min-height: 30px; padding: 0 6px; }
+  .transport > .status { gap: 4px; }
+  #shape-chip { font: 600 11px var(--f-body); padding: 3px 6px; }
+  .counter { font-size: 12px; }
+  .speed { font-size: 12px; }
+  .tabs button { min-height: 30px; padding: 4px; }
+  /* Messages float over the top of the 3D view, clear of the panel being read. */
+  .message { top: calc(14px + env(safe-area-inset-top, 0px)); bottom: auto; }
+  .stack { flex: 1 1 auto; min-height: 0; display: flex; gap: 16px; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .stack::-webkit-scrollbar { display: none; }
+  .stack > .panel { position: relative; flex: 0 0 100%; padding: 10px; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-align: start; scroll-snap-stop: always; margin-bottom: 4px; }
+  /* The tab row names the panel, so the panels' own headings step aside. */
+  .stack > .panel > h2, .stack .turn-head h2, .stack .view-head h2, .stack .row > h2 { display: none; }
+  .stack .row:has(> h2) { justify-content: flex-end !important; }
+  .guide-btns .btn { min-height: 36px; }
+  .stack > #guide.solving { display: flex; flex-direction: column; overflow: hidden; }
+  #guide.solving .solve-steps { flex: 1 1 auto; min-height: 60px; display: flex; flex-direction: column; }
+  #guide.solving .steps-list { flex: 1 1 auto; min-height: 0; max-height: none; }
+  #guide.solving .guide-line { flex: none; }
+  /* The turn buttons all fit above the fold: one row of Undo and the turn amount, then
+     four rows of buttons. Which outer turns are allowed shows on the buttons themselves. */
+  .pad { gap: 6px; margin-top: 8px; }
+  .pad-group { grid-template-columns: 52px 1fr; }
+  .mv { min-height: 36px; }
+  .add-turns { margin-top: 8px; }
+  /* The flat view is sized to show whole in its panel, with its ⓘ over its empty corner. */
+  .stack > [data-sec="flat"] { container-type: size; }
+  .stack > [data-sec="flat"] .view-head { position: absolute; top: 12px; right: 12px; z-index: 5; margin: 0; }
+  .net-wrap { padding: 6px; }
+  .net { grid-template-columns: repeat(4, minmax(0, min(100px, calc((100cqh - 28px) / 3)))); }
+}
 </style>
 
 <header>
   <h1>X-Cube Lab</h1>
 </header>
 
+<!-- Phones: the 3D view and the playback strip stay at the top; the panels below are a
+     carousel, one at a time, chosen by the tab row or a sideways swipe. Wide screens: the
+     3D view and strip on the left, the panels stacked in a column on the right. -->
 <div class="wrap">
   <div class="stage-col" data-sec="view3d">
     <div class="view-head">
       <h2 class="sec-title">3D view</h2>
-      <div class="view-tools">
-        <button class="btn small tool-btn info" id="info-btn" aria-label="How to use the 3D view" aria-expanded="false" aria-controls="info-pop">ⓘ</button>
-        <button class="btn small tool-btn" id="render-btn" aria-expanded="false" aria-controls="render-pop">Display ▾</button>
-      </div>
-      <div class="pop" id="info-pop" hidden>
+    </div>
+    <div class="stage">
+      <canvas id="scene" aria-label="3D view of the X-Cube"></canvas>
+      <button class="btn small tool-btn info corner tr" id="info-btn" aria-label="How to use the 3D view" aria-expanded="false" aria-controls="info-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="7.4" r="1.3" fill="currentColor"/><path d="M12 10.6v6.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      <button class="btn small tool-btn info corner br" id="render-btn" aria-label="Display options" title="Display options" aria-expanded="false" aria-controls="render-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg></button>
+      <button class="btn small tool-btn info corner tl" id="undo" aria-label="Undo the last turn" title="Undo the last turn" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <div class="pop near-top" id="info-pop" hidden>
         <p class="hint">Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes.</p>
         <p class="hint"><strong>During a solve step</strong>, only the cubelets the step applies to keep their colors; gray ones don't move, dark gray ones may end up anywhere. Each colored cubelet has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the cubelet flies along it. With a ring: the cubelet ends up solved. Dashed: it is passing through and moves again later. Plain: a shape or core step moves it; it is solved later.</p>
       </div>
-      <div class="pop" id="render-pop" hidden title="Applies to the 3D view and the flat view">
+      <div class="pop near-bottom" id="render-pop" hidden title="Applies to the 3D view and the flat view">
         <label class="keep" for="glow"><input type="checkbox" id="glow"> Edge glow</label>
         <label class="keep" for="shade"><input type="checkbox" id="shade"> Shading</label>
         <label class="keep" for="shadows"><input type="checkbox" id="shadows"> Shadows</label>
         <label class="keep" for="gloss"><input type="checkbox" id="gloss"> Gloss</label>
       </div>
-    </div>
-    <div class="stage">
-      <canvas id="scene" aria-label="3D view of the X-Cube"></canvas>
       <div class="compass" role="group" aria-label="Look at a face">
         <button class="cmp" id="compass-0"></button>
         <button class="cmp" id="compass-1"></button>
@@ -266,7 +442,6 @@ details[open] summary { margin-bottom: 8px; }
     </div>
     <div class="hold-row">
       <p class="hold" id="hold" aria-live="polite"></p>
-      <button class="btn small edit-btn" id="edit-start"><span aria-hidden="true">✎</span> Edit colors</button>
     </div>
     <div class="edit-bar" id="edit-bar" hidden>
       <div class="palette" role="radiogroup" aria-label="Paint color">
@@ -276,61 +451,65 @@ details[open] summary { margin-bottom: 8px; }
       <div class="edit-actions"><button class="btn small primary" id="edit-done">Done</button><button class="btn small" id="edit-cancel">Cancel</button></div>
       <p class="hint">Pick a color, then tap stickers on the cube to paint them. Drag to turn the view.</p>
     </div>
-    <div class="status" id="status" aria-live="polite"></div>
+    <div class="dock" id="dock" aria-label="Turn list and playback">
+      <div class="list-row"><div class="history" id="history"></div><button class="list-clear" id="list-clear" title="Clear the turn list" aria-label="Clear the turn list" hidden>✕</button></div>
+      <div class="transport">
+        <div class="tp-group" role="group" aria-label="Playback">
+          <button class="btn small tp" id="first" aria-label="Back to the start" title="Back to the start"><i class="tp-bar" aria-hidden="true"></i>◀</button>
+          <button class="btn small tp" id="rewind" aria-label="Play backward to the start" title="Play backward / stop">◀</button>
+          <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
+          <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
+          <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
+          <button class="btn small tp next-tp" id="strip-next" aria-label="Next step" title="Load the next step" hidden><svg class="ico" viewBox="0 0 20 18" aria-hidden="true"><circle cx="4" cy="13.5" r="2.4" fill="currentColor"/><circle cx="16" cy="13.5" r="2.4" fill="currentColor"/><path d="M4 12C4.2 4 14.85 3.07 15.43 7.53" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M15.88 10.9 18.11 6.38 12.55 7.1z" fill="currentColor"/></svg></button>
+        </div>
+        <span class="counter" id="counter">0 / 0</span>
+        <div class="status" id="status" aria-live="polite"><span class="chip" id="shape-chip"></span><span class="outer-grid" id="outer-grid" aria-label="Outer turns"></span></div>
+      </div>
+      <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
+    </div>
     <p class="message" id="message" hidden></p>
+    <div class="confirm" id="confirm" role="alertdialog" aria-labelledby="confirm-text" hidden><p id="confirm-text">End the solve in progress?</p><div class="row"><button class="btn small primary" id="confirm-yes">End solve</button><button class="btn small" id="confirm-no">Keep solving</button></div></div>
+  </div>
+
+  <div class="tabs" id="tabs" role="tablist" aria-label="Panels">
+    <button role="tab" data-tab="start" aria-controls="panel-start">Start</button><button role="tab" data-tab="turn" aria-controls="panel-turn">Turn</button><button role="tab" data-tab="algs" aria-controls="panel-algs">Algorithms</button><button role="tab" data-tab="solve" aria-controls="guide">Solve</button><button role="tab" data-tab="flat" aria-controls="panel-flat">Flat</button>
   </div>
 
   <div class="stack" id="stack-col">
-    <section class="panel" data-sec="run">
-      <h2>Run an algorithm</h2>
-      <div class="history" id="history"></div>
-      <div class="transport">
-        <button class="btn small tp" id="first" aria-label="Back to the start" title="Back to the start">⏮</button>
-        <button class="btn small tp" id="rewind" aria-label="Play backward to the start" title="Play backward / stop">◀</button>
-        <button class="btn small tp" id="back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
-        <button class="btn small tp" id="fwd" aria-label="Forward one turn" title="Forward one turn">▶<sub>1</sub></button>
-        <button class="btn small tp" id="last" aria-label="Play to the end" title="Play / stop">▶</button>
-        <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
-        <span class="counter" id="counter">0 / 0</span>
-      </div>
+
+    <section class="panel" data-sec="start" id="panel-start" role="tabpanel">
+      <h2>Start</h2>
       <p class="hint base-line" title="The position the turn list starts from">Start: <strong id="base-label">Solved</strong></p>
       <div class="base-actions">
-        <button class="btn small ghost" id="clear" title="Clear the turn list; the position shown becomes the start">Clear</button>
-        <button class="btn small ghost" id="reset">Reset to solved</button>
         <button class="btn small" id="shuffle">Shuffle</button>
+        <button class="btn small" id="reset">Reset to solved</button>
+        <button class="btn small edit-btn" id="edit-start" title="Paint the stickers to match a real cube"><span aria-hidden="true">✎</span> Edit colors</button>
+        <button class="btn small" id="clear" title="The position shown becomes the start, and the turn list empties">Start from here</button>
       </div>
-      <div class="alg-row add-turns">
-        <input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Turns to add">
-        <button class="btn primary" id="load" title="Add the turns at the current step, then play them with ▶ or step through them">Load</button>
-        <button class="btn" id="alg-edit" title="Edit the whole turn list here">Edit</button>
+      <p class="hint" style="margin:4px 0 0">Start from here keeps the puzzle as shown and empties the turn list.</p>
+      <div class="sub-head"><span>Saved positions</span><span class="chip" id="store-kind">Loading</span></div>
+      <div class="alg-row" style="margin-top:8px">
+        <span class="field"><input type="text" id="save-name" placeholder="Name this position" autocomplete="off"><button class="field-clear" type="button" aria-label="Clear the name">×</button></span>
+        <button class="btn primary" id="save">Save</button>
       </div>
-      <details class="known" id="guide">
-        <summary>Solve step by step</summary>
-        <p class="hint" style="margin:6px 0 0">Next step loads one step toward solved, ready to play. The cubelets it applies to keep their colors, and paths show where they go (the ⓘ beside the 3D view says how to read them). In the turn list, a step's tag goes back to its start.</p>
-        <div class="row" style="margin-top:8px"><button class="btn primary" id="next-step">Next step</button><button class="btn" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn" id="guide-show" title="Turn the view to where this step's paths begin and end">Show</button><button class="btn" id="guide-stop" title="Drop the step and its grays; the turn list stays as it is">Stop</button></div>
-        <div class="row" style="margin-top:8px"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
-        <p class="guide-line" id="guide-line" aria-live="polite"></p>
-      </details>
-      <details class="known">
-        <summary>Algorithms</summary>
-        <p class="hint" style="margin:6px 0 0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turn list with its start position.</p>
-        <div class="alg-row" style="margin-top:8px">
-          <input type="text" id="alg-name" placeholder="Name algorithm" autocomplete="off">
-          <button class="btn" id="alg-save">Save</button>
-        </div>
-        <ul class="saved" id="known-list"></ul>
+      <ul class="saved" id="saved-list"></ul>
+      <details class="code-box" style="margin-top:12px">
+        <summary>State code</summary>
+        <div class="code-btns"><button class="btn" id="copy-code" title="Copy the current position's code">Copy</button><button class="btn" id="import" title="Make the position typed in the field the start">Load</button></div>
+        <p class="hint" style="margin:0 0 6px">The current position as text.</p>
+        <span class="field showing" id="code-field"><input type="text" id="code" placeholder="Paste or type a state code" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="State code"><span class="code-readout" id="code-readout" aria-hidden="true"></span><button class="field-clear" type="button" id="code-clear" aria-label="Put back the current position's code">×</button></span>
+        <p class="hint" id="code-note" style="margin:4px 0 0; height:1.5em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></p>
       </details>
     </section>
 
-    <section class="panel" data-sec="turn">
+    <section class="panel" data-sec="turn" id="panel-turn" role="tabpanel">
       <div class="turn-head">
         <h2>Turn the puzzle</h2>
-        <button class="btn small" id="undo">Undo last turn</button>
         <div class="mod-col">
+          <label class="hint keep" for="sticky-mod" title="Keep ′ or 2 selected after a turn"><input type="checkbox" id="sticky-mod"> Keep ′ or 2</label>
           <div class="mods" role="group" aria-label="Turn amount">
             <button data-mod="1" aria-label="Clockwise">↻</button><button data-mod="3" aria-label="Counterclockwise">′</button><button data-mod="2" aria-label="Half turn">2</button>
           </div>
-          <label class="hint keep" for="sticky-mod"><input type="checkbox" id="sticky-mod"> Keep ′ or 2 selected</label>
         </div>
       </div>
       <div class="pad">
@@ -346,16 +525,42 @@ details[open] summary { margin-bottom: 8px; }
         </div></div>
         <div class="pad-group"><span class="pad-label">Rotate</span><div class="pad-keys">
           <button class="mv" data-move="x">x</button><button class="mv" data-move="y">y</button><button class="mv" data-move="z">z</button>
-          <span class="pad-note" id="rotate-note">The whole puzzle: <span><code>x</code> like <code>R</code>,</span> <span><code>y</code> like <code>U</code>,</span> <span><code>z</code> like <code>F</code></span></span>
+          <span class="pad-note" id="rotate-note"><span><code>x</code> like <code>R</code>,</span> <span><code>y</code> like <code>U</code>,</span> <span><code>z</code> like <code>F</code></span></span>
         </div></div>
+      </div>
+      <div class="alg-row add-turns">
+        <span class="field"><input type="text" id="alg" placeholder="(R U2)5 or [R, U]" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Turns to add"><button class="field-clear" type="button" aria-label="Clear the turns typed">×</button></span>
+        <button class="btn primary" id="load" title="Add the turns at the current step, then play them with ▶ or step through them">Load</button>
+        <button class="btn" id="alg-edit" title="Edit the whole turn list here">Edit</button>
       </div>
     </section>
 
-    <section class="panel" data-sec="flat">
+    <section class="panel" data-sec="algs" id="panel-algs" role="tabpanel">
+      <h2>Algorithms</h2>
+      <p class="hint" style="margin:0">Load sets up the position an algorithm applies to and its turns, ready to play. Save keeps the turn list with its start position.</p>
+      <div class="alg-row" style="margin-top:8px">
+        <span class="field"><input type="text" id="alg-name" placeholder="Name algorithm" autocomplete="off"><button class="field-clear" type="button" aria-label="Clear the name">×</button></span>
+        <button class="btn" id="alg-save">Save</button>
+      </div>
+      <p class="hint alg-save-note" id="alg-save-note" hidden>Saving <span id="alg-save-what"></span>. <button class="link-btn" id="alg-save-cancel">Cancel</button></p>
+      <ul class="saved" id="known-list"></ul>
+    </section>
+
+    <section class="panel" data-sec="solve" id="guide" role="tabpanel">
+      <h2>Solve step by step</h2>
+      <!-- Not solving: pick the order, then start. Solving: the step's buttons and its text. -->
+      <div class="row solve-idle"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
+      <div class="row guide-btns"><button class="btn primary" id="next-step">Start solving</button><button class="btn solve-only" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn solve-only" id="guide-show" title="Turn the view to where this step's paths begin and end">Show step</button></div>
+      <p class="guide-line" id="guide-line" aria-live="polite"></p>
+      <div class="solve-steps solve-only"><p class="steps-head" id="steps-head"></p><ol class="steps-list" id="steps-list" aria-label="The steps of this solve, newest first"></ol></div>
+      <button class="btn solve-only stop-solve" id="guide-stop" title="Stop solving: drop the step and its grays; the turn list stays as it is">Stop solving</button>
+    </section>
+
+    <section class="panel" data-sec="flat" id="panel-flat" role="tabpanel">
       <div class="view-head">
         <h2>Flat view</h2>
         <div class="view-tools">
-          <button class="btn small tool-btn info" id="flat-info-btn" aria-label="How to read the flat view" aria-expanded="false" aria-controls="flat-info-pop">ⓘ</button>
+          <button class="btn small tool-btn info" id="flat-info-btn" aria-label="How to read the flat view" aria-expanded="false" aria-controls="flat-info-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="7.4" r="1.3" fill="currentColor"/><path d="M12 10.6v6.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
         </div>
         <div class="pop" id="flat-info-pop" hidden>
           <p class="hint">The first face you'd see looking straight at each side. Dark squares are cubelet faces with no sticker. A glow along an edge shows the sticker color around the corner. No glow there means that side has no sticker.</p>
@@ -364,23 +569,6 @@ details[open] summary { margin-bottom: 8px; }
       <div class="net-wrap"><div class="net" id="net"></div><canvas id="net-canvas" class="net-canvas" aria-hidden="true"></canvas></div>
     </section>
 
-    <section class="panel" data-sec="saved">
-      <div class="row" style="justify-content:space-between"><h2 style="margin:0">Saved states</h2><span class="chip" id="store-kind">Loading</span></div>
-      <div class="alg-row" style="margin-top:8px">
-        <input type="text" id="save-name" placeholder="Name this position" autocomplete="off">
-        <button class="btn primary" id="save">Save</button>
-      </div>
-      <ul class="saved" id="saved-list"></ul>
-      <details style="margin-top:12px">
-        <summary>State code</summary>
-        <p class="hint" style="margin:0 0 6px">A text copy of the current position: 44 letters, short enough to type on another device. Paste it into a chat with Claude, or import one here.</p>
-        <textarea id="code-out" readonly aria-label="Current state code"></textarea>
-        <p class="hint" id="code-note" style="margin:4px 0 0; height:1.5em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"></p>
-        <div class="row" style="margin:6px 0 10px"><button class="btn small" id="copy-code">Copy</button></div>
-        <textarea id="code-in" placeholder="Type or paste a state code (case, spaces and dashes don't matter)" aria-label="State code to import"></textarea>
-        <div class="row" style="margin-top:6px"><button class="btn small" id="import">Import as start</button></div>
-      </details>
-    </section>
   </div>
 </div>
 

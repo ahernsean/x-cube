@@ -501,6 +501,8 @@ function initScene(canvas: HTMLCanvasElement) {
   bindOrbit(canvas);
   resize();
   window.addEventListener("resize", resize);
+  // The phone layout sizes the view by the screen's height, which changes as Safari's bars come and go.
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => resize()).observe(renderer.domElement);
   syncMeshes(app.current);
   frame();
 }
@@ -1227,6 +1229,8 @@ function resize() {
 // Edge labels: which face of the puzzle points up, down, left, right and at you.
 const COMPASS_FACES = ["R", "L", "U", "D", "F", "B"];
 let compassKey = "";
+/** Label scale for an axis pointing straight away from you and straight at you. */
+const COMPASS_MIN = 0.85, COMPASS_MAX = 1.5;
 /**
  * Edge labels that move with the cube: each face's label sits where that face's axis
  * (its outward normal from the center), as seen on screen, meets the edge of the 3D
@@ -1249,7 +1253,7 @@ function updateCompass() {
   const [ox, oy] = toScreenXY(new THREE.Vector3(0, 0, 0));
   // Work out each label's spot on the edge, then place the most visible first and slide
   // any label that would cover an already placed one along its edge.
-  const items: { el: HTMLElement; x: number; y: number; vis: number; away: boolean; vertical: boolean; hw: number; hh: number }[] = [];
+  const items: { el: HTMLElement; x: number; y: number; vis: number; away: boolean; vertical: boolean; hw: number; hh: number; scale: number; z: number }[] = [];
   for (let d = 0; d < 6; d++) {
     const el = document.getElementById(`compass-${d}`);
     if (!el) continue;
@@ -1268,14 +1272,23 @@ function updateCompass() {
       dx /= len;
       dy /= len;
     }
-    const hw = el.offsetWidth / 2 + 6, hh = el.offsetHeight / 2 + 6;
+    // Foreshortened: a label on an axis toward you is drawn larger, one away from you
+    // smaller (no smaller than COMPASS_MIN, so it stays legible).
+    const scale = COMPASS_MIN + ((COMPASS_MAX - COMPASS_MIN) * (dir.z + 1)) / 2;
+    const hw = (el.offsetWidth * scale) / 2 + 6, hh = (el.offsetHeight * scale) / 2 + 6;
     const t = Math.min(dx ? (w / 2 - hw) / Math.abs(dx) : Infinity, dy ? (h / 2 - hh) / Math.abs(dy) : Infinity);
     const x = w / 2 + dx * (isFinite(t) ? t : 0), y = h / 2 + dy * (isFinite(t) ? t : 0);
     const vertical = Math.abs(Math.abs(x - w / 2) - (w / 2 - hw)) < 1; // on the left or right edge
-    items.push({ el, x, y, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4 });
+    items.push({ el, x, y, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4, scale, z: dir.z });
   }
   items.sort((a, b) => b.vis - a.vis);
-  const placed: typeof items = [];
+  // The buttons in the view's corners are in place first, so a label slides clear of them.
+  const placed: { x: number; y: number; hw: number; hh: number }[] = [];
+  const cr = canvas.getBoundingClientRect();
+  for (const el of document.querySelectorAll<HTMLElement>(".stage > .corner:not([hidden])")) {
+    const r = el.getBoundingClientRect();
+    if (r.width) placed.push({ x: r.left - cr.left + r.width / 2, y: r.top - cr.top + r.height / 2, hw: r.width / 2, hh: r.height / 2 });
+  }
   for (const it of items) {
     if (it.vis > 0.05) {
       for (let tries = 0; tries < 8; tries++) {
@@ -1289,7 +1302,8 @@ function updateCompass() {
       }
       placed.push(it);
     }
-    it.el.style.transform = `translate(${it.x}px, ${it.y}px) translate(-50%, -50%)`;
+    it.el.style.transform = `translate(${it.x}px, ${it.y}px) translate(-50%, -50%) scale(${it.scale.toFixed(3)})`;
+    it.el.style.zIndex = String(Math.round((it.z + 1) * 10)); // nearer labels over farther ones
     it.el.style.opacity = String(it.vis * (it.away ? 0.6 : 1));
     it.el.style.pointerEvents = it.vis > 0.3 ? "auto" : "none";
     it.el.classList.toggle("away", it.away);
@@ -1306,6 +1320,8 @@ function faceCenterColor(st: State, d: number): Color | null {
 }
 
 let view3dSection: HTMLElement | null = null;
+/** Wide screens show the panels in a column (and sections collapse); phones, a carousel. */
+const WIDE = window.matchMedia("(min-width: 900px)");
 function frame() {
   view3dSection ??= document.querySelector<HTMLElement>("[data-sec=view3d]");
   if (tween) {
@@ -1333,7 +1349,8 @@ function frame() {
       r.copy.quaternion.copy(r.turns[k]).slerp(r.turns[k + 1], at - k);
     }
   }
-  const view3dOpen = !view3dSection?.classList.contains("collapsed");
+  const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
+  if (showTarget) updateShowButton();
   if (view3dOpen) updateCompass();
   renderNetAnimation();
   if (view3dOpen) renderer.render(scene, camera);
@@ -1571,7 +1588,7 @@ function shuffle() {
 function finishShuffle() {
   shuffling = false;
   setBase(app.current, "Shuffled");
-  setMessage(`Shuffled with ${SHUFFLE_TURNS} turns: ${shuffleAlg}`, "ok");
+  setMessage("Shuffled", "ok"); // without the turns, which would give the way back away
 }
 
 /** Undo the last turn (Undo button, or a double tap on the 3D view). */
@@ -2057,7 +2074,7 @@ function runAlg(src: string, play: boolean): boolean {
   const startCursor = app.cursor;
   app.history = app.history.slice(0, app.cursor).concat(turns.slice(0, ok));
   if (why) setMessage(stopsAt(turns, ok, why), "error");
-  else setMessage(`${turns.length} turns loaded`, "ok");
+  else setMessage(`${turns.length} ${turns.length === 1 ? "turn" : "turns"} loaded`, "ok");
   if (play) for (let i = startCursor; i < app.history.length; i++) enqueue(app.history[i], true);
   playing = play && queue.length > 0;
   render();
@@ -2078,9 +2095,9 @@ function jump(to: number) {
   render();
 }
 
-function playToEnd() {
+function playToEnd(to = app.history.length) {
   flushAnimations();
-  for (let i = app.cursor; i < app.history.length; i++) enqueue(app.history[i], true);
+  for (let i = app.cursor; i < Math.min(to, app.history.length); i++) enqueue(app.history[i], true);
   playing = queue.length > 0;
   render();
 }
@@ -2285,13 +2302,19 @@ function watchAlgorithms() {
 }
 
 /** Saves the turn list, with the current start position, under `name`. */
+/** A solve's step waiting to be saved as an algorithm (its Save… in the step list); Save saves it instead of the turn list. */
+let savingStep: Guide | null = null;
 async function saveAlgorithm(name: string) {
-  const turns = app.history;
+  const step = savingStep && trail.includes(savingStep) ? savingStep : null;
+  savingStep = null;
+  const turns = step ? step.step.turns : app.history;
   if (!turns.length) {
     setMessage("Make or load some turns first, then save them.", "error");
     return render();
   }
-  const entry = { name: name || formatAlg(turns), alg: formatAlg(turns), code: encodeState(app.base), note: `From ${app.baseLabel}`, savedAt: Date.now(), source: "page" };
+  const entry = step
+    ? { name: name || formatAlg(turns), alg: formatAlg(turns), code: encodeState(step.from), note: `${STAGE_NAME[step.step.stage]} step of a solve`, savedAt: Date.now(), source: "page" }
+    : { name: name || formatAlg(turns), alg: formatAlg(turns), code: encodeState(app.base), note: `From ${app.baseLabel}`, savedAt: Date.now(), source: "page" };
   if (db) {
     try {
       await db.collection("algorithms").add(entry);
@@ -2361,7 +2384,7 @@ function bindAlgorithms() {
     const el = (e.target as HTMLElement).closest<HTMLElement>("button");
     const ds = el?.dataset;
     if (!ds) return;
-    if (ds.algLoad) loadAlgorithm(ds.algLoad);
+    if (ds.algLoad) endingSolve(() => loadAlgorithm(ds.algLoad!));
     else if (ds.algDel) {
       pendingAlgDelete = ds.algDel;
       render();
@@ -2375,6 +2398,11 @@ function bindAlgorithms() {
     const n = $("alg-name") as HTMLInputElement;
     saveAlgorithm(n.value.trim());
     n.value = "";
+  });
+  $("alg-save-cancel").addEventListener("click", () => {
+    savingStep = null;
+    ($("alg-name") as HTMLInputElement).value = "";
+    render();
   });
 }
 
@@ -2399,19 +2427,27 @@ function render() {
   const st = app.current;
   refreshGuide();
   // status
-  const shape = isHomeX(st) ? chip("X shape", "good") : isXShape(st) ? chip("X shape, tipped", "good") : chip("Out of shape", "warn");
-  const solved = isSolved(st) ? chip("Solved", "good") : "";
-  const outer = outerAvailability(st)
-    .map(([n, c]) => chip(c === 9 ? n : `${n} ${c}/9`, c === 9 ? "on" : "off", c === 9 ? `${n} can turn` : `${n} refuses: ${c} of 9 cubelets`))
+  // One chip for the shape: "Solved", or "X shape" lit when in shape and gray when not.
+  const solvedNow = isSolved(st), inShape = isXShape(st);
+  const shapeChip = $("shape-chip");
+  shapeChip.textContent = solvedNow ? "Solved" : "X shape";
+  shapeChip.className = `chip ${inShape ? "good" : "off"}`;
+  shapeChip.title = solvedNow ? "Solved" : isHomeX(st) ? "In the X shape" : inShape ? "In the X shape, tipped" : "Out of shape";
+  $("status").dataset.shape = isHomeX(st) ? "in" : inShape ? "tipped" : "out";
+  $("status").dataset.solved = String(solvedNow);
+  // A letter for each outer turn, green when it can turn.
+  $("outer-grid").innerHTML = outerAvailability(st)
+    .map(([n, c]) => `<span class="chip ${c === 9 ? "on" : "off-plain"}" data-outer="${n}" title="${c === 9 ? `${n} can turn` : `${n} refuses: ${c} of 9 cubelets`}">${n}</span>`)
     .join("");
-  $("status").innerHTML = `${shape}${solved}<span class="outer-label">Outer turns</span>${outer}`;
+  // Undo, over the 3D view's corner, only while there is a turn to undo.
+  $("undo").hidden = app.cursor <= 0 || shuffling;
 
   // hold: which center colors face up, toward you and to your right, as they are now
   const side = (d: number) => {
     const c = faceCenterColor(st, d);
     return c ? COLOR_NAME[c] : "?";
   };
-  $("hold").textContent = `Hold: ${side(2)} up, ${side(4)} front, ${side(0)} right`;
+  $("hold").innerHTML = `<span class="hold-pre">Hold: </span>${side(2)} up, ${side(4)} front, ${side(0)} right`;
   $("hold").title = "Up, toward you, and on your right, by the center colors as they are now";
 
   // message
@@ -2427,12 +2463,12 @@ function render() {
 
   // history strip
   const hist = turnListHtml();
-  $("history").innerHTML = hist || `<span class="hint">Turns you make or load appear here. Tap one to jump to it.</span>`;
-  // Keep the shown step's box, or else the current turn, in sight within the list.
-  const list = $("history");
-  const shown = list.querySelector<HTMLElement>(".step-box.on") ?? list.querySelector<HTMLElement>(".tok.cur");
-  if (shown && (shown.offsetTop < list.scrollTop || shown.offsetTop + shown.offsetHeight > list.scrollTop + list.clientHeight)) list.scrollTop = shown.offsetTop;
-  $("counter").textContent = `${app.cursor} / ${app.history.length}`;
+  // A shuffle's turns would give the way back away, so they are not shown while it plays.
+  const keepScroll = $("history").scrollLeft; // rebuilding the row would reset it
+  $("history").innerHTML = shuffling ? `<span class="hint">Shuffling…</span>` : hist || `<span class="hint">Turns you make or load appear here; tap one to go to it.</span>`;
+  $("history").scrollLeft = keepScroll;
+  keepTurnInSight();
+  $("counter").textContent = `${app.cursor}/${app.history.length}`;
   $("load").textContent = editingTurns ? "Update" : "Load";
   $("alg-edit").textContent = editingTurns ? "Cancel" : "Edit";
   ($("alg-edit") as HTMLButtonElement).disabled = !editingTurns && !app.history.length;
@@ -2446,6 +2482,22 @@ function render() {
   back.setAttribute("aria-label", playing && playingBack ? "Stop" : "Play backward to the start");
   back.classList.toggle("stop", playing && playingBack);
   $("base-label").textContent = app.baseLabel;
+  // Each button is grayed out when it can't do anything right now.
+  const len = app.history.length, at = app.cursor;
+  const dis = (id: string, off: boolean) => (($(id) as HTMLButtonElement).disabled = off);
+  dis("first", at === 0 && !playing);
+  dis("rewind", at === 0 && !(playing && playingBack));
+  dis("back", at === 0);
+  dis("fwd", at >= len);
+  dis("last", at >= len && !(playing && !playingBack));
+  dis("load", !editingTurns && !algField().value.trim());
+  if (savingStep && !trail.includes(savingStep)) savingStep = null;
+  dis("alg-save", !len && !savingStep);
+  $("alg-save-note").hidden = !savingStep;
+  if (savingStep) $("alg-save-what").textContent = `step ${savingStep.index}, ${STAGE_NAME[savingStep.step.stage]}: its ${savingStep.step.turns.length} turns, from where it starts`;
+  dis("clear", !len);
+  dis("reset", !len && isSolved(app.current));
+  $("list-clear").hidden = !len || shuffling;
 
   // modifier buttons
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-mod]")) b.classList.toggle("sel", Number(b.dataset.mod) === app.modifier);
@@ -2477,7 +2529,27 @@ function render() {
         )
         .join("")
     : `<li class="hint">No saved states yet. Save the current position to come back to it later.</li>`;
-  ($("code-out") as HTMLTextAreaElement).value = encodeState(st);
+  // The field shows this position's code, except while a code is being typed or pasted.
+  // Typed text is thrown away when the position changes, and the field says so.
+  const code = encodeState(st);
+  const codeField = $("code") as HTMLInputElement;
+  const codeBox = $("code-field");
+  if (codeTyped && code !== codeShown) {
+    codeTyped = false;
+    codeBox.classList.remove("replaced");
+    void codeBox.offsetWidth; // restart the flash
+    codeBox.classList.add("replaced");
+    setMessage("The puzzle moved, so the code you typed was replaced by the current position's", "info");
+  }
+  codeShown = code;
+  const blankForTyping = !codeTyped && codeBlank;
+  if (!codeTyped && !blankForTyping) codeField.value = code;
+  $("code-readout").textContent = code;
+  codeBox.classList.toggle("showing", !codeTyped && !blankForTyping);
+  fitCodeReadout();
+  const typedOk = codeTyped && codeIsValid(codeField.value);
+  codeField.classList.toggle("invalid", codeTyped && !typedOk);
+  ($("import") as HTMLButtonElement).disabled = !typedOk;
   // Only a position turns can't reach (from an X1 code or edited colors) has no letter
   // code. The note keeps its line either way, so the page doesn't shift.
   const why = unreachableReason(st);
@@ -2485,6 +2557,104 @@ function render() {
   note.textContent = why === null ? "" : "No letter code: turns can't reach this position.";
   note.title = why ?? "";
   renderAlgorithms();
+}
+
+/**
+ * The turn list is one row that scrolls sideways: keep the current turn (or, before a
+ * step's first turn, its tag) in sight, with a little of what comes next.
+ */
+let scrollToStep = false;
+let slideUntil = 0;
+/** Scrolls a row sideways to `to` over about a third of a second, eased at both ends. */
+function slideScroll(el: HTMLElement, to: number) {
+  const from = el.scrollLeft, ms = 350, t0 = performance.now();
+  if (reduceMotion || Math.abs(to - from) < 1) {
+    el.scrollLeft = to;
+    return;
+  }
+  slideUntil = t0 + ms + 50;
+  // Timed from the first frame's own timestamp: a frame's timestamp is when it began, which
+  // can be before this call, and a negative time would throw the eased position far off.
+  let start = -1;
+  const step = (now: number) => {
+    if (start < 0) {
+      start = now;
+      slideUntil = Math.max(slideUntil, start + ms + 50);
+    }
+    const t = Math.max(0, Math.min(1, (now - start) / ms));
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    el.scrollLeft = from + (to - from) * e;
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+function keepTurnInSight() {
+  const list = $("history");
+  const box = list.querySelector<HTMLElement>(".step-box.on");
+  if (scrollToStep && box) {
+    scrollToStep = false;
+    // The whole step if it fits; if it doesn't, its start, with the current turn just before it.
+    const cur = list.querySelector<HTMLElement>(".tok.cur");
+    const from = (cur ? offsetIn(cur, list) : offsetIn(box, list)) - 8; // keep this at the left edge or right of it
+    const end = offsetIn(box, list) + box.offsetWidth + 8 - list.clientWidth; // scrolled at least this far, all of the box shows
+    const left = end <= from ? Math.min(Math.max(list.scrollLeft, end), from) : from;
+    slideScroll(list, Math.max(0, left));
+    return;
+  }
+  // While that slide plays, setting the scroll would cut it short.
+  if (performance.now() < slideUntil) return;
+  // The current turn and the next two things after it (a step's tag and its first turn,
+  // say), or the start of the list before the first turn.
+  const items = [...list.querySelectorAll<HTMLElement>(".tok, .step-tag")];
+  const at = items.findIndex((e) => e.classList.contains("cur"));
+  const shown = items.slice(Math.max(0, at), at + 3);
+  if (!shown.length) return;
+  const left = offsetIn(shown[0], list), last = shown[shown.length - 1];
+  const right = Math.min(offsetIn(last, list) + last.offsetWidth, left + list.clientWidth - 8), room = list.clientWidth;
+  if (left < list.scrollLeft + 4) list.scrollLeft = Math.max(0, left - 24);
+  else if (right > list.scrollLeft + room - 4) list.scrollLeft = right - room + 24;
+}
+/** An element's left edge in a scrolling container's content. */
+function offsetIn(el: HTMLElement, container: HTMLElement): number {
+  return el.getBoundingClientRect().left - container.getBoundingClientRect().left + container.scrollLeft;
+}
+
+/**
+ * The current code is drawn at the largest size up to 13px that fits it on one line,
+ * measured, since the width of the code's font differs from one fallback font to another.
+ */
+function fitCodeReadout() {
+  const r = $("code-readout");
+  r.style.fontSize = "13px";
+  if (!r.clientWidth) return; // not laid out (its disclosure is closed)
+  const pad = parseFloat(getComputedStyle(r).paddingLeft) + parseFloat(getComputedStyle(r).paddingRight);
+  const room = r.clientWidth - pad;
+  const need = r.scrollWidth - pad;
+  if (need <= room) return;
+  // Text width isn't quite in proportion to its size, so check and step down until it fits.
+  let size = Math.floor(((13 * room) / need) * 10) / 10;
+  r.style.fontSize = `${size}px`;
+  while (size > 7 && r.scrollWidth > r.clientWidth) {
+    size = Math.round((size - 0.2) * 10) / 10;
+    r.style.fontSize = `${size}px`;
+  }
+}
+
+/** The state code field holds a code typed or pasted in, not yet loaded. */
+let codeTyped = false;
+/** The position code the field last showed, to notice the position changing under typed text. */
+let codeShown = "";
+/** Copy's fallback selects the shown code for copying by hand; that focus doesn't empty it. */
+let selectingCode = false;
+/** The field was emptied on being tapped into, for a code to be pasted or typed. */
+let codeBlank = false;
+function codeIsValid(text: string): boolean {
+  try {
+    decodeState(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const NET_COLOR: Record<string, string> = { W: "#f3f3ee", Y: "#f5d00f", G: "#17a34a", B: "#1d5fd6", R: "#c8202b", O: "#f47a12", "#": "var(--unstickered)" };
@@ -2574,6 +2744,112 @@ function bindMoveButtons() {
 }
 
 /** Each section's heading collapses and expands it; the choice is remembered on this device. */
+// Panel tabs (phones). The panels sit side by side in a sideways-scrolling row that snaps to
+// one panel; a tab scrolls to its panel, and scrolling (a swipe) selects the tab of the panel
+// in view. Sliding a finger along the tab row selects each tab it passes. The panel shown
+// is kept on the device.
+const TAB_KEY = "xcube-lab-tab";
+/** Brings a panel into view by its tab's name (set up by setupTabs). */
+let showTab: (name: string) => void = () => {};
+function setupTabs() {
+  const stack = $("stack-col");
+  const tabs = [...document.querySelectorAll<HTMLButtonElement>("#tabs [data-tab]")];
+  const panelOf = (t: HTMLButtonElement) => document.getElementById(t.getAttribute("aria-controls")!)!;
+  const mark = (on: HTMLButtonElement) => {
+    for (const t of tabs) {
+      t.setAttribute("aria-selected", String(t === on));
+      t.tabIndex = t === on ? 0 : -1;
+    }
+    try {
+      localStorage.setItem(TAB_KEY, on.dataset.tab!);
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  // While a tab's own scroll is under way its tab stays marked, though other panels pass by.
+  let heading: HTMLButtonElement | null = null;
+  const show = (t: HTMLButtonElement, smooth: boolean) => {
+    mark(t);
+    if (WIDE.matches) return;
+    const left = offsetIn(panelOf(t), stack);
+    heading = Math.abs(left - stack.scrollLeft) < 2 ? null : t;
+    stack.scrollTo({ left, behavior: smooth && !reduceMotion ? "smooth" : "auto" });
+  };
+  let saved = "start";
+  try {
+    saved = localStorage.getItem(TAB_KEY) || "start";
+    if (saved === "saved") saved = "start";
+  } catch {
+    /* storage unavailable */
+  }
+  show(tabs.find((t) => t.dataset.tab === saved) ?? tabs[0], false);
+  showTab = (name: string) => {
+    const t = tabs.find((x) => x.dataset.tab === name);
+    if (!t) return;
+    show(t, true);
+    if (WIDE.matches) panelOf(t).scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" });
+  };
+  for (const t of tabs) t.addEventListener("click", () => show(t, true));
+  // A swipe across the panels: the tab of the panel nearest in view is marked at once, as
+  // the panels move, not when they come to rest.
+  const nearest = () => tabs.reduce((a, b) => (Math.abs(offsetIn(panelOf(a), stack) - stack.scrollLeft) <= Math.abs(offsetIn(panelOf(b), stack) - stack.scrollLeft) ? a : b));
+  stack.addEventListener("scroll", () => {
+    if (WIDE.matches) return;
+    const near = nearest();
+    if (heading) {
+      if (near === heading && Math.abs(offsetIn(panelOf(near), stack) - stack.scrollLeft) < 2) heading = null;
+      return;
+    }
+    if (near.getAttribute("aria-selected") !== "true") mark(near);
+  });
+  // A finger on the panels takes over from a tab's scroll.
+  for (const type of ["touchstart", "pointerdown", "wheel"]) stack.addEventListener(type, () => (heading = null), { passive: true });
+  stack.addEventListener("scrollend", () => {
+    heading = null;
+    const near = nearest();
+    if (!WIDE.matches && near.getAttribute("aria-selected") !== "true") mark(near);
+  });
+  // Sliding along the tab row selects each tab under the finger.
+  const row = $("tabs");
+  let sliding = false;
+  const under = (e: PointerEvent) =>
+    tabs.find((b) => {
+      const r = b.getBoundingClientRect();
+      return e.clientX >= r.left && e.clientX < r.right;
+    });
+  const pick = (e: PointerEvent) => {
+    const t = under(e);
+    if (t && t.getAttribute("aria-selected") !== "true") show(t, true);
+  };
+  // The row captures the pointer, so a tap selects on the way down rather than by click.
+  row.addEventListener("pointerdown", (e) => {
+    sliding = true;
+    row.setPointerCapture?.(e.pointerId);
+    pick(e);
+  });
+  row.addEventListener("pointermove", (e) => {
+    if (sliding) pick(e);
+  });
+  const end = () => (sliding = false);
+  row.addEventListener("pointerup", end);
+  row.addEventListener("pointercancel", end);
+  // Arrow keys move between tabs.
+  row.addEventListener("keydown", (e) => {
+    const i = tabs.findIndex((t) => t.getAttribute("aria-selected") === "true");
+    const j = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : -2;
+    if (j >= 0 && j < tabs.length) {
+      e.preventDefault();
+      show(tabs[j], true);
+      tabs[j].focus();
+    }
+  });
+  // Turning the phone, or the layout switching, keeps the selected panel in view.
+  window.addEventListener("resize", () => {
+    const on = tabs.find((t) => t.getAttribute("aria-selected") === "true");
+    if (on) show(on, false);
+  });
+}
+
 const SEC_KEY = "xcube-lab-collapsed";
 function setupCollapsibles() {
   let closed: string[] = [];
@@ -2654,14 +2930,18 @@ function bindViewTools() {
 function bindUI() {
   bindAlgorithms();
   $("next-step").addEventListener("click", () => nextStep());
+  $("strip-next").addEventListener("click", () => nextStep());
   $("guide-stop").addEventListener("click", () => stopGuide());
-  $("guide-start").addEventListener("click", () => goToStep(guide ?? undefined));
-  $("guide-show").addEventListener("click", () => showGuide());
-  $("guide").addEventListener("toggle", () => {
-    if (!($("guide") as HTMLDetailsElement).open) stopGuide();
+  $("guide-start").addEventListener("click", () => {
+    if (guide && app.cursor === guide.start) playToEnd(guide.start + guide.step.turns.length);
+    else goToStep(guide ?? undefined);
   });
+  centerAxisLetters();
+  document.fonts?.ready.then(() => centerAxisLetters());
+  document.fonts?.addEventListener?.("loadingdone", () => centerAxisLetters());
+  $("guide-show").addEventListener("click", () => ($("guide-show").textContent === "Home" ? goToView(VIEWS.home) : showGuide()));
   bindViewTools();
-  $("edit-start").addEventListener("click", () => startEdit());
+  $("edit-start").addEventListener("click", () => endingSolve(() => startEdit()));
   $("edit-done").addEventListener("click", () => endEdit(true));
   $("edit-cancel").addEventListener("click", () => endEdit(false));
   $("edit-status").addEventListener("click", (e) => {
@@ -2684,6 +2964,7 @@ function bindUI() {
     });
   }
   setupCollapsibles();
+  setupTabs();
   document.addEventListener("click", async (e) => {
     const t = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null;
     if (!t) return;
@@ -2693,10 +2974,23 @@ function bindUI() {
       render();
     } else if (ds.jump) jump(Number(ds.jump));
     else if (ds.step) goToStep(trail.find((g) => g.start === Number(ds.step)));
+    else if (ds.stepSave) {
+      const g = trail.find((x) => x.start === Number(ds.stepSave));
+      if (!g) return;
+      savingStep = g;
+      const field = $("alg-name") as HTMLInputElement;
+      field.value = `${STAGE_NAME[g.step.stage]} (step ${g.index})`;
+      render();
+      showTab("algs");
+      // Focus while the tap still counts as the person's own, so iOS brings up the keyboard.
+      field.focus({ preventScroll: true });
+      field.select();
+    }
     else if (ds.guideMode) setGuideMode(ds.guideMode as Mode);
     else if (ds.load) {
       const s = saved.find((x) => x.id === ds.load);
-      if (s) {
+      // Loaded directly: ending a solve re-renders the list, so this button is gone by then.
+      if (s) endingSolve(() => {
         try {
           setBase(decodeState(s.code), s.name);
           setMessage(`Started from "${s.name}"`, "ok");
@@ -2704,7 +2998,7 @@ function bindUI() {
           setMessage(`That saved state can't be read: ${err}`, "error");
         }
         render();
-      }
+      });
     } else if (ds.del) {
       pendingDelete = ds.del;
       render();
@@ -2725,17 +3019,45 @@ function bindUI() {
   $("last").addEventListener("click", () => (playing ? stopPlaying() : playToEnd()));
   $("rewind").addEventListener("click", () => (playing ? stopPlaying() : playToStart()));
   $("undo").addEventListener("click", () => undoLast());
-  $("shuffle").addEventListener("click", () => shuffle());
-  $("reset").addEventListener("click", () => {
-    setBase(State.solved(), "Solved");
-    setMessage("Reset to solved", "ok");
-    render();
+  $("shuffle").addEventListener("click", () => endingSolve(() => shuffle()));
+  $("reset").addEventListener("click", () =>
+    endingSolve(() => {
+      setBase(State.solved(), "Solved");
+      setMessage("Reset to solved", "ok");
+      render();
+    }),
+  );
+  const clearTurns = () =>
+    endingSolve(() => {
+      setBase(app.current, "Current position");
+      setMessage("Turns cleared. This position is now the start", "ok");
+      render();
+    });
+  $("clear").addEventListener("click", clearTurns);
+  // The turn list's ✕: the first tap arms it, a second tap (within 3 seconds) clears.
+  const listClear = $("list-clear");
+  let armTimer = 0;
+  const disarm = () => {
+    clearTimeout(armTimer);
+    listClear.classList.remove("armed");
+    listClear.textContent = "✕";
+  };
+  listClear.addEventListener("click", () => {
+    if (!listClear.classList.contains("armed")) {
+      listClear.classList.add("armed");
+      listClear.textContent = "Clear?";
+      armTimer = window.setTimeout(disarm, 3000);
+      return;
+    }
+    disarm();
+    clearTurns();
   });
-  $("clear").addEventListener("click", () => {
-    setBase(app.current, "Current position");
-    setMessage("Turns cleared. This position is now the start", "ok");
-    render();
+  document.addEventListener("pointerdown", (e) => {
+    if (e.target !== listClear) disarm();
   });
+  $("confirm-yes").addEventListener("click", () => answerConfirm(true));
+  $("confirm-no").addEventListener("click", () => answerConfirm(false));
+  $("alg").addEventListener("input", () => render());
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-view]"))
     b.addEventListener("click", () => {
       const name = b.dataset.view!;
@@ -2791,27 +3113,77 @@ function bindUI() {
     saveCurrent(n.value.trim(), "");
     n.value = "";
   });
+  const codeField = $("code") as HTMLInputElement;
+  // Tapping into the field empties it, ready for a code to be pasted or typed; leaving it
+  // empty shows this position's code again.
+  codeField.addEventListener("focus", () => {
+    if (!codeTyped && !selectingCode) {
+      codeBlank = true;
+      codeField.value = "";
+      render();
+    }
+  });
+  codeField.addEventListener("input", () => {
+    codeTyped = codeField.value.trim() !== "";
+    $("code-field").classList.remove("replaced");
+    render();
+  });
+  codeField.addEventListener("blur", () => {
+    codeBlank = false;
+    render();
+  });
+  codeField.addEventListener("keydown", (e) => {
+    if ((e as KeyboardEvent).key === "Enter" && !($("import") as HTMLButtonElement).disabled) $("import").click();
+  });
+  document.querySelector(".code-box")!.addEventListener("toggle", () => fitCodeReadout());
+  window.addEventListener("resize", () => fitCodeReadout());
+  // A web font that finishes loading changes the width.
+  document.fonts?.ready.then(() => fitCodeReadout());
+  document.fonts?.addEventListener?.("loadingdone", () => fitCodeReadout());
+  $("code-clear").addEventListener("click", () => {
+    codeTyped = false;
+    codeField.blur();
+    render();
+  });
+  // Every other text field's ✕ empties it.
+  for (const btn of document.querySelectorAll<HTMLButtonElement>(".field-clear:not(#code-clear)")) {
+    btn.addEventListener("click", () => {
+      const input = btn.previousElementSibling as HTMLInputElement;
+      input.value = "";
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.focus();
+    });
+  }
   $("copy-code").addEventListener("click", async () => {
-    const ta = $("code-out") as HTMLTextAreaElement;
+    // Copy is always this position's code, so a half-typed one is put back first.
+    codeTyped = false;
+    codeField.blur();
+    render();
+    const ta = codeField;
     try {
       await navigator.clipboard.writeText(ta.value);
       setMessage("State code copied", "ok");
     } catch {
+      selectingCode = true;
       ta.select();
-      setMessage("Select and copy the code below", "info");
+      selectingCode = false;
+      setMessage("Select and copy the code", "info");
     }
     render();
   });
-  $("import").addEventListener("click", () => {
-    const v = ($("code-in") as HTMLTextAreaElement).value.trim();
+  $("import").addEventListener("click", () => endingSolve(importCode));
+  function importCode() {
+    const v = codeField.value.trim();
     try {
-      setBase(decodeState(v), "Imported state");
+      const st = decodeState(v);
+      codeTyped = false;
+      setBase(st, "Imported state");
       setMessage("Imported", "ok");
     } catch (err) {
       setMessage(`Couldn't import: ${(err as Error).message}`, "error");
     }
     render();
-  });
+  }
 }
 
 // ------------------------------------------------------------------ color editing
@@ -2849,7 +3221,7 @@ function startEdit() {
   const colors = visibleColors(st);
   edit = { shape: st, colors, fit: fitColors(st, colors), shown: st.clone(), paint: "W", painted: [], highlight: null, hidden: null, selected: "" };
   document.body.classList.add("editing");
-  ($("stack-col") as HTMLElement & { inert: boolean }).inert = true;
+  for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = true;
   renderEdit();
 }
 
@@ -2919,6 +3291,8 @@ interface Guide {
   free: Set<number>;
   /** A path for each cubelet the step moves to another spot. */
   arrows: StickerPath[];
+  /** Turns of this step and every step the solver planned after it, when it was loaded. */
+  planned: number;
 }
 /** Every step the guide has put in the turn list that is still there, in order; `guide` is the one being shown, if any. */
 let trail: Guide[] = [];
@@ -2946,9 +3320,53 @@ function setGuideMode(mode: Mode) {
 let guideDimmed: any[] = []; // meshes drawn gray
 let guideArrows: any = null;
 
+/**
+ * Runs an action that sets a new start (Shuffle, Reset, Edit colors, a code, a saved position,
+ * an algorithm, clearing the turn list). During a solve it asks first, and ends the solve.
+ */
+let confirmAction: (() => void) | null = null;
+function endingSolve(action: () => void) {
+  if (!solving) return action();
+  confirmAction = () => {
+    stopGuide();
+    action();
+  };
+  $("confirm").hidden = false;
+  ($("confirm-yes") as HTMLButtonElement).focus();
+}
+function answerConfirm(yes: boolean) {
+  $("confirm").hidden = true;
+  const act = confirmAction;
+  confirmAction = null;
+  if (yes && act) act();
+}
+
+/**
+ * The solver has no step to give: solved and held as the solver wants it (a solved puzzle
+ * held some other way still gets a Regrip step). Only a solved puzzle is asked, once per position.
+ */
+let nothingKey = "", nothingVal = false;
+function nothingToSolve(): boolean {
+  if (!isSolved(app.current)) return false;
+  const key = encodeState(app.current) + guideMode;
+  if (key !== nothingKey) {
+    nothingKey = key;
+    try {
+      nothingVal = solveSteps(app.current, guideMode).length === 0;
+    } catch {
+      nothingVal = false;
+    }
+  }
+  return nothingVal;
+}
+
+/** A solve is under way: from Start solving until Stop. The order can be chosen only between solves. */
+let solving = false;
+const SOLVED_LINE = "Solved. Nothing left to do.";
 function nextStep() {
   if (edit) return;
   flushAnimations();
+  solving = true;
   let steps: SolveStep[];
   try {
     steps = solveSteps(app.current, guideMode);
@@ -2964,7 +3382,7 @@ function nextStep() {
   const index = prev ? prev.index + 1 : 1;
   clearGuide();
   if (!steps.length) {
-    guideLine = "Solved. Nothing left to do.";
+    guideLine = SOLVED_LINE;
     return render();
   }
   const [step] = steps;
@@ -2977,10 +3395,12 @@ function nextStep() {
     from: st.clone(),
     ...stepColors(st, step),
     arrows: stickerPaths(st, step),
+    planned: steps.reduce((n, s) => n + s.turns.length, 0),
   };
   trail.push(guide);
+  scrollToStep = true;
   app.history = app.history.slice(0, app.cursor).concat(step.turns);
-  setMessage(`${step.turns.length} turns loaded`, "ok");
+  setMessage(`${step.turns.length} ${step.turns.length === 1 ? "turn" : "turns"} loaded`, "ok");
   render();
 }
 
@@ -3018,25 +3438,122 @@ function clearGuide() {
 
 /** Stop, or closing the disclosure: drops the shown step's grays, arrows and line. The turn list keeps its turns and its step boxes. */
 function stopGuide() {
-  if (!guide && !guideLine) return;
+  if (!solving && !guide && !guideLine) return;
+  solving = false;
   clearGuide();
   guideLine = "";
   render();
 }
 
 /** Show: turns the 3D view to where the shown step's paths begin and end. */
+function guideFaces(g: Guide): [number, number][] {
+  return g.arrows.length ? g.arrows.flatMap((p) => [[p.from, p.fromDir], [p.to, p.toDir]] as [number, number][]) : [...g.focus].flatMap((id) => [0, 1, 2, 3, 4, 5].map((d) => [app.current.occ.indexOf(id), d] as [number, number]).filter(([s, d]) => isExposed(app.current, s, d) && app.current.colorAt(s, d)));
+}
 function showGuide() {
   if (!guide) return;
   if (app.cursor !== guide.start) jump(guide.start);
+  showFaces(app.current, guideFaces(guide));
+}
+/** The view Show step turns to, for the step shown at its start (null otherwise); Show step is grayed out once the view is there. */
+let showTarget: any = null;
+let showTargetKey = "";
+function updateShowTarget() {
   const g = guide;
-  const faces: [number, number][] = g.arrows.length ? g.arrows.flatMap((p) => [[p.from, p.fromDir], [p.to, p.toDir]] as [number, number][]) : [...g.focus].flatMap((id) => [0, 1, 2, 3, 4, 5].map((d) => [app.current.occ.indexOf(id), d] as [number, number]).filter(([s, d]) => isExposed(app.current, s, d) && app.current.colorAt(s, d)));
-  showFaces(app.current, faces);
+  const key = g && app.cursor === g.start && g.step.stage !== "hold" ? `${g.start}|${encodeState(app.current)}` : "";
+  if (key === showTargetKey) return;
+  showTargetKey = key;
+  showTarget = key ? bestView(app.current, guideFaces(g!)) : null;
+}
+/**
+ * Once the view shows the step, Show step becomes Home, so the two views are a tap apart.
+ * (If the step's view is Home itself, there is nowhere else to go: it is grayed out.)
+ */
+function updateShowButton() {
+  const btn = $("guide-show") as HTMLButtonElement;
+  const there = showStepIdle();
+  const h = VIEWS.home;
+  const homeIsIt = !!showTarget && Math.abs(showTarget.dot(new THREE.Quaternion(h[0], h[1], h[2], h[3]))) > 0.9999;
+  const label = there && !homeIsIt ? "Home" : "Show step";
+  if (btn.textContent !== label) btn.textContent = label;
+  btn.title = label === "Home" ? "Turn the view back to Home" : "Turn the view to where this step's paths begin and end";
+  if (there && homeIsIt) btn.disabled = true;
+}
+function showStepIdle(): boolean {
+  if (!showTarget) return false;
+  const q = tween ? tween.to : pivot.quaternion;
+  return Math.abs(q.dot(showTarget)) > 0.9999;
+}
+
+/**
+ * Moves the x and z letters so their ink, not their line box, sits at the middle of the
+ * button, where the axis line and the ring are drawn. A lowercase letter's ink sits below
+ * its line box's middle by an amount that depends on the font, so it is measured from the
+ * font the button is drawn in.
+ */
+function centerAxisLetters() {
+  const g = document.createElement("canvas").getContext("2d");
+  if (!g) return;
+  for (const m of ["x", "z"]) {
+    const b = document.querySelector<HTMLElement>(`.mv[data-move="${m}"]`);
+    if (!b) continue;
+    const cs = getComputedStyle(b);
+    g.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const t = g.measureText(m);
+    if (!t.fontBoundingBoxAscent) continue; // the font's metrics aren't known here
+    // How far below the line box's middle the ink's middle is (the leading splits evenly).
+    const low = (t.fontBoundingBoxAscent - t.fontBoundingBoxDescent) / 2 - (t.actualBoundingBoxAscent - t.actualBoundingBoxDescent) / 2;
+    b.style.paddingBottom = low > 0 ? `${(2 * low).toFixed(2)}px` : "";
+    b.style.paddingTop = low < 0 ? `${(-2 * low).toFixed(2)}px` : "";
+  }
+}
+
+/** The solve's steps so far, newest at the top, with the running count of turns. */
+let stepsKey = "";
+function renderSteps() {
+  const list = $("steps-list");
+  const turns = trail.reduce((n, g) => n + g.step.turns.length, 0);
+  // "5 / 17 steps, 30 / 122 total turns": the newest step's number of all the steps the solver
+  // planned then, and the turns so far of those the steps so far and the planned rest add up to.
+  const last = trail[trail.length - 1];
+  const planned = last ? turns - last.step.turns.length + last.planned : 0;
+  const head = last ? `${last.index} / ${last.index + last.after} steps, ${turns} / ${planned} total turns` : "No steps yet";
+  const key = head + "|" + trail.map((g) => `${g.start}:${g === guide}:${app.cursor >= g.start + g.step.turns.length}`).join();
+  if (key === stepsKey) return;
+  const grew = trail.length > list.children.length && list.children.length > 0;
+  stepsKey = key;
+  $("steps-head").textContent = head;
+  // Where each row was, so the older ones can slide down from there to make room for a new one.
+  const before = new Map([...list.querySelectorAll<HTMLElement>(".step-row")].map((r) => [r.dataset.step, r.getBoundingClientRect().top]));
+  list.innerHTML = [...trail]
+    .reverse()
+    .map((g) => {
+      const done = app.cursor >= g.start + g.step.turns.length;
+      const n = g.step.turns.length;
+      return `<li><button class="step-row ${g === guide ? "on" : ""}" data-step="${g.start}" title="Go to the start of this step"><span>${g.index}. ${STAGE_NAME[g.step.stage]}${done ? " ✓" : ""}</span><span class="n">${n} ${n === 1 ? "turn" : "turns"}</span></button><button class="btn small step-save" data-step-save="${g.start}" title="Save this step as an algorithm">Save…</button></li>`;
+    })
+    .join("");
+  if (!grew || reduceMotion) return;
+  for (const li of list.children as HTMLCollectionOf<HTMLElement>) {
+    const row = li.querySelector<HTMLElement>(".step-row")!;
+    const was = before.get(row.dataset.step);
+    const dy = was === undefined ? null : was - row.getBoundingClientRect().top;
+    li.style.transition = "none";
+    if (dy === null) {
+      li.style.opacity = "0";
+      li.style.transform = "translateY(-12px)";
+    } else li.style.transform = `translateY(${dy}px)`;
+    li.getBoundingClientRect();
+    li.style.transition = "transform 0.28s ease, opacity 0.28s ease";
+    li.style.transform = "";
+    li.style.opacity = "";
+  }
 }
 
 /** Step start, or a step's tag in the turn list: shows that step again, at the position it starts from. */
 function goToStep(g: Guide | undefined) {
   if (!g || edit) return;
   guide = g;
+  scrollToStep = true; // the turn list slides there, so it shows where in the turns the step is
   jump(g.start);
 }
 
@@ -3052,7 +3569,7 @@ function turnListHtml(): string {
       out += chip(app.history[i], i++);
       continue;
     }
-    out += `<span class="step-box ${g === guide ? "on" : ""}"><button class="step-tag" data-step="${i}" title="Go to the start of this step">${g.index} ${STAGE_NAME[g.step.stage]}</button>`;
+    out += `<span class="step-box ${g === guide ? "on" : ""}"><button class="step-tag" data-step="${i}" title="Go to the start of this step">${g.index}. ${STAGE_NAME[g.step.stage]}</button>`;
     // A cycle step's parts are told apart: the setup, the cycle, and the setup undone.
     for (const part of g.step.parts) for (let k = 0; k < part.turns; k++, i++) out += chip(app.history[i], i).replace('class="tok ', `title="${PART_TITLE[part.name]}" class="tok part-${part.name} `);
     out += "</span>";
@@ -3069,21 +3586,41 @@ function refreshGuide() {
   }
   drawGuide();
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-guide-mode]")) b.classList.toggle("sel", b.dataset.guideMode === guideMode);
-  ($("guide-stop") as HTMLButtonElement).disabled = !guide && !guideLine;
-  ($("guide-start") as HTMLButtonElement).disabled = !guide || app.cursor === guide.start;
-  ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold";
+  ($("guide-stop") as HTMLButtonElement).disabled = !solving;
+  $("guide").classList.toggle("solving", solving);
+  $("next-step").textContent = solving ? "Next step" : "Start solving";
+  // In the playback strip, once a solve's turns have all played, ▶ gives way to Next step.
+  const atEnd = app.cursor >= app.history.length;
+  const solvedNow = nothingToSolve();
+  const showNext = solving && atEnd && !playing && !shuffling && guideLine !== SOLVED_LINE && !solvedNow;
+  // Next step loads the step after the one played; with turns still to play, play them first.
+  // Not during a shuffle either: a step loaded partway through one would cut it short.
+  ($("next-step") as HTMLButtonElement).disabled = shuffling || solvedNow || (solving && !atEnd);
+  $("strip-next").hidden = !showNext;
+  $("last").hidden = showNext;
+  // At the step's start the button plays the step; anywhere else it goes back to the start.
+  const atStepStart = !!guide && app.cursor === guide.start;
+  $("guide-start").textContent = atStepStart ? "Play step" : "Step start";
+  $("guide-start").classList.toggle("primary", atStepStart); // the next thing to press
+  $("guide-start").title = atStepStart ? "Play this step's turns" : "Go back to where this step begins";
+  ($("guide-start") as HTMLButtonElement).disabled = !guide || (atStepStart && playing);
+  // The paths show only before the step's first turn, so Show step applies only there.
+  updateShowTarget();
+  ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold" || app.cursor !== guide.start;
+  updateShowButton();
+  renderSteps();
   const line = $("guide-line");
   line.textContent = "";
   if (guide) {
     const { step, after, index, start } = guide;
     const done = app.cursor >= start + step.turns.length;
     const head = document.createElement("strong");
-    head.textContent = `${STAGE_NAME[step.stage]}${done ? " (done)" : ""}: `;
+    head.textContent = `Step ${index} of ${index + after} — ${STAGE_NAME[step.stage]}: `;
     const alg = document.createElement("span");
     alg.className = "known-alg";
     alg.textContent = step.alg;
-    // Three lines: what the step does, its turns, and how far there is to go.
-    line.append(head, `${step.goal}. `, document.createElement("br"), Object.assign(document.createElement("b"), { textContent: "Turns:" }), " ", alg, " ", document.createElement("br"), `Step ${index} of ${index + after} to solved.`);
+    // Two parts: how far along, the stage and what the step does; then its turns.
+    line.append(head, `${step.goal}. `, document.createElement("br"), Object.assign(document.createElement("b"), { textContent: "Turns:" }), " ", alg);
   } else line.textContent = guideLine;
 }
 
@@ -3928,6 +4465,12 @@ function showHighlighted() {
 function showFaces(st: State, faces: [number, number][]) {
   if (!faces.length) return;
   if (tween) (pivot.quaternion.copy(tween.to), (tween = null));
+  const best = bestView(st, faces);
+  goToView([best.x, best.y, best.z, best.w]);
+}
+/** The view that shows the given sticker faces best (see showFaces). */
+function bestView(st: State, faces: [number, number][]): any {
+  if (!faces.length) return pivot.quaternion.clone();
   const score = () => {
     const seen = faces.map(([s, d]) => faceView(st, s, d)).filter((c) => c > 0);
     return seen.length * 10 + seen.reduce((a, b) => a + b, 0) / faces.length;
@@ -3948,7 +4491,7 @@ function showFaces(st: State, faces: [number, number][]) {
   }
   pivot.quaternion.copy(own);
   pivot.updateMatrixWorld(true);
-  goToView([best.x, best.y, best.z, best.w]);
+  return best.clone();
 }
 
 /** The halo shows the first problem's slots, unless Hide was used on those same slots. */
@@ -4029,7 +4572,7 @@ function endEdit(apply: boolean) {
   edit = null;
   placeHalos();
   document.body.classList.remove("editing");
-  ($("stack-col") as HTMLElement & { inert: boolean }).inert = false;
+  for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
   if (apply && e.fit.level === "reachable" && e.fit.state) {
     const changed = !e.fit.state.equals(app.current);
     if (changed) setBase(e.fit.state, "Edited colors");
@@ -4153,6 +4696,8 @@ function installProbe() {
     idle: () => !anim && !queue.length && !settle && !live && !tween,
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
+    /** The turns of the last shuffle (the page doesn't show them). */
+    shuffleTurns: () => shuffleAlg,
     /** The step guide: its step, the slots (now) of the cubelets it applies to, how many stickers are drawn gray at each level, and the arrows showing. */
     /** Geometries the renderer holds right now, to check that the guide frees its own. */
     geometries: () => renderer.info.memory.geometries,

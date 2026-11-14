@@ -145,6 +145,19 @@ async function openLab({ url = pageUrl, context: contextOptions = labContext(), 
   return { page, context, errors, close, ...h };
 }
 
+/** Reset to solved, if it applies (it is grayed out when solved with no turns), ending a solve if one is under way. */
+async function resetToSolved(page) {
+  if (await page.$eval("#reset", (b) => b.disabled)) return;
+  await page.evaluate(() => document.getElementById("reset").click());
+  if (!(await page.$eval("#confirm", (d) => d.hidden))) await page.click("#confirm-yes");
+}
+
+/** Picks the solve's order, stopping a solve under way first (the order is chosen between solves). */
+async function setOrder(page, mode) {
+  if (!(await page.$eval("#guide-stop", (b) => b.disabled))) await page.click("#guide-stop");
+  await page.click(`[data-guide-mode="${mode}"]`);
+}
+
 /** The step guide's line, and Next step (opening the guide first if it is closed). */
 function guideHelpers(page, settle) {
   const line = () => page.$eval("#guide-line", (e) => e.textContent);
@@ -191,12 +204,18 @@ function helpers(page) {
   };
   // Clicking a button scrolls the page to it, so bring the 3D view back before aiming at it.
   const startFresh = async () => {
-    await page.click("#reset");
-    await page.click('[data-view="home"]');
+    await resetToSolved(page);
+    await page.evaluate(() => document.querySelector('[data-view="home"]').click());
     await page.locator("#scene").scrollIntoViewIfNeeded();
     await settle();
   };
-  const status = () => page.$eval("#status", (s) => s.textContent ?? "");
+  // The status chips in words: "Solved", "X shape" or "Out of shape", and the outer turns that can turn.
+  const status = () =>
+    page.$eval("#status", (s) => {
+      const shape = s.dataset.solved === "true" ? "Solved X shape" : s.dataset.shape === "out" ? "Out of shape" : "X shape";
+      const outer = [...s.querySelectorAll("[data-outer]")].filter((c) => c.classList.contains("on")).map((c) => c.dataset.outer).join("");
+      return `${shape}; outer ${outer}`;
+    });
   const counter = () => page.$eval("#counter", (c) => c.textContent.replace(/\s/g, ""));
   const hold = () => page.$eval("#hold", (e) => e.textContent);
   const turnList = () => page.$$eval("#history .tok", (els) => els.map((e) => e.textContent).join(" "));
@@ -324,9 +343,22 @@ labTest(
     const isShown = (id) => page.$eval(`#${id}`, (e) => !e.hidden && getComputedStyle(e).display !== "none");
     const h0 = await pageHeight();
     await page.click("#render-btn");
+    // Where an edge label lies under the Display panel, the panel is what shows.
+    const covered = await page.evaluate(() => {
+      const pop = document.getElementById("render-pop").getBoundingClientRect();
+      return [...document.querySelectorAll(".cmp")].flatMap((c) => {
+        const r = c.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+        if (x < pop.left || x > pop.right || y < pop.top || y > pop.bottom || getComputedStyle(c).opacity === "0") return [];
+        return [document.elementFromPoint(x, y)?.closest("#render-pop") ? "pop" : c.textContent];
+      });
+    });
+    check(covered.every((c) => c === "pop"), `the Display panel draws over the edge labels (${covered.join() || "none under it"})`);
     const renderOpen = { shown: await isShown("render-pop"), boxes: await page.$$eval("#render-pop input[type=checkbox]", (els) => els.length), height: await pageHeight() };
     await page.click("#info-btn");
     const infoOpen = { shown: await isShown("info-pop"), renderClosed: !(await isShown("render-pop")), height: await pageHeight() };
+    await page.mouse.click(5, 600); // a tap elsewhere closes the open panel
+    await page.click(`[data-tab="flat"]`);
+    await page.waitForTimeout(800);
     await page.click("#flat-info-btn");
     const flatOpen = { shown: await isShown("flat-info-pop"), infoClosed: !(await isShown("info-pop")), height: await pageHeight(), text: await page.$eval("#flat-info-pop", (e) => e.textContent) };
     await page.mouse.click(5, h0 - 5 > 600 ? 600 : 300);
@@ -336,8 +368,9 @@ labTest(
       renderOpen.shown && renderOpen.boxes === 4 && infoOpen.shown && infoOpen.renderClosed && flatOpen.shown && flatOpen.infoClosed && /no sticker/.test(flatOpen.text) && flatLegendInFlow === 0 && allClosed && renderOpen.height === h0 && infoOpen.height === h0 && flatOpen.height === h0,
       `the Display panel and both ⓘ panels (3D and flat view) open over the views without moving the page (height ${h0} px), one at a time, and close on a tap elsewhere`,
     );
-    await page.fill("#alg", "");
-    await page.click("#load"); // nothing to load: only a message changes
+    // A message that shows at once (copying waits on the clipboard, which may never answer here).
+    await page.evaluate(() => document.getElementById("shuffle").click());
+    await page.waitForFunction(() => !document.getElementById("message").hidden, null, { timeout: 5000 }).catch(() => {});
     const floating = { shown: await isShown("message"), fixed: await page.$eval("#message", (e) => getComputedStyle(e).position), height: await pageHeight() };
     await page.click("#message");
     const msgGone = !(await isShown("message"));
@@ -347,16 +380,55 @@ labTest(
 );
 
 labTest(
-  "layout: the algorithm and turn panels' order, notes and buttons",
+  "layout: the playback strip, the panels' order, notes and buttons",
   async ({ page, check }) => {
-    // The algorithm panel reads top to bottom: the turn list and playback, then Clear, Reset
-    // and Shuffle, then the ways to add turns (typing, and the algorithms list).
-    const runOrder = await page.evaluate(() => {
-      const sec = document.querySelector("[data-sec=run]");
-      const ids = ["#history", ".transport", ".base-actions", "#alg", "details.known"];
-      const els = ids.map((q) => sec.querySelector(q));
-      return els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    // The strip under the 3D view holds the turn list, the playback buttons and the speed,
+    // outside the panels. The tabs name the panels in their order.
+    const strip = await page.evaluate(() => {
+      const dock = document.getElementById("dock");
+      const els = ["#history", ".transport", "#speed"].map((q) => dock.querySelector(q));
+      const inOrder = els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+      return inOrder && !document.getElementById("stack-col").contains(dock);
     });
+    check(strip, "the strip holds the turn list, the playback buttons and the speed, outside the panels");
+    const tabs = await page.$$eval("#tabs [data-tab]", (els) => els.map((t) => `${t.textContent}>${document.getElementById(t.getAttribute("aria-controls"))?.dataset.sec}`).join());
+    const panels = await page.$$eval("#stack-col > .panel", (els) => els.map((e) => e.dataset.sec).join());
+    check(tabs === "Start>start,Turn>turn,Algorithms>algs,Solve>solve,Flat>flat" && panels === "start,turn,algs,solve,flat", `the tabs name the panels in order (${tabs}; ${panels})`);
+    // The Start panel: the ways to set the start, then saved positions and the state code. The
+    // Solve panel: the order and Start solving, then the step's buttons and its text.
+    const inOrder = (secId, qs) =>
+      page.evaluate(([id, list]) => {
+        const sec = document.getElementById(id);
+        const els = list.map((q) => sec.querySelector(q));
+        return els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+      }, [secId, qs]);
+    check(await inOrder("panel-start", ["#shuffle", "#reset", "#edit-start", "#clear", "#saved-list", "details.code-box"]), "the Start panel has Shuffle, Solved, Edit colors and Start from here, then saved positions and the state code");
+    check(await inOrder("guide", [".guide-modes", "#next-step", "#guide-line"]), "the Solve panel has the order, Start solving, then the step's text");
+    check(await page.$eval("#next-step", (b) => b.disabled), "with the puzzle solved, Start solving is grayed out");
+    await page.fill("#alg", "R U");
+    await page.click("#load");
+    await page.click("#fwd");
+    await page.click("#fwd");
+    await page.click("#clear");
+    await page.click("#next-step");
+    await page.waitForFunction(() => window.xcubeProbe.idle(), null, { timeout: 30000 });
+    const btnRows = await page.$$eval(".guide-btns .btn", (els) => new Set(els.filter((e) => e.getBoundingClientRect().width > 0).map((e) => Math.round(e.getBoundingClientRect().top))).size);
+    check(btnRows === 1, "while solving, the four step buttons share one row at phone width");
+    // iOS zooms into a focused text field whose text is under 16px.
+    const small = await page.$$eval('input[type="text"]', (els) => els.filter((e) => parseFloat(getComputedStyle(e).fontSize) < 16).map((e) => e.id));
+    check(small.length === 0, `every text field's text is at least 16px, so iOS doesn't zoom in (${small.join() || "none smaller"})`);
+    // The turn list is one row that scrolls sideways, keeping the current turn in sight.
+    await page.fill("#alg", "(R U R' U')6");
+    await page.click("#load");
+    await page.click("#fwd");
+    for (let i = 0; i < 20; i++) await page.click("#fwd");
+    await page.waitForFunction(() => window.xcubeProbe.idle(), null, { timeout: 30000 });
+    const row = await page.evaluate(() => {
+      const h = document.getElementById("history"), cur = h.querySelector(".tok.cur");
+      const hr = h.getBoundingClientRect(), cr = cur.getBoundingClientRect();
+      return { oneRow: h.scrollHeight <= h.clientHeight + 1 && hr.height < 44, scrolls: h.scrollWidth > h.clientWidth, curShown: cr.left >= hr.left - 1 && cr.right <= hr.right + 1 };
+    });
+    check(row.oneRow && row.scrolls && row.curShown, `the turn list is one row, scrolled to keep the current turn in sight (${JSON.stringify(row)})`);
     check((await page.$eval("[data-sec=turn] h2", (h) => h.textContent)) === "Turn the puzzle", 'the turn buttons\' panel is "Turn the puzzle"');
     // The slice and rotate notes sit to the right of their buttons, on the same row, no taller than it.
     const notes = await page.evaluate(() =>
@@ -371,11 +443,9 @@ labTest(
     const infoLook = await page.$$eval(".tool-btn.info", (els) =>
       els.map((e) => { const cs = getComputedStyle(e); return [cs.borderTopColor, cs.backgroundColor].join("/"); }),
     );
-    check(infoLook.length === 2 && infoLook.every((v) => v === "rgba(0, 0, 0, 0)/rgba(0, 0, 0, 0)"), "both ⓘ buttons show just the ⓘ, with no button edge or fill");
+    check(infoLook.length === 4 && infoLook.every((v) => v === "rgba(0, 0, 0, 0)/rgba(0, 0, 0, 0)"), "the ⓘ, Display and Undo buttons show just their icons, with no button edge or fill");
     check(unitsWhole, "the notes break lines only between units like \"M like L,\", never inside one");
     check(notes.every(Boolean) && (await page.$$eval("[data-sec=turn] .legend", (els) => els.length)) === 0, `the H/M/S and x/y/z notes sit beside their buttons (${notes})`);
-    check(runOrder, "the algorithm panel shows the turn list and playback first, then Clear/Reset/Shuffle, then typing and the algorithms list");
-
     // The turn field's example text fits inside it at phone width.
     const hintFit = await page.evaluate(() => {
       const el = document.getElementById("alg");
@@ -390,12 +460,158 @@ labTest(
   { expand: false },
 );
 
-labTest("layout: every section collapses from its heading", async ({ page, check }) => {
-  const sections = await page.$$eval("[data-sec]", (els) => els.map((e) => e.getAttribute("data-sec")));
-  for (const s of sections) await page.click(`[data-sec=${s}] h2`);
-  const collapsed = await page.$$eval("[data-sec].collapsed", (els) => els.length);
-  check(collapsed === sections.length && sections.length > 0, `all ${sections.length} sections collapse`);
-});
+labTest(
+  "layout: on a phone the page doesn't scroll; tabs, swipes and a slide along the tabs pick the panel; the 3D view stays put",
+  async ({ page, check }) => {
+    const fits = await page.evaluate(() => [document.documentElement.scrollHeight, innerHeight]);
+    check(fits[0] <= fits[1], `the page is one screen tall (${fits[0]} of ${fits[1]} px)`);
+    const scene0 = await page.$eval("#scene", (e) => JSON.stringify(e.getBoundingClientRect()));
+    const state = () =>
+      page.evaluate(() => {
+        const stack = document.getElementById("stack-col").getBoundingClientRect();
+        const sel = document.querySelector('#tabs [aria-selected="true"]')?.dataset.tab;
+        const inView = [...document.querySelectorAll("#stack-col > .panel")].filter((p) => Math.abs(p.getBoundingClientRect().left - stack.left) < 3).map((p) => p.dataset.sec);
+        return { sel, inView: inView.join() };
+      });
+    // Waits until the panel in view stops moving (a smooth scroll can take a while here).
+    const landed = (tab) =>
+      page
+        .waitForFunction(
+          (t) => {
+            const stack = document.getElementById("stack-col");
+            const p = document.querySelector(`#stack-col > [data-sec="${t}"]`);
+            return Math.abs(p.getBoundingClientRect().left - stack.getBoundingClientRect().left) < 3 && document.querySelector('#tabs [aria-selected="true"]')?.dataset.tab === t;
+          },
+          tab,
+          { timeout: 5000 },
+        )
+        .catch(() => {});
+    const seen = [];
+    for (const tab of ["turn", "algs", "solve", "flat", "start"]) {
+      await page.click(`[data-tab="${tab}"]`);
+      await landed(tab);
+      const st = await state();
+      seen.push(st.sel === tab && st.inView === tab);
+    }
+    const scene1 = await page.$eval("#scene", (e) => JSON.stringify(e.getBoundingClientRect()));
+    check(seen.every(Boolean) && scene0 === scene1, `each tab brings its panel into view, and the 3D view stays put (${seen})`);
+    // A swipe across the panels selects the tab of the panel it lands on.
+    await page.evaluate(() => {
+      const stack = document.getElementById("stack-col");
+      stack.scrollLeft = document.getElementById("panel-flat").getBoundingClientRect().left - stack.getBoundingClientRect().left + stack.scrollLeft;
+    });
+    await landed("flat");
+    const swiped = await state();
+    check(swiped.sel === "flat" && swiped.inView === "flat", `scrolling the panels selects the tab of the one in view (${JSON.stringify(swiped)})`);
+    // Sliding a finger along the tab row selects each tab it passes.
+    const at = (tab) => page.$eval(`[data-tab="${tab}"]`, (b) => { const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    const a = await at("start"), b = await at("algs");
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) await page.mouse.move(a.x + ((b.x - a.x) * i) / 6, a.y);
+    await page.mouse.up();
+    await landed("algs");
+    const slid = await state();
+    check(slid.sel === "algs" && slid.inView === "algs", `a slide along the tabs selects the tab it ends on (${JSON.stringify(slid)})`);
+    // The panel shown is kept on the device.
+    await page.reload();
+    await page.waitForFunction(() => window.xcubeProbe?.idle(), null, { timeout: 60000 });
+    await landed("algs");
+    const reloaded = await state();
+    check(reloaded.sel === "algs" && reloaded.inView === "algs", `the panel shown is kept after a reload (${JSON.stringify(reloaded)})`);
+  },
+  { expand: false },
+);
+
+labTest(
+  "layout: on an iPhone-sized screen the tab follows a swipe as it moves, every turn button shows, and the flat view shows whole",
+  async ({ page, check }) => {
+    // An iPhone in the Claude app: 844 px tall, less the app's bar and the home indicator.
+    await page.addStyleTag({ content: ":root { padding-top: 100px !important; padding-bottom: 34px !important; }" });
+    await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+    await page.waitForTimeout(300);
+    const views = await page.$$eval(".views .btn", (els) => els.filter((e) => e.getBoundingClientRect().width > 0).map((e) => e.textContent).join());
+    check(views === "Home", `of the view buttons only Home shows; the edge labels give the rest (${views})`);
+    // Over the 3D view: the edge labels, and small buttons in its corners (ⓘ, Display, and Undo
+    // once there is a turn to undo); the edge labels keep clear of the buttons.
+    const corners = await page.$$eval(".stage > .corner", (els) => els.map((e) => `${e.id}:${e.hidden ? "hidden" : "shown"}`).join());
+    check(corners === "info-btn:shown,render-btn:shown,undo:hidden", `the ⓘ and Display buttons sit in the 3D view's corners, and Undo shows only with a turn to undo (${corners})`);
+    // Part-way through a swipe to the next panel, its tab is already the marked one.
+    const mid = await page.evaluate(async () => {
+      const stack = document.getElementById("stack-col");
+      stack.style.scrollSnapType = "none";
+      const to = document.getElementById("panel-turn").getBoundingClientRect().left - stack.getBoundingClientRect().left + stack.scrollLeft;
+      stack.dispatchEvent(new Event("touchstart"));
+      stack.scrollLeft = to * 0.6;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const out = { sel: document.querySelector('#tabs [aria-selected="true"]').dataset.tab, at: Math.round((stack.scrollLeft / to) * 100) };
+      stack.style.scrollSnapType = "";
+      return out;
+    });
+    check(mid.sel === "turn" && mid.at > 50 && mid.at < 70, `60% of the way to the next panel its tab is marked (${JSON.stringify(mid)})`);
+    await page.click(`[data-tab="turn"]`);
+    await page.waitForTimeout(800);
+    const turn = await page.evaluate(() => {
+      const box = document.getElementById("stack-col").getBoundingClientRect();
+      const keys = [...document.querySelectorAll("#panel-turn .mv, [data-mod]")].map((b) => b.getBoundingClientRect());
+      return { n: keys.length, shown: keys.every((r) => r.top >= box.top && r.bottom <= box.bottom && r.left >= box.left - 1 && r.right <= box.right + 1) };
+    });
+    check(turn.n === 21 && turn.shown, `the turn amount and all ${turn.n - 3} turn buttons show without scrolling`);
+    await page.click(`[data-tab="flat"]`);
+    await page.waitForTimeout(800);
+    const flat = await page.evaluate(() => {
+      const panel = document.getElementById("panel-flat"), pr = panel.getBoundingClientRect();
+      const faces = [...document.querySelectorAll("#net .netface")].map((f) => f.getBoundingClientRect());
+      const info = document.getElementById("flat-info-btn").getBoundingClientRect(), wrap = document.querySelector(".net-wrap").getBoundingClientRect();
+      return {
+        whole: panel.scrollHeight <= panel.clientHeight + 1 && faces.every((r) => r.top >= pr.top && r.bottom <= pr.bottom),
+        infoInside: info.top >= wrap.top && info.bottom <= wrap.bottom && info.right <= wrap.right,
+        clear: faces.every((r) => r.right <= info.left || r.top >= info.bottom || r.bottom <= info.top),
+      };
+    });
+    check(flat.whole && flat.infoInside && flat.clear, `the flat view shows whole, with its ⓘ inside it and clear of the faces (${JSON.stringify(flat)})`);
+  },
+  { expand: false, context: { viewport: { width: 390, height: 844 } } },
+);
+
+labTest(
+  "layout: on a phone the safe areas are kept clear once, and the page still fits one screen",
+  async ({ page, check }) => {
+    // Stand-ins for an iPhone's safe-area insets, as the artifact host's skeleton pads the
+    // root by them (in the Claude app the top one also covers the app's own bar).
+    await page.addStyleTag({ content: ":root { padding-top: 100px !important; padding-bottom: 34px !important; }" });
+    await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+    await page.waitForTimeout(300);
+    const m = await page.evaluate(() => {
+      const stage = document.querySelector(".stage").getBoundingClientRect();
+      const stack = document.getElementById("stack-col").getBoundingClientRect();
+      return { stageTop: Math.round(stage.top), stackBottom: Math.round(stack.bottom), h: innerHeight, scroll: document.documentElement.scrollHeight };
+    });
+    check(m.stageTop >= 100 && m.stageTop <= 112, `the 3D view starts just below the top inset, not two insets down (${m.stageTop} px)`);
+    check(m.stackBottom <= m.h - 34 && m.scroll <= m.h, `the panels end above the bottom inset and the page is one screen tall (${m.stackBottom} of ${m.h} px; page ${m.scroll} px)`);
+  },
+  { expand: false },
+);
+
+labTest(
+  "layout: on a wide screen the panels stack beside the 3D view, with no tabs, and each collapses from its heading",
+  async ({ page, check }) => {
+    const wide = await page.evaluate(() => {
+      const scene = document.getElementById("scene").getBoundingClientRect();
+      const stack = document.getElementById("stack-col").getBoundingClientRect();
+      const tabs = getComputedStyle(document.getElementById("tabs")).display;
+      const panels = [...document.querySelectorAll("#stack-col > .panel")].map((p) => p.getBoundingClientRect());
+      const stacked = panels.every((r, i) => i === 0 || r.top >= panels[i - 1].bottom - 1);
+      return { beside: stack.left >= scene.right, tabs, stacked };
+    });
+    check(wide.beside && wide.tabs === "none" && wide.stacked, `the panels stack in a column right of the 3D view, and the tabs are hidden (${JSON.stringify(wide)})`);
+    const sections = await page.$$eval("[data-sec]", (els) => els.map((e) => e.getAttribute("data-sec")));
+    for (const s of sections) await page.click(`[data-sec=${s}] h2`);
+    const collapsed = await page.$$eval("[data-sec].collapsed", (els) => els.length);
+    check(collapsed === sections.length && sections.length > 0, `all ${sections.length} sections collapse`);
+  },
+  { expand: false, context: { viewport: { width: 1200, height: 900 } } },
+);
 
 // ---- Turns and undo.
 
@@ -418,14 +634,14 @@ labTest("turns: an algorithm plays and is listed; a blocked outer turn is refuse
   check(cur.outline === "none" && cur.shadow.includes("inset") && cur.inside, `current turn is marked inside its chip, so the list can't clip it (outline ${cur.outline}, shadow "${cur.shadow}")`);
 
   // A blocked outer turn is refused with a reason.
-  await page.click("#reset");
+  await resetToSolved(page);
   await page.fill("#alg", "R f");
   await page.click("#load");
   const msg = await page.$eval("#message", (m) => m.textContent ?? "");
   check(/f\)?: extension has 6\/9 cubelets/.test(msg), `outer turn after R is refused (message: "${msg}")`);
 
   // Baum's edge 3-cycle (white-up grip) returns to the X shape.
-  await page.click("#reset");
+  await resetToSolved(page);
   await page.fill("#alg", "R' S' R b R' S R b'");
   await page.click("#load");
   await page.click("#last");
@@ -434,8 +650,10 @@ labTest("turns: an algorithm plays and is listed; a blocked outer turn is refuse
 });
 
 labTest("undo: takes back the last turn, and a turn pressed while an undo waits also takes effect", async ({ page, check, status, waitForCounter }) => {
+  check(await page.$eval("#undo", (b) => b.hidden), "with no turn to undo, there is no Undo button");
   await page.evaluate(() => document.querySelector('[data-move="R"]').click());
   await waitForCounter("1/1", 30000);
+  check(!(await page.$eval("#undo", (b) => b.hidden)), "after a turn, Undo shows in the 3D view's corner");
   await page.click("#undo");
   await waitForCounter("0/0", 30000);
   await page.waitForTimeout(1000);
@@ -451,8 +669,8 @@ labTest("undo: takes back the last turn, and a turn pressed while an undo waits 
   });
   await page.waitForTimeout(1500);
   const afterRace = await page.$$eval("#history .tok", (els) => els.map((e) => e.textContent).join(" "));
-  const raceStatus = await status();
-  check(afterRace === "F" && /l 6\/9/.test(raceStatus) && /r 6\/9/.test(raceStatus), `undo then an immediate F leaves just F (turns "${afterRace}")`);
+  const raceStatus = await page.$$eval("#status [data-outer]", (els) => els.map((e) => e.title).join("; ")); // which outer turns are allowed
+  check(afterRace === "F" && /l refuses: 6 of 9/.test(raceStatus) && /r refuses: 6 of 9/.test(raceStatus), `undo then an immediate F leaves just F (turns "${afterRace}"; ${raceStatus})`);
 });
 
 // ---- What is drawn where (window.xcubeProbe, see the end of src/web/main.ts).
@@ -585,15 +803,18 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
     const r = document.getElementById("scene").getBoundingClientRect();
     return [...document.querySelectorAll(".cmp")].map((el) => {
       const b = el.getBoundingClientRect();
-      return { text: el.textContent, shown: Number(getComputedStyle(el).opacity) > 0.05, inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1 };
+      return { text: el.textContent, height: Math.round(b.height * 10) / 10, shown: Number(getComputedStyle(el).opacity) > 0.05, inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1 };
     });
   });
   const letters = labels.map((l) => l.text).sort().join("");
   check(letters === "BDFLRU" && labels.filter((l) => l.shown).every((l) => l.inside) && labels.filter((l) => l.shown).length >= 3, `edge labels: ${letters}, ${labels.filter((l) => l.shown).length} shown, all inside the view`);
-  await page.click('[data-view="front"]');
+  // Foreshortened: from Home, F, R and U point toward you and are drawn larger than B, L and D.
+  const size = Object.fromEntries(labels.map((l) => [l.text, l.height]));
+  check(["F", "R", "U"].every((n) => ["B", "L", "D"].every((m) => size[n] > size[m] * 1.1)), `labels toward you are larger than those away (${JSON.stringify(size)})`);
+  await page.evaluate(() => document.querySelector('[data-view="front"]').click());
   await settle();
   const frontView = await probe("view");
-  await page.click('[data-view="home"]');
+  await page.evaluate(() => document.querySelector('[data-view="home"]').click());
   await page.locator("#scene").scrollIntoViewIfNeeded();
   await settle();
   await page.evaluate(() => document.getElementById("compass-4").click()); // the F label
@@ -608,10 +829,14 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
 
 labTest("shuffle: plays 30 legal turns, and the result becomes the new start", async ({ page, check, settle, startFresh }) => {
   await page.click("#shuffle");
-  await page.waitForFunction(() => /^Shuffled with/.test(document.getElementById("message")?.textContent ?? ""), null, { timeout: 60000 });
+  const during = await page.evaluate(() => ({ list: document.getElementById("history").textContent, toks: document.querySelectorAll("#history .tok").length, solve: document.getElementById("next-step").disabled }));
+  check(during.solve, "while the shuffle plays, Start solving is grayed out (a step loaded then would cut the shuffle short)");
+  check(during.list === "Shuffling…" && during.toks === 0, `while the shuffle plays, the turn list doesn't show its turns ("${during.list}")`);
+  await page.waitForFunction(() => /^Shuffled/.test(document.getElementById("message")?.textContent ?? ""), null, { timeout: 60000 });
   await settle();
   const shuffled = await page.evaluate(() => ({ msg: document.getElementById("message").textContent, state: window.xcubeProbe.state(), turns: window.xcubeProbe.turns() }));
-  const scramble = shuffled.msg.replace(/^Shuffled with 30 turns: /, "");
+  check(shuffled.msg === "Shuffled", `the message doesn't give the turns away ("${shuffled.msg}")`);
+  const scramble = await page.evaluate(() => window.xcubeProbe.shuffleTurns());
   await startFresh();
   await page.fill("#alg", scramble);
   await page.click("#load");
@@ -703,7 +928,7 @@ labTest("hold line: names the centers up, toward you and on your right, as they 
 // ---- Algorithms, the turn field, Clear and state codes.
 
 labTest("algorithms: a known algorithm loads its position and turns, and playing them does what it says", async ({ page, check, settle, status, counter, hold, turnList, waitForCounter }) => {
-  await page.locator("summary", { hasText: "Algorithms" }).click();
+  await page.click(`[data-tab="algs"]`);
   await page.click('[data-alg-load="flip-df-white-top"]');
   const baseLine = await page.$eval(".base-line", (e) => [e.scrollHeight, e.clientHeight, Math.round(e.getBoundingClientRect().height)]);
   check(baseLine[2] <= 24 && baseLine[0] <= baseLine[1] + 1, `a long start name stays on one line (${baseLine[2]} px tall)`);
@@ -721,7 +946,7 @@ labTest("algorithms: a known algorithm loads its position and turns, and playing
 
 labTest("algorithms: one can be deleted, and the turn list saved as one and loaded back", async ({ page, check, startFresh, counter, turnList }) => {
   // Saved like saved states; on this device the list starts as the known algorithms.
-  await page.locator("summary", { hasText: "Algorithms" }).click();
+  await page.click(`[data-tab="algs"]`);
   const algNames = () => page.$$eval("#known-list .saved-name", (els) => els.map((e) => e.textContent));
   const algsBefore = await algNames();
   await page.click('[data-alg-del="baum-corner"]');
@@ -734,7 +959,7 @@ labTest("algorithms: one can be deleted, and the turn list saved as one and load
   await page.fill("#alg-name", "Sexy move");
   await page.click("#alg-save");
   const afterSave = await algNames();
-  await page.click("#reset");
+  await resetToSolved(page);
   const mine = await page.evaluate(() => [...document.querySelectorAll("#known-list li")].find((li) => li.textContent.includes("Sexy move"))?.querySelector("[data-alg-load]")?.dataset.algLoad);
   await page.click(`[data-alg-load="${mine}"]`);
   const loadedMine = { base: await page.$eval("#base-label", (e) => e.textContent), alg: await turnList(), counter: await counter() };
@@ -778,53 +1003,91 @@ labTest("clear: empties the turn list, and the position shown becomes the start"
   const ruState = await probe("state");
   await page.click("#clear");
   const cleared = { counter: await counter(), state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent) };
-  check(cleared.counter === "0/0" && cleared.state === ruState && /^Turns cleared/.test(cleared.msg) && (await page.$eval("#clear", (b) => b.textContent)) === "Clear", `Clear empties the turn list and keeps the position shown as the start (${cleared.counter})`);
+  check(cleared.counter === "0/0" && cleared.state === ruState && /^Turns cleared/.test(cleared.msg) && (await page.$eval("#clear", (b) => b.textContent)) === "Start from here", `Clear empties the turn list and keeps the position shown as the start (${cleared.counter})`);
 });
 
-labTest("state codes: the current position's code is shown and copied, and a code imports as the start", async ({ page, check, probe, startFresh, counter, play, sweep3d }) => {
+labTest("state codes: one field shows the current position's code and takes a code to import as the start", async ({ page, check, probe, startFresh, counter, play, sweep3d }) => {
   await play("R U");
   const ruState = await probe("state");
   await page.locator("summary", { hasText: "State code" }).click(); // the codes sit in a closed disclosure
-  const shown = await page.$eval("#code-out", (t) => t.value);
+  const shown = await page.$eval("#code", (t) => t.value);
   check(shown === ruState, "the state code shown is the current position's");
   check(/^[A-Z]{4}( [A-Z]{4}){10}$/.test(shown) && (await page.$eval("#code-note", (n) => n.textContent === "")), `the code is 44 letters in groups of 4, with no note (${shown})`);
+  const fit = await page.$eval("#code-readout", (r) => ({ text: r.textContent, fits: r.scrollWidth <= r.clientWidth + 1, px: parseFloat(getComputedStyle(r).fontSize), sw: r.scrollWidth, cw: r.clientWidth }));
+  check(fit.text === shown && fit.fits && fit.px >= 8, `the code shows whole on one line at phone width (${fit.px.toFixed(1)}px, ${fit.sw} of ${fit.cw} px)`);
   await page.click("#copy-code");
   // Copying is asynchronous (the clipboard may ask for permission); wait for its message.
   const copyMsg = await page
-    .waitForFunction(() => /State code copied|Select and copy the code below/.test(document.getElementById("message").textContent), null, { timeout: 10000 })
+    .waitForFunction(() => /State code copied|Select and copy the code/.test(document.getElementById("message").textContent), null, { timeout: 10000 })
     .then(() => page.$eval("#message", (m) => m.textContent))
     .catch(() => page.$eval("#message", (m) => m.textContent));
-  check(/State code copied|Select and copy the code below/.test(copyMsg), `Copy confirms, or asks to copy by hand where the clipboard is not allowed ("${copyMsg}")`);
+  check(/State code copied|Select and copy the code/.test(copyMsg), `Copy confirms, or asks to copy by hand where the clipboard is not allowed ("${copyMsg}")`);
   await startFresh();
-  await page.fill("#code-in", "  " + ruState + "\n");
+  await page.fill("#code", "  " + ruState + "\n");
   await page.click("#import");
   const imported = { state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent), counter: await counter() };
   check(imported.state === ruState && imported.msg === "Imported" && imported.counter === "0/0", `importing a state code makes it the start (${imported.msg})`);
-  await page.fill("#code-in", "X1:not a code");
-  await page.click("#import");
-  const refused = { state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent) };
-  check(refused.state === ruState && /^Couldn't import: /.test(refused.msg), `a malformed code is refused and changes nothing ("${refused.msg}")`);
+  await page.fill("#code", "X1:not a code");
+  await page.keyboard.press("Enter");
+  const refused = { state: await probe("state"), off: await page.$eval("#import", (b) => b.disabled), bad: await page.$eval("#code", (t) => t.classList.contains("invalid")) };
+  check(refused.state === ruState && refused.off && refused.bad, "a malformed code is outlined, can't be loaded, and changes nothing");
+  check((await page.$eval("#code", (t) => t.value)) === "X1:not a code", "a refused code stays in the field to be fixed");
+  await page.click("#copy-code");
+  check((await page.$eval("#code", (t) => t.value)) === ruState, "Copy puts this position's code back in the field");
   await startFresh();
-  await page.fill("#code-in", ruState.toLowerCase().replace(/ /g, "-"));
+  await page.fill("#code", ruState.toLowerCase().replace(/ /g, "-"));
   await page.click("#import");
   check((await probe("state")) === ruState, "a code typed in lower case with dashes imports the same position");
   const typo = (ruState[0] === "A" ? "B" : "A") + ruState.slice(1);
-  await page.fill("#code-in", typo);
-  await page.click("#import");
-  const typoMsg = await page.$eval("#message", (m) => m.textContent);
-  check((await probe("state")) === ruState && /typo/.test(typoMsg), `a code with a typo is refused and changes nothing ("${typoMsg}")`);
+  await page.fill("#code", typo);
+  const typoOff = await page.$eval("#import", (b) => b.disabled);
+  check((await probe("state")) === ruState && typoOff, "a code with a typo can't be loaded and changes nothing");
   // A position turns can't reach (solved, with the right extension center turned a quarter
   // by hand) has no letter code: it keeps its X1 code, with a note saying why.
   const turnedCenter =
     "X1:AaBaCaDaEaFaGaHaIa......JaKaLaMaNaOaPaQaRaSaTaUaVaWaXa............YaZaaabacadaeafagahaiajakala............manaoapaqarasatauavawaxayaza0a......1a2a3a4a5b6a7a8a9a";
-  await page.fill("#code-in", turnedCenter);
+  await page.fill("#code", turnedCenter);
   await page.click("#import");
-  const kept = { code: await page.$eval("#code-out", (t) => t.value), note: await page.$eval("#code-note", (n) => n.textContent + " (" + n.title + ")") };
+  const kept = { code: await page.$eval("#code", (t) => t.value), note: await page.$eval("#code-note", (n) => n.textContent + " (" + n.title + ")") };
   check(kept.code === turnedCenter && /extension center is turned/.test(kept.note), `a position turns can't reach keeps its X1 code, with a note ("${kept.note}")`);
-  await page.fill("#code-in", ruState);
+  await page.fill("#code", ruState);
   await page.click("#import");
   const sw = await sweep3d();
   check(sw.wrong.length === 0, `the imported position is drawn as the model has it${sw.wrong.length ? ": " + sw.wrong.slice(0, 3).join("; ") : ""}`);
+});
+
+labTest("state codes: tapping in empties the field; bad text is marked and can't load; turning replaces typed text; ✕ clears", async ({ page, check, probe, play }) => {
+  await page.locator("summary", { hasText: "State code" }).click();
+  const current = await probe("state");
+  const look = () =>
+    page.evaluate(() => ({
+      value: document.getElementById("code").value,
+      invalid: document.getElementById("code").classList.contains("invalid"),
+      loadOff: document.getElementById("import").disabled,
+      showing: document.getElementById("code-field").classList.contains("showing"),
+    }));
+  const shown = await look();
+  check(shown.value === current && shown.showing && shown.loadOff, `the field shows this position's code, and Load is off (${JSON.stringify(shown)})`);
+  await page.click("#code");
+  const tapped = await look();
+  check(tapped.value === "" && !tapped.showing && tapped.loadOff, `tapping in empties the field for a code (${JSON.stringify(tapped)})`);
+  await page.keyboard.type("ABCD");
+  const bad = await look();
+  check(bad.invalid && bad.loadOff, `text that isn't a code is outlined and Load is off (${JSON.stringify(bad)})`);
+  await page.click("#code-clear");
+  const cleared = await look();
+  check(cleared.value === current && cleared.showing && !cleared.invalid, `the field's ✕ puts this position's code back (${JSON.stringify(cleared)})`);
+  // Typed text, then a turn: the text is replaced by the new position's code, and the page says so.
+  await page.fill("#code", "ABCD");
+  await page.locator("#scene").scrollIntoViewIfNeeded();
+  await play("R");
+  const moved = { ...(await look()), state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent), flash: await page.$eval("#code-field", (f) => f.classList.contains("replaced")) };
+  check(moved.value === moved.state && moved.value !== current && moved.flash && /replaced/.test(moved.msg), `turning replaces typed text with the new code, flashes the field and says so ("${moved.msg}")`);
+  // The other text fields' ✕ empties them.
+  await page.fill("#alg", "R U");
+  const algX = await page.isVisible("#alg + .field-clear");
+  await page.click("#alg + .field-clear");
+  check(algX && (await page.$eval("#alg", (i) => i.value)) === "" && !(await page.isVisible("#alg + .field-clear")), "the turn field's ✕ shows with text and empties it");
 });
 
 // ---- The effect switches, edge glow and shading.
@@ -951,14 +1214,14 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   // the line) tumbles the 3D view to show all their stickers, again after any tumble;
   // Hide removes the halo.
   const seenBoth = async () => `${await probe("facesSeen", "Fx.U")},${await probe("facesSeen", "Rx.U")}`;
-  await page.click('[data-view="bottom"]');
+  await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await settle();
   const lit = { slots: (await probe("highlighted")).sort().join(), seen: await seenBoth(), px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), flatD: await probe("haloPixels", "D"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
   check(lit.slots === "Fx.U,Rx.U" && lit.seen === "0,0" && lit.px3d > 0 && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `a problem haloes the cubelets it names by itself, without turning the view (${JSON.stringify(lit)})`);
   await page.click("#edit-status");
   await settle();
   const shownAt = await seenBoth();
-  await page.click('[data-view="bottom"]');
+  await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await settle();
   await page.click('[data-halo="show"]');
   await settle();
@@ -967,7 +1230,7 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await page.click('[data-halo="hide"]');
   const unlit = { slots: (await probe("highlighted")).length, px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
   check(unlit.slots === 0 && unlit.px3d === 0 && unlit.flatU === 0 && unlit.buttons === "Show", `Hide removes the halo (${JSON.stringify(unlit)})`);
-  await page.click('[data-view="home"]');
+  await page.evaluate(() => document.querySelector('[data-view="home"]').click());
   await settle();
   await paint("G", "Rx.U", "R");
   const swapped = { line: await editLine(), off: await doneOff() };
@@ -987,7 +1250,7 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   const swipeAt = await probe("sticker", "Fx", "F");
   await swipe(swipeAt, 0, -70);
   check((await probe("turns")) === "", "a swipe while editing doesn't turn a layer");
-  await page.click('[data-view="home"]'); // the swipe tumbled the view
+  await page.evaluate(() => document.querySelector('[data-view="home"]').click()); // the swipe tumbled the view
   await settle();
   await page.click("#edit-done");
   const appliedGlow = [(await probe("glowColors", "Fx.U", "F")).join(), (await probe("glowColors", "Rx.U", "R")).join()].join(" ");
@@ -1069,7 +1332,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   const g = await probe("guide");
   const loaded = { counter: await counter(), line: await line(), wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(
-    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Corners: Cycle three X-face corners\. All three end up solved\. Turns: r \(F' L' F\) r' \(F' L F\) Step 1 of 1 to solved\.$/.test(loaded.line) && loaded.wide <= 0,
+    g?.stage === "corners" && g.turns === 8 && g.after === 0 && loaded.counter === "8/16" && /^Step 1 of 1 — Corners: Cycle three X-face corners\. All three end up solved\. Turns: r \(F' L' F\) r' \(F' L F\)$/.test(loaded.line) && loaded.wide <= 0,
     `Next step loads the step's turns unplayed and says what it applies to ("${loaded.line}", ${loaded.counter})`,
   );
   // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
@@ -1082,7 +1345,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   // A small copy of each cubelet flies along its path (unless the device asks for less motion). Show turns the
   // view so that every path's sticker, and the face it is going to, can be seen.
   const motion = await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches);
-  await page.click('[data-view="bottom"]');
+  await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await settle();
   const seenPath = async (t) => {
     const [, from, to] = t.match(/^\w ([\w.]+\/\w) > ([\w.]+\/\w)/);
@@ -1100,7 +1363,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await settle();
   const hiddenAfter = (await Promise.all(g.paths.map(seenPath))).flat().filter((x) => !x).length;
   check(g.runners === (motion ? 3 : 0) && hiddenBefore > 0 && hiddenAfter === 0, `Show turns the view to where the paths begin and end (${hiddenBefore} of 6 ends hidden from below, ${hiddenAfter} after Show; ${g.paths.join("; ")}); ${g.runners} copies fly`);
-  await page.click('[data-view="home"]');
+  await page.evaluate(() => document.querySelector('[data-view="home"]').click());
   await settle();
   // One turn forward hides the arrows; one turn back, to the step's start, shows them again.
   await page.click("#fwd");
@@ -1116,7 +1379,7 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   await settle();
   const played = { g: await probe("guide"), status: await status(), line: await line(), wrong: (await sweep3d()).wrong.length };
   check(
-    grayDrawn > 0 && played.wrong === 0 && played.g?.gray === 0 && played.g.arrows === 0 && /Solved/.test(played.status) && /^Corners \(done\)/.test(played.line),
+    grayDrawn > 0 && played.wrong === 0 && played.g?.gray === 0 && played.g.arrows === 0 && /Solved/.test(played.status) && /^Step \d+ of \d+ — Corners: /.test(played.line) && !/done/.test(played.line),
     `playing the step solves the puzzle and returns every sticker's color (${grayDrawn} gray stickers seen before, ${played.wrong} wrong after; ${played.status}; "${played.line}")`,
   );
   // The step is boxed in the turn list behind a tag. Step start, and the tag, go back to
@@ -1124,20 +1387,22 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   const box = await page.$$eval("#history .step-box", (els) => els.map((e) => `${e.querySelector(".step-tag").textContent}:${e.querySelectorAll(".tok").length}:${e.classList.contains("on")}`).join());
   await page.click("#guide-start");
   await settle();
-  const backAtStart = { counter: await counter(), g: await probe("guide"), off: await page.$eval("#guide-start", (b) => b.disabled) };
-  await page.click("#last");
+  const backAtStart = { counter: await counter(), g: await probe("guide"), label: await page.$eval("#guide-start", (b) => (b.disabled ? "off" : b.textContent + (b.classList.contains("primary") ? " (blue)" : ""))) };
+  // At the step's start the same button plays the step.
+  await page.click("#guide-start");
   await settle();
+  const playedStep = { counter: await counter(), label: await page.$eval("#guide-start", (b) => b.textContent) };
   await page.click("#history .step-tag");
   await settle();
   const byTag = { counter: await counter(), arrows: (await probe("guide")).arrows };
   check(
-    box === "1 Corners:8:true" && backAtStart.counter === "8/16" && backAtStart.g.arrows === 3 && backAtStart.g.gray === 93 && backAtStart.off && byTag.counter === "8/16" && byTag.arrows === 3,
-    `the step is boxed in the turn list (${box}); Step start and its tag go back to its start (${backAtStart.counter}, ${byTag.counter})`,
+    box === "1. Corners:8:true" && backAtStart.counter === "8/16" && backAtStart.g.arrows === 3 && backAtStart.g.gray === 93 && backAtStart.label === "Play step (blue)" && playedStep.counter === "16/16" && playedStep.label === "Step start" && byTag.counter === "8/16" && byTag.arrows === 3,
+    `the step is boxed in the turn list (${box}); Step start and its tag go back to its start (${backAtStart.counter}, ${byTag.counter}); there it reads Play step and plays it (${JSON.stringify(playedStep)})`,
   );
   await page.click("#last");
   await settle();
-  await next();
-  check((await probe("guide")) === null && /^Solved/.test(await line()), `from solved there is no step ("${await line()}")`);
+  const solvedEnd = await page.evaluate(() => ({ next: document.getElementById("next-step").disabled, strip: document.getElementById("strip-next").hidden, play: document.getElementById("last").disabled }));
+  check(solvedEnd.next && solvedEnd.strip && solvedEnd.play, `once solved, Next step is grayed out and ▶ (grayed out) doesn't give way to it (${JSON.stringify(solvedEnd)})`);
 });
 
 labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, and an edit before the step", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
@@ -1147,7 +1412,7 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   await next();
   const holdStep = { g: await probe("guide"), line: await line() };
   check(
-    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Regrip: Turn the whole puzzle so the white center is up \(now \w+ is up\)\. Nothing else moves\. Turns: x' Step 1 of 1 to solved\.$/.test(holdStep.line),
+    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Step 1 of 1 — Regrip: Turn the whole puzzle so the white center is up \(now \w+ is up\)\. Nothing else moves\. Turns: x'$/.test(holdStep.line),
     `a Regrip step says to turn the whole puzzle, and keeps every color ("${holdStep.line}")`,
   );
   // Out of shape, the step applies to the core cubelets that are wrong; it may leave the
@@ -1166,22 +1431,24 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   await next();
   const second = await probe("guide");
   const boxes = await page.$$eval("#history .step-box", (els) => els.map((e) => e.classList.contains("on")).join());
-  check(second?.index === 2 && second.index + second.after === total && new RegExp(`Step 2 of ${total} to solved\\.$`).test(await line()) && boxes === "false,true", `the next step after a played one is step 2 of the same ${total}, boxed after the first ("${await line()}", boxes ${boxes})`);
+  check(second?.index === 2 && second.index + second.after === total && new RegExp(`^Step 2 of ${total} — `).test(await line()) && boxes === "false,true", `the next step after a played one is step 2 of the same ${total}, boxed after the first ("${await line()}", boxes ${boxes})`);
   // In the turn list a cycle step's setup turns, and their undoing, are marked.
   const marks = await page.$$eval("#history .step-box.on .tok", (els) => els.map((e) => (e.className.match(/part-(\w+)/) ?? [])[1]).join());
   const want = /\[(.+):/.exec(second.alg) ? /^(regrip,)*(setup,)+(cycle,){8}(undo,?)+$/ : /^(regrip,)*(cycle,?){8}$/;
   check((["corners", "edges"].includes(second.stage) ? want : /^(regrip,)*(turns,?)+$/).test(marks), `the step's turns are marked by part (${second.alg}: ${marks})`);
-  // Stop drops the step's grays and line, and leaves the turn list and its boxes alone; so
-  // does closing the section. Next step starts again from the position shown, counting on.
+  // Stop drops the step's grays and line, and leaves the turn list and its boxes alone.
+  // Next step starts again from the position shown, counting on. Going to another panel and
+  // back keeps the step.
   const before = await turnList();
   await page.click("#guide-stop");
   const stopped = { g: await probe("guide"), line: await line(), list: await turnList(), off: await page.$eval("#guide-stop", (b) => b.disabled) };
   await next();
   const again = await probe("guide");
-  await page.evaluate(() => (document.getElementById("guide").open = false));
+  await page.click(`[data-tab="turn"]`);
+  await page.click(`[data-tab="solve"]`);
   await settle();
-  const closed = await probe("guide");
-  check(stopped.g === null && stopped.line === "" && stopped.list === before && stopped.off && again?.index === 2 && again.alg === second.alg && closed === null, `Stop and closing the section end the guide without touching the turn list; Next step starts it again (${JSON.stringify({ stopped: stopped.g, again: again?.index, closed })})`);
+  const kept = await probe("guide");
+  check(stopped.g === null && stopped.line === "" && stopped.list === before && stopped.off && again?.index === 2 && again.alg === second.alg && kept?.index === 2, `Stop ends the guide without touching the turn list; Next step starts it again; another panel and back keeps it (${JSON.stringify({ stopped: stopped.g, again: again?.index, kept: kept?.index })})`);
   // Editing a turn before a step changes the position it starts from, so the step no
   // longer applies, though its own turns are still in the list.
   await startFresh();
@@ -1209,19 +1476,19 @@ labTest("guide: dashed paths, the order switch, a layered core step, and a turn 
   await play("(F' L' F) r (F' L F) r'");
   await next();
   const byKind = (await probe("guide")).stage;
-  await page.click('[data-guide-mode="layers"]');
+  await setOrder(page, "layers");
   await next();
   const byLayer = await probe("guide");
   const kept = await page.evaluate(() => localStorage.getItem("xcube.guideMode"));
-  check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Top corners: For the white X-face's corners: cycle three X-face corners\. All three end up solved\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
+  check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Step \d+ of \d+ — Top corners: For the white X-face's corners: cycle three X-face corners\. All three end up solved\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
   // Out of shape, top to bottom starts with the core, a cubelet at a time: a short step,
   // one or two paths, and the line counts the cubelets placed.
   await startFresh();
   await play("R U F' L2");
   await next();
   const core = await probe("guide");
-  check(core?.stage.startsWith("core") && core.turns <= 9 && core.arrows >= 1 && core.arrows <= 3 && /^Top core edges: Put a white core edge in the top layer, white up \([1-4] of 4\)\./.test(await line()), `top to bottom places the core a cubelet at a time (${core?.alg}, ${core?.arrows} paths; "${await line()}")`);
-  await page.click('[data-guide-mode="kinds"]');
+  check(core?.stage.startsWith("core") && core.turns <= 9 && core.arrows >= 1 && core.arrows <= 3 && /^Step \d+ of \d+ — Top core edges: Put a white core edge in the top layer, white up \([1-4] of 4\)\./.test(await line()), `top to bottom places the core a cubelet at a time (${core?.alg}, ${core?.arrows} paths; "${await line()}")`);
+  await setOrder(page, "kinds");
   await startFresh();
   await play("R U");
   await next();
@@ -1236,11 +1503,11 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   // edge from the bottom of the right side to its top. The spot above where its white
   // sticker will be is filled until the turn takes that cubelet away.
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
+  await page.fill("#code", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
   await page.click("#import");
   await settle();
-  await page.locator("#guide > summary").click();
-  await page.click('[data-guide-mode="layers"]');
+  await page.click(`[data-tab="solve"]`);
+  await setOrder(page, "layers");
   await page.click("#next-step");
   await settle();
   const g = await probe("guide");
@@ -1257,7 +1524,7 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   // started: here a corner hops along the front face, and its front sticker is followed,
   // not the one on its side, whose path would have to turn back on itself.
   await page.click("#guide-stop");
-  await page.click('[data-guide-mode="kinds"]');
+  await setOrder(page, "kinds");
   for (let i = 0; i < 3; i++) {
     await page.click("#next-step");
     await settle();
@@ -1272,11 +1539,11 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   // Top to bottom from the owner's position: the first step (R2), and later the third
   // white core corner (U R' D2 R) and a core double edge (R2 U2 L U2 R2).
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
+  await page.fill("#code", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
   await page.click("#import");
   await settle();
-  await page.locator("#guide > summary").click();
-  await page.click('[data-guide-mode="layers"]');
+  await page.click(`[data-tab="solve"]`);
+  await setOrder(page, "layers");
   const FACE = { R: [1, 0, 0], L: [-1, 0, 0], U: [0, 1, 0], D: [0, -1, 0], F: [0, 0, 1], B: [0, 0, -1] };
   const angle = (u, v) => (Math.acos(Math.max(-1, Math.min(1, (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (Math.hypot(...u) * Math.hypot(...v))))) * 180) / Math.PI;
   const sub = (a, b) => a.map((x, k) => x - b[k]);
@@ -1310,9 +1577,9 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   // One corner cycle from solved: a white X-face corner hops along the top, white up at
   // both ends, and its flying copy keeps white up all the way.
   await page.click("#guide-stop");
-  await page.click("#reset");
+  await resetToSolved(page);
   await settle();
-  await page.click('[data-guide-mode="kinds"]');
+  await setOrder(page, "kinds");
   await page.fill("#alg", "(F' L' F) r (F' L F) r'");
   await page.click("#load");
   await page.click("#last");
@@ -1332,11 +1599,11 @@ labTest("guide: a flying cubelet turns only about the axis its sticker turns abo
   // right, so the white sticker, turning from back to up, must stay square to the right
   // all the way, rather than lean out toward it with the path.
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "KLSM RMQS NGSD YZPP ELND KEFV WOPY KHDX CARB ZUAG LCMZ");
+  await page.fill("#code", "KLSM RMQS NGSD YZPP ELND KEFV WOPY KHDX CARB ZUAG LCMZ");
   await page.click("#import");
   await settle();
-  await page.locator("#guide > summary").click();
-  await page.click('[data-guide-mode="layers"]');
+  await page.click(`[data-tab="solve"]`);
+  await setOrder(page, "layers");
   await page.click("#next-step");
   await settle();
   const g = await probe("guide");
@@ -1349,11 +1616,11 @@ labTest("guide: a cubelet turning in place has a disc, and its unit rises past i
   // Top to bottom's next step here turns one white core corner a third of a turn in place,
   // with its two extension cubelets.
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "MKCT OOXD PDQK ZTIX BSRG LFFL MBXH TUNQ CCAY TMCT GMUR");
+  await page.fill("#code", "MKCT OOXD PDQK ZTIX BSRG LFFL MBXH TUNQ CCAY TMCT GMUR");
   await page.click("#import");
   await settle();
-  await page.locator("#guide > summary").click();
-  await page.click('[data-guide-mode="layers"]');
+  await page.click(`[data-tab="solve"]`);
+  await setOrder(page, "layers");
   await page.click("#next-step");
   await settle();
   const g = await probe("guide");
@@ -1374,11 +1641,11 @@ labTest("guide: only the cubelets a step moves or turns keep their colors", asyn
   // at DBL and DFL, each with its two extension cubelets. The white core corners at UBL and
   // UFL are not yet white up either, but the step leaves them as they are: light gray.
   await page.locator("summary", { hasText: "State code" }).click();
-  await page.fill("#code-in", "JOJT HKNW MEZE HNZG NDXA YKTH CBNN CGVJ JLAC BAPV SSXJ");
+  await page.fill("#code", "JOJT HKNW MEZE HNZG NDXA YKTH CBNN CGVJ JLAC BAPV SSXJ");
   await page.click("#import");
   await settle();
-  await page.locator("#guide > summary").click();
-  await page.click('[data-guide-mode="layers"]');
+  await page.click(`[data-tab="solve"]`);
+  await setOrder(page, "layers");
   await page.click("#next-step");
   await settle();
   const g = await probe("guide");
@@ -1386,8 +1653,137 @@ labTest("guide: only the cubelets a step moves or turns keep their colors", asyn
   check(g.darkGray > 0 && g.gray > 0, `what else the turns move is darker gray, and what they leave alone lighter (${g.darkGray} darker, ${g.gray} lighter)`);
 });
 
+labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ page, check, settle, play, counter }) => {
+  await play("R U");
+  await page.click(`[data-tab="solve"]`);
+  const idle = await page.evaluate(() => ({ order: !!document.querySelector(".guide-modes").getClientRects().length, btn: document.getElementById("next-step").textContent, stop: !!document.getElementById("guide-stop").getClientRects().length }));
+  check(idle.order && idle.btn === "Start solving" && !idle.stop, `before a solve: the order and Start solving show, Stop doesn't (${JSON.stringify(idle)})`);
+  await page.click("#next-step");
+  await settle();
+  const solving = await page.evaluate(() => ({ order: !!document.querySelector(".guide-modes").getClientRects().length, btn: document.getElementById("next-step").textContent, stop: !!document.getElementById("guide-stop").getClientRects().length, play: !document.getElementById("last").hidden, next: !document.getElementById("strip-next").hidden }));
+  check(!solving.order && solving.btn === "Next step" && solving.stop && solving.play && !solving.next, `while solving: no order, Next step and Stop show; with turns to play, ▶ is there (${JSON.stringify(solving)})`);
+  const before = await counter();
+  await page.click("#last");
+  await page.waitForFunction(() => !document.getElementById("strip-next").hidden, null, { timeout: 60000 });
+  await settle();
+  const played = { play: await page.$eval("#last", (b) => b.hidden), counter: await counter() };
+  await page.click("#strip-next");
+  await settle();
+  const next = { g: await page.evaluate(() => window.xcubeProbe.guide()?.index), counter: await counter(), play: !(await page.$eval("#last", (b) => b.hidden)) };
+  check(played.play && next.g === 2 && next.counter !== played.counter && next.play, `the step played through (${before} to ${played.counter}), Next step took ▶'s place and loaded step 2 (${next.counter}), and ▶ is back`);
+  await page.click("#guide-stop");
+  const stopped = await page.evaluate(() => ({ order: !!document.querySelector(".guide-modes").getClientRects().length, btn: document.getElementById("next-step").textContent, next: !document.getElementById("strip-next").hidden }));
+  check(stopped.order && stopped.btn === "Start solving" && !stopped.next, `Stop ends the solve: the order and Start solving are back (${JSON.stringify(stopped)})`);
+});
+
+labTest("controls: buttons gray out when they don't apply; the turn list's ✕ asks first; a new start asks before ending a solve; the solve lists its steps", async ({ page, check, settle, counter }) => {
+  const off = () => page.evaluate(() => Object.fromEntries(["first", "rewind", "back", "fwd", "last", "load", "clear", "reset", "alg-save"].map((id) => [id, document.getElementById(id).disabled])));
+  const fresh = await off();
+  check(Object.values(fresh).every(Boolean), `solved with no turns, every playback button, Load, Start from here, Reset and Save are grayed out (${JSON.stringify(fresh)})`);
+  await page.fill("#alg", "R U");
+  check(!(await page.$eval("#load", (b) => b.disabled)), "typing turns makes Load available");
+  await page.click("#load");
+  const loaded = await off();
+  check(loaded.first && loaded.back && !loaded.fwd && !loaded.last && !loaded.clear && !loaded.reset, `at the start of two loaded turns, only the forward buttons apply (${JSON.stringify(loaded)})`);
+  await page.click("#last");
+  await page.waitForFunction(() => document.getElementById("counter").textContent === "2/2" && window.xcubeProbe.idle(), null, { timeout: 30000 });
+  const end = await off();
+  check(!end.first && !end.back && end.fwd && end.last, `at the end, only the backward buttons apply (${JSON.stringify(end)})`);
+  // The ✕ at the end of the turn list: one tap asks, a second clears.
+  await page.click("#list-clear");
+  const armed = { text: await page.$eval("#list-clear", (b) => b.textContent), counter: await counter() };
+  await page.click("#list-clear");
+  check(armed.text === "Clear?" && armed.counter === "2/2" && (await counter()) === "0/0" && (await page.$eval("#list-clear", (b) => b.hidden)), `the turn list's ✕ asks "Clear?" first, then clears it (${JSON.stringify(armed)})`);
+  // During a solve, Shuffle asks before ending it; Keep solving keeps it, End solve ends it.
+  await page.fill("#alg", "R U");
+  await page.click("#load");
+  await page.click("#last");
+  await page.waitForFunction(() => document.getElementById("counter").textContent === "2/2" && window.xcubeProbe.idle(), null, { timeout: 30000 });
+  await page.click("#clear");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  const solving = await page.evaluate(() => ({ next: document.getElementById("next-step").disabled, show: document.getElementById("guide-show").disabled, head: document.getElementById("steps-head").textContent, rows: [...document.querySelectorAll("#steps-list .step-row")].map((r) => r.textContent) }));
+  check(solving.next && !solving.show && /^1 \/ \d+ steps, \d+ \/ \d+ total turns$/.test(solving.head) && solving.rows.length === 1, `with a step's turns still to play, Next step is grayed out and Show step applies; the step list has it (${JSON.stringify(solving)})`);
+  await page.evaluate(() => document.getElementById("shuffle").click());
+  const asked = await page.$eval("#confirm", (d) => !d.hidden);
+  await page.click("#confirm-no");
+  const kept = await page.evaluate(() => document.getElementById("guide").classList.contains("solving"));
+  await page.evaluate(() => document.getElementById("shuffle").click());
+  await page.click("#confirm-yes");
+  await page.waitForFunction(() => /^Shuffled/.test(document.getElementById("message")?.textContent ?? ""), null, { timeout: 60000 });
+  const ended = await page.evaluate(() => document.getElementById("guide").classList.contains("solving"));
+  check(asked && kept && !ended, `Shuffle during a solve asks first; Keep solving keeps it, End solve ends it and shuffles (${JSON.stringify({ asked, kept, ended })})`);
+  // Two steps: the newer is listed first, with the running total.
+  await page.click("#next-step");
+  await settle();
+  await page.click("#last");
+  await page.waitForFunction(() => !document.getElementById("strip-next").hidden, null, { timeout: 60000 });
+  await page.click("#strip-next");
+  await settle();
+  await page.waitForTimeout(400); // the older rows slide down
+  const two = await page.evaluate(() => ({ head: document.getElementById("steps-head").textContent, rows: [...document.querySelectorAll("#steps-list .step-row")].map((r) => r.textContent), topGap: Math.round(document.querySelector("#steps-list .step-row").getBoundingClientRect().top - document.getElementById("steps-list").getBoundingClientRect().top) }));
+  // Show step turns the view to the step, and then reads Home, which turns it back to Home.
+  const showLabel = () => page.$eval("#guide-show", (b) => (b.disabled ? "off" : b.textContent));
+  const showBefore = await showLabel();
+  if (showBefore === "Show step") {
+    await page.click("#guide-show");
+    await settle();
+  }
+  const showAfter = await showLabel();
+  if (showAfter === "Home") {
+    await page.click("#guide-show");
+    await settle();
+  }
+  const showBack = await showLabel();
+  check((showAfter === "Home" && showBack === "Show step") || showAfter === "off", `once the view shows the step, Show step reads Home, and Home goes back (${JSON.stringify({ showBefore, showAfter, showBack })})`);
+  // Tapping an older step slides the turn list to it (not a jump), to show where in the turns it is.
+  const slide = await page.evaluate(async () => {
+    const list = document.getElementById("history");
+    const rows = document.querySelectorAll("#steps-list .step-row");
+    const from = list.scrollLeft;
+    rows[rows.length - 1].click();
+    const t0 = performance.now(), seen = [], at = [];
+    while (performance.now() - t0 < 800) {
+      await new Promise((r) => requestAnimationFrame(r));
+      seen.push(Math.round(list.scrollLeft));
+      at.push(Math.round(performance.now() - t0));
+    }
+    return { from: Math.round(from), seen, at };
+  });
+  // Timed, not counted in frames: a slow runner draws only a few frames during the slide.
+  const slideEnd = slide.seen[slide.seen.length - 1];
+  const arrived = slide.at[slide.seen.findIndex((x) => x === slideEnd)];
+  const monotone = slide.seen.every((x, i) => i === 0 || Math.sign(x - slide.seen[i - 1]) !== -Math.sign(slideEnd - slide.from));
+  check(slide.from === slideEnd || (slide.seen[0] !== slideEnd && arrived >= 250 && monotone), `tapping an older step slides the turn list there (${slide.from} then ${slide.seen.map((x, i) => `${x}@${slide.at[i]}`).join(" ")})`);
+  check(/^2 \/ \d+ steps, \d+ \/ \d+ total turns$/.test(two.head) && /^2\./.test(two.rows[0]) && /^1\..*✓/.test(two.rows[1]) && two.topGap < 6, `the step list shows the newest first at its top, the played one ticked, and the counts of all planned (${JSON.stringify(two)})`);
+  // A step's Save… goes to Algorithms with a suggested name, selected, and Save saves that step.
+  await page.click("#steps-list li:first-child .step-save");
+  await page.waitForTimeout(600);
+  const saving = await page.evaluate(() => {
+    const f = document.getElementById("alg-name");
+    return { tab: document.querySelector('#tabs [aria-selected="true"]').dataset.tab, name: f.value, focused: document.activeElement === f, selected: f.selectionStart === 0 && f.selectionEnd === f.value.length, note: !document.getElementById("alg-save-note").hidden };
+  });
+  check(saving.tab === "algs" && /\(step 2\)$/.test(saving.name) && saving.focused && saving.selected && saving.note, `a step's Save… opens Algorithms with its name suggested and selected (${JSON.stringify(saving)})`);
+  const listed = await page.$$eval("#known-list .saved-name", (els) => els.length);
+  await page.click("#alg-save");
+  const after = await page.$$eval("#known-list li", (els) => els.map((e) => e.textContent));
+  check(after.length === listed + 1 && after.some((t) => /\(step 2\)/.test(t) && /step of a solve/.test(t)), `Save saves the step as an algorithm (${after.length - listed} added)`);
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#steps-list li:last-child .step-row");
+  // Axis marks on x, y and z, and a Display panel no wider than its switches.
+  const marks = await page.evaluate(() => ["x", "y", "z"].map((m) => getComputedStyle(document.querySelector(`[data-move="${m}"]`)).backgroundImage.slice(0, 15)));
+  // The z's ink is moved to the middle of its button, where the ring is, by the font's own measures.
+  const zPad = await page.$eval('[data-move="z"]', (e) => e.style.paddingBottom || e.style.paddingTop);
+  check(/^[\d.]+px$/.test(zPad), `the z is raised by its font's measured offset (${zPad})`);
+  check(marks[0].startsWith("linear") && marks[1].startsWith("linear") && marks[2].startsWith("radial"), `x and y have a line drawn behind them, z a ring (${marks})`);
+  await page.click("#render-btn");
+  const w = await page.evaluate(() => [document.getElementById("render-pop").getBoundingClientRect().width, document.querySelector(".stage").getBoundingClientRect().width]);
+  check(w[0] < w[1] * 0.6, `the Display panel fits its switches (${Math.round(w[0])} of ${Math.round(w[1])} px)`);
+});
+
 labTest("guide: a parity turn has one arc around the outside of its layer", async ({ page, check, probe, settle, play }) => {
-  await page.locator("#guide > summary").click();
+  await page.click(`[data-tab="solve"]`);
   await play("U");
   await page.click("#next-step");
   await settle();
@@ -1470,6 +1866,23 @@ labTest(
       base = await page.$eval("#base-label", (e) => e.textContent);
     }
     check(button === "Load" && base === "Test save", `a saved position's Load button makes it the start ("${button}", start "${base}")`);
+    // During a solve, Load asks first; End solve then loads it (the end re-renders the list, so not by its old button).
+    let during;
+    if (good.listed) {
+      await page.fill("#alg", "R U");
+      await page.click("#load");
+      await page.click("#last");
+      await page.waitForFunction(() => document.getElementById("counter").textContent === "2/2" && window.xcubeProbe.idle(), null, { timeout: 30000 });
+      await page.click("#clear");
+      await page.click(`[data-tab="solve"]`);
+      await page.click("#next-step");
+      await page.click(`[data-tab="start"]`);
+      await page.click("#saved-list [data-load]");
+      const asked = await page.$eval("#confirm", (d) => !d.hidden);
+      await page.click("#confirm-yes");
+      during = { asked, base: await page.$eval("#base-label", (e) => e.textContent), solving: await page.evaluate(() => document.getElementById("guide").classList.contains("solving")) };
+    }
+    check(during?.asked && during.base === "Test save" && !during.solving, `during a solve, Load asks first, and End solve ends it and loads the position (${JSON.stringify(during)})`);
   },
   onThisDevice,
 );

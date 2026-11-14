@@ -238,33 +238,101 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 
 ## X-Cube Lab vocabulary
 
+- **3D view background:** in light mode a gray gradient (`--stage`), a step darker than
+  white so a white sticker's edge glow shows against it.
 - **3D view:** three.js r186, loaded as ES modules through an import map and a shim that
   exposes a global `THREE`. Color management is off and output is linear, to keep the
   original look; light intensities are scaled by pi for newer three.js light units.
 - **Views:** Home (three-quarter), Front, Back, Left, Right, Up, Down. The side views tip
   the top 16.6 degrees toward the viewer (from the owner's saved view).
 - **Edge labels:** the six face letters, each placed where that face's axis, as projected on
-  screen, meets the edge of the 3D view; tapping one turns the view to that face.
+  screen, meets the edge of the 3D view; tapping one turns the view to that face. They are
+  foreshortened: a label on an axis toward the viewer is drawn larger, one pointing away
+  smaller (scale 0.85 to 1.5, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top. A label
+  slides along its edge only to clear another label or a corner button, so it stays near
+  where its axis meets the edge.
+- **Corner buttons** of the 3D view, round icons with no button edge (drawn as SVG, so the
+  ⓘ and ◐ circles match): ⓘ (help) top right, ◐ (Display) bottom right, and ↶ (Undo, the
+  last turn however it was made) top left, shown only while there is a turn to undo.
+- **Highlight color:** the page's accent blue marks every selected or active control (the
+  turn amount, Order, an inverted turn button, the playing transport button).
+- **Disclosure triangles:** one shape for section headings and `details` summaries, drawn
+  in CSS (the browser's own marker is hidden).
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
-  two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ button
-  beside the 3D view's heading shows this help.
-- **Display panel:** the Display button beside the 3D view's heading opens the Edge glow,
-  Shading, Shadows and Gloss switches, over the view.
-- **Layout rule:** on a phone, nothing appears or disappears in the page's flow except
-  through a disclosure triangle (and the turn list, which grows with the turns). Help and
-  switches open in panels over the views; messages float near the bottom of the screen and
-  fade after 4 seconds (8 for errors) or a tap. The browser tests check the page height.
-- **Playback:** ⏮ back to the start, ◀ play backward to the start, ◀1 back one turn, ▶1
+  two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ in the
+  3D view's corner shows this help.
+- **Display panel:** the ◐ in the 3D view's corner opens the Edge glow, Shading, Shadows
+  and Gloss switches, over the view and over the edge labels.
+- **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. The
+  root is padded by the safe-area insets (as the artifact host's skeleton also pads it; in
+  the Claude app the top inset covers the app's own bar too) and the body fills the rest,
+  so each inset is counted once. Vertical space is the scarce thing: an
+  element earns a row only if it is used while solving. At the
+  top, the 3D view (32% of the screen's height, with only the edge labels and the corner
+  buttons over it), one row with Home (the other view buttons are left out: a tap on an
+  edge label does the same) and the hold line, and the
+  **playback strip**: the turn list on one row that scrolls sideways (kept so the current
+  turn and the next two things after it show), the playback buttons with the counter beside
+  them and the status chips at the right end, and the speed slider. Below, a row of **tabs** (Start, Turn, Algorithms, Solve, Flat) and the
+  **panels**, side by side in a carousel that shows one at a time: a tap on a tab, a
+  sideways swipe across the panels, or a finger slid along the tabs picks one (the tab
+  marked follows a swipe as the panels move; during a tab's own scroll its tab stays marked); each panel
+  scrolls up and down by itself, and the one shown is kept on the device. The panels' own
+  headings are hidden (the tabs name them). On an iPhone every turn button shows without
+  scrolling, and the flat view is sized to show whole, its ⓘ over its empty corner. Help and switches open in panels over the views; messages float
+  over the top of the 3D view (on wide screens, near the bottom of the screen) and fade after
+  4 seconds (8 for errors) or a tap. **Wide** (900 px and up, an iPad in landscape): the 3D
+  view and the strip on the left, staying put, and the panels stacked in a column on the
+  right, each collapsing from its heading; no tabs.
+- **Panels:** **Start** (everything that sets the start: Shuffle, Reset to solved, Edit
+  colors and Start from here, then saved positions and the state code), **Turn** (the turn
+  amount, the turn buttons, and the turn field), **Algorithms**, **Solve** (the step
+  guide), **Flat** (the flat view). The Lab opens on Start.
+- **Playback:** the buttons form one strip (one rounded outline, faint lines between the
+  buttons), and the counter ("7/9") sits right after it. **Every button is grayed out
+  (disabled) when it can't do anything** right now: the backward buttons at the start, the
+  forward ones at the end (▶ stays live as ■ while playing), Load with an empty turn field,
+  Start from here and Save (algorithm) with no turns, Reset with the puzzle solved and no
+  turns, Next step (and Start solving) while the step's turns are still to play or when the solver
+  has nothing to do (solved and held as it wants; a solved puzzle tipped over still gets a
+  Regrip step), Show step after
+  the step's first turn (while the view already shows what it would show, it reads **Home**
+  instead and turns the view home, so the two views can be toggled). When a step is
+  loaded, or one is tapped in the step list, the turn list slides (animated) to show as much of it as fits, with the current
+  turn just before it; only if the step is too long does its right end go off the edge. The turn list ends in a ✕ (while there are turns): one tap turns
+  it into "Clear?", a second within 3 seconds clears the list as Start from here does. ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
+  draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1
   forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
-- **Clear:** empties the turn list; the position shown becomes the start ("Current position").
+- **Start from here** (`#clear`, in the Start panel): empties the turn list; the position
+  shown becomes the start ("Current position").
 - **Shuffle:** 30 random legal turns (inner, slices, outer when complete; never the same
   layer twice in a row; no rotations) played at 70 ms per quarter turn; the result becomes
-  the new start ("Shuffled") and the message shows the scramble.
+  the new start ("Shuffled"). Neither the message nor the turn list shows the turns (the
+  list says "Shuffling…" while they play), which would give the way back away (the probe's
+  `shuffleTurns` has them for the tests).
 - **Turn buttons:** tap for the shown turn; long press flips it to the inverse (U to U');
-  slide off to cancel.
+  slide off to cancel. The rotations show their axes behind the letter, in mid gray: a line
+  across x, a line up and down y, and a ring around z (its axis points at you). The x and z
+  letters are moved so their ink sits at the button's middle (`centerAxisLetters`): a
+  lowercase letter's ink sits below its line box's middle by an amount that depends on
+  the font, so it is measured, by canvas text metrics, from the font the button draws with.
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
-  orthographic cameras, so it animates. Its ⓘ button explains how to read it.
+  orthographic cameras, so it animates, centered in its panel. Its ⓘ button explains how to read it.
+- **State code** (a disclosure in Saved states): one single-line field, with Copy and Load
+  beside the heading. It shows the current position's code as a read-out (no fill), drawn
+  over the field at the size that fits it on one line, measured (13px at most, about 9.5px on an iPhone);
+  tapping into it empties it for a code to be pasted or typed, and leaving it empty shows
+  the code again. Typed text that isn't a code gets a thick red outline and Load stays
+  off. Copy copies the current position's code (putting it back in the field). If the
+  position changes while typed text waits, the text is replaced by the new code, the field
+  flashes and a message says so. Its ✕ puts the current code back.
+- **Text fields** each have a ✕ at the right end while they hold text; it empties the field.
+  Their text is 16px: iOS zooms the page into a focused field with smaller text.
+- **Status chips**, in the playback row: one shape chip ("Solved", or "X shape", green in
+  shape and gray out of it), and a 3 by 2 grid of one-letter chips for the outer turns
+  (r l u / d f b), green when that turn can be made and gray when not. Green: green means
+  a state is good, blue (the highlight) means a control is selected or active.
 - **Edge glow:** a soft band at a depth discontinuity, in the color of the sticker around
   the edge. No glow means that side has no sticker. Only shown where the side face points
   away from the viewer or is edge-on. Where two visible faces of one cubelet meet, the
@@ -292,7 +360,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   dents, patches of more and less shine), turned and offset differently on each sticker. Only the
   coat carries the crinkles, so they show in reflections while the color stays smooth.
   The Gloss switch turns it off.
-- **Color editing:** Edit colors under the 3D view. Pick a color, then tap stickers to paint
+- **Color editing:** Edit colors in the Start panel. Pick a color, then tap stickers to paint
   them; drags tumble the view, and the other controls are set aside. The shape stays as it
   is. A painted sticker's edge glow takes the paint too. Each paint is refit to cubelets
   (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
@@ -328,12 +396,27 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   the centers that should be opposite) or "Wrong center color order"
   (halo on all six centers that show). A cube painted as the real one shows is always
   valid, so any problem means a sticker painted wrong.
-- **Step guide:** "Solve step by step", a disclosure in the Run an algorithm panel. **Next
+- **Step guide:** the Solve panel, in two modes. Between solves it shows **Order** and
+  **Start solving**; during a solve (from Start solving until **Stop solving**, across the
+  panel's foot) it shows Next step, Step start and Show step, the step's line, and the
+  **steps so far**, newest at the top, each with its turn count (tap one to go to its
+  start, or its **Save…** to save it as an algorithm: that goes to the Algorithms panel with
+  a suggested name, selected and focused, and its Save then saves the step's turns from
+  where the step starts), under the counts ("3 / 17 steps, 18 / 183 total turns": the newest step's number of
+  the steps the solver planned when it was loaded, and the turns so far of the turns those
+  steps add up to); the list is top-aligned, the newest step always at its top, and when a
+  step is added the older ones slide down to make room; on phones the list scrolls between
+  the step's line and Stop solving. The order can't change during a solve. Anything that
+  sets a new start (Shuffle, Reset, Edit colors, a code, a saved position, an algorithm,
+  clearing the turn list) asks "End the solve in progress?" first, and ends it. In the
+  playback strip, once a solve's turns have all played, ▶ gives way to a **Next step**
+  button (two dots with an arrow from one to the other, in the highlight blue), which
+  loads the next step; ▶ comes back with it. **Next
   step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
   the position shown, adds its turns at the current step, unplayed, and a line under the
-  button gives the stage and goal, then "Turns:" with the turns as the solver writes them
-  (`[setup: cycle]`), then "Step 2 of 9 to solved" (counted from when the guide was started; a step taken
-  from anywhere but the end of the one before starts the count again), each on its own line. Until the step has
+  button gives "Step 2 of 9 —" (no "(done)" once played: the step list's ✓ says that; counted from when the guide was started; a step taken
+  from anywhere but the end of the one before starts the count again), the stage and the goal,
+  then on its own line "Turns:" with the turns as the solver writes them (`[setup: cycle]`). Until the step has
   been played through, its colors picture what its turns do (`stepColors`): the cubelets it applies to that it moves or
   turns keep their colors (with the extension cubelets moving with them as a unit), every other cubelet it moves or turns is
   darker gray (left for later steps), and every cubelet it leaves as it was is gray, even one it applies to that is not yet
@@ -401,22 +484,24 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   guide calls it **Regrip**, and it names the center that is up now ("now blue is up").
   A cycle step's regrip may flip the puzzle over (`x2`); the Hold line then says yellow is up.
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag
-  ("3 Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
+  ("3. Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
   undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows
-  that step again at the position it begins from.
-  **Stop**, or closing the disclosure, drops the step, its grays and its line and leaves
+  that step again at the position it begins from. At the step's start that button reads
+  **Play step** and plays the step's turns (only its own, if later steps follow).
+  **Stop** drops the step, its grays and its line and leaves
   the turn list alone; Next step starts again from the position shown. Playing the step returns the colors and the line reads "(done)". Any change that
   takes the step's turns out of the turn list (a turn by hand, Clear, Edit) drops the step,
-  its grays and its line; so does Edit colors. The line has a fixed height (layout rule).
+  its grays and its line; so does Edit colors. Going to another panel keeps the step. With
+  no step, the line says what Next step does (drawn by CSS, so it isn't in the line's text).
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.
-- **Turn field:** in the Run an algorithm panel, under Clear. Load adds the typed turns at
+- **Turn field:** in the Turn panel, under the turn buttons. Load adds the typed turns at
   the current step (replacing any after it) and empties the field, so the turn list is the
   one record of the turns. Edit puts the whole turn list in the field and Load reads Update:
   it replaces the list, keeping the position where the old and new lists agree; Cancel
   leaves the list as it was.
-- **Algorithms list:** in the Run an algorithm panel. Load makes an algorithm's position
+- **Algorithms list:** the Algorithms panel. Load makes an algorithm's position
   the start, with its turns loaded and unplayed; Save keeps the turn list with the
   current start position; ✕ deletes (after Delete or Keep). Kept like saved states: the shared
   database's `algorithms` collection (`name`, `alg`, `code` for the start position, `note`,
@@ -496,8 +581,9 @@ Never do any of these without an explicit instruction from the owner:
   - Use CI as your test runner: after pushing, read the check results (the GitHub tools give
     the check runs and job logs) and fix what fails. Reproduce a CI failure locally with the
     narrowest run that shows it, then show that same run passing.
-  - A push to a pull request cancels CI still running on its previous commit, and that
-    run's `all checks` then fails because a job was cancelled. That is not a failure. When
+  - A push to a pull request cancels CI still running on its previous commit; that run's
+    `all checks` is then skipped (it runs only if the run wasn't cancelled), not failed.
+    A replaced run is part of the normal process, not a failure. When
     a check result or any other CI notice is for a commit that is no longer the pull
     request's head, say nothing about it to the owner: no report, no "nothing to act on",
     no mention in a later summary. Check which commit it is for, and if it is superseded,

@@ -154,7 +154,10 @@ jobs:
   # failed. The rule matches this display name: renaming the job means changing the rule.
   all-checks:
     name: all checks
-    if: always()
+    # Runs after the other jobs whether they passed or failed, but not when the run is
+    # cancelled (a newer push to the pull request replaced it): then it is skipped, so a
+    # replaced run reports no failure.
+    if: ${{ !cancelled() }}
     needs: [unit-tests, typecheck, browser]
     runs-on: ubuntu-latest
     steps:
