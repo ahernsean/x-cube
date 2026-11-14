@@ -3312,16 +3312,15 @@ function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit 
 // A shape edit is shown as a move: the meshes are already where they end up, and until
 // the move is over each frame puts the moved ones part-way there. Every edit carries its
 // cubelets as rotations about the puzzle's center, so part-way is part of that rotation,
-// with the cubelets held clear of their neighbors meanwhile:
-// - "lift": a core corner or core single edge with the cubelets on it rises straight out,
-//   turns, and drops back in;
-// - "arc": a cubelet (the centers, or one going from a core double edge to a core single
-//   edge) swings around the outside of the puzzle.
-const SHAPE_MOVE = { liftMs: 800, arcMs: 600, rise: 1.25, bulge: 0.55 };
+// - a core corner or core single edge turns where it is, with the cubelets on it;
+// - a cubelet that changes places (the centers, or one going from a core double edge to
+//   a core single edge) swings around the outside of the puzzle, clear of the others.
+const SHAPE_MOVE = { turnMs: 450, arcMs: 600, bulge: 0.55 };
 interface ShapeAnim {
   start: number;
   ms: number;
-  items: { mesh: any; p0: any; q0: any; turn: any; out: any | null }[];
+  bulge: number; // how far out the cubelets swing mid-move, as a share of their distance from the center
+  items: { mesh: any; p0: any; q0: any; turn: any }[];
 }
 let shapeAnim: ShapeAnim | null = null;
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
@@ -3334,18 +3333,18 @@ function rotationQuat(r: number) {
 function animateShape(carries: { from: number; to: number; rot: number }[]) {
   if (!edit || reduceMotionView()) return;
   const core = (s: number) => SLOT_POS[s].every((c) => Math.abs(c) < 2);
-  // A core cubelet that stays in its slot and turns: the unit on it lifts straight out.
+  // A core cubelet that stays in its slot and turns, with the cubelets on it.
   const hub = carries.find((c) => c.from === c.to && core(c.from));
   // A cubelet from a core double edge: only it is seen to move (the two core edges behind trade places unseen).
   const moved = hub || carries.every((c) => c.rot === carries[0].rot) ? carries : carries.filter((c) => !core(c.from));
-  const out = hub ? new THREE.Vector3(...SLOT_POS[hub.from]).normalize() : null;
   shapeAnim = {
     start: performance.now(),
-    ms: hub ? SHAPE_MOVE.liftMs : SHAPE_MOVE.arcMs,
+    ms: hub ? SHAPE_MOVE.turnMs : SHAPE_MOVE.arcMs,
+    bulge: hub ? 0 : SHAPE_MOVE.bulge,
     items: moved.map((c) => {
       const turn = rotationQuat(c.rot);
       const mesh = meshes[edit!.shown.occ[c.to]];
-      return { mesh, p0: new THREE.Vector3(...SLOT_POS[c.from]), q0: turn.clone().invert().multiply(mesh.quaternion), turn, out };
+      return { mesh, p0: new THREE.Vector3(...SLOT_POS[c.from]), q0: turn.clone().invert().multiply(mesh.quaternion), turn };
     }),
   };
   stepShapeAnim();
@@ -3355,13 +3354,11 @@ function animateShape(carries: { from: number; to: number; rot: number }[]) {
 function stepShapeAnim() {
   if (!shapeAnim) return;
   const t = Math.min(1, (performance.now() - shapeAnim.start) / shapeAnim.ms);
-  const part = (a: number, b: number) => easeInOut(Math.min(1, Math.max(0, (t - a) / (b - a))));
+  const e = easeInOut(t);
   for (const it of shapeAnim.items) {
-    const q = new THREE.Quaternion().slerp(it.turn, it.out ? part(0.3, 0.7) : easeInOut(t));
+    const q = new THREE.Quaternion().slerp(it.turn, e);
     it.mesh.quaternion.copy(q).multiply(it.q0);
-    it.mesh.position.copy(it.p0).applyQuaternion(q);
-    if (it.out) it.mesh.position.addScaledVector(it.out, SHAPE_MOVE.rise * (part(0, 0.3) - part(0.7, 1)));
-    else it.mesh.position.multiplyScalar(1 + SHAPE_MOVE.bulge * Math.sin(Math.PI * easeInOut(t)));
+    it.mesh.position.copy(it.p0).applyQuaternion(q).multiplyScalar(1 + shapeAnim.bulge * Math.sin(Math.PI * e));
   }
   if (t >= 1) shapeAnim = null;
 }
