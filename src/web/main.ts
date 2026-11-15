@@ -4706,7 +4706,8 @@ function updateHighlight() {
   const { slots } = shownProblem();
   edit.selected = slots.join();
   if (edit.hidden !== slots.join()) edit.hidden = null; // Hide lasts until other cubelets are named
-  edit.highlight = slots.length && edit.hidden === null ? [...slots] : null;
+  // No halo while the Shape tool is in hand: it would cover the cubelets and spots to tap.
+  edit.highlight = slots.length && edit.hidden === null && edit.paint !== "shape" ? [...slots] : null;
 }
 
 /** Returns every glow band to its own sticker's color. */
@@ -4753,7 +4754,7 @@ function renderEdit() {
     nav.append(step("prev", "‹", "Previous problem"), `${i + 1}/${problems.length}`, step("next", "›", "Next problem"));
     st.append(" ", nav);
   }
-  const tappable = level !== "reachable" && problems[i].slots.length > 0;
+  const tappable = level !== "reachable" && problems[i].slots.length > 0 && edit.paint !== "shape";
   st.classList.toggle("tappable", tappable || (level !== "reachable" && problems.length > 1));
   if (tappable) {
     const actions: [string, string][] = edit.highlight ? [["show", "Show"], ["hide", "Hide"]] : [["show", "Show"]];
