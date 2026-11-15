@@ -3304,11 +3304,30 @@ function placeMarkers(pool: any[], slots: number[], make: () => any) {
 }
 
 function placeGhosts() {
-  ghostMaterial ??= new THREE.MeshBasicMaterial({ map: dashedOutline(0.04, true), transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  const style = (window as any).ghostStyle ?? "B";
+  if (ghostMaterial !== style) {
+    for (const g of ghosts) g.parent?.remove(g);
+    ghosts.length = 0;
+    ghostMaterial = style;
+  }
   placeMarkers(ghosts, edit?.paint === "shape" ? draftSpots(edit) : [], () => {
-    const g = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), ghostMaterial);
-    g.layers.set(HALO_LAYER);
-    g.renderOrder = 2;
+    const g = new THREE.Group();
+    const add = (size: number, opts: any, order: number, scale = 1) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, ...opts }));
+      m.scale.setScalar(scale);
+      m.layers.set(HALO_LAYER);
+      m.renderOrder = order;
+      g.add(m);
+    };
+    const GRAY = 0x5f676b;
+    if (style === "A") add(0.9, { map: dashedOutline(0.04, true) }, 2);
+    if (style === "B") add(0.62, { map: borderedFill() }, 2);
+    if (style === "C" || style === "D") {
+      add(0.62, { colorWrite: false, depthWrite: true }, 2);
+      if (style === "D") add(0.62, { color: 0x15181a, side: THREE.BackSide }, 2.05, 1.22);
+      add(0.62, { color: 0xffffff, side: THREE.BackSide }, 2.1, 1.13);
+      add(0.62, { color: GRAY, opacity: 0.4 }, 2.2);
+    }
     return g;
   });
   placeMarkers(blanks, edit ? [...edit.added] : [], () => {
@@ -3318,6 +3337,21 @@ function placeGhosts() {
     g.add(body);
     return g;
   });
+}
+
+/** A translucent gray square with a white border, as a texture. */
+function borderedFill() {
+  const N = 128, c = document.createElement("canvas");
+  c.width = c.height = N;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "rgba(95, 103, 107, 0.4)";
+  g.fillRect(0, 0, N, N);
+  g.strokeStyle = "#f2f5f6";
+  g.lineWidth = 12;
+  g.strokeRect(0, 0, N, N);
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 4;
+  return t;
 }
 
 /**
@@ -3378,10 +3412,10 @@ function pickMarker(el: HTMLElement, clientX: number, clientY: number, h: CubeHi
   const ray = new THREE.Raycaster();
   ray.layers.set(HALO_LAYER);
   ray.setFromCamera(new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1), camera);
-  const [g] = ray.intersectObjects(ghosts.filter((x) => x.parent), false);
+  const [g] = ray.intersectObjects(ghosts.filter((x) => x.parent), true);
   if (!g) return null;
   if (h && pivot.localToWorld(h.point.clone()).distanceTo(camera.position) < g.distance) return null;
-  return g.object.userData.slot;
+  return g.object.parent.userData.slot;
 }
 
 function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null) {
