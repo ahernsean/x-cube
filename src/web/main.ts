@@ -3282,7 +3282,8 @@ function refitEdit() {
 // goes away, and an empty spot where one is missing gets one. The shape may be wrong
 // meanwhile: a cubelet put in is a blank body until the shape is one the puzzle can have,
 // when real cubelets take the blanks' places. Ghosts mark the empty spots: a box of
-// dashed outlines, unlit, so it shows in shadow. The stickers
+// dashed outlines, pale on a dark line and unlit, so it shows against white, against
+// dark and in shadow. The stickers
 // a tap moves lose their paint: paint stays on its spot, and the cubelet now there is
 // another one. A cubelet that only comes or goes leaves the others on its unit painted.
 const ghosts: any[] = [];
@@ -3303,7 +3304,7 @@ function placeMarkers(pool: any[], slots: number[], make: () => any) {
 }
 
 function placeGhosts() {
-  ghostMaterial ??= new THREE.MeshBasicMaterial({ map: dashedOutline(0.04), transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  ghostMaterial ??= new THREE.MeshBasicMaterial({ map: dashedOutline(0.04, true), transparent: true, depthWrite: false, side: THREE.DoubleSide });
   placeMarkers(ghosts, edit?.paint === "shape" ? draftSpots(edit) : [], () => {
     const g = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), ghostMaterial);
     g.layers.set(HALO_LAYER);
@@ -3319,17 +3320,25 @@ function placeGhosts() {
   });
 }
 
-/** A pale dashed outline of a rounded square on nothing, as a texture; `round` is the corner radius as a share of the side. */
-function dashedOutline(round: number) {
+/**
+ * A pale dashed outline of a rounded square on nothing, as a texture; `round` is the
+ * corner radius as a share of the side. `cased` puts a dark line under the dashes, so the
+ * outline shows against white as well as against dark.
+ */
+function dashedOutline(round: number, cased = false) {
   const N = 128, c = document.createElement("canvas");
   c.width = c.height = N;
   const g = c.getContext("2d")!;
-  g.strokeStyle = "#e6eaec";
-  g.lineWidth = 7;
-  g.setLineDash([15, 11]);
-  g.beginPath();
-  g.roundRect(6, 6, N - 12, N - 12, round * N);
-  g.stroke();
+  const stroke = (style: string, width: number, dash: number[]) => {
+    g.strokeStyle = style;
+    g.lineWidth = width;
+    g.setLineDash(dash);
+    g.beginPath();
+    g.roundRect(8, 8, N - 16, N - 16, round * N);
+    g.stroke();
+  };
+  if (cased) stroke("#15181a", 13, []);
+  stroke("#f2f5f6", 7, [15, 11]);
   const t = new THREE.CanvasTexture(c);
   t.anisotropy = 4;
   return t;
