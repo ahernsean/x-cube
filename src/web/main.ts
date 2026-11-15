@@ -3274,12 +3274,12 @@ function drawEdit() {
 
 // Stages are named by color, not by place: the puzzle may be held either way up.
 const STAGE_NAME: Record<SolveStep["stage"], string> = {
-  hold: "Regrip", flip: "Turn over", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges",
+  hold: "Regrip", regrip: "Regrip", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges",
   coreTop: "White core edges", coreTopC: "White core corners", coreMiddle: "Middle core edges", coreBottom: "Yellow core edges", coreBottomC: "Yellow core corners",
   topEdges: "White edges", topCorners: "White corners", sideEdges: "Side edges", bottomCorners: "Yellow corners", bottomEdges: "Yellow edges",
 };
 /** A step that only turns the whole puzzle: it grays nothing and has no paths to show. */
-const turnsWhole = (step: SolveStep) => step.stage === "hold" || step.stage === "flip";
+const turnsWhole = (step: SolveStep) => step.stage === "hold" || step.stage === "regrip";
 
 interface Guide {
   step: SolveStep;

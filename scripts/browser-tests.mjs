@@ -1462,6 +1462,28 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   check(listed.startsWith("R U ") && (await probe("guide")) === null && (await line()) === "" && (await page.$$("#history .step-box")).length === 0, "editing a turn before the step drops the step and its box");
 });
 
+labTest("guide: a regrip is a step of its own, and the step after it is as the puzzle is then held", async ({ page, check, probe, settle }) => {
+  const { line, next } = guideHelpers(page, settle);
+  // Shape and core done; the first corners to cycle are on the bottom, so the solve turns the puzzle over first.
+  await page.evaluate(() => (document.querySelector("details.code-box").open = true));
+  await page.click("#code");
+  await page.fill("#code", "GAQB MAQZ OPMU ADTJ BUGX BTTM REMC BKDW RYUV XEPY LUSB");
+  await page.click("#import");
+  await settle();
+  await next();
+  const flip = await probe("guide");
+  const showOff = await page.$eval("#guide-show", (b) => b.disabled);
+  check(
+    flip?.stage === "regrip" && flip.alg === "x2" && flip.gray === 0 && flip.darkGray === 0 && flip.arrows === 0 && showOff && /^Step 1 of \d+ — Regrip: Turn the puzzle over, so yellow is up\. Nothing else moves\. Turns: x2$/.test(await line()),
+    `turning the puzzle over is a step of its own, which grays nothing and has nothing to show (${JSON.stringify(flip)}; "${await line()}")`,
+  );
+  await page.click("#last");
+  await settle();
+  await next();
+  const after = await probe("guide");
+  check(after?.stage === "corners" && after.index === 2 && !/[xyz]/.test(after.alg) && after.arrows > 0, `the step after it turns no whole puzzle (${after?.stage}: ${after?.alg})`);
+});
+
 labTest("guide: dashed paths, the order switch, a layered core step, and a turn by hand", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
   const { line, next } = guideHelpers(page, settle);
   // A cubelet only passing through has a dashed path, in several pieces, and no ring.
@@ -1480,14 +1502,14 @@ labTest("guide: dashed paths, the order switch, a layered core step, and a turn 
   await next();
   const byLayer = await probe("guide");
   const kept = await page.evaluate(() => localStorage.getItem("xcube.guideMode"));
-  check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Step \d+ of \d+ — Top corners: For the white X-face's corners: cycle three X-face corners\. All three end up solved\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
+  check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Step \d+ of \d+ — White corners: For the white X-face's corners: cycle three X-face corners\. All three end up solved\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
   // Out of shape, top to bottom starts with the core, a cubelet at a time: a short step,
   // one or two paths, and the line counts the cubelets placed.
   await startFresh();
   await play("R U F' L2");
   await next();
   const core = await probe("guide");
-  check(core?.stage.startsWith("core") && core.turns <= 9 && core.arrows >= 1 && core.arrows <= 3 && /^Step \d+ of \d+ — Top core edges: Put a white core edge in the top layer, white up \([1-4] of 4\)\./.test(await line()), `top to bottom places the core a cubelet at a time (${core?.alg}, ${core?.arrows} paths; "${await line()}")`);
+  check(core?.stage.startsWith("core") && core.turns <= 9 && core.arrows >= 1 && core.arrows <= 3 && /^Step \d+ of \d+ — White core edges: Put a white core edge in the top layer, white up \([1-4] of 4\)\./.test(await line()), `top to bottom places the core a cubelet at a time (${core?.alg}, ${core?.arrows} paths; "${await line()}")`);
   await setOrder(page, "kinds");
   await startFresh();
   await play("R U");
@@ -1561,15 +1583,17 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
       const mid = pts[k + 3].map((x, j) => (x + pts[k + 5][j]) / 2);
       return Math.hypot(...mid) - Math.hypot(...p);
     })));
+  // The first seven steps that turn layers (a regrip step only turns the whole puzzle).
   const steps = [];
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 14 && steps.length < 7; i++) {
     await page.click("#next-step");
     await settle();
-    steps.push(await probe("guide"));
+    const g = await probe("guide");
+    if (g.stage !== "regrip") steps.push(g);
     await page.click("#last");
     await settle();
   }
-  const first = steps[0], corner = steps[4], unit = steps[6];
+  const first = steps[0], unit = steps[6];
   check(first.alg === "R2" && lean(first) < 47 && bowIn(first) < 0.03, `a path leaves its sticker and comes onto its face within 45 degrees of straight out (${lean(first).toFixed(0)} at most, sampled a twenty-fourth of the way in), and never bows in toward the puzzle (${bowIn(first).toFixed(3)})`);
   check(steps.every((g) => g.arrows === 0 || (lean(g) < 47 && bowIn(g) < 0.03)), `so does every path of the first seven steps (${steps.map((g) => `${g.alg}: ${g.arrows ? `${lean(g).toFixed(0)} degrees, ${bowIn(g).toFixed(3)} in` : "no paths"}`).join("; ")})`);
   // A core double edge has no sticker: it and the two extension cubelets against it move
