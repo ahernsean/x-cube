@@ -31,7 +31,7 @@ import { formatAlg, parseAlg } from "./notation.ts";
 import { COLOR_NAME, CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, type Kind, type Turn } from "./puzzle.ts";
 import { unreachableReason } from "./serialize.ts";
 
-export type Stage = "hold" | "shape" | "core" | "coreTop" | "coreTopC" | "coreMiddle" | "coreBottom" | "coreBottomC" | "parity" | "corners" | "edges" | "topEdges" | "topCorners" | "sideEdges" | "bottomCorners" | "bottomEdges";
+export type Stage = "hold" | "regrip" | "shape" | "core" | "coreTop" | "coreTopC" | "coreMiddle" | "coreBottom" | "coreBottomC" | "parity" | "corners" | "edges" | "topEdges" | "topCorners" | "sideEdges" | "bottomCorners" | "bottomEdges";
 
 /**
  * The order the outer cubelets are solved in. Both orders use the same two 3-cycles.
@@ -802,8 +802,40 @@ function parityStep(st: State): SolveStep | null {
  */
 const others = (st: State, wrong: number[]) => SLOTS.filter((s) => st.occ[s] >= 0 && !wrong.includes(s) && !["center", "extCenter"].includes(kindAt(st, s)));
 
-/** The next step from st toward solved, or null when st is solved. Throws if turns can't reach st. */
+/**
+ * The next step from st toward solved, or null when st is solved. Throws if turns can't
+ * reach st. A step that would begin with a regrip (turning the puzzle around, over, or
+ * both) is preceded by a regrip step of its own, so each step's goal, turns and pictures
+ * are all for one way of holding the puzzle: the step after the regrip is found again from
+ * the regripped position. (If that one would begin with another regrip, the step keeps its
+ * own.)
+ */
 export function nextStep(st: State, mode: Mode = "kinds"): SolveStep | null {
+  const step = stepFrom(st, mode);
+  if (!step?.regrip) return step;
+  const grip = parseAlg(step.regrip);
+  const after = st.clone();
+  applyTurns(after, grip);
+  if (stepFrom(after, mode)?.regrip) return step;
+  const color = (s: number) => COLOR_NAME[FACE_COLOR[[0, 1, 2, 3, 4, 5].find((d) => slotAt(DIRS[d]) === CUBELETS[after.occ[s]].home)!]];
+  const over = grip.some((t) => MOVE_DEFS[t.def].axis !== 1);
+  const around = grip.some((t) => MOVE_DEFS[t.def].axis === 1);
+  const goal = [over && `over, so ${color(UP)} is up`, around && `around, so ${color(FRONT)} is in front`].filter(Boolean).join(", and ");
+  return {
+    stage: "regrip",
+    goal: `Turn the puzzle ${goal}. Nothing else moves`,
+    alg: step.regrip,
+    turns: grip,
+    parts: [{ name: "regrip", turns: grip.length }],
+    moved: [],
+    free: [],
+    lands: [],
+    regrip: step.regrip,
+  };
+}
+
+/** The next step from st toward solved, which may begin with a regrip. */
+function stepFrom(st: State, mode: Mode): SolveStep | null {
   const why = unreachableReason(st);
   if (why) throw new Error(`turns can't reach this position (${why})`);
   // A layer core step or an outer step may flip the puzzle over to put the bottom on top,
