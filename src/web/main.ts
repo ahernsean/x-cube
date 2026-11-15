@@ -3272,11 +3272,14 @@ function drawEdit() {
 // first turn, arrows show where the cubelets it moves will go. Each step stays boxed in the
 // turn list behind a tag; the tag, or Step start, goes back to where the step begins.
 
+// Stages are named by color, not by place: the puzzle may be held either way up.
 const STAGE_NAME: Record<SolveStep["stage"], string> = {
-  hold: "Regrip", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges",
-  coreTop: "Top core edges", coreTopC: "Top core corners", coreMiddle: "Middle core edges", coreBottom: "Bottom core edges", coreBottomC: "Bottom core corners",
-  topEdges: "Top edges", topCorners: "Top corners", sideEdges: "Side edges", bottomCorners: "Bottom corners", bottomEdges: "Bottom edges",
+  hold: "Regrip", regrip: "Regrip", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges",
+  coreTop: "White core edges", coreTopC: "White core corners", coreMiddle: "Middle core edges", coreBottom: "Yellow core edges", coreBottomC: "Yellow core corners",
+  topEdges: "White edges", topCorners: "White corners", sideEdges: "Side edges", bottomCorners: "Yellow corners", bottomEdges: "Yellow edges",
 };
+/** A step that only turns the whole puzzle: it grays nothing and has no paths to show. */
+const turnsWhole = (step: SolveStep) => step.stage === "hold" || step.stage === "regrip";
 
 interface Guide {
   step: SolveStep;
@@ -3459,7 +3462,7 @@ let showTarget: any = null;
 let showTargetKey = "";
 function updateShowTarget() {
   const g = guide;
-  const key = g && app.cursor === g.start && g.step.stage !== "hold" ? `${g.start}|${encodeState(app.current)}` : "";
+  const key = g && app.cursor === g.start && !turnsWhole(g.step) ? `${g.start}|${encodeState(app.current)}` : "";
   if (key === showTargetKey) return;
   showTargetKey = key;
   showTarget = key ? bestView(app.current, guideFaces(g!)) : null;
@@ -3606,7 +3609,7 @@ function refreshGuide() {
   ($("guide-start") as HTMLButtonElement).disabled = !guide || (atStepStart && playing);
   // The paths show only before the step's first turn, so Show step applies only there.
   updateShowTarget();
-  ($("guide-show") as HTMLButtonElement).disabled = !guide || guide.step.stage === "hold" || app.cursor !== guide.start;
+  ($("guide-show") as HTMLButtonElement).disabled = !guide || turnsWhole(guide.step) || app.cursor !== guide.start;
   updateShowButton();
   renderSteps();
   const line = $("guide-line");
@@ -3630,7 +3633,7 @@ function drawGuide() {
   // During a turn the cursor is already past it; the grays go by the position the turn started from.
   const at = anim ? app.cursor + (anim.forward ? -1 : 1) : app.cursor;
   // A hold step only turns the whole puzzle, and the center colors are what it goes by: no grays.
-  const within = !!g && g.step.stage !== "hold" && at >= g.start && at < g.start + g.step.turns.length;
+  const within = !!g && !turnsWhole(g.step) && at >= g.start && at < g.start + g.step.turns.length;
   const key = within ? `${g!.start}/${g!.step.alg}` : "";
   if (guideArrows) guideArrows.visible = !!g && app.cursor === g.start && !anim && !queue.length;
   if (drawGuide.key === key) return;

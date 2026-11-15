@@ -180,8 +180,15 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   so the bottom comes on top; the steps after it go on from there, and the puzzle is
   turned back only if a later step is better off that way. So the **grip** is which of
   these eight holds the puzzle is in, from white up and green front (`GRIPS`), and each
-  outer cubelet's home turns with it. A step's `regrip` is the notation it begins with
-  ("" for none), and its `moved` places are as the puzzle is held before it. With yellow
+  outer cubelet's home turns with it. A regrip is chosen with the step it is for, but
+  `nextStep` gives it as a **regrip step** of its own first (stage `regrip`, its goal
+  naming the center that ends up up or in front: "Turn the puzzle over, so yellow is up";
+  "Turn the puzzle around, so blue is in front"), and the step after it is found again
+  from the regripped position. So every other step's goal, turns and paths are for one
+  way of holding the puzzle, and its `regrip` is "" (should that fresh step want a regrip
+  of its own, the step keeps its regrip instead; no sampled solve has needed it). About
+  11 regrip steps a solve top to bottom, 7 corners then edges, in 25 sampled shuffles;
+  the turns are the same. With yellow
   up, a layer core step is found with the puzzle turned back white up and then named as
   it is held (`asFlipped`; ease by the names as held, and its goal says "top layer,
   yellow up"); a cycle step works with yellow up as it is, so its cycle keeps its front
@@ -480,9 +487,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   does for a problem). A parity step, which turns whole layers, has one neutral arrow for each turn instead:
   an arc around the outside of the layer, where a finger would swipe to turn it, as far
   around as the turn goes (`layerArrow`). **Order** switches between the solver's modes, "Corners,
-  then edges" and "Top to bottom", and is kept on the device. A hold step grays nothing: it only turns the whole puzzle, by the center colors. The
-  guide calls it **Regrip**, and it names the center that is up now ("now blue is up").
-  A cycle step's regrip may flip the puzzle over (`x2`); the Hold line then says yellow is up.
+  then edges" and "Top to bottom", and is kept on the device. A hold step and a regrip step
+  gray nothing and have nothing for Show to show: they only turn the whole puzzle, by the
+  center colors. The guide calls both **Regrip**; a hold step names the center that is up
+  now ("now blue is up"). A regrip step may flip the puzzle over (`x2`); the Hold line then
+  says yellow is up. Stages are named by color, not place ("Yellow core edges", "White
+  corners"), since the puzzle may be held either way up.
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag
   ("3. Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
   undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows

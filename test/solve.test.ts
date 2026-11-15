@@ -70,6 +70,15 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
   if (mode === "layers") order.splice(1, 2, ...LAYER_CORE);
   let stage = 0;
   for (const step of steps) {
+    if (step.stage === "regrip") {
+      // A regrip is a step of its own, anywhere: it only turns the whole puzzle.
+      assert.ok(step.turns.length && step.turns.every((t) => MOVE_DEFS[t.def].kind === "rotation"), `a regrip step only turns the whole puzzle (${step.alg})`);
+      assert.ok(step.turns.length <= 2, `${step.alg} regrips with at most a flip and a turn`);
+      assert.equal(step.regrip, step.alg);
+      assert.deepEqual(step.moved, []);
+      assert.ok(applyTurns(st, step.turns).ok);
+      continue;
+    }
     assert.ok(order.indexOf(step.stage) >= stage, `${step.stage} comes after ${order[stage]}`);
     stage = order.indexOf(step.stage);
     const before = st.clone();
@@ -77,15 +86,10 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
     assert.deepEqual(parseAlg(step.alg), step.turns, "the notation is the turns");
     assert.equal(step.parts.reduce((n, part) => n + part.turns, 0), step.turns.length, `the parts of ${step.alg} are all of its turns`);
     if (step.stage === "hold") continue;
-    // A regrip comes first or not at all, and what a step reports is as the puzzle was held before it.
-    const rotations = step.turns.filter((t) => MOVE_DEFS[t.def].kind === "rotation");
-    const regrip = parseAlg(step.regrip);
-    assert.ok(regrip.length <= 2, `${step.alg} regrips with at most a flip and a turn`);
-    assert.deepEqual(step.turns.slice(0, regrip.length), regrip, `${step.alg} begins with its regrip`);
-    assert.equal(rotations.length, regrip.length, `${step.alg} regrips only as it says`);
-    if (/x2/.test(step.regrip)) assert.ok([...LAYER_CORE, "corners", "edges", "topEdges", "topCorners", "sideEdges", "bottomCorners", "bottomEdges"].includes(step.stage), `only a layer core step or an outer step flips the puzzle (${step.alg})`);
-    const seen = st.clone(); // the result, turned back to the grip the step reports in
-    applyTurns(seen, invertTurns(regrip));
+    // Any regrip is a step before this one: this one turns no whole puzzle.
+    assert.equal(step.regrip, "", `${step.alg} has no regrip of its own`);
+    assert.ok(!step.turns.some((t) => MOVE_DEFS[t.def].kind === "rotation"), `${step.alg} turns no whole puzzle`);
+    const seen = st.clone();
     usage.turns += step.turns.length;
     for (const t of step.turns) if (/^[Bb]/.test(turnName(t))) usage.back++;
     if (["corners", "edges"].includes(step.stage)) assert.ok(!/[bBSH]/.test(step.alg.slice(step.alg.indexOf(":") + 1)), `the cycle in ${step.alg} has no back turn and no S or H`);
@@ -198,31 +202,39 @@ test("solve: an outer step flips the puzzle over when the cubelets it cycles are
   for (const mode of ["kinds", "layers"] as Mode[]) {
     const steps = solveSteps(st, mode);
     assert.ok(isSolved(play(st, steps, mode)), mode);
-    const flip = steps.find((s) => s.regrip.startsWith("x2"));
-    assert.ok(flip, `${mode}: some step flips the puzzle over`);
-    assert.ok(flip.moved.filter(([from]) => SLOT_POS[from][1] < 0).length >= 2, `${mode}: the flip is for cubelets on the bottom (${flip.alg})`);
+    const i = steps.findIndex((s) => s.stage === "regrip" && s.alg.includes("x2"));
+    assert.ok(i >= 0, `${mode}: some regrip step flips the puzzle over`);
+    const next = steps[i + 1];
+    assert.ok(next.moved.filter(([from]) => SLOT_POS[from][1] > 0).length >= 2, `${mode}: the step after the flip is for cubelets now on top (${next.alg})`);
     assert.ok(!steps.some((s) => s.stage === "hold"), `${mode}: the steps go on with yellow up, with no hold step`);
   }
   const first = nextStep(st)!;
-  assert.equal(first.regrip, "x2", "the first corners step begins by flipping the puzzle over");
-  assert.ok(first.moved.every(([from]) => SLOT_POS[from][1] < 0), "its three corners are on the bottom");
+  assert.equal(first.stage, "regrip");
+  assert.equal(first.alg, "x2", "the first step flips the puzzle over, alone");
+  assert.match(first.goal, /^Turn the puzzle over, so yellow is up\. Nothing else moves$/);
+  const turned = st.clone();
+  applyTurns(turned, first.turns);
+  const second = nextStep(turned)!;
+  assert.equal(second.stage, "corners");
+  assert.ok(second.moved.every(([from]) => SLOT_POS[from][1] > 0), "its three corners are on top, where the flip brought them");
 });
 
 test("solve: a layer core step flips the puzzle over for yellow core cubelets on the bottom, and the next goes on yellow up", () => {
   // Layer by layer, at the yellow core corners, all four of them still to place.
   const st = decodeState("GWSV OIRU LSII FXSG YHCO UAHZ SCBW RRHP LSSB IWGO GTNA");
-  const first = nextStep(st, "layers")!;
-  assert.equal(first.stage, "coreBottomC");
-  assert.ok(first.regrip.startsWith("x2"), `it flips the puzzle over (${first.alg})`);
-  assert.ok(first.moved.every(([from]) => SLOT_POS[from][1] < 0), "its corners are on the bottom");
-  assert.match(first.goal, /top layer, yellow up \([1-4] of 4\)$/, "the goal is as the puzzle is held after the flip");
+  const flip = nextStep(st, "layers")!;
+  assert.equal(flip.stage, "regrip");
+  assert.ok(flip.alg.startsWith("x2"), `it flips the puzzle over, in a step of its own (${flip.alg})`);
   const next = st.clone();
+  applyTurns(next, flip.turns);
+  const first = nextStep(next, "layers")!;
+  assert.equal(first.stage, "coreBottomC");
+  assert.equal(first.regrip, "", `it goes on yellow up (${first.alg})`);
+  assert.ok(first.moved.every(([from]) => SLOT_POS[from][1] > 0), "its corners are on top, where the flip brought them");
+  assert.match(first.goal, /top layer, yellow up \([1-4] of 4\)$/, "the goal is as the puzzle is held");
   applyTurns(next, first.turns);
   const second = nextStep(next, "layers")!;
-  assert.equal(second.stage, "coreBottomC");
-  assert.ok(!second.regrip.includes("x2"), `it goes on yellow up (${second.alg})`);
-  assert.ok(second.moved.every(([from]) => SLOT_POS[from][1] > 0), "its corners are on top");
-  assert.match(second.goal, /top layer, yellow up/);
+  assert.ok(second.stage === "coreBottomC" || (second.stage === "regrip" && !second.alg.includes("x2")), `it goes on yellow up (${second.alg})`);
   assert.ok(isSolved(play(st, solveSteps(st, "layers"), "layers")));
 });
 
