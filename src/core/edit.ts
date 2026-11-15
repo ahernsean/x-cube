@@ -608,11 +608,25 @@ function settle(d: Draft) {
  * A tap with the Shape tool on outer slot s, changing only what is there:
  * - a cubelet on a core corner, or the one cubelet on a core edge, swings to the bare side;
  * - one of two cubelets on a core edge, or an extension center, goes away;
- * - an empty spot (draftSpots) gets a cubelet.
+ * - an empty spot (draftSpots) gets a cubelet;
+ * - a core corner or core single edge turns, with the cubelets on it.
  * Returns null if the tap does nothing; otherwise the real cubelets the tap itself moved, to animate.
  */
 export function draftTap(d: Draft, s: number): Carry[] | null {
-  if (s < 0 || outwardDir(s) < 0) return null;
+  if (s >= 0 && outwardDir(s) < 0) {
+    // A tap on the core cubelet itself turns its unit: a corner clockwise as seen from
+    // outside (a second tap gives the third way it can sit), a single edge over.
+    const on = filledOn(d, s);
+    const [bare] = outerOf(s).filter((n) => !draftFilled(d, n));
+    const p = SLOT_POS[s];
+    const clockwise = (n: number) => {
+      const a = DIRS[outwardDir(bare)], b = DIRS[outwardDir(n)];
+      return (a[1] * b[2] - a[2] * b[1]) * p[0] + (a[2] * b[0] - a[0] * b[2]) * p[1] + (a[0] * b[1] - a[1] * b[0]) * p[2] < 0;
+    };
+    const turn = span(s) === 3 ? on.find(clockwise) : span(s) === 2 && on.length === 1 ? on[0] : undefined;
+    return turn === undefined ? null : draftTap(d, turn);
+  }
+  if (s < 0) return null;
   const c = coreOf(s);
   const set = (t: number, on: boolean) => {
     const [undo, mark] = on ? [d.removed, d.added] : [d.added, d.removed];
