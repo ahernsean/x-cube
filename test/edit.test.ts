@@ -1,9 +1,10 @@
-// The color editor's fitting: edited sticker colors to real cubelets (src/core/edit.ts).
+// The editor (src/core/edit.ts): fitting painted sticker colors to real cubelets, and
+// editing the shape.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fitColors, visibleColors } from "../src/core/edit.ts";
+import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, visibleColors, type Draft } from "../src/core/edit.ts";
 import { parseAlg } from "../src/core/notation.ts";
-import { CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, State, applyTurn, applyTurns, slotAt, type Kind } from "../src/core/puzzle.ts";
+import { CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, slotAt, type Color, type Kind } from "../src/core/puzzle.ts";
 import { rotsTo, unreachableReason } from "../src/core/serialize.ts";
 
 const [R, L, U, F, B] = [0, 1, 2, 4, 5];
@@ -197,11 +198,145 @@ test("edit: center colors arranged as no turns arrange them can't be reached", (
   assert.equal(fit.problems[0].text, "Wrong center color order");
 });
 
-test("edit: a start no turns reach is refused, saying so", () => {
+test("edit: core corners twisted as no turns twist them are refused, naming none", () => {
   const st = State.solved();
   const corner = at(1, 1, 1);
   st.ori[corner] = rotsTo(st.occ[corner], corner).find((o) => o !== st.ori[corner])!; // a core corner twisted in place
   const fit = fitColors(st, visibleColors(st));
   assert.equal(fit.level, "possible");
-  assert.deepEqual(fit.problems, [{ text: "The position editing started from can't be reached by turning (the core corners are twisted)", slots: [] }]);
+  assert.deepEqual(fit.problems, [{ text: "The core corners can't all be turned this way at once. One of them needs another turn", slots: [] }]);
+});
+
+// ---------------------------------------------------------------- shape editing
+
+const draft = (st = State.solved()): Draft => ({ shape: st.clone(), removed: new Set(), added: new Set() });
+const OUTER = [...Array(NUM_SLOTS).keys()].filter((s) => SLOT_POS[s].some((c) => Math.abs(c) === 2));
+/** The bare outer spots against core slot c. */
+const bareOf = (d: Draft, c: number) => OUTER.filter((n) => !draftFilled(d, n) && SLOT_POS[n].every((v, i) => v === SLOT_POS[c][i] || (Math.abs(v) === 2 && SLOT_POS[c][i] === Math.sign(v))));
+const texts = (d: Draft) => draftProblems(d).map((p) => p.text);
+/** The paint a draft's shape shows, every sticker of it as on a solved puzzle. */
+const solvedPaint = (d: Draft): (Color | undefined)[] => draftColors(d, []).map((c, i) => (c === UNPAINTED ? (FACE_COLOR[i % 6] as Color) : undefined));
+
+test("edit: tapping an extension cubelet on a core corner swings it to the bare side, with the corner", () => {
+  const d = draft();
+  const tap = draftTap(d, at(2, 1, 1))!; // Rx.UF
+  assert.ok(tap.carries.length === 3, "the corner and its two extension cubelets move");
+  assert.deepEqual(tap.unpaint.sort(), [at(1, 1, 1), at(2, 1, 1), at(1, 2, 1), at(1, 1, 2)].sort(), "the whole unit loses its paint");
+  assert.equal(d.removed.size + d.added.size, 0, "real cubelets moved: the shape stays one the puzzle can have");
+  assert.deepEqual(bareOf(d, at(1, 1, 1)), [at(2, 1, 1)], "the tapped side is bare now");
+  assert.ok(draftFilled(d, at(1, 2, 1)), "the corner's top is covered");
+  // One corner twisted alone: no turns leave the corners so.
+  const fit = fitColors(d.shape, visibleColors(d.shape));
+  assert.equal(fit.level, "possible");
+  assert.deepEqual(fit.problems.map((p) => p.text), ["The core corners can't all be turned this way at once. One of them needs another turn"]);
+  assert.deepEqual(fit.problems[0].slots, [], "any corner may be the wrong one, so none is named");
+});
+
+test("edit: tapping a core corner turns it through its three ways, and a core single edge over", () => {
+  const d = draft();
+  const UFR = at(1, 1, 1);
+  const ways = [bareOf(d, UFR)];
+  for (let i = 0; i < 3; i++) {
+    assert.ok(draftTap(d, UFR), "the tap turns the corner");
+    ways.push(bareOf(d, UFR));
+  }
+  assert.deepEqual(ways, [[at(1, 2, 1)], [at(2, 1, 1)], [at(1, 1, 2)], [at(1, 2, 1)]], "clockwise as seen from outside: up, right, front, and back up");
+  const UF = at(0, 1, 1);
+  draftTap(d, UF);
+  assert.deepEqual(bareOf(d, UF), [at(0, 1, 2)], "the edge's bare side goes from up to front");
+  assert.equal(draftTap(d, at(1, 0, 1)), null, "a core edge with two extension cubelets has nothing to turn to");
+  assert.equal(draftTap(d, at(0, 0, 1)), null, "a tap on a center does nothing");
+});
+
+test("edit: a cubelet comes or goes alone, and the shape may be wrong meanwhile", () => {
+  const d = draft();
+  const tap = draftTap(d, at(2, 0, 1))!; // Rx.F, one of two on the FR double edge
+  assert.deepEqual(tap.carries, [], "nothing moves");
+  assert.deepEqual(tap.unpaint.sort(), [at(2, 0, 1), at(1, 0, 1)].sort(), "only its spot and the core edge behind lose their paint");
+  assert.deepEqual([...d.removed], [at(2, 0, 1)]);
+  assert.deepEqual(texts(d), ["Only three core edges have two extension cubelets, but there must be four"]);
+  assert.ok(draftSpots(d).includes(at(2, 0, 1)), "its spot is one a tap can fill again");
+  draftTap(d, at(0, 2, 1)); // the bare top of the UF single edge gets a cubelet
+  assert.deepEqual(texts(d), [], "four double edges again");
+  assert.equal(d.removed.size + d.added.size, 0, "a shape the puzzle can have is made of real cubelets at once");
+  assert.ok(draftFilled(d, at(0, 2, 1)) && !draftFilled(d, at(2, 0, 1)));
+  assert.equal(fitColors(d.shape, visibleColors(d.shape)).level, "reachable", "what it shows can be reached");
+  // One too many double edges names them all.
+  draftTap(d, at(0, 2, -1));
+  const [five] = draftProblems(d);
+  assert.equal(five.text, "Five core edges have two extension cubelets, but there can be only four");
+  assert.equal(five.slots.length, 5);
+});
+
+test("edit: extension centers come and go alone, and the two faces without one must be opposite", () => {
+  const d = draft();
+  draftTap(d, at(2, 0, 0)); // Rx
+  assert.deepEqual(texts(d), ["Only three centers have an extension center, but there must be four"]);
+  draftTap(d, at(0, 2, 0)); // one over the up center
+  assert.deepEqual(texts(d), ["The two centers without an extension center must be opposite each other"]);
+  assert.equal(draftProblems(d)[0].slots.length, 2, "the two centers are named");
+  draftTap(d, at(0, 2, 0));
+  draftTap(d, at(-2, 0, 0)); // Lx: now up, down, left and right are bare, and front and back have theirs
+  draftTap(d, at(0, 2, 0));
+  draftTap(d, at(0, -2, 0));
+  assert.deepEqual(texts(d), []);
+  assert.equal(d.removed.size + d.added.size, 0);
+  assert.equal(CUBELETS[d.shape.occ[at(0, 2, 0)]].kind, "extCenter", "a real extension center is there");
+});
+
+test("edit: the stickers a shape shows follow from each cubelet's own spot, right or wrong", () => {
+  for (const st of [State.solved(), after("F f R U"), after("M R S' x")]) {
+    const d = draft(st);
+    assert.deepEqual(draftColors(d, visibleColors(st) as (Color | undefined)[]), visibleColors(st), "a real shape shows what the position shows");
+  }
+  const d = draft();
+  draftTap(d, at(0, 2, 1)); // a cubelet over the UF single edge: the shape is wrong
+  const shows = draftColors(d, []);
+  assert.equal(shows[at(0, 2, 1) * 6 + U], UNPAINTED, "the cubelet put in shows a sticker on top, not painted yet");
+  assert.equal(shows[at(0, 2, 1) * 6 + F], UNPAINTED);
+  assert.equal(shows[at(0, 1, 1) * 6 + U], undefined, "the core edge under it is covered");
+  assert.equal(shows[at(0, 1, 1) * 6 + F], undefined, "a core edge with cubelets on both sides has no sticker showing");
+  const paint: (Color | undefined)[] = [];
+  paint[at(0, 2, 1) * 6 + U] = "W";
+  assert.equal(draftColors(d, paint)[at(0, 2, 1) * 6 + U], "W", "a sticker can be painted while the shape is wrong");
+});
+
+test("edit: a sticker not painted yet fits any color", () => {
+  const st = after("R U");
+  const colors = visibleColors(st);
+  const some = colors.map((c, i) => (c && i % 5 === 0 ? UNPAINTED : c));
+  const fit = fitColors(st, some);
+  assert.equal(fit.level, "reachable");
+  assert.ok(fit.state!.equals(st), "the unpainted stickers take the colors of the position");
+  const wrong = some.slice();
+  const i = wrong.findIndex((c, k) => c === "W" && k % 5 !== 0);
+  wrong[i] = "Y";
+  const j = wrong.findIndex((c, k) => c && c !== UNPAINTED && k !== i && Math.floor(k / 6) === Math.floor(i / 6));
+  if (j >= 0) assert.notEqual(fitColors(st, wrong).level, "reachable", "a wrong color still shows up beside unpainted ones");
+});
+
+test("edit: any shape is reached by tapping only what differs, and then fits what it shows", () => {
+  const rnd = (() => {
+    let seed = 11;
+    return (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), (seed >>> 8) % n);
+  })();
+  const scramble = () => {
+    const st = State.solved();
+    for (let i = 0; i < 25; i++) applyTurn(st, { def: rnd(MOVE_DEFS.length), amount: (1 + rnd(3)) as 1 | 2 | 3 });
+    return st;
+  };
+  for (let n = 0; n < 30; n++) {
+    const [from, to] = [scramble(), scramble()];
+    const d = draft(from);
+    for (let guard = 0; guard < 200; guard++) {
+      const wrong = OUTER.filter((s) => draftFilled(d, s) !== to.occ[s] >= 0 && (draftFilled(d, s) || draftSpots(d).includes(s)));
+      if (!wrong.length) break;
+      assert.ok(draftTap(d, wrong[rnd(wrong.length)]), "every tap on a spot that differs does something");
+    }
+    assert.equal(d.removed.size + d.added.size, 0, `scramble ${n}: the shape is right, made of real cubelets`);
+    assert.equal(d.shape.shapeKey(), to.shapeKey(), `scramble ${n}: the shape is the one wanted`);
+    const fit = fitColors(d.shape, visibleColors(to));
+    assert.equal(fit.level, "reachable", `scramble ${n}: the real colors fit (${fit.problems[0]?.text})`);
+  }
+  assert.ok(solvedPaint(draft()).filter(Boolean).length > 0);
 });

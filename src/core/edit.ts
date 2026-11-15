@@ -1,7 +1,7 @@
-// Fitting edited sticker colors to real cubelets.
+// Editing a position: its shape, and the colors of its stickers.
 //
-// The Lab's color editor keeps the shape (which slots are filled) and lets the owner
-// repaint the stickers that can be seen. fitColors finds a state with that shape whose
+// The Lab's editor (Edit puzzle) lets the owner set the shape (shape editing, at the end of
+// this file) and paint the stickers that can be seen. fitColors finds a state with that shape whose
 // visible faces show exactly those colors, using each cubelet once, or says why there is
 // none. Faces that can't be seen (pressed against a neighbor) are not constrained, so
 // hidden cubelets and the hidden faces of visible ones are filled in as needed, keeping
@@ -438,9 +438,9 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
 // corner has outer cubelets on two of its three sides, a core single edge on one of its
 // two, a core double edge on both, and the centers of two opposite faces have no
 // extension center. A shape edit moves real cubelets, each as a rotation of the whole
-// puzzle would carry it, so the result is always a position that can be drawn and fitted;
-// the paint goes with the cubelets. The one thing an edit can leave wrong is the sum of
-// the core corners' twists, which reachableFit reports.
+// puzzle would carry it, so the result is always a position that can be drawn and fitted.
+// The one thing such a move can leave wrong is the sum of the core corners' twists, which
+// reachableFit reports.
 
 /** The core slot the cubelet in outer slot s rests against. */
 const coreOf = (s: number) => SLOT_NEIGHBOR[s * 6 + (outwardDir(s) ^ 1)];
@@ -459,14 +459,14 @@ export interface Carry {
 }
 
 /**
- * What tapping the cubelet in slot s with the Shape tool does:
+ * How the cubelet in outer slot s can move by itself, as real cubelets move:
  * - "swing": it moves at once (around its core corner or core single edge to the bare
  *   side, or, an extension center, with the one opposite it to the faces that have none);
  * - "lift": it is against a core double edge and can go to any of `targets`, the bare
  *   sides of the core single edges;
  * - null: nothing (an empty slot or a core cubelet).
  */
-export function shapeTap(shape: State, s: number): { kind: "swing" } | { kind: "lift"; targets: number[] } | null {
+function shapeTap(shape: State, s: number): { kind: "swing" } | { kind: "lift"; targets: number[] } | null {
   if (s < 0 || shape.occ[s] < 0 || outwardDir(s) < 0) return null;
   const c = coreOf(s);
   if (span(c) !== 2 || outerOf(c).some((n) => shape.occ[n] < 0)) return { kind: "swing" };
@@ -509,32 +509,17 @@ function carriesFor(shape: State, s: number, target?: number): Carry[] | null {
   return [c, ...outerOf(c).filter((n) => shape.occ[n] >= 0)].map((from) => ({ from, to: slotAt(matVec(ROTATIONS[rot], SLOT_POS[from])), rot }));
 }
 
-/**
- * The shape and paint after tapping the cubelet in slot s with the Shape tool (see
- * shapeTap), or null if the tap does nothing. Paint moves with its cubelet; a face the
- * edit uncovers takes the color of the cubelet now there.
- */
-export function editShape(shape: State, colors: FaceColors, s: number, target?: number): { shape: State; colors: FaceColors; carries: Carry[] } | null {
+/** The position after the cubelet in slot s moves (see shapeTap), or null if it can't; `target` is where a lifted cubelet goes. */
+function editShape(shape: State, s: number, target?: number): { shape: State; carries: Carry[] } | null {
   const list = carriesFor(shape, s, target);
   if (!list) return null;
   const st = shape.clone();
-  const out = colors.slice();
-  for (const { from } of list) {
-    st.occ[from] = -1;
-    for (let d = 0; d < 6; d++) out[from * 6 + d] = undefined;
-  }
+  for (const { from } of list) st.occ[from] = -1;
   for (const { from, to, rot } of list) {
     st.occ[to] = shape.occ[from];
     st.ori[to] = ROT_MUL[rot * NUM_ROT + shape.ori[from]];
-    for (let d = 0; d < 6; d++) out[to * 6 + ROT_DIR[rot * 6 + d]] = colors[from * 6 + d];
   }
-  for (let t = 0; t < NUM_SLOTS; t++)
-    for (let d = 0; d < 6; d++) {
-      const i = t * 6 + d;
-      if (st.occ[t] < 0 || !isExposed(st, t, d)) out[i] = undefined;
-      else if (out[i] === undefined) out[i] = st.colorAt(t, d);
-    }
-  return { shape: st, colors: out, carries: list };
+  return { shape: st, carries: list };
 }
 
 // A shape being edited may be wrong for a while, as paint may. A draft is a real position
@@ -584,7 +569,6 @@ function settle(d: Draft) {
   if (draftProblems(d).length) return;
   const want = ALL_SLOTS().map((s) => draftFilled(d, s));
   let shape = d.shape;
-  const colors: FaceColors = [];
   for (let guard = 0; guard < 64; guard++) {
     // A cubelet that should not be where it is goes where one is missing.
     let next: ReturnType<typeof editShape> = null;
@@ -593,7 +577,7 @@ function settle(d: Draft) {
       const tap = shapeTap(shape, s);
       const target = tap?.kind === "lift" ? tap.targets.find((t) => want[t]) : undefined;
       if (tap?.kind === "lift" && target === undefined) continue;
-      if ((next = editShape(shape, colors, s, target))) break;
+      if ((next = editShape(shape, s, target))) break;
     }
     if (!next) break;
     shape = next.shape;
@@ -643,7 +627,7 @@ export function draftTap(d: Draft, s: number): { carries: Carry[]; unpaint: numb
   } else if (span(c) === 3 || (span(c) === 2 && filledOn(d, c).length === 1)) {
     unpaint = unitOf(s);
     const real = outerOf(c).every((n) => !d.removed.has(n) && !d.added.has(n));
-    const next = real ? editShape(d.shape, [], s) : null;
+    const next = real ? editShape(d.shape, s) : null;
     if (next) {
       d.shape = next.shape;
       carries = next.carries;
@@ -657,7 +641,7 @@ export function draftTap(d: Draft, s: number): { carries: Carry[]; unpaint: numb
 }
 
 /** The core slot and outer slots of the unit outer slot s belongs to: a core cubelet with the spots against it. */
-export function unitOf(s: number): number[] {
+function unitOf(s: number): number[] {
   const c = outwardDir(s) < 0 ? s : coreOf(s);
   return [c, ...outerOf(c)];
 }

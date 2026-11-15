@@ -26,7 +26,7 @@ import {
   SLOT_NEIGHBOR,
 } from "../core/puzzle.ts";
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
-import { UNPAINTED, draftColors, draftProblems, draftSpots, draftTap, fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
+import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 
@@ -1061,7 +1061,7 @@ function applyShadingSettings() {
 
 const GLOW3D_LAYER = 3;
 const GLOWNET_LAYER = 4;
-const HALO_LAYER = 5; // the color editor's highlight in the 3D view
+const HALO_LAYER = 5; // the editor's highlight in the 3D view
 const FLAT_HALO_LAYER = 6; // ... and in the flat view: 6 + direction, one layer per face
 const BODY_RADIUS = 0.07; // rounding of cubelet edges
 // The glow band lies just below the face's surface (GLOW_DEPTH) and starts under the
@@ -3196,13 +3196,15 @@ function bindUI() {
   }
 }
 
-// ------------------------------------------------------------------ color editing
+// ------------------------------------------------------------------ editing the puzzle
 
-// Edit colors: the owner repaints visible stickers to match a real cube, on the current
-// shape. Each paint refits the colors to real cubelets (src/core/edit.ts). While they fit,
-// the view shows the fitted state; while they don't, it shows the last fitted state with
-// the differing stickers repainted on top. Done makes the fitted state the new start; the
-// rest of the controls are inert while editing.
+// Edit puzzle: the owner sets the shape (the Shape tool, below) and paints the stickers to
+// match the real puzzle, in any order: a sticker can be painted while the shape is still wrong.
+// Paint stays on its spot; a sticker not painted yet fits any color. Each change refits
+// the paint to real cubelets (src/core/edit.ts). While it fits, the view shows the fitted
+// state; while it doesn't, the last fitted state with the differing stickers repainted on
+// top. Done, once every sticker is painted and the whole is valid, makes the fitted state
+// the new start; the rest of the controls are inert while editing.
 
 /** Sticker and flat-tile meshes by cubelet id * 6 + face (in the cubelet's own frame). */
 const stickerMesh3d: any[] = [];
@@ -3279,7 +3281,7 @@ function refitEdit() {
 }
 
 // The Shape tool changes only what is tapped (draftTap in src/core/edit.ts): an extension
-// cubelet that isn't there on the real cube swings to its core cubelet's bare side or
+// cubelet that isn't there on the real puzzle swings to its core cubelet's bare side or
 // goes away, and an empty spot where one is missing gets one. The shape may be wrong
 // meanwhile: a cubelet put in is a blank body until the shape is one the puzzle can have,
 // when real cubelets take the blanks' places. Ghosts mark the empty spots: a small glass
@@ -3572,7 +3574,7 @@ let guideDimmed: any[] = []; // meshes drawn gray
 let guideArrows: any = null;
 
 /**
- * Runs an action that sets a new start (Shuffle, Reset, Edit colors, a code, a saved position,
+ * Runs an action that sets a new start (Shuffle, Reset, Edit puzzle, a code, a saved position,
  * an algorithm, clearing the turn list). During a solve it asks first, and ends the solve.
  */
 let confirmAction: (() => void) | null = null;
@@ -4810,7 +4812,7 @@ function renderEdit() {
   const { i } = shownProblem();
   $("edit-hint").textContent =
     edit.paint === "shape"
-      ? "Tap an extension cubelet that isn't there on your cube, or a faint spot where one is missing. Drag to turn the view."
+      ? "Tap an extension cubelet that isn't there on your puzzle, or a faint spot where one is missing. Drag to turn the view."
       : "Pick a color, then tap stickers on the cube to paint them. Drag to turn the view.";
   if (level === "reachable") {
     st.className = "edit-status good";
@@ -4868,8 +4870,8 @@ function endEdit(apply: boolean) {
   for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
   if (apply && e.fit.level === "reachable" && e.fit.state) {
     const changed = !e.fit.state.equals(app.current);
-    if (changed) setBase(e.fit.state, "Edited colors");
-    setMessage(changed ? "The edited position is now the start" : "No colors changed", "ok");
+    if (changed) setBase(e.fit.state, "Edited");
+    setMessage(changed ? "The edited position is now the start" : "Nothing changed", "ok");
   } else syncMeshes(app.current);
   renderEdit();
   render();
@@ -5093,6 +5095,34 @@ function installProbe() {
       return n;
     },
     painted: (slot: string, face: string) => edit?.colors[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)] ?? null,
+    /**
+     * While editing: the shape as tapped so far (spots emptied and filled that no real
+     * cubelets account for yet, and the empty spots marked for the Shape tool), how many
+     * stickers show as not painted yet and how many dashed outlines are drawn, and where
+     * the halo's Hide pill is (client coordinates; null while hidden).
+     */
+    shapeEdit: () => {
+      if (!edit) return null;
+      const pill = $("halo-hide");
+      const r = pill.getBoundingClientRect();
+      return {
+        removed: [...edit.removed].map(slotName).sort(),
+        added: [...edit.added].map(slotName).sort(),
+        spots: ghosts.filter((g) => g.parent).map((g) => slotName(g.userData.slot)).sort(),
+        unpainted: edit.view.filter((c) => c === UNPAINTED).length,
+        outlines: overlays.filter((g) => g.parent && g.children[1].visible).length,
+        pill: pill.hidden ? null : { x: r.left + r.width / 2, y: r.top + r.height / 2 },
+      };
+    },
+    /** Whether a slot is filled in the shape being edited (or in the position, when not editing). */
+    filled: (slot: string) => (edit ? draftFilled(edit, slotByName(slot)) : app.current.occ[slotByName(slot)] >= 0),
+    /** Where the middle of a slot appears on screen (client coordinates), filled or not. */
+    spot(slot: string) {
+      const p = SLOT_POS[slotByName(slot)];
+      const v = pivot.localToWorld(new THREE.Vector3(p[0], p[1], p[2])).project(camera);
+      const r = canvas().getBoundingClientRect();
+      return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+    },
     /**
      * The edge glow of the cubelet in slot alone, as drawn by the 3D view (view "3d") or
      * a face's flat-view camera (view "U", "F", ...): its opacity (0-1) at the point
