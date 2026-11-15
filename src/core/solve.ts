@@ -31,7 +31,7 @@ import { formatAlg, parseAlg } from "./notation.ts";
 import { COLOR_NAME, CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, type Kind, type Turn } from "./puzzle.ts";
 import { unreachableReason } from "./serialize.ts";
 
-export type Stage = "hold" | "shape" | "core" | "coreTop" | "coreTopC" | "coreMiddle" | "coreBottom" | "coreBottomC" | "parity" | "corners" | "edges" | "topEdges" | "topCorners" | "sideEdges" | "bottomCorners" | "bottomEdges";
+export type Stage = "hold" | "flip" | "shape" | "core" | "coreTop" | "coreTopC" | "coreMiddle" | "coreBottom" | "coreBottomC" | "parity" | "corners" | "edges" | "topEdges" | "topCorners" | "sideEdges" | "bottomCorners" | "bottomEdges";
 
 /**
  * The order the outer cubelets are solved in. Both orders use the same two 3-cycles.
@@ -802,8 +802,37 @@ function parityStep(st: State): SolveStep | null {
  */
 const others = (st: State, wrong: number[]) => SLOTS.filter((s) => st.occ[s] >= 0 && !wrong.includes(s) && !["center", "extCenter"].includes(kindAt(st, s)));
 
-/** The next step from st toward solved, or null when st is solved. Throws if turns can't reach st. */
+/**
+ * The next step from st toward solved, or null when st is solved. Throws if turns can't
+ * reach st. A step that would begin by turning the puzzle over (x2) is preceded by a flip
+ * step of its own, so each step's goal, turns and pictures are all for one way of holding
+ * the puzzle: the step after the flip is found again from the flipped position. (If that
+ * one would flip straight back, the step keeps its flip.)
+ */
 export function nextStep(st: State, mode: Mode = "kinds"): SolveStep | null {
+  const step = stepFrom(st, mode);
+  if (!step?.regrip.startsWith("x2")) return step;
+  const over = st.clone();
+  applyTurns(over, FLIP);
+  if (stepFrom(over, mode)?.regrip.startsWith("x2")) return step;
+  const up = COLOR_NAME[FACE_COLOR[[0, 1, 2, 3, 4, 5].find((d) => slotAt(DIRS[d]) === CUBELETS[over.occ[UP]].home)!]];
+  return {
+    stage: "flip",
+    goal: `Turn the puzzle over, so ${up} is up. Nothing else moves`,
+    alg: formatAlg(FLIP),
+    turns: [...FLIP],
+    parts: [{ name: "regrip", turns: FLIP.length }],
+    moved: [],
+    free: [],
+    lands: [],
+    regrip: formatAlg(FLIP),
+  };
+}
+
+const FLIP = parseAlg("x2");
+
+/** The next step from st toward solved, which may begin by turning the puzzle over. */
+function stepFrom(st: State, mode: Mode): SolveStep | null {
   const why = unreachableReason(st);
   if (why) throw new Error(`turns can't reach this position (${why})`);
   // A layer core step or an outer step may flip the puzzle over to put the bottom on top,
