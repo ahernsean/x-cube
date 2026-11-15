@@ -610,9 +610,12 @@ function settle(d: Draft) {
  * - one of two cubelets on a core edge, or an extension center, goes away;
  * - an empty spot (draftSpots) gets a cubelet;
  * - a core corner or core single edge turns, with the cubelets on it.
- * Returns null if the tap does nothing; otherwise the real cubelets the tap itself moved, to animate.
+ * Returns null if the tap does nothing; otherwise the real cubelets the tap itself moved
+ * (`carries`, to animate) and the slots whose stickers are no longer the ones painted
+ * (`unpaint`): the whole unit when it turns; when a cubelet only comes or goes, its own
+ * spot and the core cubelet behind, whose sticker it covers or bares.
  */
-export function draftTap(d: Draft, s: number): Carry[] | null {
+export function draftTap(d: Draft, s: number): { carries: Carry[]; unpaint: number[] } | null {
   if (s >= 0 && outwardDir(s) < 0) {
     // A tap on the core cubelet itself turns its unit: a corner clockwise as seen from
     // outside (a second tap gives the third way it can sit), a single edge over.
@@ -633,10 +636,12 @@ export function draftTap(d: Draft, s: number): Carry[] | null {
     if (!undo.delete(t)) mark.add(t);
   };
   let carries: Carry[] = [];
+  let unpaint = [s, c];
   if (!draftFilled(d, s)) {
     if (!draftSpots(d).includes(s)) return null;
     set(s, true);
   } else if (span(c) === 3 || (span(c) === 2 && filledOn(d, c).length === 1)) {
+    unpaint = unitOf(s);
     const real = outerOf(c).every((n) => !d.removed.has(n) && !d.added.has(n));
     const next = real ? editShape(d.shape, [], s) : null;
     if (next) {
@@ -648,7 +653,7 @@ export function draftTap(d: Draft, s: number): Carry[] | null {
     } else return null;
   } else set(s, false);
   settle(d);
-  return carries;
+  return { carries, unpaint };
 }
 
 /** The core slot and outer slots of the unit outer slot s belongs to: a core cubelet with the spots against it. */

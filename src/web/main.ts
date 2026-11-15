@@ -26,7 +26,7 @@ import {
   SLOT_NEIGHBOR,
 } from "../core/puzzle.ts";
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
-import { UNPAINTED, draftColors, draftProblems, draftSpots, draftTap, fitColors, unitOf, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
+import { UNPAINTED, draftColors, draftProblems, draftSpots, draftTap, fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 
@@ -2947,6 +2947,12 @@ function bindUI() {
   $("edit-start").addEventListener("click", () => endingSolve(() => startEdit()));
   $("edit-done").addEventListener("click", () => endEdit(true));
   $("edit-cancel").addEventListener("click", () => endEdit(false));
+  // The halo's own Hide, in the 3D view: the same as Hide in the status line.
+  $("halo-hide").addEventListener("click", () => {
+    if (!edit) return;
+    edit.hidden = shownProblem().slots.join();
+    renderEdit();
+  });
   $("edit-status").addEventListener("click", (e) => {
     if (!edit || !$("edit-status").classList.contains("tappable")) return;
     const act = (e.target as HTMLElement).closest<HTMLElement>("[data-halo]")?.dataset.halo ?? "show";
@@ -3276,8 +3282,8 @@ function refitEdit() {
 // goes away, and an empty spot where one is missing gets one. The shape may be wrong
 // meanwhile: a cubelet put in is a blank body until the shape is one the puzzle can have,
 // when real cubelets take the blanks' places. Ghosts mark the empty spots. The stickers
-// of whatever a tap changes lose their paint (unitOf): paint stays on its spot, and the
-// cubelet now there is another one.
+// a tap moves lose their paint: paint stays on its spot, and the cubelet now there is
+// another one. A cubelet that only comes or goes leaves the others on its unit painted.
 const ghosts: any[] = [];
 const blanks: any[] = [];
 let ghostMaterial: any = null;
@@ -3350,12 +3356,12 @@ function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit 
     h = pickCube(el, clientX, clientY);
   }
   const slot = pickMarker(el, clientX, clientY, h) ?? (h ? slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]) : -1);
-  const carries = draftTap(edit, slot);
-  if (!carries) return;
-  for (const t of unitOf(slot)) for (let d = 0; d < 6; d++) edit.colors[t * 6 + d] = undefined;
+  const tap = draftTap(edit, slot);
+  if (!tap) return;
+  for (const t of tap.unpaint) for (let d = 0; d < 6; d++) edit.colors[t * 6 + d] = undefined;
   refitEdit();
   renderEdit();
-  if (carries.length) animateShape(carries);
+  if (tap.carries.length) animateShape(tap.carries);
 }
 
 // A shape edit is shown as a move: the meshes are already where they end up, and until
@@ -4719,6 +4725,7 @@ function renderEdit() {
   endShapeAnim();
   $("edit-bar").hidden = !edit;
   $("edit-start").hidden = !!edit;
+  if (!edit) $("halo-hide").hidden = true;
   if (!edit) return;
   updateHighlight();
   drawEdit();
@@ -4767,6 +4774,7 @@ function renderEdit() {
     }
   }
   ($("edit-done") as HTMLButtonElement).disabled = level !== "reachable";
+  $("halo-hide").hidden = !edit.highlight;
 }
 
 function endEdit(apply: boolean) {
