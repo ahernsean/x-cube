@@ -39,11 +39,14 @@ import { isExposed } from "./analyze.ts";
 import { COLOR_NAME, CUBELETS, FACE_COLOR, NUM_SLOTS, SLOT_NEIGHBOR, SLOT_POS, State, slotAt, type Color, type Kind } from "./puzzle.ts";
 import { rotsTo, unreachableReason } from "./serialize.ts";
 
+/** A sticker that hasn't been painted: it may be any color. */
+export const UNPAINTED = "?";
 /**
- * Colors indexed by slot * 6 + direction: a color for a visible sticker, null for a
- * visible face without a sticker (black plastic), undefined for a face that can't be seen.
+ * Colors indexed by slot * 6 + direction: a color for a visible sticker, UNPAINTED for a
+ * sticker of any color, null for a visible face without a sticker (black plastic),
+ * undefined for a face that can't be seen.
  */
-export type FaceColors = (Color | null | undefined)[];
+export type FaceColors = (Color | typeof UNPAINTED | null | undefined)[];
 
 /** What the owner sees on the state st: its visible faces' colors. */
 export function visibleColors(st: State): FaceColors {
@@ -95,7 +98,7 @@ function shownColors(colors: FaceColors, s: number): Color[] {
   const out: Color[] = [];
   for (let d = 0; d < 6; d++) {
     const c = colors[s * 6 + d];
-    if (c) out.push(c);
+    if (c && c !== UNPAINTED) out.push(c);
   }
   return out.sort((a, b) => COLOR_ORDER.indexOf(a) - COLOR_ORDER.indexOf(b));
 }
@@ -164,7 +167,8 @@ function candidates(shape: State, colors: FaceColors, s: number, rule: Rule): [n
       for (let d = 0; d < 6 && ok; d++) {
         const want = colors[s * 6 + d];
         if (want === undefined) continue;
-        if (c.stickers[ROT_DIR[ROT_INV[o] * 6 + d]] !== want) ok = false;
+        const has = c.stickers[ROT_DIR[ROT_INV[o] * 6 + d]];
+        if (want === UNPAINTED ? has === null : has !== want) ok = false;
       }
       if (ok) out.push([id, o]);
     }
@@ -392,7 +396,7 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         const n = numberWord(spots.length), k = numberWord(g.ids.size);
         problems.push(
           problem(
-            out.size === 1 && o && shown.size === 1
+            out.size === 1 && o && o !== UNPAINTED && shown.size === 1
               ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} have ${COLOR_NAME[o]} pointing straight out from the core, but only ${k} with ${[...shown][0]} ${g.ids.size === 1 ? "does" : "do"}`
               : `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be turned this way at once. A sticker is probably painted wrong`,
             spots,
@@ -534,14 +538,13 @@ export function editShape(shape: State, colors: FaceColors, s: number, target?: 
 }
 
 // A shape being edited may be wrong for a while, as paint may. A draft is a real position
-// (`shape`, with its paint) and the changes tapped since that no moves of real cubelets
+// (`shape`) and the changes tapped since that no moves of real cubelets
 // account for yet: extension cubelets taken away (`removed`) and blank ones put in
 // (`added`). When the changed shape is one the puzzle can have (draftProblems finds
 // nothing), the changes are made by moving real cubelets and the two sets empty.
 
 export interface Draft {
   shape: State;
-  colors: FaceColors;
   /** Outer slots filled in `shape` that have been emptied. */
   removed: Set<number>;
   /** Outer slots empty in `shape` that have been filled. */
@@ -580,7 +583,8 @@ function settle(d: Draft) {
   if (!d.removed.size && !d.added.size) return;
   if (draftProblems(d).length) return;
   const want = ALL_SLOTS().map((s) => draftFilled(d, s));
-  let { shape, colors } = d;
+  let shape = d.shape;
+  const colors: FaceColors = [];
   for (let guard = 0; guard < 64; guard++) {
     // A cubelet that should not be where it is goes where one is missing.
     let next: ReturnType<typeof editShape> = null;
@@ -592,11 +596,10 @@ function settle(d: Draft) {
       if ((next = editShape(shape, colors, s, target))) break;
     }
     if (!next) break;
-    ({ shape, colors } = next);
+    shape = next.shape;
   }
   if (ALL_SLOTS().some((s) => shape.occ[s] >= 0 !== want[s])) return;
   d.shape = shape;
-  d.colors = colors;
   d.removed.clear();
   d.added.clear();
 }
@@ -621,10 +624,9 @@ export function draftTap(d: Draft, s: number): Carry[] | null {
     set(s, true);
   } else if (span(c) === 3 || (span(c) === 2 && filledOn(d, c).length === 1)) {
     const real = outerOf(c).every((n) => !d.removed.has(n) && !d.added.has(n));
-    const next = real ? editShape(d.shape, d.colors, s) : null;
+    const next = real ? editShape(d.shape, [], s) : null;
     if (next) {
       d.shape = next.shape;
-      d.colors = next.colors;
       carries = next.carries;
     } else if (span(c) === 2) {
       set(s, false);
@@ -633,4 +635,33 @@ export function draftTap(d: Draft, s: number): Carry[] | null {
   } else set(s, false);
   settle(d);
   return carries;
+}
+
+/** The core slot and outer slots of the unit outer slot s belongs to: a core cubelet with the spots against it. */
+export function unitOf(s: number): number[] {
+  const c = outwardDir(s) < 0 ? s : coreOf(s);
+  return [c, ...outerOf(c)];
+}
+
+/**
+ * What the draft's shape shows, given the stickers painted so far (`paint`, by slot * 6 +
+ * direction). Where a cubelet's stickers are follows from the shape around that cubelet
+ * alone, right or wrong: an outer cubelet's are on the faces nothing can touch, and a
+ * core cubelet's one is on its bare side (a core edge with cubelets on both sides has
+ * none). A sticker without paint is UNPAINTED.
+ */
+export function draftColors(d: Draft, paint: readonly (Color | undefined)[]): FaceColors {
+  const out: FaceColors = new Array(NUM_SLOTS * 6).fill(undefined);
+  for (const s of ALL_SLOTS()) {
+    if (!draftFilled(d, s)) continue;
+    const outer = outwardDir(s) >= 0;
+    const bare = outer ? [] : outerOf(s).filter((n) => !draftFilled(d, n));
+    for (let dir = 0; dir < 6; dir++) {
+      const n = SLOT_NEIGHBOR[s * 6 + dir];
+      if (n === -2 || (n >= 0 && draftFilled(d, n))) continue;
+      const sticker = outer ? n === -1 : bare.length === 1 && n === bare[0];
+      out[s * 6 + dir] = sticker ? (paint[s * 6 + dir] ?? UNPAINTED) : null;
+    }
+  }
+  return out;
 }
