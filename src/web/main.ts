@@ -370,7 +370,7 @@ function initScene(canvas: HTMLCanvasElement) {
     }
     return mats.get(c);
   };
-  paintMaterial = { sticker: matFor, tile: netMatFor, glow: (c: Color) => [0, 1, 2, 3].map((open) => glowMatFor(c, open)) };
+  paintMaterial = { sticker: matFor, tile: netMatFor, darkTile: netDarkMat, glow: (c: Color) => [0, 1, 2, 3].map((open) => glowMatFor(c, open)) };
   // Grays for the step guide: level 1 for cubelets a step leaves alone, level 2 (darker)
   // for those it may leave anywhere, the same for every color.
   const grayMats = new Map<string, { sticker: any; tile: any; glow: any[] }>();
@@ -3206,7 +3206,7 @@ function bindUI() {
 /** Sticker and flat-tile meshes by cubelet id * 6 + face (in the cubelet's own frame). */
 const stickerMesh3d: any[] = [];
 const tileMesh: any[] = [];
-let paintMaterial: { sticker: (c: Color) => any; tile: (c: Color) => any; glow: (c: Color) => any[] } | null = null;
+let paintMaterial: { sticker: (c: Color) => any; tile: (c: Color) => any; darkTile: any; glow: (c: Color) => any[] } | null = null;
 let grayMaterial: ((c: Color, level: 1 | 2) => { sticker: any; tile: any; glow: any[] }) | null = null;
 
 interface Edit {
@@ -3281,7 +3281,8 @@ function refitEdit() {
 // cubelet that isn't there on the real cube swings to its core cubelet's bare side or
 // goes away, and an empty spot where one is missing gets one. The shape may be wrong
 // meanwhile: a cubelet put in is a blank body until the shape is one the puzzle can have,
-// when real cubelets take the blanks' places. Ghosts mark the empty spots. The stickers
+// when real cubelets take the blanks' places. Ghosts mark the empty spots: a box of
+// dashed outlines, unlit, so it shows in shadow. The stickers
 // a tap moves lose their paint: paint stays on its spot, and the cubelet now there is
 // another one. A cubelet that only comes or goes leaves the others on its unit painted.
 const ghosts: any[] = [];
@@ -3302,9 +3303,9 @@ function placeMarkers(pool: any[], slots: number[], make: () => any) {
 }
 
 function placeGhosts() {
-  ghostMaterial ??= new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false });
+  ghostMaterial ??= new THREE.MeshBasicMaterial({ map: dashedOutline(0.04), transparent: true, depthWrite: false, side: THREE.DoubleSide });
   placeMarkers(ghosts, edit?.paint === "shape" ? draftSpots(edit) : [], () => {
-    const g = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.62), ghostMaterial);
+    const g = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), ghostMaterial);
     g.layers.set(HALO_LAYER);
     g.renderOrder = 2;
     return g;
@@ -3318,20 +3319,46 @@ function placeGhosts() {
   });
 }
 
-/** Sticker planes for the stickers no real cubelet's mesh is there to show: [slot, direction, material]. */
+/** A pale dashed outline of a rounded square on nothing, as a texture; `round` is the corner radius as a share of the side. */
+function dashedOutline(round: number) {
+  const N = 128, c = document.createElement("canvas");
+  c.width = c.height = N;
+  const g = c.getContext("2d")!;
+  g.strokeStyle = "#e6eaec";
+  g.lineWidth = 7;
+  g.setLineDash([15, 11]);
+  g.beginPath();
+  g.roundRect(6, 6, N - 12, N - 12, round * N);
+  g.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 4;
+  return t;
+}
+
+/**
+ * Stickers drawn over the puzzle, [slot, direction, material]: a painted one that no real
+ * cubelet's mesh is there to show, or (no material) one not painted yet, drawn as a dashed
+ * outline on the plastic where the sticker belongs.
+ */
 const overlays: any[] = [];
-function placeOverlays(list: [number, number, any][]) {
+let outlineMaterial: any = null;
+function placeOverlays(list: [number, number, any | null][]) {
   for (const g of overlays) g.parent?.remove(g);
+  outlineMaterial ??= new THREE.MeshBasicMaterial({ map: dashedOutline(0.1), transparent: true, depthWrite: false });
   list.forEach(([t, d, mat], n) => {
     if (n === overlays.length) {
       const g = new THREE.Group();
-      g.add(new THREE.Mesh(withAoColors(copyLook!.plane), mat));
+      g.add(new THREE.Mesh(withAoColors(copyLook!.plane), mat ?? outlineMaterial), new THREE.Mesh(new THREE.PlaneGeometry(0.82, 0.82), outlineMaterial));
       overlays.push(g);
     }
     const g = overlays[n];
+    const [sticker, outline] = g.children;
     g.position.set(SLOT_POS[t][0], SLOT_POS[t][1], SLOT_POS[t][2]);
-    g.children[0].material = mat;
-    copyLook!.place(g.children[0], d);
+    sticker.visible = !!mat;
+    outline.visible = !mat;
+    if (mat) sticker.material = mat;
+    copyLook!.place(sticker, d);
+    copyLook!.place(outline, d);
     pivot.add(g);
   });
 }
@@ -3438,8 +3465,10 @@ function drawEdit() {
     meshes[drawn.occ[t]].visible = false;
     drawn.occ[t] = -1;
   }
-  const blank = grayMaterial!("W", 1);
-  const over: [number, number, any][] = [];
+  // A sticker not painted yet is an outline (placeOverlays) with nothing under it and no glow.
+  noGlow ??= [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ visible: false }));
+  const blank = { sticker: noGlow[0], tile: paintMaterial.darkTile, glow: noGlow };
+  const over: [number, number, any | null][] = [];
   for (let i = 0; i < edit.view.length; i++) {
     const want = edit.view[i];
     if (!want) continue;
@@ -3447,8 +3476,9 @@ function drawEdit() {
     const id = drawn.occ[s];
     const local = id < 0 ? -1 : ROT_DIR[ROT_INV[drawn.ori[s]] * 6 + dir];
     const look = want === UNPAINTED ? blank : { sticker: paintMaterial.sticker(want), tile: paintMaterial.tile(want), glow: paintMaterial.glow(want) };
+    if (want === UNPAINTED) over.push([s, dir, null]);
     if (id < 0 || !stickerMesh3d[id * 6 + local]) {
-      over.push([s, dir, look.sticker]);
+      if (want !== UNPAINTED) over.push([s, dir, look.sticker]);
       continue;
     }
     if (CUBELETS[id].stickers[local] === want) continue;
