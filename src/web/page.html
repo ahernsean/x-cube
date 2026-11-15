@@ -160,9 +160,8 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .btn.tool-btn.corner[hidden] { display: none; }
 .tool-btn .ico { width: 24px; height: 24px; display: block; }
 .corner.tl { top: 4px; left: 4px; }
-/* Hides the color editor's halo: a pill in the 3D view's bottom left corner. It is one of
-   the corner buttons, so the edge labels slide clear of it. */
-.halo-hide { position: absolute; z-index: 30; left: 6px; bottom: 6px; min-height: 40px; padding: 8px 16px; border: 0; border-radius: 999px; background: #a63dff; color: #fff; font: 700 15px var(--f-body); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); cursor: pointer; }
+/* Hides the color editor's halo: a pill beside the haloed cubelets (placeHidePill), over the edge labels. */
+.halo-hide { position: absolute; z-index: 30; left: 0; top: 0; transform: translate(-50%, -50%); min-height: 34px; padding: 5px 14px; border: 0; border-radius: 999px; background: #a63dff; color: #fff; font: 700 15px var(--f-body); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); cursor: pointer; }
 .halo-hide[hidden] { display: none; }
 .corner.tr { top: 4px; right: 4px; }
 .corner.br { bottom: 4px; right: 4px; }
@@ -417,7 +416,7 @@ details[open] summary { margin-bottom: 8px; }
       <button class="btn small tool-btn info corner tr" id="info-btn" aria-label="How to use the 3D view" aria-expanded="false" aria-controls="info-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="7.4" r="1.3" fill="currentColor"/><path d="M12 10.6v6.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       <button class="btn small tool-btn info corner br" id="render-btn" aria-label="Display options" title="Display options" aria-expanded="false" aria-controls="render-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg></button>
       <button class="btn small tool-btn info corner tl" id="undo" aria-label="Undo the last turn" title="Undo the last turn" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
-      <button class="halo-hide corner" id="halo-hide" hidden>Hide</button>
+      <button class="halo-hide" id="halo-hide" hidden>Hide</button>
       <div class="pop near-top" id="info-pop" hidden>
         <p class="hint">Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes.</p>
         <p class="hint"><strong>During a solve step</strong>, only the cubelets the step applies to keep their colors; gray ones don't move, dark gray ones may end up anywhere. Each colored cubelet has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the cubelet flies along it. With a ring: the cubelet ends up solved. Dashed: it is passing through and moves again later. Plain: a shape or core step moves it; it is solved later.</p>

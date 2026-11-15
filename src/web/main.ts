@@ -1351,6 +1351,7 @@ function frame() {
     }
   }
   stepShapeAnim();
+  placeHidePill();
   const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
   if (showTarget) updateShowButton();
   if (view3dOpen) updateCompass();
@@ -3281,9 +3282,9 @@ function refitEdit() {
 // cubelet that isn't there on the real cube swings to its core cubelet's bare side or
 // goes away, and an empty spot where one is missing gets one. The shape may be wrong
 // meanwhile: a cubelet put in is a blank body until the shape is one the puzzle can have,
-// when real cubelets take the blanks' places. Ghosts mark the empty spots: a box of
-// dashed outlines, pale on a dark line and unlit, so it shows against white, against
-// dark and in shadow. The stickers
+// when real cubelets take the blanks' places. Ghosts mark the empty spots: a small glass
+// box, gray with white edges and unlit, so it shows against white, against dark and in
+// shadow, and each spot reads as its own box. The stickers
 // a tap moves lose their paint: paint stays on its spot, and the cubelet now there is
 // another one. A cubelet that only comes or goes leaves the others on its unit painted.
 const ghosts: any[] = [];
@@ -3304,30 +3305,11 @@ function placeMarkers(pool: any[], slots: number[], make: () => any) {
 }
 
 function placeGhosts() {
-  const style = (window as any).ghostStyle ?? "B";
-  if (ghostMaterial !== style) {
-    for (const g of ghosts) g.parent?.remove(g);
-    ghosts.length = 0;
-    ghostMaterial = style;
-  }
+  ghostMaterial ??= new THREE.MeshBasicMaterial({ map: borderedFill(), transparent: true, depthWrite: false });
   placeMarkers(ghosts, edit?.paint === "shape" ? draftSpots(edit) : [], () => {
-    const g = new THREE.Group();
-    const add = (size: number, opts: any, order: number, scale = 1) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, ...opts }));
-      m.scale.setScalar(scale);
-      m.layers.set(HALO_LAYER);
-      m.renderOrder = order;
-      g.add(m);
-    };
-    const GRAY = 0x5f676b;
-    if (style === "A") add(0.9, { map: dashedOutline(0.04, true) }, 2);
-    if (style === "B") add(0.62, { map: borderedFill() }, 2);
-    if (style === "C" || style === "D") {
-      add(0.62, { colorWrite: false, depthWrite: true }, 2);
-      if (style === "D") add(0.62, { color: 0x15181a, side: THREE.BackSide }, 2.05, 1.22);
-      add(0.62, { color: 0xffffff, side: THREE.BackSide }, 2.1, 1.13);
-      add(0.62, { color: GRAY, opacity: 0.4 }, 2.2);
-    }
+    const g = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.62), ghostMaterial);
+    g.layers.set(HALO_LAYER);
+    g.renderOrder = 2;
     return g;
   });
   placeMarkers(blanks, edit ? [...edit.added] : [], () => {
@@ -3354,25 +3336,17 @@ function borderedFill() {
   return t;
 }
 
-/**
- * A pale dashed outline of a rounded square on nothing, as a texture; `round` is the
- * corner radius as a share of the side. `cased` puts a dark line under the dashes, so the
- * outline shows against white as well as against dark.
- */
-function dashedOutline(round: number, cased = false) {
+/** A pale dashed outline of a rounded square on nothing, as a texture; `round` is the corner radius as a share of the side. */
+function dashedOutline(round: number) {
   const N = 128, c = document.createElement("canvas");
   c.width = c.height = N;
   const g = c.getContext("2d")!;
-  const stroke = (style: string, width: number, dash: number[]) => {
-    g.strokeStyle = style;
-    g.lineWidth = width;
-    g.setLineDash(dash);
-    g.beginPath();
-    g.roundRect(8, 8, N - 16, N - 16, round * N);
-    g.stroke();
-  };
-  if (cased) stroke("#15181a", 13, []);
-  stroke("#f2f5f6", 7, [15, 11]);
+  g.strokeStyle = "#f2f5f6";
+  g.lineWidth = 7;
+  g.setLineDash([15, 11]);
+  g.beginPath();
+  g.roundRect(8, 8, N - 16, N - 16, round * N);
+  g.stroke();
   const t = new THREE.CanvasTexture(c);
   t.anisotropy = 4;
   return t;
@@ -3412,10 +3386,10 @@ function pickMarker(el: HTMLElement, clientX: number, clientY: number, h: CubeHi
   const ray = new THREE.Raycaster();
   ray.layers.set(HALO_LAYER);
   ray.setFromCamera(new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1), camera);
-  const [g] = ray.intersectObjects(ghosts.filter((x) => x.parent), true);
+  const [g] = ray.intersectObjects(ghosts.filter((x) => x.parent), false);
   if (!g) return null;
   if (h && pivot.localToWorld(h.point.clone()).distanceTo(camera.position) < g.distance) return null;
-  return g.object.parent.userData.slot;
+  return g.object.userData.slot;
 }
 
 function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null) {
@@ -4673,6 +4647,34 @@ function haloMesh() {
   return m;
 }
 
+/**
+ * Puts the halo's Hide pill beside the haloed cubelets: just past them on the side away
+ * from the middle of the puzzle as drawn (above, if they are at the middle), inside the view.
+ */
+function placeHidePill() {
+  const pill = $("halo-hide");
+  if (!edit?.highlight || pill.hidden) return;
+  const el = renderer.domElement as HTMLElement;
+  const at = (v: any) => toScreen(el, v);
+  const pts = edit.highlight.map((t) => at(new THREE.Vector3(...SLOT_POS[t])));
+  const mid = [0, 1].map((k) => pts.reduce((a, q) => a + q[k], 0) / pts.length);
+  const center = at(new THREE.Vector3());
+  // How big a cubelet is on screen, from a step across the view at the puzzle's center.
+  const across = new THREE.Vector3(1, 0, 0).applyQuaternion(pivot.quaternion.clone().invert());
+  const unit = Math.hypot(at(across)[0] - center[0], at(across)[1] - center[1]);
+  let dx = mid[0] - center[0], dy = mid[1] - center[1];
+  const len = Math.hypot(dx, dy);
+  if (len < unit * 0.4) (dx = 0), (dy = -1);
+  else (dx /= len), (dy /= len);
+  const reach = Math.max(...pts.map((q) => Math.hypot(q[0] - mid[0], q[1] - mid[1]))) + unit * 0.95;
+  const hw = pill.offsetWidth / 2, hh = pill.offsetHeight / 2;
+  const far = reach + Math.abs(dx) * hw + Math.abs(dy) * hh;
+  const x = Math.min(el.clientWidth - hw - 4, Math.max(hw + 4, mid[0] + dx * far));
+  const y = Math.min(el.clientHeight - hh - 4, Math.max(hh + 4, mid[1] + dy * far));
+  pill.style.left = `${x}px`;
+  pill.style.top = `${y}px`;
+}
+
 /** Puts halos on the cubelet in each highlighted slot of the shown state, and removes the rest. */
 function placeHalos() {
   for (const h of halos) h.parent?.remove(h);
@@ -4848,6 +4850,7 @@ function renderEdit() {
   }
   ($("edit-done") as HTMLButtonElement).disabled = level !== "reachable";
   $("halo-hide").hidden = !edit.highlight;
+  placeHidePill();
 }
 
 function endEdit(apply: boolean) {
