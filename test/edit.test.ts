@@ -2,7 +2,7 @@
 // editing the shape.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, visibleColors, type Draft } from "../src/core/edit.ts";
+import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, visibleColors, type Draft } from "../src/core/edit.ts";
 import { parseAlg } from "../src/core/notation.ts";
 import { CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, slotAt, type Color, type Kind } from "../src/core/puzzle.ts";
 import { rotsTo, unreachableReason } from "../src/core/serialize.ts";
@@ -250,13 +250,22 @@ test("edit: tapping a core corner turns it through its three ways, and a core si
 
 test("edit: a cubelet comes or goes alone, and the shape may be wrong meanwhile", () => {
   const d = draft();
+  let paint = visibleColors(d.shape) as (Color | undefined)[];
   const tap = draftTap(d, at(2, 0, 1))!; // Rx.F, one of two on the FR double edge
   assert.deepEqual(tap.carries, [], "nothing moves");
-  assert.deepEqual(tap.unpaint.sort(), [at(2, 0, 1), at(1, 0, 1)].sort(), "only its spot and the core edge behind lose their paint");
+  assert.deepEqual(tap.unpaint.sort(), [at(2, 0, 1), at(1, 0, 1)].sort(), "only its spot and the core edge behind change");
+  paint = repaint(paint, tap);
+  assert.equal(paint[at(1, 0, 1) * 6 + R], "R", "its outward color falls onto the core edge it bared");
+  assert.equal(paint[at(2, 0, 1) * 6 + R], undefined);
+  assert.equal(paint[at(0, 1, 2) * 6 + F], "G", "the others keep their paint");
+  assert.equal(draftColors(d, paint)[at(1, 0, 1) * 6 + R], "R", "and the core edge shows it");
   assert.deepEqual([...d.removed], [at(2, 0, 1)]);
   assert.deepEqual(texts(d), ["Only three core edges have two extension cubelets, but there must be four"]);
   assert.ok(draftSpots(d).includes(at(2, 0, 1)), "its spot is one a tap can fill again");
-  draftTap(d, at(0, 2, 1)); // the bare top of the UF single edge gets a cubelet
+  paint = repaint(paint, draftTap(d, at(0, 2, 1))!); // the bare top of the UF single edge gets a cubelet
+  assert.equal(paint[at(0, 2, 1) * 6 + U], "W", "a cubelet that comes takes the color of the sticker it covers");
+  assert.equal(paint[at(0, 1, 1) * 6 + U], undefined);
+  assert.equal(paint[at(0, 2, 1) * 6 + F], undefined, "its other stickers are not painted yet");
   assert.deepEqual(texts(d), [], "four double edges again");
   assert.equal(d.removed.size + d.added.size, 0, "a shape the puzzle can have is made of real cubelets at once");
   assert.ok(draftFilled(d, at(0, 2, 1)) && !draftFilled(d, at(2, 0, 1)));

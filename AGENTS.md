@@ -392,8 +392,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     can't all be turned this way at once. One of them needs another turn" (no halo: any
     of them may be the one).
   - **Paint stays on its spot**, not on a cubelet: what a tap moves (a swing or a turn: the
-    whole unit) loses its paint, and a cubelet that only comes or goes clears its own spot
-    and the core cubelet behind it. A sticker not painted yet (`UNPAINTED`) fits any color
+    whole unit) loses its paint. A cubelet that only comes or goes changes only its own spot
+    and the core cubelet behind it: one put in takes the color of the core sticker it
+    covers, on the face over it, and one taken away leaves its outward color on the core
+    sticker it bares (`repaint`); its other stickers start unpainted. A sticker not painted yet (`UNPAINTED`) fits any color
     and is drawn as a dashed outline on the plastic, with no edge glow; the line counts
     them ("6 stickers aren't painted yet", with a halo on their cubelets), and Done waits
     for them. Where a cubelet's stickers are follows from the shape around it alone

@@ -594,12 +594,10 @@ function settle(d: Draft) {
  * - one of two cubelets on a core edge, or an extension center, goes away;
  * - an empty spot (draftSpots) gets a cubelet;
  * - a core corner or core single edge turns, with the cubelets on it.
- * Returns null if the tap does nothing; otherwise the real cubelets the tap itself moved
- * (`carries`, to animate) and the slots whose stickers are no longer the ones painted
- * (`unpaint`): the whole unit when it turns; when a cubelet only comes or goes, its own
- * spot and the core cubelet behind, whose sticker it covers or bares.
+ * Returns null if the tap does nothing; otherwise what it does to the paint (see
+ * repaint) and the real cubelets the tap itself moved (`carries`, to animate).
  */
-export function draftTap(d: Draft, s: number): { carries: Carry[]; unpaint: number[] } | null {
+export function draftTap(d: Draft, s: number): TapResult | null {
   if (s >= 0 && outwardDir(s) < 0) {
     // A tap on the core cubelet itself turns its unit: a corner clockwise as seen from
     // outside (a second tap gives the third way it can sit), a single edge over.
@@ -620,12 +618,19 @@ export function draftTap(d: Draft, s: number): { carries: Carry[]; unpaint: numb
     if (!undo.delete(t)) mark.add(t);
   };
   let carries: Carry[] = [];
+  // A cubelet that comes takes the color of the sticker it covers on the core cubelet
+  // behind it, onto the face over it; one that goes leaves its color there.
+  const dir = outwardDir(s);
+  const [under, over] = [c * 6 + dir, s * 6 + dir];
   let unpaint = [s, c];
+  let move: [number, number][];
   if (!draftFilled(d, s)) {
     if (!draftSpots(d).includes(s)) return null;
     set(s, true);
+    move = [[under, over]];
   } else if (span(c) === 3 || (span(c) === 2 && filledOn(d, c).length === 1)) {
     unpaint = unitOf(s);
+    move = [];
     const real = outerOf(c).every((n) => !d.removed.has(n) && !d.added.has(n));
     const next = real ? editShape(d.shape, s) : null;
     if (next) {
@@ -635,9 +640,33 @@ export function draftTap(d: Draft, s: number): { carries: Carry[]; unpaint: numb
       set(s, false);
       set(outerOf(c).find((n) => n !== s)!, true);
     } else return null;
-  } else set(s, false);
+  } else {
+    set(s, false);
+    move = [[over, under]];
+  }
   settle(d);
-  return { carries, unpaint };
+  return { carries, unpaint, move };
+}
+
+/**
+ * What a Shape tool tap does: the real cubelets it moved (to animate), the slots whose
+ * stickers are no longer the ones painted (`unpaint`: the whole unit when it turns; when a
+ * cubelet only comes or goes, its own spot and the core cubelet behind it), and the paint
+ * that moves from face to face (`move`, by slot * 6 + direction: from the sticker a
+ * cubelet that comes covers to the face over it, and back when it goes).
+ */
+export interface TapResult {
+  carries: Carry[];
+  unpaint: number[];
+  move: [from: number, to: number][];
+}
+
+/** The paint after a tap (see TapResult): what it moves goes with it, and the rest of what it changed is cleared. */
+export function repaint(paint: readonly (Color | undefined)[], tap: TapResult): (Color | undefined)[] {
+  const out = paint.slice();
+  for (const t of tap.unpaint) for (let k = 0; k < 6; k++) out[t * 6 + k] = undefined;
+  for (const [from, to] of tap.move) out[to] = paint[from];
+  return out;
 }
 
 /** The core slot and outer slots of the unit outer slot s belongs to: a core cubelet with the spots against it. */

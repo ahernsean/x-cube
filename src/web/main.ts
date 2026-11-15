@@ -26,7 +26,7 @@ import {
   SLOT_NEIGHBOR,
 } from "../core/puzzle.ts";
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
-import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
+import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 
@@ -3291,7 +3291,8 @@ function refitEdit() {
 // box, gray with white edges and unlit, so it shows against white, against dark and in
 // shadow, and each spot reads as its own box. The stickers
 // a tap moves lose their paint: paint stays on its spot, and the cubelet now there is
-// another one. A cubelet that only comes or goes leaves the others on its unit painted.
+// another one. A cubelet that only comes or goes leaves the others on its unit painted,
+// and takes or leaves the color of the core sticker it covers or bares (repaint).
 const ghosts: any[] = [];
 const blanks: any[] = [];
 let ghostMaterial: any = null;
@@ -3407,7 +3408,7 @@ function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit 
   const slot = pickMarker(el, clientX, clientY, h) ?? (h ? slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]) : -1);
   const tap = draftTap(edit, slot);
   if (!tap) return;
-  for (const t of tap.unpaint) for (let d = 0; d < 6; d++) edit.colors[t * 6 + d] = undefined;
+  edit.colors = repaint(edit.colors, tap);
   refitEdit();
   renderEdit();
   if (tap.carries.length) animateShape(tap.carries);

@@ -1309,19 +1309,21 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     /Edit puzzle$/.test(label) && fresh.spots.join() === "Dx,Dx.B,Dx.F,Dx.L,Dx.R,Ux,Ux.B,Ux.F,Ux.L,Ux.R" && fresh.removed.length + fresh.added.length === 0 && /^Valid/.test(await editLine()),
     `Edit puzzle opens on the puzzle as it is, and the Shape tool marks the empty spots a tap can fill (${label}; ${fresh.spots})`,
   );
-  // One of two extension cubelets on a core edge goes away alone, keeping the other's paint.
+  // One of two extension cubelets on a core edge goes away alone, keeping the other's paint;
+  // its outward color falls onto the core edge it bares.
   await tapSticker("Fx.R", "F");
-  const one = { e: await probe("shapeEdit"), line: await editLine(), kept: await probe("painted", "Rx.F", "R"), gone: await probe("painted", "Fx.R", "F") };
+  const one = { e: await probe("shapeEdit"), line: await editLine(), kept: await probe("painted", "Rx.F", "R"), gone: await probe("painted", "Fx.R", "F"), fell: await probe("painted", "FR", "F") };
   check(
-    one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line === "Not valid: Only three core edges have two extension cubelets, but there must be four." && one.kept === "R" && one.gone === null,
-    `a tap takes one cubelet away and the line says what the shape lacks, with no halo controls while Shape is selected (${JSON.stringify(one)})`,
+    one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line === "Not valid: Only three core edges have two extension cubelets, but there must be four." && one.kept === "R" && one.gone === null && one.fell === "G",
+    `a tap takes one cubelet away, its color falls onto the core edge it bares, and the line says what the shape lacks, with no halo controls while Shape is selected (${JSON.stringify(one)})`,
   );
   // A tap on an empty spot puts a cubelet there; the shape is right again, made of real cubelets, with stickers to paint.
+  // (Fx.R's green, fallen onto the FR core edge, is a color no core edge has, so the line names that first.)
   await tapAt(await probe("spot", "Ux.F"));
-  const two = { e: await probe("shapeEdit"), line: await editLine(), done: await page.$eval("#edit-done", (b) => b.disabled), filled: [await probe("filled", "Ux.F"), await probe("filled", "Fx.R")].join() };
+  const two = { e: await probe("shapeEdit"), line: await editLine(), done: await page.$eval("#edit-done", (b) => b.disabled), filled: [await probe("filled", "Ux.F"), await probe("filled", "Fx.R")].join(), took: await probe("painted", "Ux.F", "U") };
   check(
-    two.e.removed.length + two.e.added.length === 0 && two.filled === "true,false" && /^Not valid: \d+ stickers aren't painted yet\./.test(two.line) && two.e.unpainted > 0 && two.e.outlines === two.e.unpainted && two.done,
-    `filling a spot makes the shape right; each sticker not painted yet is a dashed outline, and Done waits for them (${JSON.stringify(two)})`,
+    two.e.removed.length + two.e.added.length === 0 && two.filled === "true,false" && two.took === "W" && /^Not valid: /.test(two.line) && two.e.unpainted > 0 && two.e.outlines === two.e.unpainted && two.done,
+    `filling a spot makes the shape right, the cubelet put in takes the color of the sticker it covers; each sticker not painted yet is a dashed outline, and Done waits for them (${JSON.stringify(two)})`,
   );
   // A tap on a core corner turns it, with the cubelets on it: clockwise as seen from outside, up to right.
   await tapSticker("UFR", "U");
