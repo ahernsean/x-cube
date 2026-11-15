@@ -2577,10 +2577,13 @@ function slideScroll(el: HTMLElement, to: number) {
     return;
   }
   slideUntil = t0 + ms + 50;
-  // Timed from the first frame's own timestamp: a frame's timestamp is when it began, which
-  // can be before this call, and a negative time would throw the eased position far off.
+  // Timed by the clock as each frame runs, from the first frame that does. A frame's own
+  // timestamp is when its vsync fired, which can be well before it runs (while the work
+  // that started the slide still holds the page), so the next frame's timestamp could be
+  // most of the slide later and the slide would jump.
   let start = -1;
-  const step = (now: number) => {
+  const step = () => {
+    const now = performance.now();
     if (start < 0) {
       start = now;
       slideUntil = Math.max(slideUntil, start + ms + 50);
