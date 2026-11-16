@@ -1369,33 +1369,45 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await page.click("#edit-cancel");
   await idle();
   check((await probe("state")) === start && (await probe("filled", "Fx.R")), "Cancel leaves the position as it was");
-  // A few cubelets with stickers to paint get a halo, with a Hide pill in the 3D view.
+  // Taken away and put back, a cubelet gets all its colors back: they fell onto what it
+  // bared, and it takes them from what it covers.
   await page.click("#edit-start");
   await tool("shape");
-  await tapSticker("Fx.R", "F");
-  await tapAt(await probe("spot", "Fx.R")); // back again: its side sticker isn't painted
+  await tapSticker("Fx.UR", "F");
+  const fell = [await probe("painted", "UFR", "F"), await probe("painted", "Fx.R", "U"), await probe("painted", "Fx.U", "R")].join();
+  await tapAt(await probe("spot", "Fx.UR"));
+  const back = { fell, line: await editLine(), colors: [await probe("painted", "Fx.UR", "F"), await probe("painted", "Fx.UR", "U"), await probe("painted", "Fx.UR", "R")].join() };
+  check(back.fell === "G,W,R" && back.colors === "G,W,R" && back.line === "Valid", `a cubelet's colors fall onto every face it bares, and come back when it is put back (${JSON.stringify(back)})`);
+  // Moved from the front of a core edge to its top, a cubelet takes the white it covers;
+  // its other stickers are to paint, and the green that fell onto the core edge is a
+  // problem, with a halo and a Hide pill in the 3D view.
+  const move = async (from, face, to) => {
+    await tapSticker(from, face);
+    await tapAt(await probe("spot", to));
+  };
+  await move("Fx.U", "F", "Ux.F");
   await tool("W");
   const box = await page.$eval("#scene", (c) => { const r = c.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
-  const few = { line: await editLine(), halo: (await probe("highlighted")).join(), pill: (await probe("shapeEdit")).pill };
+  const few = { line: await editLine(), halo: (await probe("highlighted")).join(), pill: (await probe("shapeEdit")).pill, took: await probe("painted", "Ux.F", "U") };
   check(
-    /^Not valid: One sticker isn't painted yet\./.test(few.line) && few.halo === "Fx.R" && few.pill && few.pill.x > box.l && few.pill.x < box.r && few.pill.y > box.t && few.pill.y < box.b,
-    `a few cubelets with stickers to paint get a halo, with a Hide pill inside the 3D view (${JSON.stringify(few)})`,
+    /^Not valid: A core single edge must be white or yellow, never green\./.test(few.line) && few.halo === "UF" && few.took === "W" && few.pill && few.pill.x > box.l && few.pill.x < box.r && few.pill.y > box.t && few.pill.y < box.b,
+    `a cubelet moved onto a core edge's bare side takes the white it covers, and the green left on the core edge has a halo, with a Hide pill inside the 3D view (${JSON.stringify(few)})`,
   );
   await page.click("#halo-hide");
   const hidden = { halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill, wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(hidden.halo === 0 && hidden.pill === null && hidden.wide <= 0, `the pill hides the halo, and itself (${JSON.stringify(hidden)})`);
-  // Many get halos too. A haloed cubelet hides the halos behind it, so the glows don't pile
-  // up over its stickers: the glow drawn over the 3D view is less than with nothing hiding it.
+  // Many cubelets with stickers to paint get halos. A haloed cubelet hides the halos behind
+  // it, so the glows don't pile up over its stickers: the glow drawn over the 3D view is
+  // less than with nothing hiding it.
   await tool("shape");
-  // Each taken away and put back: it keeps the color it takes from the core, and its other stickers are to paint.
-  for (const [slot, face] of [["Fx.U", "F"], ["Fx.D", "F"], ["Fx.UR", "F"], ["Fx.DR", "F"], ["Fx.UL", "F"], ["Fx.DL", "F"]]) {
-    await tapSticker(slot, face);
-    await tapAt(await probe("spot", slot));
-  }
+  await move("Rx.U", "R", "Ux.R");
+  await move("Fx.UR", "F", "Ux.FR");
+  await move("Fx.UL", "F", "Ux.FL");
   await tool("W");
+  for (let k = 0; k < 12 && !/stickers aren't painted yet/.test(await editLine()); k++) await page.click('[data-halo="next"]');
   const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: !!(await probe("shapeEdit")).pill, px: await probe("haloPixels", "3d"), alone: await probe("haloPixels", "3d", false) };
   check(
-    /^Not valid: \d+ stickers aren't painted yet\./.test(many.line) && many.halo >= 6 && many.pill && many.px < many.alone,
+    /^Not valid: \d+ stickers aren't painted yet\./.test(many.line) && many.halo === 4 && many.pill && many.px < many.alone,
     `many cubelets with stickers to paint get halos, which hide each other (${JSON.stringify(many)})`,
   );
   await page.click("#edit-cancel");

@@ -627,28 +627,35 @@ export function draftTap(d: Draft, s: number): TapResult | null {
     d.shape = next.shape;
     return { carries: next.carries, unpaint: unitOf(s).flatMap(faces), move: [] };
   }
-  const c = coreOf(s);
   const set = (t: number, on: boolean) => {
     const [undo, mark] = on ? [d.removed, d.added] : [d.added, d.removed];
     if (!undo.delete(t)) mark.add(t);
   };
-  // A cubelet that comes takes the color of the sticker it covers on the core cubelet
-  // behind it, onto the face over it; one that goes leaves its color there.
-  const dir = outwardDir(s);
-  const [under, over] = [c * 6 + dir, s * 6 + dir];
+  // Each face of a cubelet that comes covers the face of whatever is behind it, seen from
+  // that side, and takes that face's color; a cubelet that goes leaves each of its colors
+  // on the face it bares behind it.
   const comes = !draftFilled(d, s);
+  const pairs: [number, number][] = [];
+  for (let k = 0; k < 6; k++) {
+    const n = SLOT_NEIGHBOR[s * 6 + (k ^ 1)];
+    if (n >= 0 && draftFilled(d, n)) pairs.push([n * 6 + k, s * 6 + k]);
+  }
   set(s, comes);
   settle(d);
-  return { carries: [], unpaint: [...faces(s), under], move: comes ? [[under, over]] : [[over, under]] };
+  return {
+    carries: [],
+    unpaint: [...faces(s), ...pairs.map(([behind]) => behind)],
+    move: pairs.map(([behind, own]) => (comes ? [behind, own] : [own, behind])),
+  };
 }
 
 /**
  * What a Shape tool tap does: the real cubelets it moved (to animate), the faces (slot * 6
  * + direction) whose stickers are no longer the ones painted (`unpaint`: the whole unit when
- * it turns; when a cubelet only comes or goes, its own spot and the one core sticker it
- * covers or bares), and the paint
- * that moves from face to face (`move`, by slot * 6 + direction: from the sticker a
- * cubelet that comes covers to the face over it, and back when it goes).
+ * it turns; when a cubelet only comes or goes, its own spot and every face it covers or
+ * bares, on the core cubelet and on neighbors alike), and the paint that moves from face
+ * to face (`move`, by slot * 6 + direction: from each face a cubelet that comes covers to
+ * its own face over it, seen from the same side, and back when it goes).
  */
 export interface TapResult {
   carries: Carry[];
