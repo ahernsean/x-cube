@@ -742,6 +742,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   puzzle, starting from the position found nearest. **Cancel** puts the turn list, the
   steps and the shown step back as they were. Each candidate's answers come from the
   model, so Something else means a slip it doesn't list (two slips, for one).
+  **Not handled yet (owner, to come back to):** Lost? assumes every turn of the step was
+  made, but a person may have stopped partway through. The plan is to ask first which turn
+  they made last (a tap in the turn list) and take candidates only up to it; the owner also
+  wants slips searched further back than the step before (one step done wrong, then a few
+  done right). Sampled, searching the whole solve so far costs about one more question
+  (4.6 on average, 6 at most, over 15 cases; 26 ms).
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.
