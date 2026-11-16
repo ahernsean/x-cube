@@ -138,7 +138,10 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .confirm p { margin: 0; font-weight: 600; }
 /* The solve's steps, newest at the top, under the shown step's text; Stop solving at the foot. */
 .solve-steps { margin-top: 4px; border-top: 1px solid var(--line); padding-top: 3px; }
-.steps-head { margin: 0 0 2px; font-size: 13px; line-height: 1.3; color: var(--muted); }
+.steps-top { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.steps-head { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 13px; line-height: 1.3; color: var(--muted); }
+.pill-toggle { flex: none; font: 600 12px var(--f-body); padding: 3px 10px; min-height: 26px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); cursor: pointer; white-space: nowrap; }
+.pill-toggle.sel { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .steps-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; align-content: start; max-height: 220px; overflow-y: auto; }
 .steps-list li { display: flex; gap: 4px; align-items: center; }
 .steps-list .btn.step-save { flex: none; min-height: 18px; padding: 0 6px; border-radius: 5px; font: 600 11px/16px var(--f-body); }
@@ -557,7 +560,7 @@ details[open] summary { margin-bottom: 8px; }
       <div class="row solve-idle"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
       <div class="row guide-btns"><button class="btn primary" id="next-step">Start solving</button><button class="btn solve-only" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn solve-only" id="guide-show" title="Turn the view to where this step's paths begin and end">Show step</button></div>
       <p class="guide-line" id="guide-line" aria-live="polite"></p>
-      <div class="solve-steps solve-only"><p class="steps-head" id="steps-head"></p><ol class="steps-list" id="steps-list" aria-label="The steps of this solve, newest first"></ol></div>
+      <div class="solve-steps solve-only"><div class="steps-top"><p class="steps-head" id="steps-head"></p><button class="pill-toggle" id="guide-colors" aria-pressed="false" title="Show every cubelet in its colors, instead of graying what the step leaves for later">Full color</button></div><ol class="steps-list" id="steps-list" aria-label="The steps of this solve, newest first"></ol></div>
       <button class="btn solve-only stop-solve" id="guide-stop" title="Stop solving: drop the step and its grays; the turn list stays as it is">Stop solving</button>
     </section>
 

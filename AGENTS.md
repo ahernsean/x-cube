@@ -468,7 +468,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   turns keep their colors (with the extension cubelets moving with them as a unit), every other cubelet it moves or turns is
   darker gray (left for later steps), and every cubelet it leaves as it was is gray, even one it applies to that is not yet
   where it belongs (stickers and flat-view tiles; one gray for every color at each
-  level, so a gray white can't be taken for a white). Before the step's first turn, **paths** in the 3D view
+  level, so a gray white can't be taken for a white). **Full color**, a small switch beside
+  the counts and kept on the device, turns the grays off: every cubelet keeps its colors
+  and its edge glow, for someone who wants to match the screen to the puzzle in hand
+  rather than see what a step is for; the paths stay. Before the step's first turn, **paths** in the 3D view
   show where each cubelet it moves will go and how it will be turned: a path follows one of
   the cubelet's stickers, in that sticker's color with a dark casing, leaving the sticker and
   coming onto the face the sticker will be on within 45 degrees of straight out. A
