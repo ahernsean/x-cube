@@ -2989,7 +2989,7 @@ function bindUI() {
     if (act === "prev" || act === "next") {
       const n = edit.fit.problems.length;
       const { i } = shownProblem();
-      edit.selected = edit.fit.problems[(i + (act === "next" ? 1 : n - 1)) % n].slots.join();
+      edit.selected = problemKey(edit.fit.problems[(i + (act === "next" ? 1 : n - 1)) % n]);
     } else edit.hidden = act === "hide" ? shownProblem().slots.join() : null;
     renderEdit();
     if (act === "show" && edit.highlight) showHighlighted();
@@ -3255,7 +3255,7 @@ interface Edit {
   painted: any[]; // meshes currently drawn in a color other than their own
   highlight: number[] | null; // slots shown with a halo: the first problem's, unless hidden
   hidden: string | null; // the slots (joined) whose halo was hidden with Hide
-  selected: string; // the slots (joined) of the problem the line shows, kept across paints
+  selected: string; // the problem the line shows (problemKey), kept across paints
 }
 let edit: Edit | null = null;
 
@@ -4822,18 +4822,28 @@ function bestView(st: State, faces: [number, number][]): any {
   return best.clone();
 }
 
-/** The halo shows the first problem's slots, unless Hide was used on those same slots. */
-/** The problem the line shows: the one picked with ‹ and › if it is still there, else the first. */
+/** What the line remembers of the problem it shows: its words and the slots it names. */
+const problemKey = (p: { text: string; slots: number[] }) => `${p.text}|${p.slots.join()}`;
+
+/**
+ * The problem the line shows: the one picked with ‹ and › if it is still there, else one
+ * naming the same slots (its words may change, as a count does), else the first. Several
+ * problems may name no slots, so the words tell them apart.
+ */
 function shownProblem(): { i: number; slots: number[] } {
   const problems = edit && edit.fit.level !== "reachable" ? edit.fit.problems : [];
-  const i = Math.max(0, problems.findIndex((p) => p.slots.join() === edit!.selected));
+  const slots = edit?.selected.slice(edit.selected.lastIndexOf("|") + 1) ?? "";
+  let i = problems.findIndex((p) => problemKey(p) === edit!.selected);
+  if (i < 0 && slots) i = problems.findIndex((p) => p.slots.join() === slots);
+  i = Math.max(0, i);
   return { i, slots: problems[i]?.slots ?? [] };
 }
 
 function updateHighlight() {
   if (!edit) return;
-  const { slots } = shownProblem();
-  edit.selected = slots.join();
+  const { i, slots } = shownProblem();
+  const problem = edit.fit.level !== "reachable" ? edit.fit.problems[i] : undefined;
+  edit.selected = problem ? problemKey(problem) : "";
   if (edit.hidden !== slots.join()) edit.hidden = null; // Hide lasts until other cubelets are named
   // No halo while the Shape tool is in hand: it would cover the cubelets and spots to tap.
   edit.highlight = slots.length && edit.hidden === null && edit.paint !== "shape" ? [...slots] : null;

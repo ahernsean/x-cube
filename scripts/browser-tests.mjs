@@ -1315,8 +1315,24 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   const before = await editorCells();
   await tapAt(await probe("spot", "Ux.F"));
   const blank = { added: (await probe("shapeEdit")).added.join(), before, cells: await editorCells() };
+
   await tapAt(await probe("spot", "Ux.F"));
   check(blank.added === "Ux.F" && blank.cells > blank.before && (await probe("shapeEdit")).added.length === 0, `a cubelet put in while the shape is wrong shows in the flat view, and a tap takes it away (${JSON.stringify(blank)})`);
+  // Two problems that name no cubelets: › steps from one to the other and back.
+  await tapAt(await probe("spot", "Ux")); // a fifth extension center
+  await tapAt(await probe("spot", "Ux.F")); // and a fifth double edge
+  const steps = [await editLine()];
+  for (let k = 0; k < 2; k++) {
+    await page.click('[data-halo="next"]');
+    steps.push(await editLine());
+  }
+  check(
+    steps[0] !== steps[1] && steps.slice(0, 2).every((t) => /^Not valid: Five (core edges|centers) .*‹[12]\/2›$/.test(t)) && steps[2] === steps[0],
+    `› steps through problems that name no cubelets (${steps.join(" | ")})`,
+  );
+  await tapAt(await probe("spot", "Ux.F"));
+  await tapAt(await probe("spot", "Ux"));
+  check((await probe("shapeEdit")).added.length === 0, "a tap on each blank takes it away again");
   // One of two extension cubelets on a core edge goes away alone, keeping the other's paint;
   // its outward color falls onto the core edge it bares.
   await tapSticker("Fx.R", "F");
