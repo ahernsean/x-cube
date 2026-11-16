@@ -2519,6 +2519,71 @@ labTest("guide: Full color grays nothing and gives every cubelet its glow back, 
   check(!(await page.$eval("#guide-colors", (b) => b.classList.contains("sel"))), "a second tap turns it off");
 });
 
+labTest("lost: the interview finds a slip from a few answers, and Yes loads a step that undoes it", async ({ page, check, probe, settle, play }) => {
+  await play("R U R' F");
+  await page.click(`[data-tab="solve"]`);
+  // Two steps, the second loaded and not played: as if followed on a puzzle in hand.
+  await page.click("#next-step");
+  await settle();
+  await page.click("#guide-start");
+  await page.waitForFunction(() => !document.getElementById("next-step").disabled, null, { timeout: 60000 });
+  await page.click("#next-step");
+  await settle();
+  const before = { guide: await probe("guide"), lostOn: await page.$eval("#lost", (b) => !b.disabled) };
+  check(before.lostOn && before.guide?.index === 2, `Lost? is there during a solve (step ${before.guide?.index})`);
+  await page.click("#lost");
+  await settle();
+  const up = await probe("lost");
+  check(up.phase === "up" && up.answers.length === 6 && up.gray > 0, `it asks which center is on top, with the puzzle shown gray (${JSON.stringify(up)})`);
+  const inert = await page.evaluate(() => document.getElementById("dock").inert && document.getElementById("tabs").inert);
+  check(inert, "the turn list and the tabs are set aside");
+  // The person's puzzle: one of the slips (not the right result).
+  const slip = await probe("lostPick", Math.max(1, Math.floor(up.answers.length / 2)));
+  check(slip && slip !== "none", `a slipped puzzle is picked (${slip})`);
+  let asked = 0;
+  for (let k = 0; k < 12; k++) {
+    const l = await probe("lost");
+    if (l.phase === "confirm") break;
+    if (l.phase === "ask") {
+      asked++;
+      check(l.marked, `question ${asked} marks its spot (${l.question})`);
+    }
+    const a = await probe("lostAnswer");
+    await page.click(`#lost-opts [data-lost="${a}"]`);
+    await settle();
+  }
+  const found = await probe("lost");
+  check(found.phase === "confirm" && found.gray === 0 && !found.marked && (await probe("lostAnswer")) === "yes", `after ${asked} questions it shows the puzzle found, in color (${JSON.stringify(found)})`);
+  await page.click(`#lost-opts [data-lost="yes"]`);
+  await settle();
+  const g = await probe("guide");
+  check(!(await probe("lost")) && g.stage === "recover" && g.turns > 0 && g.gray === 0, `Yes loads a step that undoes the turns made (${g.stage}, ${g.turns} turns, ${g.alg})`);
+  const notInert = await page.evaluate(() => !document.getElementById("dock").inert && !document.getElementById("tabs").inert);
+  check(notInert, "the turn list and the tabs are back");
+  await page.click("#guide-start");
+  await page.waitForFunction(() => !document.getElementById("next-step").disabled, null, { timeout: 60000 });
+  await page.click("#next-step");
+  await settle();
+  const again = await probe("guide");
+  check(again.index === 1 && again.stage !== "recover", `once undone, Next step gives the first step again (step ${again.index}, ${again.stage})`);
+  const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+  check(fits, "the page is no wider than the screen");
+});
+
+labTest("lost: Cancel puts the turn list and the step back as they were", async ({ page, check, probe, settle, play, counter }) => {
+  await play("R U");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  const before = { counter: await counter(), guide: (await probe("guide")).alg };
+  await page.click("#lost");
+  await settle();
+  await page.click(`#lost-box [data-lost="cancel"]`);
+  await settle();
+  const after = { counter: await counter(), guide: (await probe("guide"))?.alg, lost: await probe("lost"), gray: (await probe("guide"))?.gray };
+  check(after.counter === before.counter && after.guide === before.guide && !after.lost, `Cancel restores the turn list and the step (${JSON.stringify(before)} then ${JSON.stringify(after)})`);
+});
+
 labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ page, check, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);
