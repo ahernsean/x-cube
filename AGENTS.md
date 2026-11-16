@@ -378,8 +378,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     white, over black and in shadow. A tap on a core corner itself turns it clockwise as
     seen from outside (three taps go round), and on a core single edge turns it over,
     with the extension cubelets on it (animated, in place); it is seldom reachable, as the
-    box on the cubelet's bare side sits over its sticker. There is no halo while Shape is
-    selected (it covered what to tap).
+    box on the cubelet's bare side sits over its sticker.
   - **A wrong shape for a while:** as paint may be wrong, so may the shape. The line names
     what keeps it from being one the puzzle can have ("This core corner has only one
     extension, but it has to have two", "These two core corners have three extensions
@@ -424,15 +423,19 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   cubelets get a **halo** by themselves, in purple. In the 3D view it is a thin rim around
   the cubelet, off its stickers, hidden by whatever is in front of it like any other part
   of the puzzle: a play-tester found a glow drawn through the puzzle covered the cubelet he
-  was painting in front. In every frame in which a haloed cubelet can't be seen (none of its
-  faces is turned toward the viewer with its middle unblocked; `hiddenHalos`), a purple
-  **arrow** in the scene points to it, even while other haloed cubelets can be seen: a tube
-  on a sphere just outside the puzzle (`HALO_ARROW`) that starts on the side facing the
-  viewer and spirals around the puzzle's edge to those cubelets, its head over them, so it
-  reads as curving around the back. Its far part goes behind the puzzle and is drawn faintly
-  there. It is rebuilt as the view turns, so it always starts on the near side; it fades
-  out once every haloed cubelet can be seen and back in when one is hidden again; a tap on
-  it turns the view to them. On each flat-view face where the cubelet shows, the halo is a
+  was painting in front. In every frame in which a haloed cubelet isn't turned well toward the
+  viewer (no face at least 0.4 toward the viewer with its middle unblocked; `hiddenHalos`),
+  a purple **arrow** in the scene points to it, even while other haloed cubelets can be
+  seen, drawn as one would on a whiteboard to say "look here" (`HALO_ARROW`): a lit tube that
+  starts thin on the side facing the viewer, off to one side, runs around the puzzle just
+  inside the edge of the view, then turns in and ends in a head pointing straight at those
+  cubelets. It thickens toward the head and lighter chevrons run along it toward the head,
+  so the way to follow it is plain even when the head is behind the puzzle (drawn faintly
+  there); it casts a shadow, which shows its depth. It is rebuilt as the view turns, so it
+  always starts on the near side; it fades out once every haloed cubelet is turned well
+  toward the viewer and back in when one isn't; a tap on it turns the view to them. The
+  Hide pill keeps off it. The halo, Show, Hide and the arrow are there whichever tool is
+  selected, Shape included (the rim doesn't cover what to tap). On each flat-view face where the cubelet shows, the halo is a
   soft glow around it, hidden only by a haloed cubelet in front (so many halos don't pile
   up over each other's stickers). A halo appearing never moves the view. **Show**
   (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the

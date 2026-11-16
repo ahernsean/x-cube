@@ -1343,7 +1343,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     steps.push(await editLine());
   }
   check(
-    steps[0] !== steps[1] && steps.slice(0, 2).every((t) => /^Not valid: Five (core edges|centers) .*‹[12]\/2›$/.test(t)) && steps[2] === steps[0],
+    steps[0] !== steps[1] && steps.slice(0, 2).every((t) => /^Not valid: Five (core edges|centers) .*‹[12]\/2›( Show Hide)?$/.test(t)) && steps[2] === steps[0],
     `› steps through problems that name no cubelets (${steps.join(" | ")})`,
   );
   await tapAt(await probe("spot", "Ux.F"));
@@ -1355,7 +1355,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   const one = { e: await probe("shapeEdit"), line: await editLine(), kept: await probe("painted", "Rx.F", "R"), gone: await probe("painted", "Fx.R", "F"), fell: await probe("painted", "FR", "F") };
   check(
     one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line === "Not valid: Only three core edges have two extensions, but there must be four." && one.kept === "R" && one.gone === null && one.fell === "G",
-    `a tap takes one cubelet away, its color falls onto the core edge it bares, and the line says what the shape lacks, with no halo controls while Shape is selected (${JSON.stringify(one)})`,
+    `a tap takes one cubelet away, its color falls onto the core edge it bares, and the line says what the shape lacks (${JSON.stringify(one)})`,
   );
   // A tap on an empty spot puts a cubelet there; the shape is right again, made of real cubelets, with stickers to paint.
   // (Fx.R's green, fallen onto the FR core edge, is a color no core edge has, so the line names that first.)
