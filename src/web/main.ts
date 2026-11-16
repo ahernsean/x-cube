@@ -2950,7 +2950,7 @@ function infoHelp(): string[] {
         : "Tap a sticker to give it the picked color.";
     return [
       `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it.`,
-      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple. <span class="ui-name">Show</span> turns the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
+      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
     ];
   }
   const gestures = "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn.";
@@ -3933,7 +3933,7 @@ function updateShowButton() {
   const homeIsIt = !!showTarget && Math.abs(showTarget.dot(new THREE.Quaternion(h[0], h[1], h[2], h[3]))) > 0.9999;
   const label = there && !homeIsIt ? "Home" : "Show step";
   if (btn.textContent !== label) btn.textContent = label;
-  btn.title = label === "Home" ? "Turn the view back to Home" : "Turn the view to where this step's paths begin and end";
+  btn.title = label === "Home" ? "Rotate the view back to Home" : "Rotate the view to where this step's paths begin and end";
   if (there && homeIsIt) btn.disabled = true;
 }
 function showStepIdle(): boolean {
@@ -5307,8 +5307,8 @@ function renderEdit() {
   const { i } = shownProblem();
   $("edit-hint").textContent =
     edit.paint === "shape"
-      ? "Tap an extension cubelet that isn't there on your puzzle, or a faint spot where one is missing. Drag to turn the view."
-      : "Pick a color, then tap stickers to give them that color. Drag to tumble the view.";
+      ? "Tap an extension cubelet that isn't on your puzzle, or a gray box where one is missing. Drag to tumble the view."
+      : "Pick a color, then tap stickers to color them. Drag to tumble the view.";
   if (level === "reachable") {
     st.className = "edit-status good";
     st.textContent = "Valid";

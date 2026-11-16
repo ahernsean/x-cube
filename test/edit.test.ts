@@ -216,7 +216,7 @@ test("edit: core corners twisted as no turns twist them are refused, naming none
   st.ori[corner] = rotsTo(st.occ[corner], corner).find((o) => o !== st.ori[corner])!; // a core corner twisted in place
   const fit = fitColors(st, visibleColors(st));
   assert.equal(fit.level, "possible");
-  assert.deepEqual(fit.problems, [{ text: "The core corners can't all be turned this way at once. One of them needs another turn", slots: [] }]);
+  assert.deepEqual(fit.problems, [{ text: "The core corners can't all have these orientations at once. One of them needs a different orientation", slots: [] }]);
 });
 
 // ---------------------------------------------------------------- shape editing
@@ -248,7 +248,7 @@ test("edit: an extension cubelet on a core corner comes and goes alone, and the 
   // One corner turned alone: no turns leave the corners so.
   const fit = fitColors(d.shape, visibleColors(d.shape));
   assert.equal(fit.level, "possible");
-  assert.deepEqual(fit.problems.map((p) => p.text), ["The core corners can't all be turned this way at once. One of them needs another turn"]);
+  assert.deepEqual(fit.problems.map((p) => p.text), ["The core corners can't all have these orientations at once. One of them needs a different orientation"]);
   assert.deepEqual(fit.problems[0].slots, [], "any corner may be the wrong one, so none is named");
   // Three on one corner, and none on a core edge, each named.
   const e = draft();

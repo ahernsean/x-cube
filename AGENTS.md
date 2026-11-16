@@ -403,7 +403,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     in the flat view too, with its stickers, as is every dashed outline). Once
     the shape is one the puzzle can have, real cubelets take the blanks' places at once.
     The core corners' twists can still be wrong, as no turns leave them: "The core corners
-    can't all be turned this way at once. One of them needs another turn" (no halo: any
+    can't all have these orientations at once. One of them needs a different orientation" (no halo: any
     of them may be the one).
   - **Paint stays on its spot**, not on a cubelet: what a tap turns (a core cubelet with
     the extension cubelets on it) loses its paint. A cubelet that only comes or goes changes only its own spot

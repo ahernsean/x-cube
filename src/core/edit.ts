@@ -356,7 +356,7 @@ function reachableFit(shape: State, colors: FaceColors): { state: State; problem
   // A shape edit can leave the core corners turned as no turns leave them. Any one of
   // them may be the one turned wrong, so the problem points at none.
   if (unreachableReason(st) === "the core corners are twisted")
-    return { state: null, problem: problem("The core corners can't all be turned this way at once. One of them needs another turn", []) };
+    return { state: null, problem: problem("The core corners can't all have these orientations at once. One of them needs a different orientation", []) };
   return { state: null, problem: problem(`${start} (${unreachableReason(st)})`, []) };
 }
 
