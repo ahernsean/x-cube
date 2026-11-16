@@ -2965,6 +2965,7 @@ function bindUI() {
   $("next-step").addEventListener("click", () => nextStep());
   $("strip-next").addEventListener("click", () => nextStep());
   $("guide-stop").addEventListener("click", () => stopGuide());
+  $("guide-colors").addEventListener("click", () => setGuideFullColor(!guideFullColor));
   $("guide-start").addEventListener("click", () => {
     if (guide && app.cursor === guide.start) playToEnd(guide.start + guide.step.turns.length);
     else goToStep(guide ?? undefined);
@@ -3616,6 +3617,24 @@ function setGuideMode(mode: Mode) {
   }
   render();
 }
+const GUIDE_COLOR_KEY = "xcube.guideFullColor";
+/** Full color: a step grays nothing, and every cubelet keeps its edge glow. Kept on this device. */
+let guideFullColor = (() => {
+  try {
+    return localStorage.getItem(GUIDE_COLOR_KEY) === "1";
+  } catch {
+    return false;
+  }
+})();
+function setGuideFullColor(on: boolean) {
+  guideFullColor = on;
+  try {
+    localStorage.setItem(GUIDE_COLOR_KEY, on ? "1" : "0");
+  } catch {
+    // The choice then lasts only for this visit.
+  }
+  render();
+}
 let guideDimmed: any[] = []; // meshes drawn gray
 let guideArrows: any = null;
 
@@ -3885,6 +3904,8 @@ function refreshGuide() {
   }
   drawGuide();
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-guide-mode]")) b.classList.toggle("sel", b.dataset.guideMode === guideMode);
+  $("guide-colors").classList.toggle("sel", guideFullColor);
+  $("guide-colors").setAttribute("aria-pressed", String(guideFullColor));
   ($("guide-stop") as HTMLButtonElement).disabled = !solving;
   $("guide").classList.toggle("solving", solving);
   $("next-step").textContent = solving ? "Next step" : "Start solving";
@@ -3930,7 +3951,7 @@ function drawGuide() {
   const at = anim ? app.cursor + (anim.forward ? -1 : 1) : app.cursor;
   // A hold step only turns the whole puzzle, and the center colors are what it goes by: no grays.
   const within = !!g && !turnsWhole(g.step) && at >= g.start && at < g.start + g.step.turns.length;
-  const key = within ? `${g!.start}/${g!.step.alg}` : "";
+  const key = within ? `${g!.start}/${g!.step.alg}/${guideFullColor}` : "";
   if (guideArrows) guideArrows.visible = !!g && app.cursor === g.start && !anim && !queue.length;
   if (drawGuide.key === key) return;
   drawGuide.key = key;
@@ -3944,7 +3965,7 @@ function drawGuide() {
   }
   if (within) {
     for (const c of CUBELETS) {
-      if (g!.focus.has(c.id)) continue;
+      if (guideFullColor || g!.focus.has(c.id)) continue;
       const level = g!.free.has(c.id) ? 2 : 1;
       c.stickers.forEach((color, d) => {
         if (!color) return;
@@ -5127,6 +5148,7 @@ function installProbe() {
             })
           : false,
         mode: guideMode,
+        fullColor: guideFullColor,
         runners: guideArrows?.visible ? guideArrows.userData.runners.length : 0,
         /** Glow bands of the cubelets the step doesn't apply to that are drawn, and that are not; and of those it does apply to that are drawn. */
         otherGlow: CUBELETS.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 0 : 1), 0),

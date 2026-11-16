@@ -1806,6 +1806,40 @@ labTest("guide: only the cubelets a step moves or turns keep their colors", asyn
   check(g.darkGray > 0 && g.gray > 0, `what else the turns move is darker gray, and what they leave alone lighter (${g.darkGray} darker, ${g.gray} lighter)`);
 });
 
+labTest("guide: Full color grays nothing and gives every cubelet its glow back, and is kept", async ({ page, check, probe, settle, play }) => {
+  await play("R U R' U'");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  // Past any regrip, to a step that grays cubelets.
+  for (let i = 0; i < 6 && !(await probe("guide")).gray; i++) {
+    await page.click("#guide-start");
+    await page.waitForFunction(() => !document.getElementById("next-step").disabled, null, { timeout: 60000 });
+    await page.click("#next-step");
+    await settle();
+  }
+  const gray = await probe("guide");
+  check(!gray.fullColor && gray.gray + gray.darkGray > 0 && gray.otherNoGlow > 0, `to begin with the step grays cubelets and takes their glow (${gray.gray} + ${gray.darkGray} gray, ${gray.otherNoGlow} bands off)`);
+  await page.click("#guide-colors");
+  await settle();
+  const full = await probe("guide");
+  const pressed = await page.$eval("#guide-colors", (b) => b.getAttribute("aria-pressed") === "true" && b.classList.contains("sel"));
+  check(full.fullColor && pressed && full.gray + full.darkGray === 0 && full.otherNoGlow === 0, `Full color: nothing is gray and no glow is off (${full.gray} + ${full.darkGray} gray, ${full.otherNoGlow} bands off)`);
+  check(full.arrows === gray.arrows && full.arrows > 0, `the paths stay (${full.arrows} of ${gray.arrows})`);
+  const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+  check(fits, "the page is no wider than the screen");
+  await page.reload();
+  await page.waitForFunction(() => window.xcubeProbe);
+  check(await page.$eval("#guide-colors", (b) => b.classList.contains("sel")), "the choice is kept on the device");
+  // The switch shows only during a solve.
+  await play("R U");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  await page.click("#guide-colors");
+  check(!(await page.$eval("#guide-colors", (b) => b.classList.contains("sel"))), "a second tap turns it off");
+});
+
 labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ page, check, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);
