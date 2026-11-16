@@ -421,10 +421,17 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   the spot out instead. Lists of three colors use the serial comma. The line shows one
   problem at a time; with several, tiny ‹ and › buttons step through them ("‹2/4›"), and the
   choice is kept across paints while that problem remains. The shown problem's
-  cubelets get a **halo** by themselves: a purple glow around the whole cubelet, drawn
-  over the rest of the puzzle (so it shows a cubelet behind others) but hidden by a haloed
-  cubelet in front of it (so many halos don't pile up over each other's stickers), in the 3D view and on each
-  flat-view face where the cubelet shows. A halo appearing never moves the view. **Show**
+  cubelets get a **halo** by themselves, in purple. In the 3D view it is a thin rim around
+  the cubelet, off its stickers, hidden by whatever is in front of it like any other part
+  of the puzzle: a play-tester found a glow drawn through the puzzle covered the cubelet he
+  was painting in front. In every frame in which a haloed cubelet can't be seen (none of its
+  faces is turned toward the viewer with its middle unblocked; `hiddenHalos`), a round
+  purple **arrow** shows instead, even while other haloed cubelets can be seen: it sits at
+  the side of the puzzle the hidden cubelets would come around from, bends away around
+  that side, keeps clear of the Hide pill and the corner buttons, and a tap turns the view
+  to the hidden cubelets. On each flat-view face where the cubelet shows, the halo is a
+  soft glow around it, hidden only by a haloed cubelet in front (so many halos don't pile
+  up over each other's stickers). A halo appearing never moves the view. **Show**
   (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
   most unblocked, then each as squarely as possible, from the preset views and the
   directions between the stickers), again each time it is tapped. **Hide** removes the

@@ -1210,14 +1210,26 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   const paintedGlow = (await probe("glowColors", "Fx.U", "F")).join();
   check(paintedGlow === "R", `the edge glow of a painted sticker takes the paint (${paintedGlow})`);
   // A problem puts a purple halo on the cubelets it names by itself, in the 3D view and
-  // on the flat view's faces where they show, without moving the view. Show (or tapping
-  // the line) tumbles the 3D view to show all their stickers, again after any tumble;
-  // Hide removes the halo.
+  // on the flat view's faces where they show, without moving the view. In the 3D view it
+  // is a rim around a cubelet that can be seen; one behind the puzzle draws nothing over
+  // what is in front of it, and an arrow points around to it instead, which a tap follows.
+  // Show (or tapping the line) tumbles the 3D view to show all their stickers, again
+  // after any tumble; Hide removes the halo.
+  const front = { px3d: await probe("haloPixels", "3d"), arrow: await probe("haloArrow") };
+  check(front.px3d > 0 && front.arrow.at === null && front.arrow.behind.length === 0, `cubelets that can be seen have a rim and no arrow (${JSON.stringify(front)})`);
   const seenBoth = async () => `${await probe("facesSeen", "Fx.U")},${await probe("facesSeen", "Rx.U")}`;
   await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await settle();
   const lit = { slots: (await probe("highlighted")).sort().join(), seen: await seenBoth(), px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), flatD: await probe("haloPixels", "D"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
-  check(lit.slots === "Fx.U,Rx.U" && lit.seen === "0,0" && lit.px3d > 0 && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `a problem haloes the cubelets it names by itself, without turning the view (${JSON.stringify(lit)})`);
+  check(lit.slots === "Fx.U,Rx.U" && lit.seen === "0,0" && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `a problem haloes the cubelets it names by itself, without turning the view (${JSON.stringify(lit)})`);
+  const behind = await probe("haloArrow");
+  const box = await page.locator("#scene").boundingBox();
+  const inView = behind.at && behind.at.x > box.x && behind.at.x < box.x + box.width && behind.at.y > box.y && behind.at.y < box.y + box.height;
+  check(lit.px3d === 0 && behind.behind.join() === "Fx.U,Rx.U" && inView, `behind the puzzle they draw nothing over it, and the arrow shows, inside the view (${lit.px3d} pixels, ${JSON.stringify(behind)})`);
+  await page.click("#halo-arrow");
+  await settle();
+  const found = { seen: await seenBoth(), arrow: await probe("haloArrow"), px3d: await probe("haloPixels", "3d") };
+  check(found.seen === "2,2" && found.arrow.at === null && found.px3d > 0, `a tap on the arrow turns the view to them, and the arrow goes (${JSON.stringify(found)})`);
   await page.click("#edit-status");
   await settle();
   const shownAt = await seenBoth();
@@ -1396,19 +1408,17 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await page.click("#halo-hide");
   const hidden = { halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill, wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(hidden.halo === 0 && hidden.pill === null && hidden.wide <= 0, `the pill hides the halo, and itself (${JSON.stringify(hidden)})`);
-  // Many cubelets with stickers to paint get halos. A haloed cubelet hides the halos behind
-  // it, so the glows don't pile up over its stickers: the glow drawn over the 3D view is
-  // less than with nothing hiding it.
+  // Many cubelets with stickers to paint get halos.
   await tool("shape");
   await move("Rx.U", "R", "Ux.R");
   await move("Fx.UR", "F", "Ux.FR");
   await move("Fx.UL", "F", "Ux.FL");
   await tool("W");
   for (let k = 0; k < 12 && !/stickers aren't painted yet/.test(await editLine()); k++) await page.click('[data-halo="next"]');
-  const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: !!(await probe("shapeEdit")).pill, px: await probe("haloPixels", "3d"), alone: await probe("haloPixels", "3d", false) };
+  const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: !!(await probe("shapeEdit")).pill, px: await probe("haloPixels", "3d") };
   check(
-    /^Not valid: \d+ stickers aren't painted yet\./.test(many.line) && many.halo === 4 && many.pill && many.px < many.alone,
-    `many cubelets with stickers to paint get halos, which hide each other (${JSON.stringify(many)})`,
+    /^Not valid: \d+ stickers aren't painted yet\./.test(many.line) && many.halo === 4 && many.pill && many.px > 0,
+    `many cubelets with stickers to paint get halos (${JSON.stringify(many)})`,
   );
   await page.click("#edit-cancel");
   await idle();
