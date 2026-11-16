@@ -2942,7 +2942,7 @@ function infoHelp(): string[] {
         : "Tap a sticker to give it the picked color.";
     return [
       `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it.`,
-      "The line under the colors says whether the puzzle with those colors can be real. A problem's cubelets are marked in purple; Show turns the view to them, and Hide takes the mark away.",
+      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple. <span class="ui-name">Show</span> turns the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
     ];
   }
   const gestures = "Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes the last turn.";
