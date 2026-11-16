@@ -425,11 +425,14 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   the cubelet, off its stickers, hidden by whatever is in front of it like any other part
   of the puzzle: a play-tester found a glow drawn through the puzzle covered the cubelet he
   was painting in front. In every frame in which a haloed cubelet can't be seen (none of its
-  faces is turned toward the viewer with its middle unblocked; `hiddenHalos`), a round
-  purple **arrow** shows instead, even while other haloed cubelets can be seen: it sits at
-  the side of the puzzle the hidden cubelets would come around from, bends away around
-  that side, keeps clear of the Hide pill and the corner buttons, and a tap turns the view
-  to the hidden cubelets. On each flat-view face where the cubelet shows, the halo is a
+  faces is turned toward the viewer with its middle unblocked; `hiddenHalos`), a purple
+  **arrow** in the scene points to it, even while other haloed cubelets can be seen: a tube
+  on a sphere just outside the puzzle (`HALO_ARROW`) that starts on the side facing the
+  viewer and spirals around the puzzle's edge to those cubelets, its head over them, so it
+  reads as curving around the back. Its far part goes behind the puzzle and is drawn faintly
+  there. It is rebuilt as the view turns, so it always starts on the near side; it fades
+  out once every haloed cubelet can be seen and back in when one is hidden again; a tap on
+  it turns the view to them. On each flat-view face where the cubelet shows, the halo is a
   soft glow around it, hidden only by a haloed cubelet in front (so many halos don't pile
   up over each other's stickers). A halo appearing never moves the view. **Show**
   (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the

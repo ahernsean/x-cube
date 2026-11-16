@@ -1089,6 +1089,7 @@ const GLOW3D_LAYER = 3;
 const GLOWNET_LAYER = 4;
 const HALO_LAYER = 5; // the editor's highlight in the 3D view
 const FLAT_HALO_LAYER = 6; // ... and in the flat view: 6 + direction, one layer per face
+const HALO_ARROW_LAYER = 12; // the arrow to haloed cubelets behind the puzzle, 3D view only
 const BODY_RADIUS = 0.07; // rounding of cubelet edges
 // The glow band lies just below the face's surface (GLOW_DEPTH) and starts under the
 // cubelet (GLOW_START), so the cubelet hides its inner part and the glow appears to
@@ -1227,6 +1228,7 @@ function makeGlowTexture() {
 function applyGlowSettings() {
   camera.layers.set(0);
   camera.layers.enable(HALO_LAYER);
+  camera.layers.enable(HALO_ARROW_LAYER);
   if (glowOn["3d"]) camera.layers.enable(GLOW3D_LAYER);
   for (const nc of netCams) {
     nc.cam.layers.set(NET_LAYER);
@@ -1786,7 +1788,8 @@ function bindOrbit(el: HTMLElement) {
       const now = e.timeStamp;
       const isTap =
         tap && tap.ok && e.type === "pointerup" && now - tap.t < TAP_MS && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < SWIPE_PX;
-      if (isTap && edit) {
+      if (isTap && edit && hitsHaloArrow(el, e.clientX, e.clientY)) showHiddenHalos();
+      else if (isTap && edit) {
         const h = pickCube(el, e.clientX, e.clientY);
         if (edit.paint === "shape") tapShape(el, e.clientX, e.clientY, h);
         else if (h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
@@ -2984,7 +2987,6 @@ function bindUI() {
     edit.hidden = shownProblem().slots.join();
     renderEdit();
   });
-  $("halo-arrow").addEventListener("click", () => showHiddenHalos());
   $("edit-status").addEventListener("click", (e) => {
     if (!edit || !$("edit-status").classList.contains("tappable")) return;
     const act = (e.target as HTMLElement).closest<HTMLElement>("[data-halo]")?.dataset.halo ?? "show";
@@ -4726,45 +4728,113 @@ function hiddenHalos(): number[] {
 let haloStamp = 0;
 
 /**
- * The arrow for haloed cubelets behind the puzzle: shown in every frame in which at least
- * one can't be seen. It sits at the side of the puzzle those cubelets would come around
- * from (the way their spots face, as seen on screen) and bends away around that side. It
- * keeps clear of the Hide pill and the corner buttons. A tap turns the view to them.
+ * The arrow for haloed cubelets behind the puzzle: a purple tube in the scene, on a sphere
+ * just outside the puzzle, that starts on the side facing the viewer and curves around the
+ * puzzle's edge to where those cubelets are, its head over them. It is part of the 3D
+ * view, so its far part goes behind the puzzle (drawn faintly there, as the guide's paths
+ * are). It fades in whenever a haloed cubelet can't be seen and out once all can, and is
+ * rebuilt as the view turns, so it always starts on the near side. A tap on it turns the
+ * view to them.
  */
+const HALO_ARROW = { radius: 3.3, tube: 0.075, head: 0.42, headWidth: 0.24, fadeMs: 250 };
+let haloArrow: any = null;
+let haloArrowKey = "";
+let haloArrowFade = { value: 0, target: 0, t: 0 };
 function placeHaloArrow() {
-  const arrow = $("halo-arrow");
   const hidden = edit && !shapeAnim ? hiddenHalos() : [];
-  arrow.hidden = !hidden.length;
-  if (!hidden.length) return;
-  const el = renderer.domElement as HTMLElement;
-  const out = new THREE.Vector3();
-  for (const s of hidden) out.add(new THREE.Vector3(...SLOT_POS[s]).normalize().applyQuaternion(pivot.quaternion));
-  let dx = out.x, dy = -out.y;
-  const len = Math.hypot(dx, dy);
-  if (len < 0.15) (dx = 1), (dy = 0); // straight behind: either side will do
-  else (dx /= len), (dy /= len);
-  const center = toScreen(el, new THREE.Vector3());
-  const across = new THREE.Vector3(1, 0, 0).applyQuaternion(pivot.quaternion.clone().invert());
-  const unit = Math.hypot(toScreen(el, across)[0] - center[0], toScreen(el, across)[1] - center[1]);
-  const r = arrow.offsetWidth / 2, w = el.clientWidth, h = el.clientHeight;
-  const pill = $("halo-hide");
-  const blocked: [number, number, number, number][] = [[0, 0, 42, 42], [w - 42, 0, w, 42], [w - 42, h - 42, w, h]];
-  if (!pill.hidden) {
-    const px = parseFloat(pill.style.left), py = parseFloat(pill.style.top), hw = pill.offsetWidth / 2, hh = pill.offsetHeight / 2;
-    blocked.push([px - hw, py - hh, px + hw, py + hh]);
+  const now = performance.now();
+  // Fade toward shown or gone.
+  const dt = Math.min(1, (now - (haloArrowFade.t || now)) / HALO_ARROW.fadeMs);
+  haloArrowFade.t = now;
+  haloArrowFade.target = hidden.length ? 1 : 0;
+  haloArrowFade.value += Math.sign(haloArrowFade.target - haloArrowFade.value) * Math.min(Math.abs(haloArrowFade.target - haloArrowFade.value), reduceMotionView() ? 1 : dt);
+  if (!hidden.length && haloArrowFade.value <= 0) {
+    if (haloArrow) haloArrow.visible = false;
+    return;
   }
-  const base = Math.atan2(dy, dx);
-  let x = 0, y = 0, angle = base;
-  for (const off of [0, 0.5, -0.5, 1, -1, 1.5, -1.5]) {
-    angle = base + off;
-    x = Math.min(w - r - 4, Math.max(r + 4, center[0] + Math.cos(angle) * unit * 3.9));
-    y = Math.min(h - r - 4, Math.max(r + 4, center[1] + Math.sin(angle) * unit * 3.9));
-    if (!blocked.some(([x0, y0, x1, y1]) => x + r > x0 && x - r < x1 && y + r > y0 && y - r < y1)) break;
+  // Where the hidden cubelets are, and where the viewer is, in the puzzle's frame.
+  const target = new THREE.Vector3();
+  const aim = hidden.length ? hidden : (haloArrow?.userData.slots ?? []);
+  for (const s of aim) target.add(new THREE.Vector3(...SLOT_POS[s]));
+  if (target.lengthSq() < 1e-6) target.set(...(SLOT_POS[aim[0] ?? 0] as [number, number, number]));
+  target.normalize();
+  const eye = pivot.worldToLocal(camera.position.clone()).normalize();
+  const key = `${aim.join()}|${eye.toArray().map((v: number) => v.toFixed(2)).join()}`;
+  if (key !== haloArrowKey || !haloArrow) {
+    haloArrowKey = key;
+    buildHaloArrow(eye, target, aim);
   }
-  arrow.style.left = `${x}px`;
-  arrow.style.top = `${y}px`;
-  // The drawing points right; it is turned to point out from the middle of the puzzle.
-  (arrow.firstElementChild as HTMLElement).style.transform = `rotate(${(Math.atan2(y - center[1], x - center[0]) * 180) / Math.PI}deg)`;
+  haloArrow.visible = true;
+  for (const m of haloArrow.userData.mats) m.opacity = m.userData.full * haloArrowFade.value;
+}
+
+/** Builds the arrow from the side facing the viewer (eye) around the puzzle to target (both unit vectors, puzzle frame). */
+function buildHaloArrow(eye: any, target: any, slots: number[]) {
+  if (haloArrow) {
+    pivot.remove(haloArrow);
+    disposeTree(haloArrow);
+  }
+  // Directions by their angle from the viewer (polar) and around the line of sight (azimuth,
+  // 0 toward the target). The arrow starts on the near side, off to one side, and spirals
+  // around the puzzle's edge to the target: it swings sideways as it goes back, so it reads
+  // as curving around the puzzle rather than as a line straight away from the viewer.
+  let u = target.clone().sub(eye.clone().multiplyScalar(target.dot(eye)));
+  if (u.lengthSq() < 1e-4) u = new THREE.Vector3(0, 1, 0).applyQuaternion(pivot.quaternion.clone().invert()).projectOnPlane(eye);
+  u.normalize();
+  const w = new THREE.Vector3().crossVectors(eye, u);
+  const total = eye.angleTo(target);
+  const th0 = Math.min(0.95, Math.max(0.3, total - 0.7)), th1 = Math.max(th0 + 0.3, total - 0.14);
+  const ps0 = -1.15;
+  const R = HALO_ARROW.radius;
+  const at = (t: number) => {
+    const th = th0 + (th1 - th0) * t, ps = ps0 * (1 - t) * (1 - t);
+    return eye.clone().multiplyScalar(Math.cos(th)).add(u.clone().multiplyScalar(Math.cos(ps) * Math.sin(th))).add(w.clone().multiplyScalar(Math.sin(ps) * Math.sin(th))).multiplyScalar(R);
+  };
+  const pts = Array.from({ length: 41 }, (_, i) => at(i / 40));
+  // The head takes the last stretch of the path, as long as HALO_ARROW.head.
+  let len = 0, cut = 40;
+  for (let i = 40; i > 0 && len < HALO_ARROW.head; i--) (len += pts[i].distanceTo(pts[i - 1])), (cut = i - 1);
+  const shaftEnd = cut / 40;
+  const shaftPts = pts.slice(0, cut + 1);
+  const curve = new THREE.CatmullRomCurve3(shaftPts);
+  const group = new THREE.Group();
+  const mats: any[] = [];
+  // Drawn twice: plainly where nothing is in front, and faintly where the puzzle is.
+  for (const [depthFunc, full, order] of [[THREE.LessEqualDepth, 1, 12], [THREE.GreaterDepth, 0.3, 11]] as const) {
+    const mat = new THREE.MeshBasicMaterial({ color: HALO.color, transparent: true, depthWrite: false, depthFunc });
+    mat.userData.full = full;
+    mats.push(mat);
+    const shaft = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, HALO_ARROW.tube, 10, false), mat);
+    const tip = at(1), base = at(shaftEnd);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(HALO_ARROW.headWidth, tip.distanceTo(base), 16), mat);
+    head.position.copy(base.clone().add(tip).multiplyScalar(0.5));
+    head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tip.clone().sub(base).normalize());
+    // A ball at the start, so the arrow reads as starting there rather than being cut off.
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(HALO_ARROW.tube * 1.6, 12, 8), mat);
+    ball.position.copy(pts[0]);
+    for (const m of [shaft, head, ball]) {
+      m.renderOrder = order;
+      m.layers.set(HALO_ARROW_LAYER);
+      group.add(m);
+    }
+  }
+  // A fatter, unseen tube along the arrow: what a tap has to hit.
+  const hit = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 32, 0.4, 8, false), new THREE.MeshBasicMaterial({ visible: false }));
+  hit.layers.set(HALO_ARROW_LAYER);
+  group.add(hit);
+  group.userData = { mats, hit, slots, start: pts[0], mid: at(0.3) };
+  haloArrow = group;
+  pivot.add(group);
+}
+
+/** Whether a tap at (clientX, clientY) lands on the arrow. */
+function hitsHaloArrow(el: HTMLElement, clientX: number, clientY: number): boolean {
+  if (!haloArrow?.visible || haloArrowFade.value < 0.5) return false;
+  const r = el.getBoundingClientRect();
+  const ray = new THREE.Raycaster();
+  ray.layers.set(HALO_ARROW_LAYER);
+  ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), camera);
+  return ray.intersectObject(haloArrow.userData.hit, false).length > 0;
 }
 
 /** The arrow's tap: turns the 3D view to show the haloed cubelets it can't show now. */
@@ -4971,7 +5041,7 @@ function renderEdit() {
   endShapeAnim();
   $("edit-bar").hidden = !edit;
   $("edit-start").hidden = !!edit;
-  if (!edit) $("halo-hide").hidden = $("halo-arrow").hidden = true;
+  if (!edit) $("halo-hide").hidden = true;
   if (!edit) return;
   updateHighlight();
   drawEdit();
@@ -5281,9 +5351,15 @@ function installProbe() {
     },
     /** The haloed slots the 3D view can't show now, and where their arrow is (client coordinates; null while hidden). */
     haloArrow: () => {
-      const a = $("halo-arrow");
-      const r = a.getBoundingClientRect();
-      return { behind: hiddenHalos().map(slotName).sort(), at: a.hidden ? null : { x: r.left + r.width / 2, y: r.top + r.height / 2 } };
+      // Where on screen its start and its middle are, and how far it has faded in.
+      const shown = haloArrow?.visible && haloArrowFade.value > 0;
+      const el = renderer.domElement as HTMLElement;
+      const r = el.getBoundingClientRect();
+      const scr = (p: any) => {
+        const [x, y] = toScreen(el, p);
+        return { x: r.left + x, y: r.top + y };
+      };
+      return { behind: hiddenHalos().map(slotName).sort(), opacity: Math.round(haloArrowFade.value * 100) / 100, at: shown ? scr(haloArrow.userData.start) : null, mid: shown ? scr(haloArrow.userData.mid) : null };
     },
     painted: (slot: string, face: string) => edit?.colors[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)] ?? null,
     /**

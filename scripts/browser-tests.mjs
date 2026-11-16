@@ -1226,8 +1226,12 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   const box = await page.locator("#scene").boundingBox();
   const inView = behind.at && behind.at.x > box.x && behind.at.x < box.x + box.width && behind.at.y > box.y && behind.at.y < box.y + box.height;
   check(lit.px3d === 0 && behind.behind.join() === "Fx.U,Rx.U" && inView, `behind the puzzle they draw nothing over it, and the arrow shows, inside the view (${lit.px3d} pixels, ${JSON.stringify(behind)})`);
-  await page.click("#halo-arrow");
+  // The arrow is in the scene, starting on the side facing the viewer: tap its middle.
+  await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 1);
+  const mid = (await probe("haloArrow")).mid;
+  await page.mouse.click(mid.x, mid.y);
   await settle();
+  await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 0);
   const found = { seen: await seenBoth(), arrow: await probe("haloArrow"), px3d: await probe("haloPixels", "3d") };
   check(found.seen === "2,2" && found.arrow.at === null && found.px3d > 0, `a tap on the arrow turns the view to them, and the arrow goes (${JSON.stringify(found)})`);
   await page.click("#edit-status");
