@@ -31,7 +31,8 @@ import { formatAlg, parseAlg } from "./notation.ts";
 import { COLOR_NAME, PIECES, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, type Kind, type Turn } from "./puzzle.ts";
 import { unreachableReason } from "./serialize.ts";
 
-export type Stage = "hold" | "regrip" | "shape" | "core" | "coreTop" | "coreTopC" | "coreMiddle" | "coreBottom" | "coreBottomC" | "parity" | "corners" | "edges" | "topEdges" | "topCorners" | "sideEdges" | "bottomCorners" | "bottomEdges";
+/** "recover" is the Lab's own: a step that undoes turns a person made by mistake (see src/core/lost.ts). The solver never gives one. */
+export type Stage = "recover" | "hold" | "regrip" | "shape" | "core" | "coreTop" | "coreTopC" | "coreMiddle" | "coreBottom" | "coreBottomC" | "parity" | "corners" | "edges" | "topEdges" | "topCorners" | "sideEdges" | "bottomCorners" | "bottomEdges";
 
 /**
  * The order the outer pieces are solved in. Both orders use the same two 3-cycles.
