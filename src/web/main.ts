@@ -2945,7 +2945,7 @@ function infoHelp(): string[] {
       'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple. <span class="ui-name">Show</span> turns the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
     ];
   }
-  const gestures = "Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes the last turn.";
+  const gestures = "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn.";
   if (!solving) return [gestures];
   return [
     gestures,

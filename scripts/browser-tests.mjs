@@ -1305,7 +1305,7 @@ labTest("info: the help says what taps and drags do in each mode, and Copy debug
   await page.click('[data-paint="shape"]');
   const shape = await help();
   check(
-    /Swipe on the cube to turn a layer/.test(plain) && !/During a solve step/.test(plain) && /During a solve step/.test(solve) && /Editing the puzzle\. Tap a sticker to give it the picked color/.test(paint) && !/Swipe on the cube/.test(paint) && /Tap a cubelet to remove it, or tap a gray box to add one/.test(shape),
+    /Swipe on the puzzle to turn a layer/.test(plain) && !/During a solve step/.test(plain) && /During a solve step/.test(solve) && /Editing the puzzle\. Tap a sticker to give it the picked color/.test(paint) && !/Swipe on the puzzle/.test(paint) && /Tap a cubelet to remove it, or tap a gray box to add one/.test(shape),
     `the help follows the mode (${[plain, solve, paint, shape].map((t) => t.slice(0, 40)).join(" | ")})`,
   );
   // An edit whose shape isn't valid, copied and put back.
