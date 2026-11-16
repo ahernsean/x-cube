@@ -2941,7 +2941,7 @@ function infoHelp(): string[] {
         ? "Tap a cubelet to remove it, or tap a gray box to add one."
         : "Tap a sticker to give it the picked color.";
     return [
-      `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it. Layers don't turn while editing.`,
+      `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it.`,
       "The line under the colors says whether the puzzle with those colors can be real. A problem's cubelets are marked in purple; Show turns the view to them, and Hide takes the mark away.",
     ];
   }
