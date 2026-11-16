@@ -1328,6 +1328,58 @@ labTest("shape editing: Show and the arrow reach a cubelet bared by taking an ex
   check(after.seen >= 1 && after.arrow.behind.length === 0 && after.arrow.opacity === 0, `Show turns the view to it, and the arrow goes (${JSON.stringify(after)})`);
 });
 
+labTest("info: the help says what taps and drags do in each mode, and Copy debug info puts an edit back", async ({ page, check, probe, play, settle, gesture }) => {
+  const help = async () => {
+    if (await page.$eval("#info-pop", (p) => p.hidden)) await page.click("#info-btn");
+    const text = await page.$eval("#info-text", (e) => e.textContent);
+    await page.keyboard.press("Escape");
+    return text;
+  };
+  const plain = await help();
+  await play("R U");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  const solve = await help();
+  await page.click("#guide-stop");
+  await page.click(`[data-tab="start"]`);
+  await page.click("#edit-start");
+  const paint = await help();
+  await page.click('[data-paint="shape"]');
+  const shape = await help();
+  check(
+    /Swipe on the puzzle to turn a layer/.test(plain) && !/During a solve step/.test(plain) && /During a solve step/.test(solve) && /Editing the puzzle\. Tap a sticker to give it the picked color/.test(paint) && !/Swipe on the puzzle/.test(paint) && /Tap a cubelet to remove it, or tap a gray box to add one/.test(shape),
+    `the help follows the mode (${[plain, solve, paint, shape].map((t) => t.slice(0, 40)).join(" | ")})`,
+  );
+  // An edit whose shape isn't valid, copied and put back.
+  const at = await probe("sticker", "Fx.U", "F");
+  await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+  await page.waitForFunction(() => window.xcubeProbe.idle());
+  const before = await page.$eval("#edit-status", (e) => e.textContent);
+  const json = await probe("debugInfo");
+  const info = JSON.parse(json);
+  check(info.edit?.removed.join() === "Fx.U" && info.edit.tool === "shape" && typeof info.turns === "string", `the debug info holds the edit (${JSON.stringify({ removed: info.edit?.removed, tool: info.edit?.tool, problems: info.edit?.problems.length })})`);
+  await page.click("#edit-cancel");
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), json);
+  await settle();
+  const back = await probe("shapeEdit");
+  const line = await page.$eval("#edit-status", (e) => e.textContent);
+  check(back?.removed.join() === "Fx.U" && line === before, `restoring it puts the edit back as it was (${JSON.stringify(back?.removed)}, "${line}")`);
+  await page.click("#info-btn");
+  await page.click("#copy-debug");
+  const said = await page.waitForFunction(() => /Debug info copied/.test(document.getElementById("message").textContent), null, { timeout: 5000 }).then(() => true, () => false);
+  check(said, "Copy debug info says it copied");
+  // With no clipboard at all, the text stays on screen, selected, to copy by hand.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.reject(new Error("denied")) }, configurable: true });
+    document.execCommand = () => false;
+  });
+  await page.click("#copy-debug");
+  const shown = await page.waitForFunction(() => /Select and copy the debug info/.test(document.getElementById("message").textContent), null, { timeout: 5000 }).then(() => true, () => false);
+  const field = await page.$eval("#debug-text", (f) => ({ hidden: f.hidden, edit: JSON.parse(f.value).edit?.removed?.join(), selected: f.selectionEnd - f.selectionStart === f.value.length }));
+  check(shown && !field.hidden && field.edit === "Fx.U" && field.selected, `without a clipboard the debug info stays shown and selected (${JSON.stringify({ shown, ...field })})`);
+});
+
 labTest("shape editing: a tap changes only what it taps, paint stays on its spot, and the shape may be wrong for a while", async ({ page, check, probe, gesture }) => {
   const editLine = () => page.$eval("#edit-status", (e) => e.textContent);
   const idle = () => page.waitForFunction(() => window.xcubeProbe.idle());
@@ -1853,6 +1905,40 @@ labTest("guide: only the cubelets a step moves or turns keep their colors", asyn
   const g = await probe("guide");
   check(g.alg === "R' D2 R" && g.focus.length === 6 && ["DBL", "DFL"].every((s) => g.focus.includes(s)) && !g.focus.some((s) => ["UBL", "UFL"].includes(s)), `only the moved corners and their extension cubelets keep their colors (${g.focus.join(" ")})`);
   check(g.darkGray > 0 && g.gray > 0, `what else the turns move is darker gray, and what they leave alone lighter (${g.darkGray} darker, ${g.gray} lighter)`);
+});
+
+labTest("guide: Full color grays nothing and gives every cubelet its glow back, and is kept", async ({ page, check, probe, settle, play }) => {
+  await play("R U R' U'");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  // Past any regrip, to a step that grays cubelets.
+  for (let i = 0; i < 6 && !(await probe("guide")).gray; i++) {
+    await page.click("#guide-start");
+    await page.waitForFunction(() => !document.getElementById("next-step").disabled, null, { timeout: 60000 });
+    await page.click("#next-step");
+    await settle();
+  }
+  const gray = await probe("guide");
+  check(!gray.fullColor && gray.gray + gray.darkGray > 0 && gray.otherNoGlow > 0, `to begin with the step grays cubelets and takes their glow (${gray.gray} + ${gray.darkGray} gray, ${gray.otherNoGlow} bands off)`);
+  await page.click("#guide-colors");
+  await settle();
+  const full = await probe("guide");
+  const pressed = await page.$eval("#guide-colors", (b) => b.getAttribute("aria-pressed") === "true" && b.classList.contains("sel"));
+  check(full.fullColor && pressed && full.gray + full.darkGray === 0 && full.otherNoGlow === 0, `Full color: nothing is gray and no glow is off (${full.gray} + ${full.darkGray} gray, ${full.otherNoGlow} bands off)`);
+  check(full.arrows === gray.arrows && full.arrows > 0, `the paths stay (${full.arrows} of ${gray.arrows})`);
+  const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+  check(fits, "the page is no wider than the screen");
+  await page.reload();
+  await page.waitForFunction(() => window.xcubeProbe);
+  check(await page.$eval("#guide-colors", (b) => b.classList.contains("sel")), "the choice is kept on the device");
+  // The switch shows only during a solve.
+  await play("R U");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  await page.click("#guide-colors");
+  check(!(await page.$eval("#guide-colors", (b) => b.classList.contains("sel"))), "a second tap turns it off");
 });
 
 labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ page, check, settle, play, counter }) => {

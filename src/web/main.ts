@@ -2464,6 +2464,7 @@ function escapeHtml(s: string) {
 function render() {
   const st = app.current;
   refreshGuide();
+  renderInfo();
   // status
   // One chip for the shape: "Solved", or "X shape" lit when in shape and gray when not.
   const solvedNow = isSolved(st), inShape = isXShape(st);
@@ -2936,6 +2937,134 @@ function setupCollapsibles() {
   }
 }
 
+/**
+ * The 3D view's ⓘ panel: what taps and drags on the view do now, which depends on the
+ * mode (turning the puzzle, a solve, or Edit puzzle and its tool), and how to read what is
+ * drawn in that mode.
+ */
+function infoHelp(): string[] {
+  if (edit) {
+    const tool =
+      edit.paint === "shape"
+        ? "Tap a cubelet to remove it, or tap a gray box to add one."
+        : "Tap a sticker to give it the picked color.";
+    return [
+      `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it.`,
+      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple. <span class="ui-name">Show</span> turns the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
+    ];
+  }
+  const gestures = "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn.";
+  if (!solving) return [gestures];
+  return [
+    gestures,
+    "<strong>During a solve step</strong>, only the cubelets the step applies to keep their colors; gray ones end the step just as they started, and dark gray ones may end up anywhere. Each colored cubelet has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the cubelet flies along it. A solid path that ends in a ring: the cubelet ends up solved. A dashed path: it is passing through and moves again later. A solid path with no ring: a shape or core step moves it, and it is solved later.",
+  ];
+}
+let infoKey = "";
+function renderInfo() {
+  const parts = infoHelp();
+  const key = parts.join("|");
+  if (key === infoKey) return;
+  infoKey = key;
+  $("info-text").innerHTML = parts.map((t) => `<p class="hint">${t}</p>`).join("");
+}
+
+/**
+ * Everything needed to see what the Lab is showing and doing, as JSON, for a developer:
+ * the start and the turns, where the view is, the solve, and an edit in progress with
+ * its shape and paint (a shape that isn't valid has no state code of its own).
+ * restoreDebug (the probe's) puts the position, the view and an edit back.
+ */
+function debugInfo(): string {
+  const q = pivot.quaternion;
+  const name = (s: number) => slotName(s);
+  return JSON.stringify(
+    {
+      lab: "x-cube debug 1",
+      at: new Date().toISOString(),
+      device: { agent: navigator.userAgent, width: innerWidth, height: innerHeight, ratio: devicePixelRatio },
+      base: encodeState(app.base),
+      turns: formatAlg(app.history),
+      cursor: app.cursor,
+      current: encodeState(app.current),
+      view: [q.x, q.y, q.z, q.w].map((v) => Math.round(v * 1e5) / 1e5),
+      solving,
+      order: guideMode,
+      steps: trail.map((g) => ({ index: g.index, stage: g.step.stage, start: g.start, alg: g.step.alg, shown: g === guide })),
+      edit: edit && {
+        shape: encodeState(edit.shape),
+        removed: [...edit.removed].map(name),
+        added: [...edit.added].map(name),
+        // One character per face, slot by slot: a painted color, or "." for none.
+        colors: edit.colors.map((c) => c ?? ".").join(""),
+        tool: edit.paint,
+        problems: edit.fit.problems.map((p) => ({ text: p.text, slots: p.slots.map(name) })),
+        selected: edit.selected,
+        hidden: edit.hidden,
+      },
+    },
+    null,
+    1,
+  );
+}
+
+async function copyDebug() {
+  const text = debugInfo();
+  const field = $("debug-text") as HTMLTextAreaElement;
+  field.hidden = true;
+  try {
+    await navigator.clipboard.writeText(text);
+    setMessage("Debug info copied", "ok");
+  } catch {
+    // Without clipboard access, the text is shown selected, to copy by hand if the browser won't.
+    field.value = text;
+    field.hidden = false;
+    field.select();
+    let copied = false;
+    try {
+      copied = document.execCommand?.("copy") ?? false;
+    } catch {
+      copied = false;
+    }
+    if (copied) {
+      field.hidden = true;
+      setMessage("Debug info copied", "ok");
+    } else setMessage("Select and copy the debug info", "info");
+  }
+  render();
+}
+
+function slotByName(name: string): number {
+  for (let s = 0; s < NUM_SLOTS; s++) if (slotName(s) === name) return s;
+  throw new Error(`no slot named ${name}`);
+}
+
+/** Puts back what debugInfo wrote: the start, the turns and the cursor, the view, and an edit in progress. */
+function restoreDebug(json: string) {
+  const d = JSON.parse(json);
+  if (edit) endEdit(false);
+  if (solving) stopGuide();
+  app.base = decodeState(d.base);
+  app.history = parseAlg(d.turns ?? "");
+  jump(d.cursor ?? app.history.length);
+  if (d.view) pivot.quaternion.set(d.view[0], d.view[1], d.view[2], d.view[3]);
+  if (d.edit) {
+    startEdit();
+    const e = edit!;
+    e.shape = decodeState(d.edit.shape);
+    e.shown = e.shape.clone();
+    e.removed = new Set(d.edit.removed.map(slotByName));
+    e.added = new Set(d.edit.added.map(slotByName));
+    e.colors = [...d.edit.colors].map((c: string) => (c === "." ? undefined : (c as Color)));
+    e.paint = d.edit.tool;
+    e.selected = d.edit.selected ?? "";
+    e.hidden = d.edit.hidden ?? null;
+    refitEdit();
+    renderEdit();
+  }
+  render();
+}
+
 /** The ⓘ and Display buttons beside the 3D and flat views' headings each open a small panel over the view. */
 function bindViewTools() {
   const pairs: [string, string][] = [
@@ -2954,6 +3083,7 @@ function bindViewTools() {
     $(b).addEventListener("click", () => {
       const open = $(p).hidden;
       close(p);
+      $("debug-text").hidden = true;
       $(p).hidden = !open;
       $(b).setAttribute("aria-expanded", String(open));
     });
@@ -2971,8 +3101,10 @@ function bindViewTools() {
 function bindUI() {
   bindAlgorithms();
   $("next-step").addEventListener("click", () => nextStep());
+  $("copy-debug").addEventListener("click", () => void copyDebug());
   $("strip-next").addEventListener("click", () => nextStep());
   $("guide-stop").addEventListener("click", () => stopGuide());
+  $("guide-colors").addEventListener("click", () => setGuideFullColor(!guideFullColor));
   $("guide-start").addEventListener("click", () => {
     if (guide && app.cursor === guide.start) playToEnd(guide.start + guide.step.turns.length);
     else goToStep(guide ?? undefined);
@@ -3625,6 +3757,24 @@ function setGuideMode(mode: Mode) {
   }
   render();
 }
+const GUIDE_COLOR_KEY = "xcube.guideFullColor";
+/** Full color: a step grays nothing, and every cubelet keeps its edge glow. Kept on this device. */
+let guideFullColor = (() => {
+  try {
+    return localStorage.getItem(GUIDE_COLOR_KEY) === "1";
+  } catch {
+    return false;
+  }
+})();
+function setGuideFullColor(on: boolean) {
+  guideFullColor = on;
+  try {
+    localStorage.setItem(GUIDE_COLOR_KEY, on ? "1" : "0");
+  } catch {
+    // The choice then lasts only for this visit.
+  }
+  render();
+}
 let guideDimmed: any[] = []; // meshes drawn gray
 let guideArrows: any = null;
 
@@ -3894,6 +4044,8 @@ function refreshGuide() {
   }
   drawGuide();
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-guide-mode]")) b.classList.toggle("sel", b.dataset.guideMode === guideMode);
+  $("guide-colors").classList.toggle("sel", guideFullColor);
+  $("guide-colors").setAttribute("aria-pressed", String(guideFullColor));
   ($("guide-stop") as HTMLButtonElement).disabled = !solving;
   $("guide").classList.toggle("solving", solving);
   $("next-step").textContent = solving ? "Next step" : "Start solving";
@@ -3939,7 +4091,7 @@ function drawGuide() {
   const at = anim ? app.cursor + (anim.forward ? -1 : 1) : app.cursor;
   // A hold step only turns the whole puzzle, and the center colors are what it goes by: no grays.
   const within = !!g && !turnsWhole(g.step) && at >= g.start && at < g.start + g.step.turns.length;
-  const key = within ? `${g!.start}/${g!.step.alg}` : "";
+  const key = within ? `${g!.start}/${g!.step.alg}/${guideFullColor}` : "";
   if (guideArrows) guideArrows.visible = !!g && app.cursor === g.start && !anim && !queue.length;
   if (drawGuide.key === key) return;
   drawGuide.key = key;
@@ -3953,7 +4105,7 @@ function drawGuide() {
   }
   if (within) {
     for (const c of CUBELETS) {
-      if (g!.focus.has(c.id)) continue;
+      if (guideFullColor || g!.focus.has(c.id)) continue;
       const level = g!.free.has(c.id) ? 2 : 1;
       c.stickers.forEach((color, d) => {
         if (!color) return;
@@ -5142,6 +5294,7 @@ function clearGlowPaint() {
 
 function renderEdit() {
   endShapeAnim();
+  renderInfo();
   $("edit-bar").hidden = !edit;
   $("edit-start").hidden = !!edit;
   if (!edit) $("halo-hide").hidden = true;
@@ -5329,12 +5482,11 @@ function probe3d() {
 
 function installProbe() {
   const canvas = () => renderer.domElement as HTMLCanvasElement;
-  const slotByName = (name: string) => {
-    for (let s = 0; s < NUM_SLOTS; s++) if (slotName(s) === name) return s;
-    throw new Error(`no slot named ${name}`);
-  };
   (window as any).xcubeProbe = {
     idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim,
+    /** The debug info Copy debug info copies, and putting it back (for reproducing what a person saw). */
+    debugInfo: () => debugInfo(),
+    restoreDebug: (json: string) => restoreDebug(json),
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
     /** The turns of the last shuffle (the page doesn't show them). */
@@ -5387,6 +5539,7 @@ function installProbe() {
             })
           : false,
         mode: guideMode,
+        fullColor: guideFullColor,
         runners: guideArrows?.visible ? guideArrows.userData.runners.length : 0,
         /** Glow bands of the cubelets the step doesn't apply to that are drawn, and that are not; and of those it does apply to that are drawn. */
         otherGlow: CUBELETS.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 0 : 1), 0),
