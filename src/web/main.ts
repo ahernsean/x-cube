@@ -2939,10 +2939,10 @@ function infoHelp(): string[] {
     const tool =
       edit.paint === "shape"
         ? "Tap a cubelet to remove it, or tap a gray box to add one."
-        : "Tap a sticker to paint it the color picked below the view.";
+        : "Tap a sticker to give it the picked color.";
     return [
       `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it. Layers don't turn while editing.`,
-      "The line under the colors says whether the puzzle as painted can be real. A problem's cubelets are marked in purple; Show turns the view to them, and Hide takes the mark away.",
+      "The line under the colors says whether the puzzle with those colors can be real. A problem's cubelets are marked in purple; Show turns the view to them, and Hide takes the mark away.",
     ];
   }
   const gestures = "Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes the last turn.";
