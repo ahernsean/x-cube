@@ -102,6 +102,7 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .edit-bar[hidden] { display: none; }
 .palette { display: flex; gap: 8px; flex-wrap: wrap; }
 .swatch { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--tile-edge); cursor: pointer; padding: 0; }
+.swatch.shape-tool { width: auto; padding: 0 12px; border-radius: 20px; font: inherit; font-size: 14px; font-weight: 600; color: var(--ink, inherit); background: var(--panel); }
 .swatch[aria-checked="true"] { outline: 3px solid var(--accent); outline-offset: 2px; }
 .edit-status { margin: 0; padding: 6px 8px; border-radius: 8px; font-size: 14px; }
 .edit-status.good { background: var(--good-bg); color: var(--good); }
@@ -159,6 +160,9 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .btn.tool-btn.corner[hidden] { display: none; }
 .tool-btn .ico { width: 24px; height: 24px; display: block; }
 .corner.tl { top: 4px; left: 4px; }
+/* Hides the editor's halo: a pill beside the haloed cubelets (placeHidePill), over the edge labels. */
+.halo-hide { position: absolute; z-index: 30; left: 0; top: 0; transform: translate(-50%, -50%); min-height: 34px; padding: 5px 14px; border: 0; border-radius: 999px; background: #a63dff; color: #fff; font: 700 15px var(--f-body); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); cursor: pointer; }
+.halo-hide[hidden] { display: none; }
 .corner.tr { top: 4px; right: 4px; }
 .corner.br { bottom: 4px; right: 4px; }
 .stage > .pop { z-index: 60; } /* above the edge labels */
@@ -412,6 +416,7 @@ details[open] summary { margin-bottom: 8px; }
       <button class="btn small tool-btn info corner tr" id="info-btn" aria-label="How to use the 3D view" aria-expanded="false" aria-controls="info-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="7.4" r="1.3" fill="currentColor"/><path d="M12 10.6v6.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       <button class="btn small tool-btn info corner br" id="render-btn" aria-label="Display options" title="Display options" aria-expanded="false" aria-controls="render-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg></button>
       <button class="btn small tool-btn info corner tl" id="undo" aria-label="Undo the last turn" title="Undo the last turn" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      <button class="halo-hide" id="halo-hide" hidden>Hide</button>
       <div class="pop near-top" id="info-pop" hidden>
         <p class="hint">Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes.</p>
         <p class="hint"><strong>During a solve step</strong>, only the cubelets the step applies to keep their colors; gray ones don't move, dark gray ones may end up anywhere. Each colored cubelet has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the cubelet flies along it. With a ring: the cubelet ends up solved. Dashed: it is passing through and moves again later. Plain: a shape or core step moves it; it is solved later.</p>
@@ -445,11 +450,11 @@ details[open] summary { margin-bottom: 8px; }
     </div>
     <div class="edit-bar" id="edit-bar" hidden>
       <div class="palette" role="radiogroup" aria-label="Paint color">
-        <button class="swatch" role="radio" data-paint="W" aria-label="White"></button><button class="swatch" role="radio" data-paint="Y" aria-label="Yellow"></button><button class="swatch" role="radio" data-paint="G" aria-label="Green"></button><button class="swatch" role="radio" data-paint="B" aria-label="Blue"></button><button class="swatch" role="radio" data-paint="R" aria-label="Red"></button><button class="swatch" role="radio" data-paint="O" aria-label="Orange"></button>
+        <button class="swatch" role="radio" data-paint="W" aria-label="White"></button><button class="swatch" role="radio" data-paint="Y" aria-label="Yellow"></button><button class="swatch" role="radio" data-paint="G" aria-label="Green"></button><button class="swatch" role="radio" data-paint="B" aria-label="Blue"></button><button class="swatch" role="radio" data-paint="R" aria-label="Red"></button><button class="swatch" role="radio" data-paint="O" aria-label="Orange"></button><button class="swatch shape-tool" role="radio" data-paint="shape" aria-label="Shape" title="Move extension cubelets to match the cube's shape">Shape</button>
       </div>
       <p class="edit-status" id="edit-status" aria-live="polite"></p>
       <div class="edit-actions"><button class="btn small primary" id="edit-done">Done</button><button class="btn small" id="edit-cancel">Cancel</button></div>
-      <p class="hint">Pick a color, then tap stickers on the cube to paint them. Drag to turn the view.</p>
+      <p class="hint" id="edit-hint"></p>
     </div>
     <div class="dock" id="dock" aria-label="Turn list and playback">
       <div class="list-row"><div class="history" id="history"></div><button class="list-clear" id="list-clear" title="Clear the turn list" aria-label="Clear the turn list" hidden>✕</button></div>
@@ -483,7 +488,7 @@ details[open] summary { margin-bottom: 8px; }
       <div class="base-actions">
         <button class="btn small" id="shuffle">Shuffle</button>
         <button class="btn small" id="reset">Reset to solved</button>
-        <button class="btn small edit-btn" id="edit-start" title="Paint the stickers to match a real cube"><span aria-hidden="true">✎</span> Edit colors</button>
+        <button class="btn small edit-btn" id="edit-start" title="Set the shape and paint the stickers to match the real puzzle"><span aria-hidden="true">✎</span> Edit puzzle</button>
         <button class="btn small" id="clear" title="The position shown becomes the start, and the turn list empties">Start from here</button>
       </div>
       <p class="hint" style="margin:4px 0 0">Start from here keeps the puzzle as shown and empties the turn list.</p>

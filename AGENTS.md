@@ -221,7 +221,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   `ALGORITHMS.md` and the Lab's Algorithms list have all four.
 - Setups reach every one of the 3,360 ordered triples of spots for each kind, which with
   the parity fixes makes the outer stages complete; `test/solve.test.ts` solves scrambled
-  positions and positions from the color editor, and checks each step changes only what
+  positions and positions from the editor, and checks each step changes only what
   it says.
 
 ## Code map
@@ -232,7 +232,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - `src/core/analyze.ts`: shape and solved tests, effect (cycles and twists), text face views,
   flat-view rim data (`faceRimView`).
 - `src/core/algorithms.ts`: the known algorithms the Lab lists, each with an example position.
-- `src/core/edit.ts`: fitting edited sticker colors to real cubelets (the Lab's color editor).
+- `src/core/edit.ts`: the Lab's editor: fitting painted sticker colors to real cubelets
+  (`fitColors`), and editing the shape (`draftTap` and the other `draft` functions).
 - `src/core/search.ts`, `src/core/goals.ts`: iterative-deepening search with goal masks
   based on appearance (look-alike twins compare equal).
 - `src/core/solve.ts`: the step-by-step solver (see "Solving method" above).
@@ -367,9 +368,44 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   dents, patches of more and less shine), turned and offset differently on each sticker. Only the
   coat carries the crinkles, so they show in reflections while the color stays smooth.
   The Gloss switch turns it off.
-- **Color editing:** Edit colors in the Start panel. Pick a color, then tap stickers to paint
-  them; drags tumble the view, and the other controls are set aside. The shape stays as it
-  is. A painted sticker's edge glow takes the paint too. Each paint is refit to cubelets
+- **Editing the puzzle:** **Edit puzzle** in the Start panel sets the shape and paints the
+  stickers to match the real puzzle, in either order. Its palette has the six colors and a
+  **Shape** tool; drags tumble the view, and the other controls are set aside.
+  - **Shape tool:** a tap changes only what it taps (`draftTap`), as the owner thinks of
+    a stack of cubelets rather than of the rules behind it: an extension cubelet goes away,
+    and an empty spot gets a cubelet. Every empty spot next to the core is marked while
+    Shape is selected: small gray glass boxes with white edges, unlit, so they show over
+    white, over black and in shadow. A tap on a core corner itself turns it clockwise as
+    seen from outside (three taps go round), and on a core single edge turns it over,
+    with the extension cubelets on it (animated, in place); it is seldom reachable, as the
+    box on the cubelet's bare side sits over its sticker. There is no halo while Shape is
+    selected (it covered what to tap).
+  - **A wrong shape for a while:** as paint may be wrong, so may the shape. The line names
+    what keeps it from being one the puzzle can have ("This core corner has only one
+    extension, but it has to have two", "These two core corners have three extensions
+    each, but each can have only two", "This core edge has no extensions, but it has to
+    have one or two", each with a halo on the core cubelets; "Only three core edges have
+    two extensions, but there must be four", "Five ... but there can be only four",
+    "Only three centers have an extension center", "The two centers without an extension
+    center must be opposite each other"); a cubelet put in is a blank body meanwhile (drawn
+    in the flat view too, with its stickers, as is every dashed outline). Once
+    the shape is one the puzzle can have, real cubelets take the blanks' places at once.
+    The core corners' twists can still be wrong, as no turns leave them: "The core corners
+    can't all be turned this way at once. One of them needs another turn" (no halo: any
+    of them may be the one).
+  - **Paint stays on its spot**, not on a cubelet: what a tap turns (a core cubelet with
+    the extension cubelets on it) loses its paint. A cubelet that only comes or goes changes only its own spot
+    and the faces it covers or bares: one put in takes, on each of its faces, the color of
+    the face it covers behind it, seen from that side (the core cubelet's, and any
+    neighbor's), and one taken away leaves each of its colors on the face it bares behind
+    it (`repaint`); a face with nothing behind it starts unpainted. A sticker not painted yet (`UNPAINTED`) fits any color
+    and is drawn as a dashed outline on the plastic, with no edge glow; the line counts
+    them ("6 stickers aren't painted yet", with a halo on their cubelets), and Done waits
+    for them. Where a cubelet's stickers are follows from the shape around it alone
+    (`draftColors`), so a sticker can be painted while the shape is still wrong. Until
+    every center is painted, the center arrangement isn't checked.
+  - **Painting:** pick a color, then tap stickers. A painted sticker's edge glow takes the
+    paint too. Each paint is refit to cubelets
   (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
   wrong: no cubelet of that kind can have a color ("A core corner must be white or
   yellow, never blue"), two stickers of one color or opposite colors, a corner's colors going around it
@@ -386,13 +422,17 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   problem at a time; with several, tiny ‹ and › buttons step through them ("‹2/4›"), and the
   choice is kept across paints while that problem remains. The shown problem's
   cubelets get a **halo** by themselves: a purple glow around the whole cubelet, drawn
-  over everything (so it shows a cubelet behind others), in the 3D view and on each
+  over the rest of the puzzle (so it shows a cubelet behind others) but hidden by a haloed
+  cubelet in front of it (so many halos don't pile up over each other's stickers), in the 3D view and on each
   flat-view face where the cubelet shows. A halo appearing never moves the view. **Show**
   (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
   most unblocked, then each as squarely as possible, from the preset views and the
   directions between the stickers), again each time it is tapped. **Hide** removes the
-  halo until the shown problem names other cubelets. Done, available only when valid, makes the fitted position the start
-  ("Edited colors"). **Valid means turns can reach it:** some position showing the paint can
+  halo until the shown problem names other cubelets; while the halo shows, a purple
+  **Hide** pill in the 3D view does the same, placed just past the haloed cubelets on the
+  side away from the middle of the puzzle as drawn (above them if they are at the middle),
+  following the view and kept inside it. Done, available only when valid, makes the fitted position the start
+  ("Edited"). **Valid means turns can reach it:** some position showing the paint can
   be reached by turning, and Done gives that position (so it has an X2 code). Many positions
   show the same paint, because look-alike core cubelets can trade places and core double
   edges are never seen; those choices absorb every swap and flip parity (the argument is at
@@ -414,7 +454,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   steps add up to); the list is top-aligned, the newest step always at its top, and when a
   step is added the older ones slide down to make room; on phones the list scrolls between
   the step's line and Stop solving. The order can't change during a solve. Anything that
-  sets a new start (Shuffle, Reset, Edit colors, a code, a saved position, an algorithm,
+  sets a new start (Shuffle, Reset, Edit puzzle, a code, a saved position, an algorithm,
   clearing the turn list) asks "End the solve in progress?" first, and ends it. In the
   playback strip, once a solve's turns have all played, ▶ gives way to a **Next step**
   button (two dots with an arrow from one to the other, in the highlight blue), which
@@ -483,7 +523,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   Where the puzzle is in the way, a path and its flying copy are drawn faintly (a second
   drawing that passes only behind what is already drawn, without the path's dark
   casing), so a path on the far side can't be taken for one on the near side.
-  **Show** turns the 3D view to where the paths begin and end (as the color editor's Show
+  **Show** turns the 3D view to where the paths begin and end (as the editor's Show
   does for a problem). A parity step, which turns whole layers, has one neutral arrow for each turn instead:
   an arc around the outside of the layer, where a finger would swipe to turn it, as far
   around as the turn goes (`layerArrow`). **Order** switches between the solver's modes, "Corners,
@@ -501,7 +541,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   **Stop** drops the step, its grays and its line and leaves
   the turn list alone; Next step starts again from the position shown. Playing the step returns the colors and the line reads "(done)". Any change that
   takes the step's turns out of the turn list (a turn by hand, Clear, Edit) drops the step,
-  its grays and its line; so does Edit colors. Going to another panel keeps the step. With
+  its grays and its line; so does Edit puzzle. Going to another panel keeps the step. With
   no step, the line says what Next step does (drawn by CSS, so it isn't in the line's text).
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side

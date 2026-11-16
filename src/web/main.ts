@@ -23,9 +23,10 @@ import {
   type Turn,
   applyTurns,
   invertTurns,
+  SLOT_NEIGHBOR,
 } from "../core/puzzle.ts";
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
-import { fitColors, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
+import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 
@@ -103,7 +104,15 @@ const LIGHT = { env: 0.45, key: 0.45, plasticRough: 0.28, plasticSpec: 6, plasti
 let keyLight: any = null;
 let envTex: any = null;
 /** What the step guide's flying copies are made of: the puzzle's own body and sticker shapes and materials. */
-let copyLook: { body: any; plane: any; bodyMat: any; sticker: (c: Color) => any; place: (m: any, d: number) => void } | null = null;
+let copyLook: {
+  body: any;
+  plane: any;
+  bodyMat: any;
+  sticker: (c: Color) => any;
+  place: (m: any, d: number) => void;
+  /** The flat view's look, for the editor's own meshes: a cubelet's dark backing, and a tile on face d, `out` from the cubelet's middle. */
+  flat: { body: () => any; tile: (mat: any) => any; place: (m: any, d: number, out?: number) => void };
+} | null = null;
 const SHADOW_KEY = "xcube-lab-shadows";
 let shadowsOn = (() => {
   try {
@@ -369,7 +378,7 @@ function initScene(canvas: HTMLCanvasElement) {
     }
     return mats.get(c);
   };
-  paintMaterial = { sticker: matFor, tile: netMatFor, glow: (c: Color) => [0, 1, 2, 3].map((open) => glowMatFor(c, open)) };
+  paintMaterial = { sticker: matFor, tile: netMatFor, darkTile: netDarkMat, glow: (c: Color) => [0, 1, 2, 3].map((open) => glowMatFor(c, open)) };
   // Grays for the step guide: level 1 for cubelets a step leaves alone, level 2 (darker)
   // for those it may leave anywhere, the same for every color.
   const grayMats = new Map<string, { sticker: any; tile: any; glow: any[] }>();
@@ -397,6 +406,24 @@ function initScene(canvas: HTMLCanvasElement) {
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px, py, pz);
       m.rotation.set(rx, ry, 0);
+    },
+    flat: {
+      body: () => {
+        const m = new THREE.Mesh(netBody, netOccluderMat);
+        m.layers.set(NET_LAYER);
+        m.renderOrder = -1;
+        return m;
+      },
+      tile: (mat) => {
+        const m = new THREE.Mesh(withAoColors(netPlane), mat);
+        m.layers.set(NET_LAYER);
+        return m;
+      },
+      place: (m, d, out = 0.5) => {
+        const [px, py, pz, rx, ry] = faceXform[d];
+        m.position.set((px / 0.4945) * out, (py / 0.4945) * out, (pz / 0.4945) * out);
+        m.rotation.set(rx, ry, 0);
+      },
     },
   };
   const faceXform: [number, number, number, number, number][] = [
@@ -1060,7 +1087,7 @@ function applyShadingSettings() {
 
 const GLOW3D_LAYER = 3;
 const GLOWNET_LAYER = 4;
-const HALO_LAYER = 5; // the color editor's highlight in the 3D view
+const HALO_LAYER = 5; // the editor's highlight in the 3D view
 const FLAT_HALO_LAYER = 6; // ... and in the flat view: 6 + direction, one layer per face
 const BODY_RADIUS = 0.07; // rounding of cubelet edges
 // The glow band lies just below the face's surface (GLOW_DEPTH) and starts under the
@@ -1349,6 +1376,8 @@ function frame() {
       r.copy.quaternion.copy(r.turns[k]).slerp(r.turns[k + 1], at - k);
     }
   }
+  stepShapeAnim();
+  placeHidePill();
   const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
   if (showTarget) updateShowButton();
   if (view3dOpen) updateCompass();
@@ -1389,7 +1418,7 @@ function pickCube(el: HTMLElement, clientX: number, clientY: number): CubeHit | 
     if (!h.face) continue;
     let o = h.object;
     while (o.parent && o.parent !== pivot) o = o.parent;
-    if (!meshes.includes(o)) continue;
+    if ((!meshes.includes(o) && !blanks.includes(o)) || !o.visible || !o.parent) continue;
     const n = h.face.normal.clone().transformDirection(h.object.matrixWorld).applyQuaternion(inv);
     // Snap to the nearest face direction (rounded edges give in-between normals).
     const ax = [Math.abs(n.x), Math.abs(n.y), Math.abs(n.z)];
@@ -1758,7 +1787,8 @@ function bindOrbit(el: HTMLElement) {
         tap && tap.ok && e.type === "pointerup" && now - tap.t < TAP_MS && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < SWIPE_PX;
       if (isTap && edit) {
         const h = pickCube(el, e.clientX, e.clientY);
-        if (h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
+        if (edit.paint === "shape") tapShape(el, e.clientX, e.clientY, h);
+        else if (h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
       } else if (isTap) {
         if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DOUBLE_TAP_PX) {
           lastTap = null;
@@ -2573,10 +2603,13 @@ function slideScroll(el: HTMLElement, to: number) {
     return;
   }
   slideUntil = t0 + ms + 50;
-  // Timed from the first frame's own timestamp: a frame's timestamp is when it began, which
-  // can be before this call, and a negative time would throw the eased position far off.
+  // Timed by the clock as each frame runs, from the first frame that does. A frame's own
+  // timestamp is when its vsync fired, which can be well before it runs (while the work
+  // that started the slide still holds the page), so the next frame's timestamp could be
+  // most of the slide later and the slide would jump.
   let start = -1;
-  const step = (now: number) => {
+  const step = () => {
+    const now = performance.now();
     if (start < 0) {
       start = now;
       slideUntil = Math.max(slideUntil, start + ms + 50);
@@ -2944,22 +2977,28 @@ function bindUI() {
   $("edit-start").addEventListener("click", () => endingSolve(() => startEdit()));
   $("edit-done").addEventListener("click", () => endEdit(true));
   $("edit-cancel").addEventListener("click", () => endEdit(false));
+  // The halo's own Hide, in the 3D view: the same as Hide in the status line.
+  $("halo-hide").addEventListener("click", () => {
+    if (!edit) return;
+    edit.hidden = shownProblem().slots.join();
+    renderEdit();
+  });
   $("edit-status").addEventListener("click", (e) => {
     if (!edit || !$("edit-status").classList.contains("tappable")) return;
     const act = (e.target as HTMLElement).closest<HTMLElement>("[data-halo]")?.dataset.halo ?? "show";
     if (act === "prev" || act === "next") {
       const n = edit.fit.problems.length;
       const { i } = shownProblem();
-      edit.selected = edit.fit.problems[(i + (act === "next" ? 1 : n - 1)) % n].slots.join();
+      edit.selected = problemKey(edit.fit.problems[(i + (act === "next" ? 1 : n - 1)) % n]);
     } else edit.hidden = act === "hide" ? shownProblem().slots.join() : null;
     renderEdit();
     if (act === "show" && edit.highlight) showHighlighted();
   });
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) {
-    b.style.background = NET_COLOR[b.dataset.paint!];
+    if (b.dataset.paint !== "shape") b.style.background = NET_COLOR[b.dataset.paint!];
     b.addEventListener("click", () => {
       if (!edit) return;
-      edit.paint = b.dataset.paint as Color;
+      edit.paint = b.dataset.paint as Color | "shape";
       renderEdit();
     });
   }
@@ -3186,30 +3225,37 @@ function bindUI() {
   }
 }
 
-// ------------------------------------------------------------------ color editing
+// ------------------------------------------------------------------ editing the puzzle
 
-// Edit colors: the owner repaints visible stickers to match a real cube, on the current
-// shape. Each paint refits the colors to real cubelets (src/core/edit.ts). While they fit,
-// the view shows the fitted state; while they don't, it shows the last fitted state with
-// the differing stickers repainted on top. Done makes the fitted state the new start; the
-// rest of the controls are inert while editing.
+// Edit puzzle: the owner sets the shape (the Shape tool, below) and paints the stickers to
+// match the real puzzle, in any order: a sticker can be painted while the shape is still wrong.
+// Paint stays on its spot; a sticker not painted yet fits any color. Each change refits
+// the paint to real cubelets (src/core/edit.ts). While it fits, the view shows the fitted
+// state; while it doesn't, the last fitted state with the differing stickers repainted on
+// top. Done, once every sticker is painted and the whole is valid, makes the fitted state
+// the new start; the rest of the controls are inert while editing.
 
 /** Sticker and flat-tile meshes by cubelet id * 6 + face (in the cubelet's own frame). */
 const stickerMesh3d: any[] = [];
 const tileMesh: any[] = [];
-let paintMaterial: { sticker: (c: Color) => any; tile: (c: Color) => any; glow: (c: Color) => any[] } | null = null;
+let paintMaterial: { sticker: (c: Color) => any; tile: (c: Color) => any; darkTile: any; glow: (c: Color) => any[] } | null = null;
 let grayMaterial: ((c: Color, level: 1 | 2) => { sticker: any; tile: any; glow: any[] }) | null = null;
 
 interface Edit {
-  shape: State; // the position editing started from; its shape is kept
-  colors: FaceColors; // what the owner has painted
+  shape: State; // a position with the edited shape: the one editing started from, as the Shape tool has moved its cubelets
+  colors: (Color | undefined)[]; // the stickers painted, by slot * 6 + direction; paint stays on its spot
+  view: FaceColors; // what the shape shows with that paint: a sticker without paint is UNPAINTED
   fit: Fit;
   shown: State; // the last state that fit, drawn underneath the paint
-  paint: Color;
+  paint: Color | "shape"; // the color taps paint with, or the Shape tool
+  // Shape changes no moves of real cubelets account for yet (a Draft, src/core/edit.ts):
+  // while there are any, the shape is wrong.
+  removed: Set<number>;
+  added: Set<number>;
   painted: any[]; // meshes currently drawn in a color other than their own
   highlight: number[] | null; // slots shown with a halo: the first problem's, unless hidden
   hidden: string | null; // the slots (joined) whose halo was hidden with Hide
-  selected: string; // the slots (joined) of the problem the line shows, kept across paints
+  selected: string; // the problem the line shows (problemKey), kept across paints
 }
 let edit: Edit | null = null;
 
@@ -3218,8 +3264,9 @@ function startEdit() {
   flushAnimations();
   clearGuide();
   const st = app.current.clone();
-  const colors = visibleColors(st);
-  edit = { shape: st, colors, fit: fitColors(st, colors), shown: st.clone(), paint: "W", painted: [], highlight: null, hidden: null, selected: "" };
+  const view = visibleColors(st);
+  const colors = view.map((c) => (c && c !== UNPAINTED ? c : undefined));
+  edit = { shape: st, colors, view, fit: fitColors(st, view), shown: st.clone(), paint: "W", removed: new Set(), added: new Set(), painted: [], highlight: null, hidden: null, selected: "" };
   document.body.classList.add("editing");
   for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = true;
   renderEdit();
@@ -3227,14 +3274,244 @@ function startEdit() {
 
 /** Paints the sticker on the face of `slot` facing world direction `dir`, if one is visible there. */
 function paintSticker(slot: number, dir: number) {
-  if (!edit) return;
+  if (!edit || edit.paint === "shape") return;
   const i = slot * 6 + dir;
-  if (!edit.colors[i]) return; // hidden, or bare plastic
+  if (!edit.view[i]) return; // hidden, or bare plastic
   if (edit.colors[i] === edit.paint) return;
   edit.colors[i] = edit.paint;
-  edit.fit = fitColors(edit.shape, edit.colors);
-  if (edit.fit.state) edit.shown = edit.fit.state;
+  refitEdit();
   renderEdit();
+}
+
+/**
+ * Fits the paint to the shape. While the shape is wrong, only that is reported. A
+ * sticker without paint fits any color, so the fit says what is wrong with the paint so
+ * far, and the stickers still to paint are one more problem.
+ */
+function refitEdit() {
+  if (!edit) return;
+  edit.view = draftColors(edit, edit.colors);
+  if (edit.removed.size || edit.added.size) {
+    edit.fit = { level: null, state: null, problems: draftProblems(edit) };
+    edit.shown = edit.shape.clone();
+    return;
+  }
+  const fit = fitColors(edit.shape, edit.view);
+  const blank = [...Array(NUM_SLOTS).keys()].filter((t) => [0, 1, 2, 3, 4, 5].some((d) => edit!.view[t * 6 + d] === UNPAINTED));
+  if (blank.length) {
+    const n = edit.view.filter((c) => c === UNPAINTED).length;
+    // Until every center is painted, how the centers are arranged isn't known.
+    const centers = blank.some((t) => SLOT_POS[t].filter((c) => c !== 0).length === 1);
+    const problems = fit.level === "reachable" || (fit.level === "possible" && centers) ? [] : fit.problems;
+    problems.push({ text: n === 1 ? "One sticker isn't painted yet" : `${n} stickers aren't painted yet`, slots: blank });
+    edit.fit = { level: fit.level === "reachable" ? "possible" : fit.level, state: fit.state, problems };
+  } else edit.fit = fit;
+  edit.shown = edit.fit.state ?? (edit.shown.shapeKey() === edit.shape.shapeKey() ? edit.shown : edit.shape.clone());
+}
+
+// The Shape tool changes only what is tapped (draftTap in src/core/edit.ts): an extension
+// cubelet that isn't there on the real puzzle swings to its core cubelet's bare side or
+// goes away, and an empty spot where one is missing gets one. The shape may be wrong
+// meanwhile: a cubelet put in is a blank body until the shape is one the puzzle can have,
+// when real cubelets take the blanks' places. Ghosts mark the empty spots: a small glass
+// box, gray with white edges and unlit, so it shows against white, against dark and in
+// shadow, and each spot reads as its own box. The stickers
+// a tap moves lose their paint: paint stays on its spot, and the cubelet now there is
+// another one. A cubelet that only comes or goes leaves the others on its unit painted,
+// and takes or leaves the color of the core sticker it covers or bares (repaint).
+const ghosts: any[] = [];
+const blanks: any[] = [];
+let ghostMaterial: any = null;
+
+/** Shows the first n of a pool of markers, one per slot, making more as needed. */
+function placeMarkers(pool: any[], slots: number[], make: () => any) {
+  for (const g of pool) g.parent?.remove(g);
+  slots.forEach((t, n) => {
+    if (n === pool.length) pool.push(make());
+    const g = pool[n];
+    g.position.set(SLOT_POS[t][0], SLOT_POS[t][1], SLOT_POS[t][2]);
+    g.userData.slot = t;
+    g.userData.fit?.(t);
+    pivot.add(g);
+  });
+}
+
+function placeGhosts() {
+  ghostMaterial ??= new THREE.MeshBasicMaterial({ map: borderedFill(), transparent: true, depthWrite: false });
+  placeMarkers(ghosts, edit?.paint === "shape" ? draftSpots(edit) : [], () => {
+    const g = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.62), ghostMaterial);
+    g.layers.set(HALO_LAYER);
+    g.renderOrder = 2;
+    return g;
+  });
+  placeMarkers(blanks, edit ? [...edit.added] : [], () => {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(withAoColors(copyLook!.body), copyLook!.bodyMat);
+    body.castShadow = body.receiveShadow = true;
+    g.add(body, copyLook!.flat.body());
+    for (let d = 0; d < 6; d++) {
+      const tile = copyLook!.flat.tile(paintMaterial!.darkTile);
+      copyLook!.flat.place(tile, d);
+      g.add(tile);
+    }
+    return g;
+  });
+}
+
+/** A translucent gray square with a white border, as a texture. */
+function borderedFill() {
+  const N = 128, c = document.createElement("canvas");
+  c.width = c.height = N;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "rgba(95, 103, 107, 0.4)";
+  g.fillRect(0, 0, N, N);
+  g.strokeStyle = "#f2f5f6";
+  g.lineWidth = 12;
+  g.strokeRect(0, 0, N, N);
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 4;
+  return t;
+}
+
+/** A pale dashed outline of a rounded square on nothing, as a texture; `round` is the corner radius as a share of the side. */
+function dashedOutline(round: number) {
+  const N = 128, c = document.createElement("canvas");
+  c.width = c.height = N;
+  const g = c.getContext("2d")!;
+  g.strokeStyle = "#f2f5f6";
+  g.lineWidth = 7;
+  g.setLineDash([15, 11]);
+  g.beginPath();
+  g.roundRect(8, 8, N - 16, N - 16, round * N);
+  g.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 4;
+  return t;
+}
+
+/**
+ * Stickers drawn over the puzzle, in the 3D view and the flat view, [slot, direction,
+ * color]: a painted one that no real cubelet's mesh is there to show, or (UNPAINTED) one
+ * not painted yet, drawn as a dashed outline on the plastic where the sticker belongs.
+ */
+const overlays: any[] = [];
+let outlineMaterial: any = null;
+let flatOutlineMaterial: any = null;
+function placeOverlays(list: [number, number, Color | typeof UNPAINTED][]) {
+  for (const g of overlays) g.parent?.remove(g);
+  outlineMaterial ??= new THREE.MeshBasicMaterial({ map: dashedOutline(0.1), transparent: true, depthWrite: false });
+  flatOutlineMaterial ??= new THREE.MeshBasicMaterial({ map: dashedOutline(0.06), transparent: true, depthWrite: false });
+  list.forEach(([t, d, color], n) => {
+    if (n === overlays.length) {
+      const g = new THREE.Group();
+      const flat = copyLook!.flat;
+      g.add(new THREE.Mesh(withAoColors(copyLook!.plane), outlineMaterial), new THREE.Mesh(new THREE.PlaneGeometry(0.82, 0.82), outlineMaterial));
+      g.add(flat.tile(paintMaterial!.darkTile), flat.tile(flatOutlineMaterial));
+      overlays.push(g);
+    }
+    const g = overlays[n];
+    const [sticker, outline, tile, flatOutline] = g.children;
+    const painted = color !== UNPAINTED;
+    g.position.set(SLOT_POS[t][0], SLOT_POS[t][1], SLOT_POS[t][2]);
+    sticker.visible = painted;
+    outline.visible = flatOutline.visible = !painted;
+    if (painted) sticker.material = paintMaterial!.sticker(color);
+    tile.material = painted ? paintMaterial!.tile(color) : paintMaterial!.darkTile;
+    copyLook!.place(sticker, d);
+    copyLook!.place(outline, d);
+    copyLook!.flat.place(tile, d, 0.502);
+    copyLook!.flat.place(flatOutline, d, 0.504);
+    pivot.add(g);
+  });
+}
+
+/** The ghost under a point of the 3D view, unless a cubelet (hit `h`) is in front of it. */
+function pickMarker(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null): number | null {
+  const rect = el.getBoundingClientRect();
+  const ray = new THREE.Raycaster();
+  ray.layers.set(HALO_LAYER);
+  ray.setFromCamera(new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1), camera);
+  const [g] = ray.intersectObjects(ghosts.filter((x) => x.parent), false);
+  if (!g) return null;
+  if (h && pivot.localToWorld(h.point.clone()).distanceTo(camera.position) < g.distance) return null;
+  return g.object.userData.slot;
+}
+
+function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null) {
+  if (!edit) return;
+  if (shapeAnim) {
+    // The tap was aimed at the puzzle as it is mid-move: finish the move and take the tap from there.
+    endShapeAnim();
+    h = pickCube(el, clientX, clientY);
+  }
+  const slot = pickMarker(el, clientX, clientY, h) ?? (h ? slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]) : -1);
+  const tap = draftTap(edit, slot);
+  if (!tap) return;
+  edit.colors = repaint(edit.colors, tap);
+  refitEdit();
+  renderEdit();
+  if (tap.carries.length) animateShape(tap.carries);
+}
+
+// A shape edit is shown as a move: the meshes are already where they end up, and until
+// the move is over each frame puts the moved ones part-way there. Every edit carries its
+// cubelets as rotations about the puzzle's center, so part-way is part of that rotation,
+// - a core corner or core single edge turns where it is, with the cubelets on it;
+// - a cubelet that changes places (the centers, or one going from a core double edge to
+//   a core single edge) swings around the outside of the puzzle, clear of the others.
+const SHAPE_MOVE = { turnMs: 450, arcMs: 600, bulge: 0.55 };
+interface ShapeAnim {
+  start: number;
+  ms: number;
+  bulge: number; // how far out the cubelets swing mid-move, as a share of their distance from the center
+  items: { mesh: any; p0: any; q0: any; turn: any }[];
+}
+let shapeAnim: ShapeAnim | null = null;
+const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+
+function rotationQuat(r: number) {
+  const m = ROTATIONS[r];
+  return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().set(m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, 0, 0, 0, 1));
+}
+
+function animateShape(carries: { from: number; to: number; rot: number }[]) {
+  if (!edit || reduceMotionView()) return;
+  const core = (s: number) => SLOT_POS[s].every((c) => Math.abs(c) < 2);
+  // A core cubelet that stays in its slot and turns, with the cubelets on it.
+  const hub = carries.find((c) => c.from === c.to && core(c.from));
+  // A cubelet from a core double edge: only it is seen to move (the two core edges behind trade places unseen).
+  const moved = hub || carries.every((c) => c.rot === carries[0].rot) ? carries : carries.filter((c) => !core(c.from));
+  shapeAnim = {
+    start: performance.now(),
+    ms: hub ? SHAPE_MOVE.turnMs : SHAPE_MOVE.arcMs,
+    bulge: hub ? 0 : SHAPE_MOVE.bulge,
+    items: moved.map((c) => {
+      const turn = rotationQuat(c.rot);
+      const mesh = meshes[edit!.shown.occ[c.to]];
+      return { mesh, p0: new THREE.Vector3(...SLOT_POS[c.from]), q0: turn.clone().invert().multiply(mesh.quaternion), turn };
+    }),
+  };
+  stepShapeAnim();
+}
+
+/** Puts the cubelets of a shape edit where they are now in their move; ends it when it is over. */
+function stepShapeAnim() {
+  if (!shapeAnim) return;
+  const t = Math.min(1, (performance.now() - shapeAnim.start) / shapeAnim.ms);
+  const e = easeInOut(t);
+  for (const it of shapeAnim.items) {
+    const q = new THREE.Quaternion().slerp(it.turn, e);
+    it.mesh.quaternion.copy(q).multiply(it.q0);
+    it.mesh.position.copy(it.p0).applyQuaternion(q).multiplyScalar(1 + shapeAnim.bulge * Math.sin(Math.PI * e));
+  }
+  if (t >= 1) shapeAnim = null;
+}
+
+/** Ends a shape edit's move at once, the cubelets where they end up. */
+function endShapeAnim() {
+  if (!shapeAnim) return;
+  shapeAnim.start = -Infinity;
+  stepShapeAnim();
 }
 
 /** Draws the shown state, with every face that differs from the paint repainted on top. */
@@ -3243,24 +3520,43 @@ function drawEdit() {
   for (const m of edit.painted) m.material = m.userData.ownMaterial;
   edit.painted = [];
   clearGlowPaint();
-  const shown = visibleColors(edit.shown);
-  for (let i = 0; i < edit.colors.length; i++) {
-    const want = edit.colors[i];
-    if (!want || shown[i] === want) continue;
+  // A cubelet taken away is not drawn, and what it covered is drawn as open.
+  const drawn = edit.shown.clone();
+  for (const m of meshes) if (m) m.visible = true;
+  for (const t of edit.removed) {
+    meshes[drawn.occ[t]].visible = false;
+    drawn.occ[t] = -1;
+  }
+  // A sticker not painted yet is an outline (placeOverlays) with nothing under it and no glow.
+  noGlow ??= [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ visible: false }));
+  const blank = { sticker: noGlow[0], tile: paintMaterial.darkTile, glow: noGlow };
+  const over: [number, number, Color | typeof UNPAINTED][] = [];
+  for (let i = 0; i < edit.view.length; i++) {
+    const want = edit.view[i];
+    if (!want) continue;
     const s = Math.floor(i / 6), dir = i % 6;
-    const id = edit.shown.occ[s];
-    const local = ROT_DIR[ROT_INV[edit.shown.ori[s]] * 6 + dir];
-    for (const [mesh, mat] of [[stickerMesh3d[id * 6 + local], paintMaterial.sticker(want)], [tileMesh[id * 6 + local], paintMaterial.tile(want)]]) {
+    const id = drawn.occ[s];
+    const local = id < 0 ? -1 : ROT_DIR[ROT_INV[drawn.ori[s]] * 6 + dir];
+    const look = want === UNPAINTED ? blank : { sticker: paintMaterial.sticker(want), tile: paintMaterial.tile(want), glow: paintMaterial.glow(want) };
+    if (id < 0 || !stickerMesh3d[id * 6 + local]) {
+      over.push([s, dir, want]);
+      continue;
+    }
+    if (want === UNPAINTED) over.push([s, dir, want]);
+    if (CUBELETS[id].stickers[local] === want) continue;
+    for (const [mesh, mat] of [[stickerMesh3d[id * 6 + local], look.sticker], [tileMesh[id * 6 + local], look.tile]]) {
       if (!mesh) continue;
       mesh.userData.ownMaterial ??= mesh.material;
       mesh.material = mat;
       edit.painted.push(mesh);
     }
     // The glow bands around the edge show this sticker's color too.
-    for (const gl of glows[id] ?? []) if (gl.b === local) gl.paint = paintMaterial.glow(want);
+    for (const gl of glows[id] ?? []) if (gl.b === local) gl.paint = look.glow;
   }
-  syncMeshes(edit.shown);
+  placeOverlays(over);
+  syncMeshes(drawn);
   placeHalos();
+  placeGhosts();
 }
 
 // ------------------------------------------------------------------ step guide
@@ -3324,7 +3620,7 @@ let guideDimmed: any[] = []; // meshes drawn gray
 let guideArrows: any = null;
 
 /**
- * Runs an action that sets a new start (Shuffle, Reset, Edit colors, a code, a saved position,
+ * Runs an action that sets a new start (Shuffle, Reset, Edit puzzle, a code, a saved position,
  * an algorithm, clearing the turn list). During a solve it asks first, and ends the solve.
  */
 let confirmAction: (() => void) | null = null;
@@ -4347,7 +4643,7 @@ function haloMesh() {
     uniforms: { color: { value: new THREE.Color(HALO.color) }, size: { value: 0.985 / 2 }, round: { value: BODY_RADIUS }, reach: { value: HALO.reach }, strength: { value: HALO.strength } },
     transparent: true,
     depthWrite: false,
-    depthTest: false,
+    depthTest: true, // against the haloed cubelets only (placeHalos clears the rest first)
     vertexShader: `
       varying vec3 vOrigin;
       varying vec3 vDir;
@@ -4399,20 +4695,77 @@ function haloMesh() {
   return m;
 }
 
+/**
+ * Puts the halo's Hide pill beside the haloed cubelets: just past them on the side away
+ * from the middle of the puzzle as drawn (above, if they are at the middle), inside the view.
+ */
+function placeHidePill() {
+  const pill = $("halo-hide");
+  if (!edit?.highlight || pill.hidden) return;
+  const el = renderer.domElement as HTMLElement;
+  const at = (v: any) => toScreen(el, v);
+  const pts = edit.highlight.map((t) => at(new THREE.Vector3(...SLOT_POS[t])));
+  const mid = [0, 1].map((k) => pts.reduce((a, q) => a + q[k], 0) / pts.length);
+  const center = at(new THREE.Vector3());
+  // How big a cubelet is on screen, from a step across the view at the puzzle's center.
+  const across = new THREE.Vector3(1, 0, 0).applyQuaternion(pivot.quaternion.clone().invert());
+  const unit = Math.hypot(at(across)[0] - center[0], at(across)[1] - center[1]);
+  let dx = mid[0] - center[0], dy = mid[1] - center[1];
+  const len = Math.hypot(dx, dy);
+  if (len < unit * 0.4) (dx = 0), (dy = -1);
+  else (dx /= len), (dy /= len);
+  const reach = Math.max(...pts.map((q) => Math.hypot(q[0] - mid[0], q[1] - mid[1]))) + unit * 0.95;
+  const hw = pill.offsetWidth / 2, hh = pill.offsetHeight / 2;
+  const far = reach + Math.abs(dx) * hw + Math.abs(dy) * hh;
+  const x = Math.min(el.clientWidth - hw - 4, Math.max(hw + 4, mid[0] + dx * far));
+  const y = Math.min(el.clientHeight - hh - 4, Math.max(hh + 4, mid[1] + dy * far));
+  pill.style.left = `${x}px`;
+  pill.style.top = `${y}px`;
+}
+
+// Halos hide each other but nothing else does: the rest of the puzzle can't hide a halo
+// (a problem on the far side still shows), but a haloed cubelet hides the halos behind it,
+// so its stickers aren't buried under the glow of every haloed cubelet behind it. Drawn
+// after everything else: one mesh clears the depth buffer (haloClearer), each haloed
+// cubelet's body is drawn into it alone, with no color (haloBodies), then the halos test
+// against it.
+const haloBodies: any[] = [];
+let haloClearer: any = null;
+const HALO_VIEWS = [HALO_LAYER, ...[0, 1, 2, 3, 4, 5].map((d) => FLAT_HALO_LAYER + d)];
+
 /** Puts halos on the cubelet in each highlighted slot of the shown state, and removes the rest. */
 function placeHalos() {
-  for (const h of halos) h.parent?.remove(h);
-  if (!edit?.highlight) return;
-  let n = 0;
+  for (const h of [...halos, ...haloBodies]) h.parent?.remove(h);
+  haloClearer?.parent?.remove(haloClearer);
+  const marked = edit?.highlight;
+  if (!edit || !marked) return;
+  if (!haloClearer) {
+    haloClearer = new THREE.Mesh(new THREE.PlaneGeometry(1e-3, 1e-3), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true }));
+    haloClearer.frustumCulled = false;
+    haloClearer.renderOrder = 2.9;
+    haloClearer.onBeforeRender = (r: any) => r.clearDepth();
+    for (const l of HALO_VIEWS) haloClearer.layers.enable(l);
+    haloClearer.layers.disable(0);
+  }
+  pivot.add(haloClearer);
+  let n = 0, b = 0;
   const add = (id: number, layer: number) => {
     if (n === halos.length) halos.push(haloMesh());
     const h = halos[n++];
     h.layers.set(layer);
     meshes[id].add(h);
   };
-  for (const s of edit.highlight) {
+  for (const s of marked) {
     const id = edit.shown.occ[s];
     if (id < 0) continue;
+    if (b === haloBodies.length) {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.985, 0.985, 0.985), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true }));
+      body.renderOrder = 2.95;
+      for (const l of HALO_VIEWS) body.layers.enable(l);
+      body.layers.disable(0);
+      haloBodies.push(body);
+    }
+    meshes[id].add(haloBodies[b++]);
     add(id, HALO_LAYER);
     for (let d = 0; d < 6; d++) if (isExposed(edit.shown, s, d)) add(id, FLAT_HALO_LAYER + d);
   }
@@ -4459,7 +4812,7 @@ function showHighlighted() {
   if (!edit?.highlight) return;
   const st = edit.shown;
   const faces: [number, number][] = [];
-  for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d) && edit.colors[s * 6 + d]) faces.push([s, d]);
+  for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
   if (!faces.length) for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d)) faces.push([s, d]);
   showFaces(st, faces);
 }
@@ -4497,20 +4850,31 @@ function bestView(st: State, faces: [number, number][]): any {
   return best.clone();
 }
 
-/** The halo shows the first problem's slots, unless Hide was used on those same slots. */
-/** The problem the line shows: the one picked with ‹ and › if it is still there, else the first. */
+/** What the line remembers of the problem it shows: its words and the slots it names. */
+const problemKey = (p: { text: string; slots: number[] }) => `${p.text}|${p.slots.join()}`;
+
+/**
+ * The problem the line shows: the one picked with ‹ and › if it is still there, else one
+ * naming the same slots (its words may change, as a count does), else the first. Several
+ * problems may name no slots, so the words tell them apart.
+ */
 function shownProblem(): { i: number; slots: number[] } {
   const problems = edit && edit.fit.level !== "reachable" ? edit.fit.problems : [];
-  const i = Math.max(0, problems.findIndex((p) => p.slots.join() === edit!.selected));
+  const slots = edit?.selected.slice(edit.selected.lastIndexOf("|") + 1) ?? "";
+  let i = problems.findIndex((p) => problemKey(p) === edit!.selected);
+  if (i < 0 && slots) i = problems.findIndex((p) => p.slots.join() === slots);
+  i = Math.max(0, i);
   return { i, slots: problems[i]?.slots ?? [] };
 }
 
 function updateHighlight() {
   if (!edit) return;
-  const { slots } = shownProblem();
-  edit.selected = slots.join();
+  const { i, slots } = shownProblem();
+  const problem = edit.fit.level !== "reachable" ? edit.fit.problems[i] : undefined;
+  edit.selected = problem ? problemKey(problem) : "";
   if (edit.hidden !== slots.join()) edit.hidden = null; // Hide lasts until other cubelets are named
-  edit.highlight = slots.length && edit.hidden === null ? [...slots] : null;
+  // No halo while the Shape tool is in hand: it would cover the cubelets and spots to tap.
+  edit.highlight = slots.length && edit.hidden === null && edit.paint !== "shape" ? [...slots] : null;
 }
 
 /** Returns every glow band to its own sticker's color. */
@@ -4519,8 +4883,10 @@ function clearGlowPaint() {
 }
 
 function renderEdit() {
+  endShapeAnim();
   $("edit-bar").hidden = !edit;
   $("edit-start").hidden = !!edit;
+  if (!edit) $("halo-hide").hidden = true;
   if (!edit) return;
   updateHighlight();
   drawEdit();
@@ -4528,6 +4894,10 @@ function renderEdit() {
   const st = $("edit-status");
   const { level, problems } = edit.fit;
   const { i } = shownProblem();
+  $("edit-hint").textContent =
+    edit.paint === "shape"
+      ? "Tap an extension cubelet that isn't there on your puzzle, or a faint spot where one is missing. Drag to turn the view."
+      : "Pick a color, then tap stickers on the cube to paint them. Drag to turn the view.";
   if (level === "reachable") {
     st.className = "edit-status good";
     st.textContent = "Valid";
@@ -4552,7 +4922,7 @@ function renderEdit() {
     nav.append(step("prev", "‹", "Previous problem"), `${i + 1}/${problems.length}`, step("next", "›", "Next problem"));
     st.append(" ", nav);
   }
-  const tappable = level !== "reachable" && problems[i].slots.length > 0;
+  const tappable = level !== "reachable" && problems[i].slots.length > 0 && edit.paint !== "shape";
   st.classList.toggle("tappable", tappable || (level !== "reachable" && problems.length > 1));
   if (tappable) {
     const actions: [string, string][] = edit.highlight ? [["show", "Show"], ["hide", "Hide"]] : [["show", "Show"]];
@@ -4565,21 +4935,27 @@ function renderEdit() {
     }
   }
   ($("edit-done") as HTMLButtonElement).disabled = level !== "reachable";
+  $("halo-hide").hidden = !edit.highlight;
+  placeHidePill();
 }
 
 function endEdit(apply: boolean) {
   if (!edit) return;
   const e = edit;
+  shapeAnim = null;
+  for (const m of meshes) if (m) m.visible = true;
   for (const m of e.painted) m.material = m.userData.ownMaterial;
   clearGlowPaint();
   edit = null;
   placeHalos();
+  placeGhosts();
+  placeOverlays([]);
   document.body.classList.remove("editing");
   for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
   if (apply && e.fit.level === "reachable" && e.fit.state) {
     const changed = !e.fit.state.equals(app.current);
-    if (changed) setBase(e.fit.state, "Edited colors");
-    setMessage(changed ? "The edited position is now the start" : "No colors changed", "ok");
+    if (changed) setBase(e.fit.state, "Edited");
+    setMessage(changed ? "The edited position is now the start" : "Nothing changed", "ok");
   } else syncMeshes(app.current);
   renderEdit();
   render();
@@ -4661,6 +5037,8 @@ function probeDecode(ids: Uint8Array, colors: Uint8Array, w: number, h: number, 
   const i = ((h - 1 - Math.floor(py)) * w + Math.floor(px)) * 4;
   if (ids[i + 3] === 0) return null; // background
   const code = ids[i] + ids[i + 1] * 256;
+  // The editor's own meshes (a blank cubelet, a sticker drawn over the puzzle) belong to no cubelet.
+  if (code === 0) return { plastic: true, slot: "editor", cubelet: -1 };
   const cubelet = Math.floor((code - 1) / 7), d = (code - 1) % 7;
   // Where it was drawn: from the mesh's own transform in the puzzle frame, not from the
   // model, so a cubelet drawn in the wrong place or turned the wrong way shows up.
@@ -4696,7 +5074,7 @@ function installProbe() {
     throw new Error(`no slot named ${name}`);
   };
   (window as any).xcubeProbe = {
-    idle: () => !anim && !queue.length && !settle && !live && !tween,
+    idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim,
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
     /** The turns of the last shuffle (the page doesn't show them). */
@@ -4792,17 +5170,50 @@ function installProbe() {
     /** While editing colors: how the painted colors fit, and the color of a painted face. */
     editing: () => edit && { level: edit.fit.level, problems: edit.fit.problems.map((p) => p.text), paint: edit.paint },
     // The slots with a halo, how many of a slot's faces the 3D view shows unblocked, and
-    // how many pixels of halo a view ("3d" or a flat-view face letter) draws, alone.
+    // how much halo a view ("3d" or a flat-view face letter) draws, alone (its pixels' summed
+    // opacity, in whole pixels).
     highlighted: () => (edit?.highlight ?? []).map(slotName),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),
-    haloPixels: (view: string) => {
+    // `hiding` false draws them as if no haloed cubelet hid the halos behind it, to compare.
+    haloPixels: (view: string, hiding = true) => {
       const nc = netCams.find((c) => c.face === view);
+      const bodies = haloBodies.filter((b) => b.parent);
+      if (!hiding) for (const b of bodies) b.visible = false;
       const img = probeImage(nc ? nc.cam : camera, nc ? FLAT_HALO_LAYER + dirIndex(nc.view) : HALO_LAYER, 96, 96, "drawn");
+      for (const b of bodies) b.visible = true;
       let n = 0;
-      for (let i = 3; i < img.length; i += 4) if (img[i] > 20) n++;
-      return n;
+      for (let i = 3; i < img.length; i += 4) n += img[i];
+      return Math.round(n / 255);
     },
     painted: (slot: string, face: string) => edit?.colors[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)] ?? null,
+    /**
+     * While editing: the shape as tapped so far (spots emptied and filled that no real
+     * cubelets account for yet, and the empty spots marked for the Shape tool), how many
+     * stickers show as not painted yet and how many dashed outlines are drawn, and where
+     * the halo's Hide pill is (client coordinates; null while hidden).
+     */
+    shapeEdit: () => {
+      if (!edit) return null;
+      const pill = $("halo-hide");
+      const r = pill.getBoundingClientRect();
+      return {
+        removed: [...edit.removed].map(slotName).sort(),
+        added: [...edit.added].map(slotName).sort(),
+        spots: ghosts.filter((g) => g.parent).map((g) => slotName(g.userData.slot)).sort(),
+        unpainted: edit.view.filter((c) => c === UNPAINTED).length,
+        outlines: overlays.filter((g) => g.parent && g.children[1].visible).length,
+        pill: pill.hidden ? null : { x: r.left + r.width / 2, y: r.top + r.height / 2 },
+      };
+    },
+    /** Whether a slot is filled in the shape being edited (or in the position, when not editing). */
+    filled: (slot: string) => (edit ? draftFilled(edit, slotByName(slot)) : app.current.occ[slotByName(slot)] >= 0),
+    /** Where the middle of a slot appears on screen (client coordinates), filled or not. */
+    spot(slot: string) {
+      const p = SLOT_POS[slotByName(slot)];
+      const v = pivot.localToWorld(new THREE.Vector3(p[0], p[1], p[2])).project(camera);
+      const r = canvas().getBoundingClientRect();
+      return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+    },
     /**
      * The edge glow of the cubelet in slot alone, as drawn by the 3D view (view "3d") or
      * a face's flat-view camera (view "U", "F", ...): its opacity (0-1) at the point

@@ -402,7 +402,7 @@ labTest(
         const els = list.map((q) => sec.querySelector(q));
         return els.every(Boolean) && els.every((el, i) => i === 0 || els[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
       }, [secId, qs]);
-    check(await inOrder("panel-start", ["#shuffle", "#reset", "#edit-start", "#clear", "#saved-list", "details.code-box"]), "the Start panel has Shuffle, Solved, Edit colors and Start from here, then saved positions and the state code");
+    check(await inOrder("panel-start", ["#shuffle", "#reset", "#edit-start", "#clear", "#saved-list", "details.code-box"]), "the Start panel has Shuffle, Solved, Edit puzzle and Start from here, then saved positions and the state code");
     check(await inOrder("guide", [".guide-modes", "#next-step", "#guide-line"]), "the Solve panel has the order, Start solving, then the step's text");
     check(await page.$eval("#next-step", (b) => b.disabled), "with the puzzle solved, Start solving is grayed out");
     await page.fill("#alg", "R U");
@@ -1257,7 +1257,7 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   check(appliedGlow === "R G", `after Done, the moved cubelets' glow shows their own colors (${appliedGlow})`);
   const applied = { model: [await probe("model", "Fx.U", "F"), await probe("model", "Rx.U", "R")], label: await page.$eval("#base-label", (e) => e.textContent), inert: await page.$eval("#stack-col", (e) => e.inert) };
   let sw = await sweep3d();
-  check(applied.model.join() === "R,G" && applied.label === "Edited colors" && !applied.inert && sw.wrong.length === 0, `Done makes the edited position the start, drawn as the model has it (${applied.model.join(" ")}, "${applied.label}")`);
+  check(applied.model.join() === "R,G" && applied.label === "Edited" && !applied.inert && sw.wrong.length === 0, `Done makes the edited position the start, drawn as the model has it (${applied.model.join(" ")}, "${applied.label}")`);
   const editedState = await probe("state");
   await page.locator("#scene").scrollIntoViewIfNeeded();
   await page.click("#edit-start");
@@ -1283,6 +1283,135 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   sw = await sweep3d();
   const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");
   check((await probe("state")) === editedState && sw.wrong.length === 0 && cancelGlow === "W R", `Cancel leaves the position, and its drawing and glow, as they were (glow ${cancelGlow})`);
+});
+
+labTest("shape editing: a tap changes only what it taps, paint stays on its spot, and the shape may be wrong for a while", async ({ page, check, probe, gesture }) => {
+  const editLine = () => page.$eval("#edit-status", (e) => e.textContent);
+  const idle = () => page.waitForFunction(() => window.xcubeProbe.idle());
+  const tapAt = async ({ x, y }) => {
+    await gesture([["pointerdown", x, y], ["pointerup", x, y]]);
+    await idle();
+  };
+  const tapSticker = async (slot, face) => {
+    await page.locator("#scene").scrollIntoViewIfNeeded();
+    const at = await probe("sticker", slot, face);
+    const there = await probe("at3d", at.x, at.y);
+    if (there?.slot !== slot || there?.face !== face) throw new Error(`can't tap ${slot}/${face}: ${JSON.stringify(there)} is drawn there`);
+    await tapAt(at);
+  };
+  const tool = (t) => page.click(`[data-paint="${t}"]`);
+  const start = await probe("state");
+  const label = await page.$eval("#edit-start", (b) => b.textContent.trim());
+  await page.click("#edit-start");
+  await tool("shape");
+  const fresh = await probe("shapeEdit");
+  check(
+    /Edit puzzle$/.test(label) && fresh.spots.length === 18 && fresh.spots.every((t) => /^[UD]x/.test(t)) && fresh.removed.length + fresh.added.length === 0 && /^Valid/.test(await editLine()),
+    `Edit puzzle opens on the puzzle as it is, and the Shape tool marks the empty spots a tap can fill (${label}; ${fresh.spots})`,
+  );
+  // A cubelet put in where it makes a fifth double edge is a blank (the shape is wrong); the
+  // flat view shows it, as the 3D view does. A tap on it takes it away again.
+  const editorCells = async () => (await probe("flatFace", "U")).flat().filter((c) => c?.slot === "editor").length;
+  const before = await editorCells();
+  await tapAt(await probe("spot", "Ux.F"));
+  const blank = { added: (await probe("shapeEdit")).added.join(), before, cells: await editorCells() };
+
+  await tapAt(await probe("spot", "Ux.F"));
+  check(blank.added === "Ux.F" && blank.cells > blank.before && (await probe("shapeEdit")).added.length === 0, `a cubelet put in while the shape is wrong shows in the flat view, and a tap takes it away (${JSON.stringify(blank)})`);
+  // Two problems that name no cubelets: › steps from one to the other and back.
+  await tapAt(await probe("spot", "Ux")); // a fifth extension center
+  await tapAt(await probe("spot", "Ux.F")); // and a fifth double edge
+  const steps = [await editLine()];
+  for (let k = 0; k < 2; k++) {
+    await page.click('[data-halo="next"]');
+    steps.push(await editLine());
+  }
+  check(
+    steps[0] !== steps[1] && steps.slice(0, 2).every((t) => /^Not valid: Five (core edges|centers) .*‹[12]\/2›$/.test(t)) && steps[2] === steps[0],
+    `› steps through problems that name no cubelets (${steps.join(" | ")})`,
+  );
+  await tapAt(await probe("spot", "Ux.F"));
+  await tapAt(await probe("spot", "Ux"));
+  check((await probe("shapeEdit")).added.length === 0, "a tap on each blank takes it away again");
+  // One of two extension cubelets on a core edge goes away alone, keeping the other's paint;
+  // its outward color falls onto the core edge it bares.
+  await tapSticker("Fx.R", "F");
+  const one = { e: await probe("shapeEdit"), line: await editLine(), kept: await probe("painted", "Rx.F", "R"), gone: await probe("painted", "Fx.R", "F"), fell: await probe("painted", "FR", "F") };
+  check(
+    one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line === "Not valid: Only three core edges have two extensions, but there must be four." && one.kept === "R" && one.gone === null && one.fell === "G",
+    `a tap takes one cubelet away, its color falls onto the core edge it bares, and the line says what the shape lacks, with no halo controls while Shape is selected (${JSON.stringify(one)})`,
+  );
+  // A tap on an empty spot puts a cubelet there; the shape is right again, made of real cubelets, with stickers to paint.
+  // (Fx.R's green, fallen onto the FR core edge, is a color no core edge has, so the line names that first.)
+  await tapAt(await probe("spot", "Ux.F"));
+  const two = { e: await probe("shapeEdit"), line: await editLine(), done: await page.$eval("#edit-done", (b) => b.disabled), filled: [await probe("filled", "Ux.F"), await probe("filled", "Fx.R")].join(), took: await probe("painted", "Ux.F", "U") };
+  check(
+    two.e.removed.length + two.e.added.length === 0 && two.filled === "true,false" && two.took === "W" && /^Not valid: /.test(two.line) && two.e.unpainted > 0 && two.e.outlines === two.e.unpainted && two.done,
+    `filling a spot makes the shape right, the cubelet put in takes the color of the sticker it covers; each sticker not painted yet is a dashed outline, and Done waits for them (${JSON.stringify(two)})`,
+  );
+  // An extension cubelet on a core corner comes and goes alone too; the line names the corner.
+  await tapSticker("Fx.UR", "F");
+  const corner = { removed: (await probe("shapeEdit")).removed.join(), line: await editLine(), stays: await probe("filled", "Rx.UF") };
+  await tapAt(await probe("spot", "Fx.UR"));
+  check(
+    corner.removed === "Fx.UR" && corner.stays && /^Not valid: This core corner has only one extension, but it has to have two\./.test(corner.line) && (await probe("filled", "Fx.UR")),
+    `a tap takes an extension cubelet off a core corner without turning anything, and a tap on its spot puts it back (${JSON.stringify(corner)})`,
+  );
+  // A sticker can be painted while the shape is wrong.
+  await tapSticker("Fx.L", "F");
+  await tool("W");
+  await tapSticker("Ux.F", "U");
+  const wrong = { e: await probe("shapeEdit"), painted: await probe("painted", "Ux.F", "U"), line: await editLine() };
+  check(wrong.e.removed.join() === "Fx.L" && wrong.painted === "W" && /^Not valid: Only three core edges/.test(wrong.line), `a sticker takes paint while the shape is wrong (${JSON.stringify(wrong)})`);
+  // The flat view shows what the editor draws over the puzzle too: a cubelet put in while
+  // the shape is wrong, with its stickers.
+
+  await page.click("#edit-cancel");
+  await idle();
+  check((await probe("state")) === start && (await probe("filled", "Fx.R")), "Cancel leaves the position as it was");
+  // Taken away and put back, a cubelet gets all its colors back: they fell onto what it
+  // bared, and it takes them from what it covers.
+  await page.click("#edit-start");
+  await tool("shape");
+  await tapSticker("Fx.UR", "F");
+  const fell = [await probe("painted", "UFR", "F"), await probe("painted", "Fx.R", "U"), await probe("painted", "Fx.U", "R")].join();
+  await tapAt(await probe("spot", "Fx.UR"));
+  const back = { fell, line: await editLine(), colors: [await probe("painted", "Fx.UR", "F"), await probe("painted", "Fx.UR", "U"), await probe("painted", "Fx.UR", "R")].join() };
+  check(back.fell === "G,W,R" && back.colors === "G,W,R" && back.line === "Valid", `a cubelet's colors fall onto every face it bares, and come back when it is put back (${JSON.stringify(back)})`);
+  // Moved from the front of a core edge to its top, a cubelet takes the white it covers;
+  // its other stickers are to paint, and the green that fell onto the core edge is a
+  // problem, with a halo and a Hide pill in the 3D view.
+  const move = async (from, face, to) => {
+    await tapSticker(from, face);
+    await tapAt(await probe("spot", to));
+  };
+  await move("Fx.U", "F", "Ux.F");
+  await tool("W");
+  const box = await page.$eval("#scene", (c) => { const r = c.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
+  const few = { line: await editLine(), halo: (await probe("highlighted")).join(), pill: (await probe("shapeEdit")).pill, took: await probe("painted", "Ux.F", "U") };
+  check(
+    /^Not valid: A core single edge must be white or yellow, never green\./.test(few.line) && few.halo === "UF" && few.took === "W" && few.pill && few.pill.x > box.l && few.pill.x < box.r && few.pill.y > box.t && few.pill.y < box.b,
+    `a cubelet moved onto a core edge's bare side takes the white it covers, and the green left on the core edge has a halo, with a Hide pill inside the 3D view (${JSON.stringify(few)})`,
+  );
+  await page.click("#halo-hide");
+  const hidden = { halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill, wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
+  check(hidden.halo === 0 && hidden.pill === null && hidden.wide <= 0, `the pill hides the halo, and itself (${JSON.stringify(hidden)})`);
+  // Many cubelets with stickers to paint get halos. A haloed cubelet hides the halos behind
+  // it, so the glows don't pile up over its stickers: the glow drawn over the 3D view is
+  // less than with nothing hiding it.
+  await tool("shape");
+  await move("Rx.U", "R", "Ux.R");
+  await move("Fx.UR", "F", "Ux.FR");
+  await move("Fx.UL", "F", "Ux.FL");
+  await tool("W");
+  for (let k = 0; k < 12 && !/stickers aren't painted yet/.test(await editLine()); k++) await page.click('[data-halo="next"]');
+  const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: !!(await probe("shapeEdit")).pill, px: await probe("haloPixels", "3d"), alone: await probe("haloPixels", "3d", false) };
+  check(
+    /^Not valid: \d+ stickers aren't painted yet\./.test(many.line) && many.halo === 4 && many.pill && many.px < many.alone,
+    `many cubelets with stickers to paint get halos, which hide each other (${JSON.stringify(many)})`,
+  );
+  await page.click("#edit-cancel");
+  await idle();
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {
