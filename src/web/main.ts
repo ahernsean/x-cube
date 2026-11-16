@@ -2938,7 +2938,7 @@ function infoHelp(): string[] {
   if (edit) {
     const tool =
       edit.paint === "shape"
-        ? "Tap an extension cubelet to take it off, or a gray box to put one there. A tap on a core corner turns it, and on a core edge turns it over."
+        ? "Tap a cubelet to remove it, or tap a gray box to add one."
         : "Tap a sticker to paint it the color picked below the view.";
     return [
       `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it. Layers don't turn while editing.`,
