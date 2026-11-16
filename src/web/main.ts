@@ -2456,6 +2456,7 @@ function escapeHtml(s: string) {
 function render() {
   const st = app.current;
   refreshGuide();
+  renderInfo();
   // status
   // One chip for the shape: "Solved", or "X shape" lit when in shape and gray when not.
   const solvedNow = isSolved(st), inShape = isXShape(st);
@@ -2928,6 +2929,125 @@ function setupCollapsibles() {
   }
 }
 
+/**
+ * The 3D view's ⓘ panel: what taps and drags on the view do now, which depends on the
+ * mode (turning the puzzle, a solve, or Edit puzzle and its tool), and how to read what is
+ * drawn in that mode.
+ */
+function infoHelp(): string[] {
+  if (edit) {
+    const tool =
+      edit.paint === "shape"
+        ? "Tap an extension cubelet to take it off, or a gray box to put one there. A tap on a core corner turns it, and on a core edge turns it over."
+        : "Tap a sticker to paint it the color picked below the view.";
+    return [
+      `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it. Layers don't turn while editing.`,
+      "The line under the colors says whether the puzzle as painted can be real. A problem's cubelets are marked in purple; Show turns the view to them, and Hide takes the mark away.",
+    ];
+  }
+  const gestures = "Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes the last turn.";
+  if (!solving) return [gestures];
+  return [
+    gestures,
+    "<strong>During a solve step</strong>, only the cubelets the step applies to keep their colors; gray ones don't move, dark gray ones may end up anywhere. Each colored cubelet has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the cubelet flies along it. With a ring: the cubelet ends up solved. Dashed: it is passing through and moves again later. Plain: a shape or core step moves it; it is solved later.",
+  ];
+}
+let infoKey = "";
+function renderInfo() {
+  const parts = infoHelp();
+  const key = parts.join("|");
+  if (key === infoKey) return;
+  infoKey = key;
+  $("info-text").innerHTML = parts.map((t) => `<p class="hint">${t}</p>`).join("");
+}
+
+/**
+ * Everything needed to see what the Lab is showing and doing, as JSON, for a developer:
+ * the start and the turns, where the view is, the solve, and an edit in progress with
+ * its shape and paint (a shape that isn't valid has no state code of its own).
+ * restoreDebug (the probe's) puts the position, the view and an edit back.
+ */
+function debugInfo(): string {
+  const q = pivot.quaternion;
+  const name = (s: number) => slotName(s);
+  return JSON.stringify(
+    {
+      lab: "x-cube debug 1",
+      at: new Date().toISOString(),
+      device: { agent: navigator.userAgent, width: innerWidth, height: innerHeight, ratio: devicePixelRatio },
+      base: encodeState(app.base),
+      turns: formatAlg(app.history),
+      cursor: app.cursor,
+      current: encodeState(app.current),
+      view: [q.x, q.y, q.z, q.w].map((v) => Math.round(v * 1e5) / 1e5),
+      solving,
+      order: guideMode,
+      steps: trail.map((g) => ({ index: g.index, stage: g.step.stage, start: g.start, alg: g.step.alg, shown: g === guide })),
+      edit: edit && {
+        shape: encodeState(edit.shape),
+        removed: [...edit.removed].map(name),
+        added: [...edit.added].map(name),
+        // One character per face, slot by slot: a painted color, or "." for none.
+        colors: edit.colors.map((c) => c ?? ".").join(""),
+        tool: edit.paint,
+        problems: edit.fit.problems.map((p) => ({ text: p.text, slots: p.slots.map(name) })),
+        selected: edit.selected,
+        hidden: edit.hidden,
+      },
+    },
+    null,
+    1,
+  );
+}
+
+async function copyDebug() {
+  const text = debugInfo();
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // Without clipboard access, select it in a field so it can be copied by hand.
+    const f = document.createElement("textarea");
+    f.value = text;
+    document.body.append(f);
+    f.select();
+    document.execCommand?.("copy");
+    f.remove();
+  }
+  setMessage("Debug info copied. Paste it where the developer can read it.", "ok");
+  render();
+}
+
+function slotByName(name: string): number {
+  for (let s = 0; s < NUM_SLOTS; s++) if (slotName(s) === name) return s;
+  throw new Error(`no slot named ${name}`);
+}
+
+/** Puts back what debugInfo wrote: the start, the turns and the cursor, the view, and an edit in progress. */
+function restoreDebug(json: string) {
+  const d = JSON.parse(json);
+  if (edit) endEdit(false);
+  if (solving) stopGuide();
+  app.base = decodeState(d.base);
+  app.history = parseAlg(d.turns ?? "");
+  jump(d.cursor ?? app.history.length);
+  if (d.view) pivot.quaternion.set(d.view[0], d.view[1], d.view[2], d.view[3]);
+  if (d.edit) {
+    startEdit();
+    const e = edit!;
+    e.shape = decodeState(d.edit.shape);
+    e.shown = e.shape.clone();
+    e.removed = new Set(d.edit.removed.map(slotByName));
+    e.added = new Set(d.edit.added.map(slotByName));
+    e.colors = [...d.edit.colors].map((c: string) => (c === "." ? undefined : (c as Color)));
+    e.paint = d.edit.tool;
+    e.selected = d.edit.selected ?? "";
+    e.hidden = d.edit.hidden ?? null;
+    refitEdit();
+    renderEdit();
+  }
+  render();
+}
+
 /** The ⓘ and Display buttons beside the 3D and flat views' headings each open a small panel over the view. */
 function bindViewTools() {
   const pairs: [string, string][] = [
@@ -2963,6 +3083,7 @@ function bindViewTools() {
 function bindUI() {
   bindAlgorithms();
   $("next-step").addEventListener("click", () => nextStep());
+  $("copy-debug").addEventListener("click", () => void copyDebug());
   $("strip-next").addEventListener("click", () => nextStep());
   $("guide-stop").addEventListener("click", () => stopGuide());
   $("guide-colors").addEventListener("click", () => setGuideFullColor(!guideFullColor));
@@ -4905,6 +5026,7 @@ function clearGlowPaint() {
 
 function renderEdit() {
   endShapeAnim();
+  renderInfo();
   $("edit-bar").hidden = !edit;
   $("edit-start").hidden = !!edit;
   if (!edit) $("halo-hide").hidden = true;
@@ -5090,12 +5212,11 @@ function probe3d() {
 
 function installProbe() {
   const canvas = () => renderer.domElement as HTMLCanvasElement;
-  const slotByName = (name: string) => {
-    for (let s = 0; s < NUM_SLOTS; s++) if (slotName(s) === name) return s;
-    throw new Error(`no slot named ${name}`);
-  };
   (window as any).xcubeProbe = {
     idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim,
+    /** The debug info Copy debug info copies, and putting it back (for reproducing what a person saw). */
+    debugInfo: () => debugInfo(),
+    restoreDebug: (json: string) => restoreDebug(json),
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
     /** The turns of the last shuffle (the page doesn't show them). */

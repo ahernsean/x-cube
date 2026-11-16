@@ -1285,6 +1285,49 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   check((await probe("state")) === editedState && sw.wrong.length === 0 && cancelGlow === "W R", `Cancel leaves the position, and its drawing and glow, as they were (glow ${cancelGlow})`);
 });
 
+labTest("info: the help says what taps and drags do in each mode, and Copy debug info puts an edit back", async ({ page, check, probe, play, settle, gesture }) => {
+  const help = async () => {
+    if (await page.$eval("#info-pop", (p) => p.hidden)) await page.click("#info-btn");
+    const text = await page.$eval("#info-text", (e) => e.textContent);
+    await page.keyboard.press("Escape");
+    return text;
+  };
+  const plain = await help();
+  await play("R U");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  const solve = await help();
+  await page.click("#guide-stop");
+  await page.click(`[data-tab="start"]`);
+  await page.click("#edit-start");
+  const paint = await help();
+  await page.click('[data-paint="shape"]');
+  const shape = await help();
+  check(
+    /Swipe on the cube to turn a layer/.test(plain) && !/During a solve step/.test(plain) && /During a solve step/.test(solve) && /Editing the puzzle\. Tap a sticker to paint/.test(paint) && !/Swipe on the cube/.test(paint) && /Tap an extension cubelet to take it off/.test(shape),
+    `the help follows the mode (${[plain, solve, paint, shape].map((t) => t.slice(0, 40)).join(" | ")})`,
+  );
+  // An edit whose shape isn't valid, copied and put back.
+  const at = await probe("sticker", "Fx.U", "F");
+  await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+  await page.waitForFunction(() => window.xcubeProbe.idle());
+  const before = await page.$eval("#edit-status", (e) => e.textContent);
+  const json = await probe("debugInfo");
+  const info = JSON.parse(json);
+  check(info.edit?.removed.join() === "Fx.U" && info.edit.tool === "shape" && typeof info.turns === "string", `the debug info holds the edit (${JSON.stringify({ removed: info.edit?.removed, tool: info.edit?.tool, problems: info.edit?.problems.length })})`);
+  await page.click("#edit-cancel");
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), json);
+  await settle();
+  const back = await probe("shapeEdit");
+  const line = await page.$eval("#edit-status", (e) => e.textContent);
+  check(back?.removed.join() === "Fx.U" && line === before, `restoring it puts the edit back as it was (${JSON.stringify(back?.removed)}, "${line}")`);
+  await page.click("#info-btn");
+  await page.click("#copy-debug");
+  const said = await page.waitForFunction(() => /Debug info copied/.test(document.getElementById("message").textContent), null, { timeout: 5000 }).then(() => true, () => false);
+  check(said, "Copy debug info says it copied");
+});
+
 labTest("shape editing: a tap changes only what it taps, paint stays on its spot, and the shape may be wrong for a while", async ({ page, check, probe, gesture }) => {
   const editLine = () => page.$eval("#edit-status", (e) => e.textContent);
   const idle = () => page.waitForFunction(() => window.xcubeProbe.idle());

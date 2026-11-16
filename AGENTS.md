@@ -269,7 +269,16 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
   two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ in the
-  3D view's corner shows this help.
+  3D view's corner shows help for the mode the Lab is in (`infoHelp`), since taps and drags
+  do different things in each: turning the puzzle (the gestures above), a solve (those,
+  and how to read a step's grays and paths), and Edit puzzle (what a tap does with the
+  color or the Shape tool picked; drags only tumble). Under the help, **Copy debug info**
+  copies, as JSON, what the Lab is showing and doing (`debugInfo`): the start, the turns
+  and the cursor, the view, the solve's steps, the device, and an edit in progress with
+  its shape (a state code, X1 when turns can't reach it), cubelets taken off and put in,
+  paint and problems. It is for the owner to hand to a developer when something looks
+  wrong, including an edit whose shape isn't valid, which has no state code of its own;
+  the probe's `restoreDebug` puts the position, the view and the edit back.
 - **Display panel:** the ◐ in the 3D view's corner opens the Edge glow, Shading, Shadows
   and Gloss switches, over the view and over the edge labels.
 - **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. The
