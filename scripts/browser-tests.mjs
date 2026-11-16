@@ -1301,6 +1301,33 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   check((await probe("state")) === editedState && sw.wrong.length === 0 && cancelGlow === "W R", `Cancel leaves the position, and its drawing and glow, as they were (glow ${cancelGlow})`);
 });
 
+labTest("shape editing: Show and the arrow reach a cubelet bared by taking an extension cubelet off", async ({ page, check, probe, gesture, settle }) => {
+  // The owner's case: a core edge left with no extensions. The cubelet taken off is hidden,
+  // not gone, and must neither cover the core edge's face nor block the view of it.
+  const tapAt = async ({ x, y }) => {
+    await gesture([["pointerdown", x, y], ["pointerup", x, y]]);
+    await page.waitForFunction(() => window.xcubeProbe.idle());
+  };
+  await page.click("#edit-start");
+  await page.click('[data-paint="shape"]');
+  await tapAt(await probe("sticker", "Fx.U", "F"));
+  const line = await page.$eval("#edit-status", (e) => e.textContent);
+  check(/This core edge has no extensions/.test(line) && (await probe("haloed")).join() === "UF", `taking the edge's only extension off names the core edge (${line})`);
+  // From the front, its front shows where the cubelet taken off was: the hidden cubelet
+  // neither covers that face nor blocks the view of it.
+  await page.evaluate(() => document.querySelector('[data-view="front"]').click());
+  await settle();
+  check((await probe("facesSeen", "UF")) === 1, `the face the cubelet taken off bared counts as seen (${await probe("facesSeen", "UF")} faces)`);
+  await page.evaluate(() => document.querySelector('[data-view="back"]').click());
+  await settle();
+  await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 1);
+  await page.click('[data-halo="show"]');
+  await settle();
+  await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 0, null, { timeout: 5000 }).catch(() => {});
+  const after = { seen: await probe("facesSeen", "UF"), arrow: await probe("haloArrow") };
+  check(after.seen >= 1 && after.arrow.behind.length === 0 && after.arrow.opacity === 0, `Show turns the view to it, and the arrow goes (${JSON.stringify(after)})`);
+});
+
 labTest("shape editing: a tap changes only what it taps, paint stays on its spot, and the shape may be wrong for a while", async ({ page, check, probe, gesture }) => {
   const editLine = () => page.$eval("#edit-status", (e) => e.textContent);
   const idle = () => page.waitForFunction(() => window.xcubeProbe.idle());

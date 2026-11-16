@@ -4921,8 +4921,8 @@ function showHiddenHalos() {
   if (!edit) return;
   const st = edit.shown, hidden = hiddenHalos();
   const faces: [number, number][] = [];
-  for (const s of hidden) for (let d = 0; d < 6; d++) if (isExposed(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
-  if (!faces.length) for (const s of hidden) for (let d = 0; d < 6; d++) if (isExposed(st, s, d)) faces.push([s, d]);
+  for (const s of hidden) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
+  if (!faces.length) for (const s of hidden) for (let d = 0; d < 6; d++) if (bareFace(st, s, d)) faces.push([s, d]);
   showFaces(st, faces);
 }
 
@@ -5013,9 +5013,20 @@ function placeHalos() {
 }
 
 /** How well the 3D view shows face d of slot s now: the cosine toward the camera, or -1 if it faces away, is edge-on or is blocked. */
+/** Whether face d of slot s is bare: by the shape being edited while editing, else by st. */
+function bareFace(st: State, s: number, d: number): boolean {
+  if (!edit) return isExposed(st, s, d);
+  const n = SLOT_NEIGHBOR[s * 6 + d];
+  return draftFilled(edit, s) && n !== -2 && !(n >= 0 && draftFilled(edit, n));
+}
+
 function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   const id = st.occ[s];
-  if (id < 0 || !isExposed(st, s, d)) return -1;
+  // While editing, the shape being edited decides what is there: a cubelet taken off is
+  // not, and one put in is (as a blank).
+  const there = (t: number) => (edit ? draftFilled(edit, t) : st.occ[t] >= 0);
+  const n = SLOT_NEIGHBOR[s * 6 + d];
+  if (id < 0 || !there(s) || n === -2 || (n >= 0 && there(n))) return -1;
   pivot.updateMatrixWorld(true);
   const p = SLOT_POS[s], v = DIRS[d];
   const target = pivot.localToWorld(new THREE.Vector3(p[0] + v[0] * 0.45, p[1] + v[1] * 0.45, p[2] + v[2] * 0.45));
@@ -5023,9 +5034,14 @@ function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   if (cos < minCos) return -1;
   const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize());
   ray.layers.set(0);
-  let o = ray.intersectObjects(pivot.children, true)[0]?.object;
-  while (o && o.parent && o.parent !== pivot) o = o.parent;
-  return o === meshes[id] ? cos : -1;
+  // The first cubelet the ray meets that is drawn: one taken off in the editor is hidden, not gone.
+  for (const h of ray.intersectObjects(pivot.children, true)) {
+    let o = h.object;
+    while (o.parent && o.parent !== pivot) o = o.parent;
+    if ((!meshes.includes(o) && !blanks.includes(o)) || !o.visible) continue;
+    return o === meshes[id] ? cos : -1;
+  }
+  return -1;
 }
 
 /** How many of slot s's exposed faces the 3D view shows now, unblocked. */
@@ -5054,8 +5070,8 @@ function showHighlighted() {
   const st = edit.shown;
   const faces: [number, number][] = [];
   const slots = haloSlots();
-  for (const s of slots) for (let d = 0; d < 6; d++) if (isExposed(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
-  if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (isExposed(st, s, d)) faces.push([s, d]);
+  for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
+  if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d)) faces.push([s, d]);
   showFaces(st, faces);
 }
 
