@@ -1362,19 +1362,32 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   // The flat view shows what the editor draws over the puzzle too: a cubelet put in while
   // the shape is wrong, with its stickers.
 
-  // With a color picked and a problem that names cubelets, the halo has a Hide pill in the 3D view.
-  await tool("shape");
-  await tapAt(await probe("spot", "Fx.L"));
-  await tool("W");
-  const box = await page.$eval("#scene", (c) => { const r = c.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
-  const lit = { halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill };
-  check(lit.halo > 0 && lit.pill && lit.pill.x > box.l && lit.pill.x < box.r && lit.pill.y > box.t && lit.pill.y < box.b, `the halo has a Hide pill inside the 3D view (${JSON.stringify(lit)})`);
-  await page.click("#halo-hide");
-  const hidden = { halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill, wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
-  check(hidden.halo === 0 && hidden.pill === null && hidden.wide <= 0, `the pill hides the halo, and itself (${JSON.stringify(hidden)})`);
   await page.click("#edit-cancel");
   await idle();
   check((await probe("state")) === start && (await probe("filled", "Fx.R")), "Cancel leaves the position as it was");
+  // A few cubelets with stickers to paint get a halo, with a Hide pill in the 3D view.
+  await page.click("#edit-start");
+  await tool("shape");
+  await tapSticker("Fx.R", "F");
+  await tapAt(await probe("spot", "Fx.R")); // back again: its side sticker isn't painted
+  await tool("W");
+  const box = await page.$eval("#scene", (c) => { const r = c.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
+  const few = { line: await editLine(), halo: (await probe("highlighted")).join(), pill: (await probe("shapeEdit")).pill };
+  check(
+    /^Not valid: One sticker isn't painted yet\./.test(few.line) && few.halo === "Fx.R" && few.pill && few.pill.x > box.l && few.pill.x < box.r && few.pill.y > box.t && few.pill.y < box.b,
+    `a few cubelets with stickers to paint get a halo, with a Hide pill inside the 3D view (${JSON.stringify(few)})`,
+  );
+  await page.click("#halo-hide");
+  const hidden = { halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill, wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
+  check(hidden.halo === 0 && hidden.pill === null && hidden.wide <= 0, `the pill hides the halo, and itself (${JSON.stringify(hidden)})`);
+  // Many get none: it would cover most of the puzzle, and each sticker has its dashed outline.
+  await tool("shape");
+  for (const [slot, face] of [["Fx.U", "F"], ["Rx.U", "R"], ["Fx.D", "F"]]) await tapSticker(slot, face); // each swings, turning its core edge over
+  await tool("W");
+  const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill };
+  check(/^Not valid: \d+ stickers aren't painted yet\.$/.test(many.line) && many.halo === 0 && many.pill === null, `many cubelets with stickers to paint get no halo, and the line has no Show or Hide (${JSON.stringify(many)})`);
+  await page.click("#edit-cancel");
+  await idle();
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {

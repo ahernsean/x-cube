@@ -3283,6 +3283,9 @@ function paintSticker(slot: number, dir: number) {
   renderEdit();
 }
 
+/** The most cubelets with unpainted stickers that get a halo. */
+const UNPAINTED_HALO_MAX = 4;
+
 /**
  * Fits the paint to the shape. While the shape is wrong, only that is reported. A
  * sticker without paint fits any color, so the fit says what is wrong with the paint so
@@ -3303,7 +3306,10 @@ function refitEdit() {
     // Until every center is painted, how the centers are arranged isn't known.
     const centers = blank.some((t) => SLOT_POS[t].filter((c) => c !== 0).length === 1);
     const problems = fit.level === "reachable" || (fit.level === "possible" && centers) ? [] : fit.problems;
-    problems.push({ text: n === 1 ? "One sticker isn't painted yet" : `${n} stickers aren't painted yet`, slots: blank });
+    // The cubelets get a halo only while there are few of them, to help find the last
+    // ones; with more, a halo over most of the puzzle hides more than it shows, and each
+    // sticker's dashed outline already marks it.
+    problems.push({ text: n === 1 ? "One sticker isn't painted yet" : `${n} stickers aren't painted yet`, slots: blank.length <= UNPAINTED_HALO_MAX ? blank : [] });
     edit.fit = { level: fit.level === "reachable" ? "possible" : fit.level, state: fit.state, problems };
   } else edit.fit = fit;
   edit.shown = edit.fit.state ?? (edit.shown.shapeKey() === edit.shape.shapeKey() ? edit.shown : edit.shape.clone());

@@ -398,7 +398,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     covers, on the face over it, and one taken away leaves its outward color on the core
     sticker it bares (`repaint`); its other stickers start unpainted. A sticker not painted yet (`UNPAINTED`) fits any color
     and is drawn as a dashed outline on the plastic, with no edge glow; the line counts
-    them ("6 stickers aren't painted yet", with a halo on their cubelets), and Done waits
+    them ("6 stickers aren't painted yet", with a halo on their cubelets while there are 4
+    or fewer: more would cover most of the puzzle), and Done waits
     for them. Where a cubelet's stickers are follows from the shape around it alone
     (`draftColors`), so a sticker can be painted while the shape is still wrong. Until
     every center is painted, the center arrangement isn't checked.
