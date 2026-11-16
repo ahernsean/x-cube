@@ -328,6 +328,18 @@ test("edit: the stickers a shape shows follow from each cubelet's own spot, righ
   assert.equal(draftColors(d, paint)[at(0, 2, 1) * 6 + U], "W", "a sticker can be painted while the shape is wrong");
 });
 
+test("edit: a core cubelet's sticker can be painted where it is drawn, whatever the shape", () => {
+  // A core corner left with one extension has two bare sides; its sticker is drawn on top, so it is on top.
+  const d = draft();
+  draftTap(d, at(1, 1, 2)); // the front extension's up-right cubelet taken off the UFR core corner
+  const shows = draftColors(d, []);
+  assert.equal(shows[at(1, 1, 1) * 6 + U], UNPAINTED, "the core corner's sticker, on top as drawn, can be painted");
+  assert.equal(shows[at(1, 1, 1) * 6 + F], null, "its other bare side is plastic");
+  const paint: (Color | undefined)[] = [];
+  paint[at(1, 1, 1) * 6 + U] = "Y";
+  assert.equal(draftColors(d, paint)[at(1, 1, 1) * 6 + U], "Y", "and takes the paint");
+});
+
 test("edit: a sticker not painted yet fits any color", () => {
   const st = after("R U");
   const colors = visibleColors(st);

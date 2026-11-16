@@ -682,10 +682,12 @@ function unitOf(s: number): number[] {
 
 /**
  * What the draft's shape shows, given the stickers painted so far (`paint`, by slot * 6 +
- * direction). Where a cubelet's stickers are follows from the shape around that cubelet
- * alone, right or wrong: an outer cubelet's are on the faces nothing can touch, and a
- * core cubelet's one is on its bare side (a core edge with cubelets on both sides has
- * none). A sticker without paint is UNPAINTED.
+ * direction). An outer cubelet's stickers are on the faces nothing can touch. A core
+ * cubelet's one is where the cubelet in the shape has it, when that face is bare: the
+ * sticker drawn there can always be painted, even while the shape is wrong (a core corner
+ * with one extension has two bare sides, and the sticker is on one of them). When that
+ * face is covered, it is on the cubelet's bare side, if it has just one (a core edge with
+ * cubelets on both sides has none). A sticker without paint is UNPAINTED.
  */
 export function draftColors(d: Draft, paint: readonly (Color | undefined)[]): FaceColors {
   const out: FaceColors = new Array(NUM_SLOTS * 6).fill(undefined);
@@ -693,10 +695,16 @@ export function draftColors(d: Draft, paint: readonly (Color | undefined)[]): Fa
     if (!draftFilled(d, s)) continue;
     const outer = outwardDir(s) >= 0;
     const bare = outer ? [] : outerOf(s).filter((n) => !draftFilled(d, n));
+    const open = (dir: number) => {
+      const n = SLOT_NEIGHBOR[s * 6 + dir];
+      return n !== -2 && !(n >= 0 && draftFilled(d, n));
+    };
+    // Where the cubelet in the shape has its sticker, if that face is bare.
+    const drawn = outer || d.shape.occ[s] < 0 ? -1 : [0, 1, 2, 3, 4, 5].find((dir) => d.shape.colorAt(s, dir) !== null && open(dir)) ?? -1;
     for (let dir = 0; dir < 6; dir++) {
       const n = SLOT_NEIGHBOR[s * 6 + dir];
-      if (n === -2 || (n >= 0 && draftFilled(d, n))) continue;
-      const sticker = outer ? n === -1 : bare.length === 1 && n === bare[0];
+      if (!open(dir)) continue;
+      const sticker = outer ? n === -1 : drawn >= 0 ? dir === drawn : bare.length === 1 && n === bare[0];
       out[s * 6 + dir] = sticker ? (paint[s * 6 + dir] ?? UNPAINTED) : null;
     }
   }
