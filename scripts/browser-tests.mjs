@@ -1346,6 +1346,14 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     steps[0] !== steps[1] && steps.slice(0, 2).every((t) => /^Not valid: Five (core edges|centers) .*‹[12]\/2›( Show Hide)?$/.test(t)) && steps[2] === steps[0],
     `› steps through problems that name no cubelets (${steps.join(" | ")})`,
   );
+  // The core edges with two extensions each: one enclosed on every side (UF, with the
+  // cubelet just put over it) can't be seen, so the cubelets around it carry its halo.
+  if (!/Five core edges/.test(await editLine())) await page.click('[data-halo="next"]');
+  const edges = { named: await probe("highlighted"), haloed: await probe("haloed") };
+  check(
+    edges.named.includes("UF") && !edges.haloed.includes("UF") && ["Fx.U", "Ux.F"].every((t) => edges.haloed.includes(t)),
+    `a named cubelet nothing shows is haloed by the cubelets around it (${JSON.stringify(edges)})`,
+  );
   await tapAt(await probe("spot", "Ux.F"));
   await tapAt(await probe("spot", "Ux"));
   check((await probe("shapeEdit")).added.length === 0, "a tap on each blank takes it away again");

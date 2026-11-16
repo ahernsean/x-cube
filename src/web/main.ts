@@ -4717,16 +4717,35 @@ function slotSeen(st: State, s: number): boolean {
   return false;
 }
 
+/**
+ * The cubelets the halo marks for the problem shown: the ones it names, except that one
+ * enclosed on every side (a core edge with extension cubelets on both sides, which nothing
+ * shows) is marked by the extension cubelets that enclose it, which can be seen.
+ */
+function haloSlots(): number[] {
+  if (!edit?.highlight) return [];
+  const e = edit;
+  const out = new Set<number>();
+  for (const s of e.highlight!) {
+    const near = [0, 1, 2, 3, 4, 5].map((d) => SLOT_NEIGHBOR[s * 6 + d]);
+    const enclosed = draftFilled(e, s) && near.every((n) => n === -2 || (n >= 0 && draftFilled(e, n)));
+    if (!enclosed) out.add(s);
+    else for (const n of near) if (n >= 0 && SLOT_POS[n].some((c) => Math.abs(c) === 2)) out.add(n);
+  }
+  return [...out];
+}
+
 /** The haloed slots whose cubelets the 3D view doesn't show now (they are behind the puzzle as it is turned). */
 let hiddenKey = "", hiddenVal: number[] = [];
 function hiddenHalos(): number[] {
   if (!edit?.highlight) return [];
   const q = pivot.quaternion;
-  const key = `${edit.highlight.join()}|${[q.x, q.y, q.z, q.w].map((v) => v.toFixed(4)).join()}|${haloStamp}`;
+  const slots = haloSlots();
+  const key = `${slots.join()}|${[q.x, q.y, q.z, q.w].map((v) => v.toFixed(4)).join()}|${haloStamp}`;
   if (key !== hiddenKey) {
     hiddenKey = key;
     const st = edit.shown;
-    hiddenVal = edit.highlight.filter((s) => st.occ[s] >= 0 && !slotSeen(st, s));
+    hiddenVal = slots.filter((s) => st.occ[s] >= 0 && !slotSeen(st, s));
   }
   return hiddenVal;
 }
@@ -4760,9 +4779,12 @@ function placeHaloArrow() {
     if (haloArrow) haloArrow.visible = false;
     return;
   }
-  const aim: number[] = hidden.length ? hidden : (haloArrow?.userData.slots ?? []);
-  if (!aim.length) return;
   const eye = pivot.worldToLocal(camera.position.clone()).normalize();
+  // One cubelet at a time, the one nearest to coming into view: an arrow aimed between
+  // several points at none of them. Once it is in view, the arrow goes on to the next.
+  const nearest = [...hidden].sort((a, b) => new THREE.Vector3(...SLOT_POS[b]).normalize().dot(eye) - new THREE.Vector3(...SLOT_POS[a]).normalize().dot(eye))[0];
+  const aim: number[] = nearest !== undefined ? [nearest] : (haloArrow?.userData.slots ?? []);
+  if (!aim.length) return;
   const key = `${aim.join()}|${eye.toArray().map((v: number) => v.toFixed(2)).join()}`;
   if (key !== haloArrowKey || !haloArrow) {
     haloArrowKey = key;
@@ -4913,7 +4935,7 @@ function placeHidePill() {
   if (!edit?.highlight || pill.hidden) return;
   const el = renderer.domElement as HTMLElement;
   const at = (v: any) => toScreen(el, v);
-  const pts = edit.highlight.map((t) => at(new THREE.Vector3(...SLOT_POS[t])));
+  const pts = haloSlots().map((t) => at(new THREE.Vector3(...SLOT_POS[t])));
   const mid = [0, 1].map((k) => pts.reduce((a, q) => a + q[k], 0) / pts.length);
   const center = at(new THREE.Vector3());
   // How big a cubelet is on screen, from a step across the view at the puzzle's center.
@@ -4953,7 +4975,7 @@ function placeHalos() {
   for (const h of [...halos, ...haloBodies]) h.parent?.remove(h);
   haloClearer?.parent?.remove(haloClearer);
   haloStamp++;
-  const marked = edit?.highlight;
+  const marked = edit?.highlight ? haloSlots() : null;
   if (!edit || !marked) return;
   if (!haloClearer) {
     haloClearer = new THREE.Mesh(new THREE.PlaneGeometry(1e-3, 1e-3), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true }));
@@ -5031,8 +5053,9 @@ function showHighlighted() {
   if (!edit?.highlight) return;
   const st = edit.shown;
   const faces: [number, number][] = [];
-  for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
-  if (!faces.length) for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d)) faces.push([s, d]);
+  const slots = haloSlots();
+  for (const s of slots) for (let d = 0; d < 6; d++) if (isExposed(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
+  if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (isExposed(st, s, d)) faces.push([s, d]);
   showFaces(st, faces);
 }
 
@@ -5395,6 +5418,8 @@ function installProbe() {
     // summed opacity, in whole pixels). "3d": how many pixels of the puzzle as drawn the
     // rims change, so a rim hidden behind the puzzle counts nothing.
     highlighted: () => (edit?.highlight ?? []).map(slotName),
+    /** The cubelets the halo marks: those named, or for one nothing shows, those around it. */
+    haloed: () => haloSlots().map(slotName).sort(),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),
     // `hiding` false draws them as if no haloed cubelet hid the halos behind it, to compare.
     haloPixels: (view: string, hiding = true) => {
