@@ -398,8 +398,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     covers, on the face over it, and one taken away leaves its outward color on the core
     sticker it bares (`repaint`); its other stickers start unpainted. A sticker not painted yet (`UNPAINTED`) fits any color
     and is drawn as a dashed outline on the plastic, with no edge glow; the line counts
-    them ("6 stickers aren't painted yet", with a halo on their cubelets while there are 4
-    or fewer: more would cover most of the puzzle), and Done waits
+    them ("6 stickers aren't painted yet", with a halo on their cubelets), and Done waits
     for them. Where a cubelet's stickers are follows from the shape around it alone
     (`draftColors`), so a sticker can be painted while the shape is still wrong. Until
     every center is painted, the center arrangement isn't checked.
@@ -421,7 +420,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   problem at a time; with several, tiny ‹ and › buttons step through them ("‹2/4›"), and the
   choice is kept across paints while that problem remains. The shown problem's
   cubelets get a **halo** by themselves: a purple glow around the whole cubelet, drawn
-  over everything (so it shows a cubelet behind others), in the 3D view and on each
+  over the rest of the puzzle (so it shows a cubelet behind others) but hidden by a haloed
+  cubelet in front of it (so many halos don't pile up over each other's stickers), in the 3D view and on each
   flat-view face where the cubelet shows. A halo appearing never moves the view. **Show**
   (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
   most unblocked, then each as squarely as possible, from the preset views and the

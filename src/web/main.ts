@@ -3283,9 +3283,6 @@ function paintSticker(slot: number, dir: number) {
   renderEdit();
 }
 
-/** The most cubelets with unpainted stickers that get a halo. */
-const UNPAINTED_HALO_MAX = 4;
-
 /**
  * Fits the paint to the shape. While the shape is wrong, only that is reported. A
  * sticker without paint fits any color, so the fit says what is wrong with the paint so
@@ -3306,10 +3303,7 @@ function refitEdit() {
     // Until every center is painted, how the centers are arranged isn't known.
     const centers = blank.some((t) => SLOT_POS[t].filter((c) => c !== 0).length === 1);
     const problems = fit.level === "reachable" || (fit.level === "possible" && centers) ? [] : fit.problems;
-    // The cubelets get a halo only while there are few of them, to help find the last
-    // ones; with more, a halo over most of the puzzle hides more than it shows, and each
-    // sticker's dashed outline already marks it.
-    problems.push({ text: n === 1 ? "One sticker isn't painted yet" : `${n} stickers aren't painted yet`, slots: blank.length <= UNPAINTED_HALO_MAX ? blank : [] });
+    problems.push({ text: n === 1 ? "One sticker isn't painted yet" : `${n} stickers aren't painted yet`, slots: blank });
     edit.fit = { level: fit.level === "reachable" ? "possible" : fit.level, state: fit.state, problems };
   } else edit.fit = fit;
   edit.shown = edit.fit.state ?? (edit.shown.shapeKey() === edit.shape.shapeKey() ? edit.shown : edit.shape.clone());
@@ -4649,7 +4643,7 @@ function haloMesh() {
     uniforms: { color: { value: new THREE.Color(HALO.color) }, size: { value: 0.985 / 2 }, round: { value: BODY_RADIUS }, reach: { value: HALO.reach }, strength: { value: HALO.strength } },
     transparent: true,
     depthWrite: false,
-    depthTest: false,
+    depthTest: true, // against the haloed cubelets only (placeHalos clears the rest first)
     vertexShader: `
       varying vec3 vOrigin;
       varying vec3 vDir;
@@ -4729,12 +4723,32 @@ function placeHidePill() {
   pill.style.top = `${y}px`;
 }
 
+// Halos hide each other but nothing else does: the rest of the puzzle can't hide a halo
+// (a problem on the far side still shows), but a haloed cubelet hides the halos behind it,
+// so its stickers aren't buried under the glow of every haloed cubelet behind it. Drawn
+// after everything else: one mesh clears the depth buffer (haloClearer), each haloed
+// cubelet's body is drawn into it alone, with no color (haloBodies), then the halos test
+// against it.
+const haloBodies: any[] = [];
+let haloClearer: any = null;
+const HALO_VIEWS = [HALO_LAYER, ...[0, 1, 2, 3, 4, 5].map((d) => FLAT_HALO_LAYER + d)];
+
 /** Puts halos on the cubelet in each highlighted slot of the shown state, and removes the rest. */
 function placeHalos() {
-  for (const h of halos) h.parent?.remove(h);
+  for (const h of [...halos, ...haloBodies]) h.parent?.remove(h);
+  haloClearer?.parent?.remove(haloClearer);
   const marked = edit?.highlight;
   if (!edit || !marked) return;
-  let n = 0;
+  if (!haloClearer) {
+    haloClearer = new THREE.Mesh(new THREE.PlaneGeometry(1e-3, 1e-3), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true }));
+    haloClearer.frustumCulled = false;
+    haloClearer.renderOrder = 2.9;
+    haloClearer.onBeforeRender = (r: any) => r.clearDepth();
+    for (const l of HALO_VIEWS) haloClearer.layers.enable(l);
+    haloClearer.layers.disable(0);
+  }
+  pivot.add(haloClearer);
+  let n = 0, b = 0;
   const add = (id: number, layer: number) => {
     if (n === halos.length) halos.push(haloMesh());
     const h = halos[n++];
@@ -4744,6 +4758,14 @@ function placeHalos() {
   for (const s of marked) {
     const id = edit.shown.occ[s];
     if (id < 0) continue;
+    if (b === haloBodies.length) {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.985, 0.985, 0.985), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true }));
+      body.renderOrder = 2.95;
+      for (const l of HALO_VIEWS) body.layers.enable(l);
+      body.layers.disable(0);
+      haloBodies.push(body);
+    }
+    meshes[id].add(haloBodies[b++]);
     add(id, HALO_LAYER);
     for (let d = 0; d < 6; d++) if (isExposed(edit.shown, s, d)) add(id, FLAT_HALO_LAYER + d);
   }
@@ -5148,15 +5170,20 @@ function installProbe() {
     /** While editing colors: how the painted colors fit, and the color of a painted face. */
     editing: () => edit && { level: edit.fit.level, problems: edit.fit.problems.map((p) => p.text), paint: edit.paint },
     // The slots with a halo, how many of a slot's faces the 3D view shows unblocked, and
-    // how many pixels of halo a view ("3d" or a flat-view face letter) draws, alone.
+    // how much halo a view ("3d" or a flat-view face letter) draws, alone (its pixels' summed
+    // opacity, in whole pixels).
     highlighted: () => (edit?.highlight ?? []).map(slotName),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),
-    haloPixels: (view: string) => {
+    // `hiding` false draws them as if no haloed cubelet hid the halos behind it, to compare.
+    haloPixels: (view: string, hiding = true) => {
       const nc = netCams.find((c) => c.face === view);
+      const bodies = haloBodies.filter((b) => b.parent);
+      if (!hiding) for (const b of bodies) b.visible = false;
       const img = probeImage(nc ? nc.cam : camera, nc ? FLAT_HALO_LAYER + dirIndex(nc.view) : HALO_LAYER, 96, 96, "drawn");
+      for (const b of bodies) b.visible = true;
       let n = 0;
-      for (let i = 3; i < img.length; i += 4) if (img[i] > 20) n++;
-      return n;
+      for (let i = 3; i < img.length; i += 4) n += img[i];
+      return Math.round(n / 255);
     },
     painted: (slot: string, face: string) => edit?.colors[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)] ?? null,
     /**

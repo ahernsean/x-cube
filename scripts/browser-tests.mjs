@@ -1380,12 +1380,16 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await page.click("#halo-hide");
   const hidden = { halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill, wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(hidden.halo === 0 && hidden.pill === null && hidden.wide <= 0, `the pill hides the halo, and itself (${JSON.stringify(hidden)})`);
-  // Many get none: it would cover most of the puzzle, and each sticker has its dashed outline.
+  // Many get halos too. A haloed cubelet hides the halos behind it, so the glows don't pile
+  // up over its stickers: the glow drawn over the 3D view is less than with nothing hiding it.
   await tool("shape");
   for (const [slot, face] of [["Fx.U", "F"], ["Rx.U", "R"], ["Fx.D", "F"]]) await tapSticker(slot, face); // each swings, turning its core edge over
   await tool("W");
-  const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill };
-  check(/^Not valid: \d+ stickers aren't painted yet\.$/.test(many.line) && many.halo === 0 && many.pill === null, `many cubelets with stickers to paint get no halo, and the line has no Show or Hide (${JSON.stringify(many)})`);
+  const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: !!(await probe("shapeEdit")).pill, px: await probe("haloPixels", "3d"), alone: await probe("haloPixels", "3d", false) };
+  check(
+    /^Not valid: \d+ stickers aren't painted yet\./.test(many.line) && many.halo === 7 && many.pill && many.px < many.alone,
+    `many cubelets with stickers to paint get halos, which hide each other (${JSON.stringify(many)})`,
+  );
   await page.click("#edit-cancel");
   await idle();
 });
