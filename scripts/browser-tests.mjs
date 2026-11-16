@@ -1642,7 +1642,7 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   await next();
   const holdStep = { g: await probe("guide"), line: await line() };
   check(
-    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Step 1 of 1 — Regrip: Turn the whole puzzle so the white center is up \(now \w+ is up\)\. Nothing else moves\. Turns: x'$/.test(holdStep.line),
+    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Step 1 of 1 — Regrip: Rotate the whole puzzle so the white center is up \(now \w+ is up\)\. Nothing else moves\. Turns: x'$/.test(holdStep.line),
     `a Regrip step says to turn the whole puzzle, and keeps every color ("${holdStep.line}")`,
   );
   // Out of shape, the step applies to the core cubelets that are wrong; it may leave the
@@ -1704,7 +1704,7 @@ labTest("guide: a regrip is a step of its own, and the step after it is as the p
   const flip = await probe("guide");
   const showOff = await page.$eval("#guide-show", (b) => b.disabled);
   check(
-    flip?.stage === "regrip" && flip.alg === "x2" && flip.gray === 0 && flip.darkGray === 0 && flip.arrows === 0 && showOff && /^Step 1 of \d+ — Regrip: Turn the puzzle over, so yellow is up\. Nothing else moves\. Turns: x2$/.test(await line()),
+    flip?.stage === "regrip" && flip.alg === "x2" && flip.gray === 0 && flip.darkGray === 0 && flip.arrows === 0 && showOff && /^Step 1 of \d+ — Regrip: Flip the puzzle over, so yellow is up\. Nothing else moves\. Turns: x2$/.test(await line()),
     `turning the puzzle over is a step of its own, which grays nothing and has nothing to show (${JSON.stringify(flip)}; "${await line()}")`,
   );
   await page.click("#last");

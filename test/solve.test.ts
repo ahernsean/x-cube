@@ -211,7 +211,7 @@ test("solve: an outer step flips the puzzle over when the cubelets it cycles are
   const first = nextStep(st)!;
   assert.equal(first.stage, "regrip");
   assert.equal(first.alg, "x2", "the first step flips the puzzle over, alone");
-  assert.match(first.goal, /^Turn the puzzle over, so yellow is up\. Nothing else moves$/);
+  assert.match(first.goal, /^Flip the puzzle over, so yellow is up\. Nothing else moves$/);
   const turned = st.clone();
   applyTurns(turned, first.turns);
   const second = nextStep(turned)!;

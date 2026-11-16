@@ -188,8 +188,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   these eight holds the puzzle is in, from white up and green front (`GRIPS`), and each
   outer cubelet's home turns with it. A regrip is chosen with the step it is for, but
   `nextStep` gives it as a **regrip step** of its own first (stage `regrip`, its goal
-  naming the center that ends up up or in front: "Turn the puzzle over, so yellow is up";
-  "Turn the puzzle around, so blue is in front"), and the step after it is found again
+  naming the center that ends up up or in front: "Flip the puzzle over, so yellow is up";
+  "Rotate the puzzle, so blue is in front"), and the step after it is found again
   from the regripped position. So every other step's goal, turns and paths are for one
   way of holding the puzzle, and its `regrip` is "" (should that fresh step want a regrip
   of its own, the step keeps its regrip instead; no sampled solve has needed it). About
@@ -403,7 +403,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     in the flat view too, with its stickers, as is every dashed outline). Once
     the shape is one the puzzle can have, real cubelets take the blanks' places at once.
     The core corners' twists can still be wrong, as no turns leave them: "The core corners
-    can't all have these orientations at once. One of them needs a different orientation" (no halo: any
+    can't all have these orientations at once. One of them needs to be rotated" (no halo: any
     of them may be the one).
   - **Paint stays on its spot**, not on a cubelet: what a tap turns (a core cubelet with
     the extension cubelets on it) loses its paint. A cubelet that only comes or goes changes only its own spot

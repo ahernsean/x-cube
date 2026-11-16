@@ -818,12 +818,17 @@ export function nextStep(st: State, mode: Mode = "kinds"): SolveStep | null {
   applyTurns(after, grip);
   if (stepFrom(after, mode)?.regrip) return step;
   const color = (s: number) => COLOR_NAME[FACE_COLOR[[0, 1, 2, 3, 4, 5].find((d) => slotAt(DIRS[d]) === CUBELETS[after.occ[s]].home)!]];
+  // A flip is a half turn (x2, y2); a quarter turn about the vertical is a rotation.
   const over = grip.some((t) => MOVE_DEFS[t.def].axis !== 1);
-  const around = grip.some((t) => MOVE_DEFS[t.def].axis === 1);
-  const goal = [over && `over, so ${color(UP)} is up`, around && `around, so ${color(FRONT)} is in front`].filter(Boolean).join(", and ");
+  const around = grip.find((t) => MOVE_DEFS[t.def].axis === 1);
+  const spin = around && (around.amount === 2 ? "flip" : "rotate");
+  const goal = [
+    over && `flip the puzzle over, so ${color(UP)} is up`,
+    around && `${spin} ${over ? "it" : "the puzzle"}${around.amount === 2 ? " around" : ""}, so ${color(FRONT)} is in front`,
+  ].filter(Boolean).join(", and ");
   return {
     stage: "regrip",
-    goal: `Turn the puzzle ${goal}. Nothing else moves`,
+    goal: `${goal[0].toUpperCase()}${goal.slice(1)}. Nothing else moves`,
     alg: step.regrip,
     turns: grip,
     parts: [{ name: "regrip", turns: grip.length }],
@@ -879,7 +884,7 @@ function heldStep(st: State, mode: Mode): SolveStep | null {
     const turns = holdTurns(st);
     // The color a center shows is the color of the face its core center cubelet came from.
     const up = COLOR_NAME[FACE_COLOR[[0, 1, 2, 3, 4, 5].find((d) => slotAt(DIRS[d]) === CUBELETS[st.occ[UP]].home)!]];
-    return { stage: "hold", goal: `Turn the whole puzzle so the white center is up (now ${up} is up). Nothing else moves`, alg: formatAlg(turns), turns, parts: [{ name: "turns", turns: turns.length }], moved: [], free: [], lands: [], regrip: "" };
+    return { stage: "hold", goal: `Rotate the whole puzzle so the white center is up (now ${up} is up). Nothing else moves`, alg: formatAlg(turns), turns, parts: [{ name: "turns", turns: turns.length }], moved: [], free: [], lands: [], regrip: "" };
   }
   if (mode === "layers") {
     const step = layerCoreStep(st, false);

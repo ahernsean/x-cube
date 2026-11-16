@@ -4015,7 +4015,7 @@ function goToStep(g: Guide | undefined) {
   jump(g.start);
 }
 
-const PART_TITLE = { regrip: "Regrip: turn the whole puzzle", setup: "Setup", cycle: "The cycle", undo: "The setup, undone", turns: "" };
+const PART_TITLE = { regrip: "Regrip: rotate the whole puzzle", setup: "Setup", cycle: "The cycle", undo: "The setup, undone", turns: "" };
 
 /** The turn list's chips, with each step the guide put there in a box behind a tag that goes to its start. */
 function turnListHtml(): string {
@@ -5307,7 +5307,7 @@ function renderEdit() {
   const { i } = shownProblem();
   $("edit-hint").textContent =
     edit.paint === "shape"
-      ? "Tap an extension cubelet that isn't on your puzzle, or a gray box where one is missing. Drag to tumble the view."
+      ? "Tap an extension cubelet to remove it, or a gray box to add one. Drag to tumble the view."
       : "Pick a color, then tap stickers to color them. Drag to tumble the view.";
   if (level === "reachable") {
     st.className = "edit-status good";

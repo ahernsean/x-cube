@@ -26,18 +26,24 @@ everything beyond it (`R`), a middle slice (`M`, `H`, `S`), or an extension by i
 
 ## Turns, orientation and the view
 
-A **turn** is something a person does to the puzzle: turning one layer. The turn list,
-Undo ("Undo the last turn"), the turn buttons and a step's "Turns:" all count turns.
-Nothing else is a turn: not a cubelet changing which way it faces, and not the view
-moving.
+A **turn** is something a person does to the puzzle: turning one layer. Undo ("Undo the
+last turn"), the turn buttons and a step's "Turns:" count turns. Nothing else is a turn:
+not a cubelet changing which way it faces, not the whole puzzle moving in the hand, and
+not the view moving.
+
+The whole puzzle **rotates** (`x`, `y`, `z`): "Rotate the whole puzzle so the white
+center is up". A half rotation (`x2`, `y2`, `z2`) may be called a **flip**: "Flip the
+puzzle over, so yellow is up", "Flip the puzzle around, so blue is in front". A flip is
+always 180 degrees; a quarter rotation is never a flip. Don't say "spin" for the
+puzzle: it suggests continuous motion.
 
 A cubelet's **orientation** is which way it faces in its spot, and to **orient** one is to
-change that. So a problem with the core corners says "The core corners can't all have
-these orientations at once. One of them needs a different orientation", not that one
-"needs another turn".
+change that. A cubelet may also be **rotated**: a problem with the core corners says "The
+core corners can't all have these orientations at once. One of them needs to be
+rotated", not that one "needs another turn".
 
-The view **rotates** ("Show rotates the view to them"), and a drag **tumbles** it; two
-fingers **spin** it.
+The view **rotates** too ("Show rotates the view to them", "Drag to rotate the view");
+a drag **tumbles** it, and two fingers **spin** it.
 
 A **step** is one step of a solve, as the Solve panel gives it. An **algorithm** is a
 known or saved sequence of turns, as in the Algorithms panel.
