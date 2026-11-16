@@ -94,6 +94,12 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .pop { position: absolute; top: calc(100% + 4px); right: 0; z-index: 15; max-width: min(300px, 100%); padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); display: grid; gap: 8px; }
 .pop[hidden] { display: none; }
 .pop p { margin: 0; }
+.info-text { display: grid; gap: 8px; }
+/* A control named in the help, drawn as it is in the problem line (Show, Hide). */
+.ui-name { font-weight: 700; text-decoration: underline; color: var(--ink); white-space: nowrap; }
+.info-debug { border-top: 1px solid var(--line); padding-top: 6px; font-size: 12px; }
+.debug-text { display: block; width: 100%; box-sizing: border-box; height: 8em; font: 16px ui-monospace, monospace; }
+.debug-text[hidden] { display: none; }
 .pop label { display: flex; align-items: center; gap: 8px; font-size: 15px; }
 .stage.tumbling { box-shadow: 0 0 0 2px var(--accent); }
 /* Long presses on the 3D view are gestures: no text selection, magnifier or callout. */
@@ -421,8 +427,9 @@ details[open] summary { margin-bottom: 8px; }
       <button class="btn small tool-btn info corner tl" id="undo" aria-label="Undo the last turn" title="Undo the last turn" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
       <button class="halo-hide" id="halo-hide" hidden>Hide</button>
       <div class="pop near-top" id="info-pop" hidden>
-        <p class="hint">Swipe on the cube to turn a layer. Drag the background, or long press the cube and drag, to tumble the view. Two fingers spin it; double tap undoes.</p>
-        <p class="hint"><strong>During a solve step</strong>, only the cubelets the step applies to keep their colors; gray ones don't move, dark gray ones may end up anywhere. Each colored cubelet has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the cubelet flies along it. With a ring: the cubelet ends up solved. Dashed: it is passing through and moves again later. Plain: a shape or core step moves it; it is solved later.</p>
+        <div class="info-text" id="info-text"></div>
+        <p class="hint info-debug"><button class="link-btn" id="copy-debug" title="Copies what the Lab is showing and doing, as text, to paste for the developer">Copy debug info</button></p>
+        <textarea class="debug-text" id="debug-text" readonly hidden aria-label="Debug info"></textarea>
       </div>
       <div class="pop near-bottom" id="render-pop" hidden title="Applies to the 3D view and the flat view">
         <label class="keep" for="glow"><input type="checkbox" id="glow"> Edge glow</label>

@@ -269,7 +269,16 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
   two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ in the
-  3D view's corner shows this help.
+  3D view's corner shows help for the mode the Lab is in (`infoHelp`), since taps and drags
+  do different things in each: turning the puzzle (the gestures above), a solve (those,
+  and how to read a step's grays and paths), and Edit puzzle (what a tap does with the
+  color or the Shape tool picked; drags only tumble). Under the help, **Copy debug info**
+  copies, as JSON, what the Lab is showing and doing (`debugInfo`): the start, the turns
+  and the cursor, the view, the solve's steps, the device, and an edit in progress with
+  its shape (a state code, X1 when turns can't reach it), cubelets taken off and put in,
+  paint and problems; where the browser won't let it write the clipboard, the text shows selected under the link, to copy by hand. It is for the owner to hand to a developer when something looks
+  wrong, including an edit whose shape isn't valid, which has no state code of its own;
+  the probe's `restoreDebug` puts the position, the view and the edit back.
 - **Display panel:** the ◐ in the 3D view's corner opens the Edge glow, Shading, Shadows
   and Gloss switches, over the view and over the edge labels.
 - **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. The
@@ -375,11 +384,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     a stack of cubelets rather than of the rules behind it: an extension cubelet goes away,
     and an empty spot gets a cubelet. Every empty spot next to the core is marked while
     Shape is selected: small gray glass boxes with white edges, unlit, so they show over
-    white, over black and in shadow. A tap on a core corner itself turns it clockwise as
-    seen from outside (three taps go round), and on a core single edge turns it over,
-    with the extension cubelets on it (animated, in place); it is seldom reachable, as the
-    box on the cubelet's bare side sits over its sticker. There is no halo while Shape is
-    selected (it covered what to tap).
+    white, over black and in shadow. Nothing turns or swings: a tap only takes an
+    extension cubelet away or puts one in. There is no halo while Shape is selected (it
+    covered what to tap).
   - **A wrong shape for a while:** as paint may be wrong, so may the shape. The line names
     what keeps it from being one the puzzle can have ("This core corner has only one
     extension, but it has to have two", "These two core corners have three extensions
