@@ -3013,7 +3013,7 @@ async function copyDebug() {
     document.execCommand?.("copy");
     f.remove();
   }
-  setMessage("Debug info copied. Paste it where the developer can read it.", "ok");
+  setMessage("Debug info copied", "ok");
   render();
 }
 
