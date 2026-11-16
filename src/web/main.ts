@@ -2949,7 +2949,7 @@ function infoHelp(): string[] {
   if (!solving) return [gestures];
   return [
     gestures,
-    "<strong>During a solve step</strong>, only the cubelets the step applies to keep their colors; gray ones end the step just as they started, and dark gray ones may end up anywhere. Each colored cubelet has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the cubelet flies along it. With a ring: the cubelet ends up solved. Dashed: it is passing through and moves again later. Plain: a shape or core step moves it; it is solved later.",
+    "<strong>During a solve step</strong>, only the cubelets the step applies to keep their colors; gray ones end the step just as they started, and dark gray ones may end up anywhere. Each colored cubelet has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the cubelet flies along it. A solid path that ends in a ring: the cubelet ends up solved. A dashed path: it is passing through and moves again later. A solid path with no ring: a shape or core step moves it, and it is solved later.",
   ];
 }
 let infoKey = "";
