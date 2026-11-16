@@ -98,6 +98,8 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 /* A control named in the help, drawn as it is in the problem line (Show, Hide). */
 .ui-name { font-weight: 700; text-decoration: underline; color: var(--ink); white-space: nowrap; }
 .info-debug { border-top: 1px solid var(--line); padding-top: 6px; font-size: 12px; }
+.debug-text { display: block; width: 100%; box-sizing: border-box; height: 8em; font: 16px ui-monospace, monospace; }
+.debug-text[hidden] { display: none; }
 .pop label { display: flex; align-items: center; gap: 8px; font-size: 15px; }
 .stage.tumbling { box-shadow: 0 0 0 2px var(--accent); }
 /* Long presses on the 3D view are gestures: no text selection, magnifier or callout. */
@@ -427,6 +429,7 @@ details[open] summary { margin-bottom: 8px; }
       <div class="pop near-top" id="info-pop" hidden>
         <div class="info-text" id="info-text"></div>
         <p class="hint info-debug"><button class="link-btn" id="copy-debug" title="Copies what the Lab is showing and doing, as text, to paste for the developer">Copy debug info</button></p>
+        <textarea class="debug-text" id="debug-text" readonly hidden aria-label="Debug info"></textarea>
       </div>
       <div class="pop near-bottom" id="render-pop" hidden title="Applies to the 3D view and the flat view">
         <label class="keep" for="glow"><input type="checkbox" id="glow"> Edge glow</label>

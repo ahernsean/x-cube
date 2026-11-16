@@ -3002,18 +3002,27 @@ function debugInfo(): string {
 
 async function copyDebug() {
   const text = debugInfo();
+  const field = $("debug-text") as HTMLTextAreaElement;
+  field.hidden = true;
   try {
     await navigator.clipboard.writeText(text);
+    setMessage("Debug info copied", "ok");
   } catch {
-    // Without clipboard access, select it in a field so it can be copied by hand.
-    const f = document.createElement("textarea");
-    f.value = text;
-    document.body.append(f);
-    f.select();
-    document.execCommand?.("copy");
-    f.remove();
+    // Without clipboard access, the text is shown selected, to copy by hand if the browser won't.
+    field.value = text;
+    field.hidden = false;
+    field.select();
+    let copied = false;
+    try {
+      copied = document.execCommand?.("copy") ?? false;
+    } catch {
+      copied = false;
+    }
+    if (copied) {
+      field.hidden = true;
+      setMessage("Debug info copied", "ok");
+    } else setMessage("Select and copy the debug info", "info");
   }
-  setMessage("Debug info copied", "ok");
   render();
 }
 
@@ -3066,6 +3075,7 @@ function bindViewTools() {
     $(b).addEventListener("click", () => {
       const open = $(p).hidden;
       close(p);
+      $("debug-text").hidden = true;
       $(p).hidden = !open;
       $(b).setAttribute("aria-expanded", String(open));
     });

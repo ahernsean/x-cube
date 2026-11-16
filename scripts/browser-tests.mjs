@@ -1326,6 +1326,15 @@ labTest("info: the help says what taps and drags do in each mode, and Copy debug
   await page.click("#copy-debug");
   const said = await page.waitForFunction(() => /Debug info copied/.test(document.getElementById("message").textContent), null, { timeout: 5000 }).then(() => true, () => false);
   check(said, "Copy debug info says it copied");
+  // With no clipboard at all, the text stays on screen, selected, to copy by hand.
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.reject(new Error("denied")) }, configurable: true });
+    document.execCommand = () => false;
+  });
+  await page.click("#copy-debug");
+  const shown = await page.waitForFunction(() => /Select and copy the debug info/.test(document.getElementById("message").textContent), null, { timeout: 5000 }).then(() => true, () => false);
+  const field = await page.$eval("#debug-text", (f) => ({ hidden: f.hidden, edit: JSON.parse(f.value).edit?.removed?.join(), selected: f.selectionEnd - f.selectionStart === f.value.length }));
+  check(shown && !field.hidden && field.edit === "Fx.U" && field.selected, `without a clipboard the debug info stays shown and selected (${JSON.stringify({ shown, ...field })})`);
 });
 
 labTest("shape editing: a tap changes only what it taps, paint stays on its spot, and the shape may be wrong for a while", async ({ page, check, probe, gesture }) => {

@@ -276,7 +276,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   copies, as JSON, what the Lab is showing and doing (`debugInfo`): the start, the turns
   and the cursor, the view, the solve's steps, the device, and an edit in progress with
   its shape (a state code, X1 when turns can't reach it), cubelets taken off and put in,
-  paint and problems. It is for the owner to hand to a developer when something looks
+  paint and problems; where the browser won't let it write the clipboard, the text shows selected under the link, to copy by hand. It is for the owner to hand to a developer when something looks
   wrong, including an edit whose shape isn't valid, which has no state code of its own;
   the probe's `restoreDebug` puts the position, the view and the edit back.
 - **Display panel:** the ◐ in the 3D view's corner opens the Edge glow, Shading, Shadows
