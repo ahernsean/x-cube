@@ -104,7 +104,15 @@ const LIGHT = { env: 0.45, key: 0.45, plasticRough: 0.28, plasticSpec: 6, plasti
 let keyLight: any = null;
 let envTex: any = null;
 /** What the step guide's flying copies are made of: the puzzle's own body and sticker shapes and materials. */
-let copyLook: { body: any; plane: any; bodyMat: any; sticker: (c: Color) => any; place: (m: any, d: number) => void } | null = null;
+let copyLook: {
+  body: any;
+  plane: any;
+  bodyMat: any;
+  sticker: (c: Color) => any;
+  place: (m: any, d: number) => void;
+  /** The flat view's look, for the editor's own meshes: a cubelet's dark backing, and a tile on face d, `out` from the cubelet's middle. */
+  flat: { body: () => any; tile: (mat: any) => any; place: (m: any, d: number, out?: number) => void };
+} | null = null;
 const SHADOW_KEY = "xcube-lab-shadows";
 let shadowsOn = (() => {
   try {
@@ -398,6 +406,24 @@ function initScene(canvas: HTMLCanvasElement) {
       const [px, py, pz, rx, ry] = faceXform[d];
       m.position.set(px, py, pz);
       m.rotation.set(rx, ry, 0);
+    },
+    flat: {
+      body: () => {
+        const m = new THREE.Mesh(netBody, netOccluderMat);
+        m.layers.set(NET_LAYER);
+        m.renderOrder = -1;
+        return m;
+      },
+      tile: (mat) => {
+        const m = new THREE.Mesh(withAoColors(netPlane), mat);
+        m.layers.set(NET_LAYER);
+        return m;
+      },
+      place: (m, d, out = 0.5) => {
+        const [px, py, pz, rx, ry] = faceXform[d];
+        m.position.set((px / 0.4945) * out, (py / 0.4945) * out, (pz / 0.4945) * out);
+        m.rotation.set(rx, ry, 0);
+      },
     },
   };
   const faceXform: [number, number, number, number, number][] = [
@@ -3322,7 +3348,12 @@ function placeGhosts() {
     const g = new THREE.Group();
     const body = new THREE.Mesh(withAoColors(copyLook!.body), copyLook!.bodyMat);
     body.castShadow = body.receiveShadow = true;
-    g.add(body);
+    g.add(body, copyLook!.flat.body());
+    for (let d = 0; d < 6; d++) {
+      const tile = copyLook!.flat.tile(paintMaterial!.darkTile);
+      copyLook!.flat.place(tile, d);
+      g.add(tile);
+    }
     return g;
   });
 }
@@ -3359,29 +3390,37 @@ function dashedOutline(round: number) {
 }
 
 /**
- * Stickers drawn over the puzzle, [slot, direction, material]: a painted one that no real
- * cubelet's mesh is there to show, or (no material) one not painted yet, drawn as a dashed
- * outline on the plastic where the sticker belongs.
+ * Stickers drawn over the puzzle, in the 3D view and the flat view, [slot, direction,
+ * color]: a painted one that no real cubelet's mesh is there to show, or (UNPAINTED) one
+ * not painted yet, drawn as a dashed outline on the plastic where the sticker belongs.
  */
 const overlays: any[] = [];
 let outlineMaterial: any = null;
-function placeOverlays(list: [number, number, any | null][]) {
+let flatOutlineMaterial: any = null;
+function placeOverlays(list: [number, number, Color | typeof UNPAINTED][]) {
   for (const g of overlays) g.parent?.remove(g);
   outlineMaterial ??= new THREE.MeshBasicMaterial({ map: dashedOutline(0.1), transparent: true, depthWrite: false });
-  list.forEach(([t, d, mat], n) => {
+  flatOutlineMaterial ??= new THREE.MeshBasicMaterial({ map: dashedOutline(0.06), transparent: true, depthWrite: false });
+  list.forEach(([t, d, color], n) => {
     if (n === overlays.length) {
       const g = new THREE.Group();
-      g.add(new THREE.Mesh(withAoColors(copyLook!.plane), mat ?? outlineMaterial), new THREE.Mesh(new THREE.PlaneGeometry(0.82, 0.82), outlineMaterial));
+      const flat = copyLook!.flat;
+      g.add(new THREE.Mesh(withAoColors(copyLook!.plane), outlineMaterial), new THREE.Mesh(new THREE.PlaneGeometry(0.82, 0.82), outlineMaterial));
+      g.add(flat.tile(paintMaterial!.darkTile), flat.tile(flatOutlineMaterial));
       overlays.push(g);
     }
     const g = overlays[n];
-    const [sticker, outline] = g.children;
+    const [sticker, outline, tile, flatOutline] = g.children;
+    const painted = color !== UNPAINTED;
     g.position.set(SLOT_POS[t][0], SLOT_POS[t][1], SLOT_POS[t][2]);
-    sticker.visible = !!mat;
-    outline.visible = !mat;
-    if (mat) sticker.material = mat;
+    sticker.visible = painted;
+    outline.visible = flatOutline.visible = !painted;
+    if (painted) sticker.material = paintMaterial!.sticker(color);
+    tile.material = painted ? paintMaterial!.tile(color) : paintMaterial!.darkTile;
     copyLook!.place(sticker, d);
     copyLook!.place(outline, d);
+    copyLook!.flat.place(tile, d, 0.502);
+    copyLook!.flat.place(flatOutline, d, 0.504);
     pivot.add(g);
   });
 }
@@ -3491,7 +3530,7 @@ function drawEdit() {
   // A sticker not painted yet is an outline (placeOverlays) with nothing under it and no glow.
   noGlow ??= [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ visible: false }));
   const blank = { sticker: noGlow[0], tile: paintMaterial.darkTile, glow: noGlow };
-  const over: [number, number, any | null][] = [];
+  const over: [number, number, Color | typeof UNPAINTED][] = [];
   for (let i = 0; i < edit.view.length; i++) {
     const want = edit.view[i];
     if (!want) continue;
@@ -3499,11 +3538,11 @@ function drawEdit() {
     const id = drawn.occ[s];
     const local = id < 0 ? -1 : ROT_DIR[ROT_INV[drawn.ori[s]] * 6 + dir];
     const look = want === UNPAINTED ? blank : { sticker: paintMaterial.sticker(want), tile: paintMaterial.tile(want), glow: paintMaterial.glow(want) };
-    if (want === UNPAINTED) over.push([s, dir, null]);
     if (id < 0 || !stickerMesh3d[id * 6 + local]) {
-      if (want !== UNPAINTED) over.push([s, dir, look.sticker]);
+      over.push([s, dir, want]);
       continue;
     }
+    if (want === UNPAINTED) over.push([s, dir, want]);
     if (CUBELETS[id].stickers[local] === want) continue;
     for (const [mesh, mat] of [[stickerMesh3d[id * 6 + local], look.sticker], [tileMesh[id * 6 + local], look.tile]]) {
       if (!mesh) continue;
@@ -4960,6 +4999,8 @@ function probeDecode(ids: Uint8Array, colors: Uint8Array, w: number, h: number, 
   const i = ((h - 1 - Math.floor(py)) * w + Math.floor(px)) * 4;
   if (ids[i + 3] === 0) return null; // background
   const code = ids[i] + ids[i + 1] * 256;
+  // The editor's own meshes (a blank cubelet, a sticker drawn over the puzzle) belong to no cubelet.
+  if (code === 0) return { plastic: true, slot: "editor", cubelet: -1 };
   const cubelet = Math.floor((code - 1) / 7), d = (code - 1) % 7;
   // Where it was drawn: from the mesh's own transform in the puzzle frame, not from the
   // model, so a cubelet drawn in the wrong place or turned the wrong way shows up.

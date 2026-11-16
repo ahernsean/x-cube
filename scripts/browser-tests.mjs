@@ -1309,6 +1309,14 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     /Edit puzzle$/.test(label) && fresh.spots.join() === "Dx,Dx.B,Dx.F,Dx.L,Dx.R,Ux,Ux.B,Ux.F,Ux.L,Ux.R" && fresh.removed.length + fresh.added.length === 0 && /^Valid/.test(await editLine()),
     `Edit puzzle opens on the puzzle as it is, and the Shape tool marks the empty spots a tap can fill (${label}; ${fresh.spots})`,
   );
+  // A cubelet put in where it makes a fifth double edge is a blank (the shape is wrong); the
+  // flat view shows it, as the 3D view does. A tap on it takes it away again.
+  const editorCells = async () => (await probe("flatFace", "U")).flat().filter((c) => c?.slot === "editor").length;
+  const before = await editorCells();
+  await tapAt(await probe("spot", "Ux.F"));
+  const blank = { added: (await probe("shapeEdit")).added.join(), before, cells: await editorCells() };
+  await tapAt(await probe("spot", "Ux.F"));
+  check(blank.added === "Ux.F" && blank.cells > blank.before && (await probe("shapeEdit")).added.length === 0, `a cubelet put in while the shape is wrong shows in the flat view, and a tap takes it away (${JSON.stringify(blank)})`);
   // One of two extension cubelets on a core edge goes away alone, keeping the other's paint;
   // its outward color falls onto the core edge it bares.
   await tapSticker("Fx.R", "F");
@@ -1335,6 +1343,9 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await tapSticker("Ux.F", "U");
   const wrong = { e: await probe("shapeEdit"), painted: await probe("painted", "Ux.F", "U"), line: await editLine() };
   check(wrong.e.removed.join() === "Fx.L" && wrong.painted === "W" && /^Not valid: Only three core edges/.test(wrong.line), `a sticker takes paint while the shape is wrong (${JSON.stringify(wrong)})`);
+  // The flat view shows what the editor draws over the puzzle too: a cubelet put in while
+  // the shape is wrong, with its stickers.
+
   // With a color picked and a problem that names cubelets, the halo has a Hide pill in the 3D view.
   await tool("shape");
   await tapAt(await probe("spot", "Fx.L"));

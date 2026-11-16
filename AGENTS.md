@@ -386,7 +386,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     what keeps it from being one the puzzle can have ("Only three core edges have two
     extension cubelets, but there must be four", "Five ... but there can be only four",
     "Only three centers have an extension center", "The two centers without an extension
-    center must be opposite each other"); a cubelet put in is a blank body meanwhile. Once
+    center must be opposite each other"); a cubelet put in is a blank body meanwhile (drawn
+    in the flat view too, with its stickers, as is every dashed outline). Once
     the shape is one the puzzle can have, real cubelets take the blanks' places at once.
     The core corners' twists can still be wrong, as no turns leave them: "The core corners
     can't all be turned this way at once. One of them needs another turn" (no halo: any
