@@ -245,6 +245,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - `src/core/solve.ts`: the step-by-step solver (see "Solving method" above).
 - `src/web/planner.ts`, `src/web/plan-worker.ts`: the step guide's plan of the whole solve, made
   in a Web Worker.
+- `src/core/lost.ts`: Lost? in the Lab: the positions one slip in followed turns gives, and the questions that tell them apart.
 - `src/cli/xc.ts`: command-line driver (see `README.md`).
 - `src/web/`: **X-Cube Lab**, the browser viewer, built by `scripts/build-web.ts` into
   `dist/x-cube-lab.html` (published as a claude.ai artifact, which supplies the document
@@ -711,6 +712,34 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   takes the step's turns out of the turn list (a turn by hand, Clear, Edit) drops the step,
   its grays and its line; so does Edit puzzle. Going to another panel keeps the step. With
   no step, the line says what Next step does (drawn by CSS, so it isn't in the line's text).
+- **Lost?** (`#lost`, the fourth button of the Solve panel's row during a solve): for
+  someone following a step on their own puzzle whose puzzle no longer matches the screen
+  (a play-tester read a turn's ' wrong and couldn't get back). It asks about their puzzle
+  instead of having them repaint it (`src/core/lost.ts`). The candidates are what one slip
+  in the step shown (or the newest step) and the step just before it gives, from where
+  those turns began: a turn made by another amount, left out, made twice, or as the other
+  layer's turn (r for R, and the reverse); a turn the puzzle won't make is left out, as
+  the person couldn't make it either; no slip at all is a candidate too, and candidates
+  that look alike are one. It asks which center color is on top and which faces the
+  person, and turns every candidate whole to be held that way; then, one at a time, the
+  question whose answers split the candidates left most evenly (then the spot easiest to
+  look at: top, front and right before bottom and back): the color in a ring on one face
+  (answers: the colors some candidate shows there, "No sticker", and Something else), or
+  whether there is a cubelet in a box at an extension spot. Meanwhile the puzzle shown is
+  where the step should leave it, all gray (so it can't be read for theirs), the view
+  turns to each spot, the turn list and the tabs are set aside, and swipes on the cube
+  tumble the view instead of turning. Sampled over 476 steps (two steps' slips), the
+  right position is found every time, after 3.3 questions about spots on average and 6
+  at most, besides the two about centers. Found, it shows that position in full color,
+  says what the slip was ("Turn 4 of step 5, R', was made as R.") and asks whether their
+  puzzle looks like this. **Yes**: the turn list takes the turns they made (and the
+  regrip to how they hold it), then a **Back on track** step (stage `recover`, numbered
+  as the step it goes back to, graying nothing, with no paths) that undoes them, back to
+  where the first of those steps began; Next step after it gives that step again with
+  the same number. With no slip, nothing is undone. **No**, or Something else: Edit
+  puzzle, starting from the position found nearest. **Cancel** puts the turn list, the
+  steps and the shown step back as they were. Each candidate's answers come from the
+  model, so Something else means a slip it doesn't list (two slips, for one).
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.

@@ -151,6 +151,19 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 @media (prefers-reduced-motion: reduce) { .btn.working { animation: none; } }
 /* The Solve panel: the order and Start solving until a solve starts; then the step's controls. */
 #guide:not(.solving) .solve-only, #guide.solving .solve-idle { display: none; }
+/* Lost?: the interview takes the panel's place while it asks. */
+#guide.lost-on > :not(.lost-box):not(h2) { display: none !important; }
+.lost-box { display: grid; gap: 8px; }
+.lost-box[hidden] { display: none; }
+.lost-q { margin: 0; font-size: 15px; line-height: 1.4; }
+.lost-count { display: block; font-size: 12px; color: var(--muted); }
+.lost-count:empty { display: none; }
+.lost-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.lost-swatch { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 4px 12px 4px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: 600 14px var(--f-body); cursor: pointer; }
+.lost-swatch i { width: 26px; height: 26px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--tile-edge); }
+.lost-swatch i.bare { background: var(--unstickered); }
+.btn.lost-text { min-height: 40px; }
+.lost-cancel { justify-self: start; }
 /* The turn list's ✕: one tap arms it ("Clear?"), a second clears. */
 .list-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .list-row > .history { flex: 1 1 auto; min-width: 0; }
@@ -584,7 +597,8 @@ details[open] summary { margin-bottom: 8px; }
       <h2>Solve step by step</h2>
       <!-- Not solving: pick the order, then start. Solving: the step's buttons and its text. -->
       <div class="row solve-idle"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
-      <div class="row guide-btns"><button class="btn primary" id="next-step">Start solving</button><button class="btn solve-only" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn solve-only" id="guide-show" title="Turn the view to where this step's paths begin and end">Show step</button></div>
+      <div class="row guide-btns"><button class="btn primary" id="next-step">Start solving</button><button class="btn solve-only" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn solve-only" id="guide-show" title="Turn the view to where this step's paths begin and end">Show step</button><button class="btn solve-only lost-btn" id="lost" title="Your puzzle doesn't match? Answer a few questions about it to get back on track">Lost?</button></div>
+      <div class="lost-box" id="lost-box" hidden><p class="lost-q"><span class="lost-count" id="lost-count"></span><span id="lost-q"></span></p><div class="lost-opts" id="lost-opts"></div><button class="link-btn lost-cancel" data-lost="cancel">Cancel</button></div>
       <p class="guide-line" id="guide-line" aria-live="polite"></p>
       <div class="solve-steps solve-only"><div class="steps-top"><p class="steps-head" id="steps-head"></p><button class="pill-toggle" id="guide-colors" aria-pressed="false" title="Show every cubelet in its colors, instead of graying what the step leaves for later">Full color</button></div><ol class="steps-list" id="steps-list" aria-label="The steps of this solve, newest first"></ol></div>
       <button class="btn solve-only stop-solve" id="guide-stop" title="Stop solving: drop the step and its grays; the turn list stays as it is">Stop solving</button>
