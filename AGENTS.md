@@ -384,11 +384,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     a stack of cubelets rather than of the rules behind it: an extension cubelet goes away,
     and an empty spot gets a cubelet. Every empty spot next to the core is marked while
     Shape is selected: small gray glass boxes with white edges, unlit, so they show over
-    white, over black and in shadow. A tap on a core corner itself turns it clockwise as
-    seen from outside (three taps go round), and on a core single edge turns it over,
-    with the extension cubelets on it (animated, in place); it is seldom reachable, as the
-    box on the cubelet's bare side sits over its sticker. There is no halo while Shape is
-    selected (it covered what to tap).
+    white, over black and in shadow. Nothing turns or swings: a tap only takes an
+    extension cubelet away or puts one in. There is no halo while Shape is selected (it
+    covered what to tap).
   - **A wrong shape for a while:** as paint may be wrong, so may the shape. The line names
     what keeps it from being one the puzzle can have ("This core corner has only one
     extension, but it has to have two", "These two core corners have three extensions
