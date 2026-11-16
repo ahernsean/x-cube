@@ -3311,7 +3311,7 @@ function refitEdit() {
     // Until every center is painted, how the centers are arranged isn't known.
     const centers = blank.some((t) => SLOT_POS[t].filter((c) => c !== 0).length === 1);
     const problems = fit.level === "reachable" || (fit.level === "possible" && centers) ? [] : fit.problems;
-    problems.push({ text: n === 1 ? "One sticker isn't painted yet" : `${n} stickers aren't painted yet`, slots: blank });
+    problems.push({ text: n === 1 ? "One sticker has no color yet" : `${n} stickers have no color yet`, slots: blank });
     edit.fit = { level: fit.level === "reachable" ? "possible" : fit.level, state: fit.state, problems };
   } else edit.fit = fit;
   edit.shown = edit.fit.state ?? (edit.shown.shapeKey() === edit.shape.shapeKey() ? edit.shown : edit.shape.clone());
@@ -5155,7 +5155,7 @@ function renderEdit() {
   $("edit-hint").textContent =
     edit.paint === "shape"
       ? "Tap an extension cubelet that isn't there on your puzzle, or a faint spot where one is missing. Drag to turn the view."
-      : "Pick a color, then tap stickers on the cube to paint them. Drag to turn the view.";
+      : "Pick a color, then tap stickers to give them that color. Drag to tumble the view.";
   if (level === "reachable") {
     st.className = "edit-status good";
     st.textContent = "Valid";

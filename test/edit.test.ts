@@ -58,6 +58,18 @@ test("edit: one cubelet needed in two places is refused", () => {
   assert.deepEqual([...fit.problems[0].slots].sort(), [at(0, 0, 2), at(2, 0, 0)].sort());
 });
 
+test("edit: two corners painted alike are named as looking the same, without saying which sticker is wrong", () => {
+  const st = State.solved();
+  const colors = visibleColors(st);
+  const s = at(1, 1, 2); // twist Fx.UR in place, so it shows as Rx.UF does
+  colors[s * 6 + F] = "R";
+  colors[s * 6 + U] = "G";
+  colors[s * 6 + R] = "W";
+  const fit = fitColors(st, colors);
+  assert.equal(fit.problems[0].text, "These two X-face corners look the same, but the puzzle has only one like that. One of them has a sticker with the wrong color");
+  assert.deepEqual([...fit.problems[0].slots].sort(), [s, at(2, 1, 1)].sort());
+});
+
 test("edit: an outer cubelet turned against the outward-color rule is real cubelets, but not possible", () => {
   const st = State.solved();
   const colors = visibleColors(st);
@@ -65,7 +77,7 @@ test("edit: an outer cubelet turned against the outward-color rule is real cubel
   colors[at(0, 1, 2) * 6 + U] = "G";
   const fit = fitColors(st, colors);
   assert.equal(fit.level, "cubelets");
-  assert.deepEqual(fit.problems, [{ text: "White can't point straight out from the core on an extension cubelet", slots: [at(0, 1, 2)] }]);
+  assert.deepEqual(fit.problems, [{ text: "This cubelet's white sticker has the wrong color", slots: [at(0, 1, 2)] }]);
 });
 
 test("edit: problems say what's wrong, and which slots they are about", () => {
@@ -101,7 +113,7 @@ test("edit: two spots wanting the one cubelet with a color pointing out are name
   colors[at(1, 0, 2) * 6 + R] = "G";
   const fit = fitColors(st, colors);
   assert.equal(fit.level, "cubelets");
-  assert.equal(fit.problems[0].text, "Two extension edges have red pointing straight out from the core, but only one with green and red does");
+  assert.equal(fit.problems[0].text, "These two extension edges look the same, but the puzzle has only one like that. One of them has a sticker with the wrong color");
   assert.deepEqual([...fit.problems[0].slots].sort(), [at(1, 0, 2), at(2, 0, 1)].sort());
 });
 

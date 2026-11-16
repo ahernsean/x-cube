@@ -376,15 +376,11 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         // White and yellow never point out: that rule needs no knowledge of the cubelet.
         const facing = colors[s * 6 + outwardDir(s)];
         if (facing === "W" || facing === "Y") {
-          problems.push(problem(`${cap(COLOR_NAME[facing])} can't point straight out from the core on an extension cubelet`, [s]));
+          problems.push(problem(`This cubelet's ${COLOR_NAME[facing]} sticker has the wrong color`, [s]));
           continue;
         }
         const cs = shownColors(colors, s);
-        const kind = CUBELETS[shape.occ[s]].kind;
-        const holders = CUBELETS.filter((c) => c.kind === kind && c.outward !== null && cs.every((x) => c.stickers.includes(x)));
-        const outs = COLOR_ORDER.filter((x) => holders.some((c) => c.stickers[c.outward!] === x));
-        const one = holders.length === 1;
-        problems.push(problem(`The ${one ? "cubelet" : "cubelets"} with ${listColors(cs)} always ${one ? "has" : "have"} ${listColors(outs, "or")} pointing straight out from the core`, [s]));
+        problems.push(problem(`No cubelet has ${listColors(cs)} arranged this way. One of its stickers has the wrong color`, [s]));
       }
     // Every spot fits a cubelet turned a way the rule allows, but some compete for too few.
     if (!problems.length)
@@ -397,13 +393,13 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         problems.push(
           problem(
             out.size === 1 && o && o !== UNPAINTED && shown.size === 1
-              ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} have ${COLOR_NAME[o]} pointing straight out from the core, but only ${k} with ${[...shown][0]} ${g.ids.size === 1 ? "does" : "do"}`
-              : `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be turned this way at once. A sticker is probably painted wrong`,
+              ? `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} look the same, but the puzzle has only ${k} like that. One of them has a sticker with the wrong color`
+              : `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be right at once. One of them has a sticker with the wrong color`,
             spots,
           ),
         );
       }
-    if (!problems.length) problems.push({ text: "Each spot matches a cubelet, but they can't all be turned this way at once. A sticker is probably painted wrong", slots: [] });
+    if (!problems.length) problems.push({ text: "These colors can't all be right at once. A sticker has the wrong color", slots: [] });
     return { level: "cubelets", state: loose.state, problems };
   }
   for (const s of loose.slots)

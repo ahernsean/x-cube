@@ -1280,7 +1280,7 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await paint("R", "Fx.U", "U"); // flip the white-red edge now at Fx.U in place
   await paint("W", "Fx.U", "F");
   const flipped = await editLine();
-  check(/^Not valid: White can't point straight out from the core on an extension cubelet\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  check(/^Not valid: This cubelet's white sticker has the wrong color\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
   // With several problems, ‹ and › step through them, and the halo moves with the line
   // without turning the view.
   await paint("Y", "Rx.U", "R");
@@ -1453,10 +1453,10 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await move("Fx.UR", "F", "Ux.FR");
   await move("Fx.UL", "F", "Ux.FL");
   await tool("W");
-  for (let k = 0; k < 12 && !/stickers aren't painted yet/.test(await editLine()); k++) await page.click('[data-halo="next"]');
+  for (let k = 0; k < 12 && !/stickers have no color yet/.test(await editLine()); k++) await page.click('[data-halo="next"]');
   const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: !!(await probe("shapeEdit")).pill, px: await probe("haloPixels", "3d") };
   check(
-    /^Not valid: \d+ stickers aren't painted yet\./.test(many.line) && many.halo === 4 && many.pill && many.px > 0,
+    /^Not valid: \d+ stickers have no color yet\./.test(many.line) && many.halo === 4 && many.pill && many.px > 0,
     `many cubelets with stickers to paint get halos (${JSON.stringify(many)})`,
   );
   await page.click("#edit-cancel");

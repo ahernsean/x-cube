@@ -116,6 +116,12 @@ corner 3-cycle is `R' F' R b R' F R b'` (both verified by tests).
   slot in slot order: cubelet id (`A-Z a-z 0-9 - _`) or `.` for empty, then orientation
   `a..x` (index into the 24 cube rotations). Older saved states and test files hold X1 codes.
 
+## Wording
+
+`WORDING.md` says which words the Lab uses in anything a user sees or hears (color, never
+paint; puzzle, never cube; no "outward"), and how to phrase messages and help. Follow it
+for every user-facing string.
+
 ## Algorithms
 
 `ALGORITHMS.md` collects algorithms found or verified with the engine, each with the
@@ -399,7 +405,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     neighbor's), and one taken away leaves each of its colors on the face it bares behind
     it (`repaint`); a face with nothing behind it starts unpainted. A sticker not painted yet (`UNPAINTED`) fits any color
     and is drawn as a dashed outline on the plastic, with no edge glow; the line counts
-    them ("6 stickers aren't painted yet", with a halo on their cubelets), and Done waits
+    them ("6 stickers have no color yet", with a halo on their cubelets), and Done waits
     for them. Where a cubelet's stickers are follows from the shape around it alone
     (`draftColors`), so a sticker can be painted while the shape is still wrong. Until
     every center is painted, the center arrangement isn't checked.
@@ -411,9 +417,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   in mirrored order ("Wrong color order"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two"; the halo marks every competing spot), or an outer
   cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
   physical cube can't do that). Outward-rule problems name only what the owner can check on
-  the cube: "White can't point straight out from the core on an extension cubelet" (no
-  extension cubelet's outward sticker is white or yellow), or "Two extension edges
-  have red pointing straight out from the core, but only one with green and red does". Each names the problem
+  the cube: "This cubelet's white sticker has the wrong color" (no
+  extension cubelet's outward sticker is white or yellow), "No cubelet has green and red
+  arranged this way. One of its stickers has the wrong color", or "These two X-face corners
+  look the same, but the puzzle has only one like that. One of them has a sticker with the
+  wrong color"; none of them says "outward" or which color points out, which the owner
+  can't act on. Each names the problem
   itself ("Red and orange can never be on the same cubelet"), not "a cubelet" (the halo
   marks it), and says what, not where: words for a spot proved unreliable (center colors move with
   slices, extensions leave their sides, left depends on the viewpoint), so the Lab points
