@@ -1411,6 +1411,9 @@ interface CubeHit {
 }
 
 function pickCube(el: HTMLElement, clientX: number, clientY: number): CubeHit | null {
+  // Meshes moved since the last frame (a tap's own edits, before the next frame is drawn)
+  // would otherwise be hit where they were.
+  pivot.updateMatrixWorld(true);
   const rect = el.getBoundingClientRect();
   const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
   const ray = new THREE.Raycaster();
@@ -3431,6 +3434,7 @@ function placeOverlays(list: [number, number, Color | typeof UNPAINTED][]) {
 
 /** The ghost under a point of the 3D view, unless a cubelet (hit `h`) is in front of it. */
 function pickMarker(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null): number | null {
+  pivot.updateMatrixWorld(true); // markers placed since the last frame are where they are now
   const rect = el.getBoundingClientRect();
   const ray = new THREE.Raycaster();
   ray.layers.set(HALO_LAYER);
