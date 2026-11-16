@@ -372,19 +372,20 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   stickers to match the real puzzle, in either order. Its palette has the six colors and a
   **Shape** tool; drags tumble the view, and the other controls are set aside.
   - **Shape tool:** a tap changes only what it taps (`draftTap`), as the owner thinks of
-    one cubelet at a time. An extension cubelet on a core corner, or the one on a core
-    single edge, swings to the bare side, the core cubelet turning with the extension
-    cubelets on it (animated, turning in place); a tap on a core corner itself turns it
-    clockwise as seen from outside (three taps go round), and on a core single edge turns
-    it over. One of two extension cubelets on a core edge, or an extension center, goes
-    away; an empty spot gets a cubelet. The spots a tap can fill (the bare side of each
-    core edge that has one, and each center without an extension center) are marked while
+    a stack of cubelets rather than of the rules behind it: an extension cubelet goes away,
+    and an empty spot gets a cubelet. Every empty spot next to the core is marked while
     Shape is selected: small gray glass boxes with white edges, unlit, so they show over
-    white, over black and in shadow. There is no halo while Shape is selected (it covered
-    what to tap).
+    white, over black and in shadow. A tap on a core corner itself turns it clockwise as
+    seen from outside (three taps go round), and on a core single edge turns it over,
+    with the extension cubelets on it (animated, in place); it is seldom reachable, as the
+    box on the cubelet's bare side sits over its sticker. There is no halo while Shape is
+    selected (it covered what to tap).
   - **A wrong shape for a while:** as paint may be wrong, so may the shape. The line names
-    what keeps it from being one the puzzle can have ("Only three core edges have two
-    extension cubelets, but there must be four", "Five ... but there can be only four",
+    what keeps it from being one the puzzle can have ("This core corner has only one
+    extension, but it has to have two", "These two core corners have three extensions
+    each, but each can have only two", "This core edge has no extensions, but it has to
+    have one or two", each with a halo on the core cubelets; "Only three core edges have
+    two extensions, but there must be four", "Five ... but there can be only four",
     "Only three centers have an extension center", "The two centers without an extension
     center must be opposite each other"); a cubelet put in is a blank body meanwhile (drawn
     in the flat view too, with its stickers, as is every dashed outline). Once

@@ -545,18 +545,29 @@ function ALL_SLOTS() {
 }
 const filledOn = (d: Draft, c: number) => outerOf(c).filter((n) => draftFilled(d, n));
 
-/** The empty spots a tap can fill: the bare side of each core edge that has one, and each center without an extension center. */
+/** The empty spots a tap can fill: every outer spot without a cubelet (each is against a core cubelet). */
 export function draftSpots(d: Draft): number[] {
-  return [...EDGE_SLOTS, ...CENTER_SLOTS].flatMap((c) => outerOf(c).filter((n) => !draftFilled(d, n)));
+  return ALL_SLOTS().filter((s) => outwardDir(s) >= 0 && !draftFilled(d, s));
 }
+
+const CORNER_SLOTS = ALL_SLOTS().filter((s) => outwardDir(s) < 0 && span(s) === 3);
 
 /** What keeps the draft's shape from being one the puzzle can have, apart from the core corners' twists. */
 export function draftProblems(d: Draft): Problem[] {
   const out: Problem[] = [];
   const count = (n: number, one: string, many: string, limit: string) =>
     n > 4 ? `${cap(numberWord(n))} ${many}, but there can be only four` : `${n ? `Only ${numberWord(n)}` : "No"} ${n === 1 ? one : many}, but ${limit}`;
+  // Core cubelets with a number of extensions none of them can have, named one by one.
+  const wrong = (slots: number[], kind: string, one: string, each: string) => {
+    if (!slots.length) return;
+    const text = slots.length === 1 ? `This ${kind} ${one}` : `These ${numberWord(slots.length)} ${kind}s ${each}`;
+    out.push(problem(text, slots));
+  };
+  wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length < 2), "core corner", "has only one extension, but it has to have two", "have only one extension each, but each has to have two");
+  wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length > 2), "core corner", "has three extensions, but it can have only two", "have three extensions each, but each can have only two");
+  wrong(EDGE_SLOTS.filter((c) => filledOn(d, c).length === 0), "core edge", "has no extensions, but it has to have one or two", "have no extensions, but each has to have one or two");
   const doubles = EDGE_SLOTS.filter((c) => filledOn(d, c).length === 2);
-  if (doubles.length !== 4) out.push(problem(count(doubles.length, "core edge has two extension cubelets", "core edges have two extension cubelets", "there must be four"), doubles.length > 4 ? doubles : []));
+  if (doubles.length !== 4) out.push(problem(count(doubles.length, "core edge has two extensions", "core edges have two extensions", "there must be four"), doubles.length > 4 ? doubles : []));
   const bare = CENTER_SLOTS.filter((c) => filledOn(d, c).length === 0);
   if (bare.length !== 2) out.push(problem(count(6 - bare.length, "center has an extension center", "centers have an extension center", "there must be four"), []));
   else if (CENTER_SLOTS.indexOf(bare[0]) >> 1 !== CENTER_SLOTS.indexOf(bare[1]) >> 1) out.push(problem("The two centers without an extension center must be opposite each other", bare));
@@ -589,19 +600,21 @@ function settle(d: Draft) {
 }
 
 /**
- * A tap with the Shape tool on outer slot s, changing only what is there:
- * - a cubelet on a core corner, or the one cubelet on a core edge, swings to the bare side;
- * - one of two cubelets on a core edge, or an extension center, goes away;
+ * A tap with the Shape tool on slot s, changing only what is tapped:
+ * - an extension cubelet goes away;
  * - an empty spot (draftSpots) gets a cubelet;
- * - a core corner or core single edge turns, with the cubelets on it.
+ * - a core corner or core single edge turns, with the cubelets on it, when they are real
+ *   (no change waits on them).
  * Returns null if the tap does nothing; otherwise what it does to the paint (see
  * repaint) and the real cubelets the tap itself moved (`carries`, to animate).
  */
 export function draftTap(d: Draft, s: number): TapResult | null {
-  if (s >= 0 && outwardDir(s) < 0) {
+  if (s < 0) return null;
+  if (outwardDir(s) < 0) {
     // A tap on the core cubelet itself turns its unit: a corner clockwise as seen from
     // outside (a second tap gives the third way it can sit), a single edge over.
     const on = filledOn(d, s);
+    if (outerOf(s).some((n) => d.removed.has(n) || d.added.has(n))) return null;
     const [bare] = outerOf(s).filter((n) => !draftFilled(d, n));
     const p = SLOT_POS[s];
     const clockwise = (n: number) => {
@@ -609,49 +622,31 @@ export function draftTap(d: Draft, s: number): TapResult | null {
       return (a[1] * b[2] - a[2] * b[1]) * p[0] + (a[2] * b[0] - a[0] * b[2]) * p[1] + (a[0] * b[1] - a[1] * b[0]) * p[2] < 0;
     };
     const turn = span(s) === 3 ? on.find(clockwise) : span(s) === 2 && on.length === 1 ? on[0] : undefined;
-    return turn === undefined ? null : draftTap(d, turn);
+    const next = turn === undefined ? null : editShape(d.shape, turn);
+    if (!next) return null;
+    d.shape = next.shape;
+    return { carries: next.carries, unpaint: unitOf(s).flatMap(faces), move: [] };
   }
-  if (s < 0) return null;
   const c = coreOf(s);
   const set = (t: number, on: boolean) => {
     const [undo, mark] = on ? [d.removed, d.added] : [d.added, d.removed];
     if (!undo.delete(t)) mark.add(t);
   };
-  let carries: Carry[] = [];
   // A cubelet that comes takes the color of the sticker it covers on the core cubelet
   // behind it, onto the face over it; one that goes leaves its color there.
   const dir = outwardDir(s);
   const [under, over] = [c * 6 + dir, s * 6 + dir];
-  let unpaint = [s, c];
-  let move: [number, number][];
-  if (!draftFilled(d, s)) {
-    if (!draftSpots(d).includes(s)) return null;
-    set(s, true);
-    move = [[under, over]];
-  } else if (span(c) === 3 || (span(c) === 2 && filledOn(d, c).length === 1)) {
-    unpaint = unitOf(s);
-    move = [];
-    const real = outerOf(c).every((n) => !d.removed.has(n) && !d.added.has(n));
-    const next = real ? editShape(d.shape, s) : null;
-    if (next) {
-      d.shape = next.shape;
-      carries = next.carries;
-    } else if (span(c) === 2) {
-      set(s, false);
-      set(outerOf(c).find((n) => n !== s)!, true);
-    } else return null;
-  } else {
-    set(s, false);
-    move = [[over, under]];
-  }
+  const comes = !draftFilled(d, s);
+  set(s, comes);
   settle(d);
-  return { carries, unpaint, move };
+  return { carries: [], unpaint: [...faces(s), under], move: comes ? [[under, over]] : [[over, under]] };
 }
 
 /**
- * What a Shape tool tap does: the real cubelets it moved (to animate), the slots whose
- * stickers are no longer the ones painted (`unpaint`: the whole unit when it turns; when a
- * cubelet only comes or goes, its own spot and the core cubelet behind it), and the paint
+ * What a Shape tool tap does: the real cubelets it moved (to animate), the faces (slot * 6
+ * + direction) whose stickers are no longer the ones painted (`unpaint`: the whole unit when
+ * it turns; when a cubelet only comes or goes, its own spot and the one core sticker it
+ * covers or bares), and the paint
  * that moves from face to face (`move`, by slot * 6 + direction: from the sticker a
  * cubelet that comes covers to the face over it, and back when it goes).
  */
@@ -664,10 +659,13 @@ export interface TapResult {
 /** The paint after a tap (see TapResult): what it moves goes with it, and the rest of what it changed is cleared. */
 export function repaint(paint: readonly (Color | undefined)[], tap: TapResult): (Color | undefined)[] {
   const out = paint.slice();
-  for (const t of tap.unpaint) for (let k = 0; k < 6; k++) out[t * 6 + k] = undefined;
+  for (const f of tap.unpaint) out[f] = undefined;
   for (const [from, to] of tap.move) out[to] = paint[from];
   return out;
 }
+
+/** The six faces of slot s, by slot * 6 + direction. */
+const faces = (s: number) => [0, 1, 2, 3, 4, 5].map((k) => s * 6 + k);
 
 /** The core slot and outer slots of the unit outer slot s belongs to: a core cubelet with the spots against it. */
 function unitOf(s: number): number[] {

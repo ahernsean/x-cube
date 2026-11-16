@@ -1306,7 +1306,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await tool("shape");
   const fresh = await probe("shapeEdit");
   check(
-    /Edit puzzle$/.test(label) && fresh.spots.join() === "Dx,Dx.B,Dx.F,Dx.L,Dx.R,Ux,Ux.B,Ux.F,Ux.L,Ux.R" && fresh.removed.length + fresh.added.length === 0 && /^Valid/.test(await editLine()),
+    /Edit puzzle$/.test(label) && fresh.spots.length === 18 && fresh.spots.every((t) => /^[UD]x/.test(t)) && fresh.removed.length + fresh.added.length === 0 && /^Valid/.test(await editLine()),
     `Edit puzzle opens on the puzzle as it is, and the Shape tool marks the empty spots a tap can fill (${label}; ${fresh.spots})`,
   );
   // A cubelet put in where it makes a fifth double edge is a blank (the shape is wrong); the
@@ -1338,7 +1338,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await tapSticker("Fx.R", "F");
   const one = { e: await probe("shapeEdit"), line: await editLine(), kept: await probe("painted", "Rx.F", "R"), gone: await probe("painted", "Fx.R", "F"), fell: await probe("painted", "FR", "F") };
   check(
-    one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line === "Not valid: Only three core edges have two extension cubelets, but there must be four." && one.kept === "R" && one.gone === null && one.fell === "G",
+    one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line === "Not valid: Only three core edges have two extensions, but there must be four." && one.kept === "R" && one.gone === null && one.fell === "G",
     `a tap takes one cubelet away, its color falls onto the core edge it bares, and the line says what the shape lacks, with no halo controls while Shape is selected (${JSON.stringify(one)})`,
   );
   // A tap on an empty spot puts a cubelet there; the shape is right again, made of real cubelets, with stickers to paint.
@@ -1349,10 +1349,14 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     two.e.removed.length + two.e.added.length === 0 && two.filled === "true,false" && two.took === "W" && /^Not valid: /.test(two.line) && two.e.unpainted > 0 && two.e.outlines === two.e.unpainted && two.done,
     `filling a spot makes the shape right, the cubelet put in takes the color of the sticker it covers; each sticker not painted yet is a dashed outline, and Done waits for them (${JSON.stringify(two)})`,
   );
-  // A tap on a core corner turns it, with the cubelets on it: clockwise as seen from outside, up to right.
-  await tapSticker("UFR", "U");
-  const turned = [await probe("filled", "Ux.FR"), await probe("filled", "Rx.UF"), await probe("painted", "Ux.FR", "U")].join();
-  check(turned === "true,false,", `tapping a core corner turns it and clears its unit's paint (${turned})`);
+  // An extension cubelet on a core corner comes and goes alone too; the line names the corner.
+  await tapSticker("Fx.UR", "F");
+  const corner = { removed: (await probe("shapeEdit")).removed.join(), line: await editLine(), stays: await probe("filled", "Rx.UF") };
+  await tapAt(await probe("spot", "Fx.UR"));
+  check(
+    corner.removed === "Fx.UR" && corner.stays && /^Not valid: This core corner has only one extension, but it has to have two\./.test(corner.line) && (await probe("filled", "Fx.UR")),
+    `a tap takes an extension cubelet off a core corner without turning anything, and a tap on its spot puts it back (${JSON.stringify(corner)})`,
+  );
   // A sticker can be painted while the shape is wrong.
   await tapSticker("Fx.L", "F");
   await tool("W");
@@ -1383,11 +1387,15 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   // Many get halos too. A haloed cubelet hides the halos behind it, so the glows don't pile
   // up over its stickers: the glow drawn over the 3D view is less than with nothing hiding it.
   await tool("shape");
-  for (const [slot, face] of [["Fx.U", "F"], ["Rx.U", "R"], ["Fx.D", "F"]]) await tapSticker(slot, face); // each swings, turning its core edge over
+  // Each taken away and put back: it keeps the color it takes from the core, and its other stickers are to paint.
+  for (const [slot, face] of [["Fx.U", "F"], ["Fx.D", "F"], ["Fx.UR", "F"], ["Fx.DR", "F"], ["Fx.UL", "F"], ["Fx.DL", "F"]]) {
+    await tapSticker(slot, face);
+    await tapAt(await probe("spot", slot));
+  }
   await tool("W");
   const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: !!(await probe("shapeEdit")).pill, px: await probe("haloPixels", "3d"), alone: await probe("haloPixels", "3d", false) };
   check(
-    /^Not valid: \d+ stickers aren't painted yet\./.test(many.line) && many.halo === 7 && many.pill && many.px < many.alone,
+    /^Not valid: \d+ stickers aren't painted yet\./.test(many.line) && many.halo >= 6 && many.pill && many.px < many.alone,
     `many cubelets with stickers to paint get halos, which hide each other (${JSON.stringify(many)})`,
   );
   await page.click("#edit-cancel");
