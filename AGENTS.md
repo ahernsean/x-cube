@@ -421,7 +421,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
   wrong: no cubelet of that kind can have a color ("A core corner must be white or
   yellow, never blue"), two stickers of one color or opposite colors, a corner's colors going around it
-  in mirrored order ("Wrong color order"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two"; the halo marks every competing spot), or an outer
+  in mirrored order ("Wrong color order"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two"; with different colors showing, "These six extension edges show white, but only four have white. At least two of them have a sticker with the wrong color", or "Only two X-face corners have colors like these three do. At least one of them …" when the colors they share don't explain it; the halo marks every competing spot), or an outer
   cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
   physical cube can't do that). Outward-rule problems name only what the owner can check on
   the cube: "This cubelet's white sticker has the wrong color" (no

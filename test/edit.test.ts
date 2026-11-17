@@ -58,6 +58,21 @@ test("edit: one cubelet needed in two places is refused", () => {
   assert.deepEqual([...fit.problems[0].slots].sort(), [at(0, 0, 2), at(2, 0, 0)].sort());
 });
 
+test("edit: more spots than cubelets say what the spots share and how many have a wrong sticker", () => {
+  const st = State.solved();
+  const shared = visibleColors(st);
+  shared[280] = UNPAINTED;
+  shared[201] = "W";
+  shared[456] = "W";
+  assert.equal(fitColors(st, shared).problems[0].text, "These six extension edges show white, but only four have white. At least two of them have a sticker with the wrong color");
+  const mixed = visibleColors(st);
+  mixed[158] = "R";
+  mixed[152] = "Y";
+  mixed[157] = UNPAINTED;
+  // This paint has a second problem too (five yellow core corners); the corners' is among them.
+  assert.ok(fitColors(st, mixed).problems.some((p) => p.text === "Only two X-face corners have colors like these three do. At least one of them has a sticker with the wrong color"));
+});
+
 test("edit: two corners painted alike are named as looking the same, without saying which sticker is wrong", () => {
   const st = State.solved();
   const colors = visibleColors(st);

@@ -361,6 +361,24 @@ function reachableFit(shape: State, colors: FaceColors): { state: State; problem
 }
 
 /** Finds real cubelets showing `colors` on the shape of `shape` (see the top of this file). */
+/**
+ * More spots than cubelets that fit them, the spots showing different colors: says what they
+ * share when that alone leaves so few cubelets ("show green, but only four have green"), and
+ * how many of the spots have a sticker with the wrong color.
+ */
+function tooFew(shape: State, colors: FaceColors, spots: number[], fit: number): string {
+  const kind = kindOf(shape, spots[0]);
+  const [one, many] = KIND_NAME[kind];
+  const n = numberWord(spots.length), k = numberWord(fit);
+  const wrong = spots.length - fit;
+  const fix = `At least ${numberWord(wrong)} of them ${wrong === 1 ? "has" : "have"} a sticker with the wrong color`;
+  const shared = COLOR_ORDER.filter((c) => spots.every((t) => shownColors(colors, t).includes(c)));
+  const having = CUBELETS.filter((c) => c.kind === kind && shared.every((x) => c.stickers.includes(x))).length;
+  if (shared.length && having === fit)
+    return `These ${n} ${many} show ${listColors(shared)}, but only ${k} ${fit === 1 ? "has" : "have"} ${listColors(shared)}. ${fix}`;
+  return `Only ${k} ${fit === 1 ? one : many} ${fit === 1 ? "has" : "have"} colors like these ${n} do. ${fix}`;
+}
+
 export function fitColors(shape: State, colors: FaceColors): Fit {
   const strict = attempt(shape, colors, "outward");
   if (strict.state) {
@@ -418,7 +436,7 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         problem(
           shown.size === 1
             ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k}`
-            : `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} can only be filled by ${k} ${g.ids.size === 1 ? "cubelet" : "cubelets"} on the puzzle`,
+            : tooFew(shape, colors, spots, g.ids.size),
           spots,
         ),
       );
