@@ -454,7 +454,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   selected, Shape included (the rim doesn't cover what to tap). A named cubelet enclosed on every side (a
   core edge with extension cubelets on both sides, which nothing shows) is haloed through
   the extension cubelets around it (`haloSlots`), which can be seen, turned to with Show
-  and pointed at. The arrow points at one hidden cubelet at a time, the one nearest to
+  and pointed at; a cubelet put in that is still a blank carries the halo, and is pointed at and shown, like any other (`drawnAt`). The arrow points at one hidden cubelet at a time, the one nearest to
   coming into view, and goes on to the next once that one is turned toward the viewer. On each flat-view face where the cubelet shows, the halo is a
   soft glow around it, hidden only by a haloed cubelet in front (so many halos don't pile
   up over each other's stickers). A halo appearing never moves the view. **Show**
