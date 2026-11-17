@@ -1433,6 +1433,15 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     edges.named.includes("UF") && !edges.haloed.includes("UF") && ["Fx.U", "Ux.F"].every((t) => edges.haloed.includes(t)),
     `a named cubelet nothing shows is haloed by the cubelets around it (${JSON.stringify(edges)})`,
   );
+  // The cubelet put in is a blank until the shape is right: it carries a rim too, and from
+  // below, where it can't be seen, the arrow counts it.
+  const rimmed = await probe("rimmed");
+  await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
+  await page.waitForFunction(() => window.xcubeProbe.idle());
+  const below = (await probe("haloArrow")).behind;
+  check(rimmed.includes("Ux.F") && below.includes("Ux.F"), `the blank put in has a rim, and the arrow points to it when it can't be seen (${JSON.stringify({ rimmed, below })})`);
+  await page.evaluate(() => document.querySelector('[data-view="home"]').click());
+  await page.waitForFunction(() => window.xcubeProbe.idle());
   await tapAt(await probe("spot", "Ux.F"));
   await tapAt(await probe("spot", "Ux"));
   check((await probe("shapeEdit")).added.length === 0, "a tap on each blank takes it away again");

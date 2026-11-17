@@ -3696,8 +3696,8 @@ function drawEdit() {
   }
   placeOverlays(over);
   syncMeshes(drawn);
-  placeHalos();
   placeGhosts();
+  placeHalos();
 }
 
 // ------------------------------------------------------------------ step guide
@@ -4862,6 +4862,12 @@ function haloMesh(kind: "glow" | "rim") {
   return m;
 }
 
+/** What the 3D view draws in slot s of the shown position: its cubelet, or while editing the blank put in there; null if nothing. */
+function drawnAt(st: State, s: number): any {
+  if (st.occ[s] >= 0) return meshes[st.occ[s]];
+  return (edit && blanks.find((b) => b.parent && b.userData.slot === s)) ?? null;
+}
+
 /** Whether the 3D view shows any face of the cubelet in slot s now: one turned at all toward the viewer, its middle unblocked. */
 function slotSeen(st: State, s: number): boolean {
   // Turned well toward the viewer, not just glimpsed at the edge.
@@ -4897,7 +4903,7 @@ function hiddenHalos(): number[] {
   if (key !== hiddenKey) {
     hiddenKey = key;
     const st = edit.shown;
-    hiddenVal = slots.filter((s) => st.occ[s] >= 0 && !slotSeen(st, s));
+    hiddenVal = slots.filter((s) => drawnAt(st, s) && !slotSeen(st, s));
   }
   return hiddenVal;
 }
@@ -5140,17 +5146,18 @@ function placeHalos() {
   pivot.add(haloClearer);
   let b = 0;
   const free = halos.filter((h) => !h.parent);
-  const add = (id: number, layer: number) => {
+  const add = (on: any, layer: number) => {
     const kind = layer === HALO_LAYER ? "rim" : "glow";
     const at = free.findIndex((h) => h.userData.kind === kind);
     const h = at >= 0 ? free.splice(at, 1)[0] : haloMesh(kind);
     if (at < 0) halos.push(h);
     h.layers.set(layer);
-    meshes[id].add(h);
+    on.add(h);
   };
   for (const s of marked) {
-    const id = edit.shown.occ[s];
-    if (id < 0) continue;
+    // A cubelet put in is drawn as a blank until the shape is one the puzzle can have.
+    const on = drawnAt(edit.shown, s);
+    if (!on) continue;
     if (b === haloBodies.length) {
       const body = new THREE.Mesh(new THREE.BoxGeometry(0.985, 0.985, 0.985), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true }));
       body.renderOrder = 2.95;
@@ -5158,9 +5165,9 @@ function placeHalos() {
       body.layers.disable(0);
       haloBodies.push(body);
     }
-    meshes[id].add(haloBodies[b++]);
-    add(id, HALO_LAYER);
-    for (let d = 0; d < 6; d++) if (isExposed(edit.shown, s, d)) add(id, FLAT_HALO_LAYER + d);
+    on.add(haloBodies[b++]);
+    add(on, HALO_LAYER);
+    for (let d = 0; d < 6; d++) if (bareFace(edit.shown, s, d)) add(on, FLAT_HALO_LAYER + d);
   }
 }
 
@@ -5173,12 +5180,12 @@ function bareFace(st: State, s: number, d: number): boolean {
 }
 
 function faceView(st: State, s: number, d: number, minCos = 0.2): number {
-  const id = st.occ[s];
+  const drawn = drawnAt(st, s);
   // While editing, the shape being edited decides what is there: a cubelet taken off is
   // not, and one put in is (as a blank).
   const there = (t: number) => (edit ? draftFilled(edit, t) : st.occ[t] >= 0);
   const n = SLOT_NEIGHBOR[s * 6 + d];
-  if (id < 0 || !there(s) || n === -2 || (n >= 0 && there(n))) return -1;
+  if (!drawn || !there(s) || n === -2 || (n >= 0 && there(n))) return -1;
   pivot.updateMatrixWorld(true);
   const p = SLOT_POS[s], v = DIRS[d];
   const target = pivot.localToWorld(new THREE.Vector3(p[0] + v[0] * 0.45, p[1] + v[1] * 0.45, p[2] + v[2] * 0.45));
@@ -5191,7 +5198,7 @@ function faceView(st: State, s: number, d: number, minCos = 0.2): number {
     let o = h.object;
     while (o.parent && o.parent !== pivot) o = o.parent;
     if ((!meshes.includes(o) && !blanks.includes(o)) || !o.visible) continue;
-    return o === meshes[id] ? cos : -1;
+    return o === drawn ? cos : -1;
   }
   return -1;
 }
@@ -5359,8 +5366,8 @@ function endEdit(apply: boolean) {
   for (const m of e.painted) m.material = m.userData.ownMaterial;
   clearGlowPaint();
   edit = null;
-  placeHalos();
   placeGhosts();
+  placeHalos();
   placeOverlays([]);
   document.body.classList.remove("editing");
   for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
@@ -5589,6 +5596,8 @@ function installProbe() {
     highlighted: () => (edit?.highlight ?? []).map(slotName),
     /** The cubelets the halo marks: those named, or for one nothing shows, those around it. */
     haloed: () => haloSlots().map(slotName).sort(),
+    /** The slots whose drawn cubelet (or blank) carries a rim now. */
+    rimmed: () => haloSlots().filter((s) => edit && drawnAt(edit.shown, s)?.children.some((c: any) => halos.includes(c) && c.userData.kind === "rim")).map(slotName).sort(),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),
     // `hiding` false draws them as if no haloed cubelet hid the halos behind it, to compare.
     haloPixels: (view: string, hiding = true) => {
