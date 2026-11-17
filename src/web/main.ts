@@ -4798,7 +4798,7 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
 // seen only by that face's camera (layer FLAT_HALO_LAYER + direction), so it never marks a
 // face where the cubelet is buried. Halos sit in the cubelet's group, so they follow turns,
 // and on their own layers, so the probe's passes don't see them.
-const HALO = { color: 0xa63dff, glow: { reach: 0.5, shape: 1.5 }, rim: { reach: 0.14, shape: 0.45 } };
+const HALO = { color: 0xa63dff, glow: { reach: 0.5, shape: 1.5 }, rim: { reach: 0.21, shape: 0.45 } };
 const haloMaterials: Record<string, any> = {};
 const halos: any[] = [];
 
