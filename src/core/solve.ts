@@ -822,10 +822,14 @@ export function nextStep(st: State, mode: Mode = "kinds"): SolveStep | null {
   const over = grip.some((t) => MOVE_DEFS[t.def].axis !== 1);
   const around = grip.find((t) => MOVE_DEFS[t.def].axis === 1);
   const spin = around && (around.amount === 2 ? "flip" : "rotate");
-  const goal = [
-    over && `flip the puzzle over, so ${color(UP)} is up`,
-    around && `${spin} ${over ? "it" : "the puzzle"}${around.amount === 2 ? " around" : ""}, so ${color(FRONT)} is in front`,
-  ].filter(Boolean).join(", and ");
+  // Flipped over and around is one half turn about the third axis, said as one move.
+  const goal =
+    over && around?.amount === 2
+      ? `reorient the puzzle in your hand so that ${color(UP)} is up and ${color(FRONT)} is in front`
+      : [
+          over && `flip the puzzle over, so ${color(UP)} is up`,
+          around && `${spin} ${over ? "it" : "the puzzle"}${around.amount === 2 ? " around" : ""}, so ${color(FRONT)} is in front`,
+        ].filter(Boolean).join(", and ");
   return {
     stage: "regrip",
     goal: `${goal[0].toUpperCase()}${goal.slice(1)}. Nothing else moves`,

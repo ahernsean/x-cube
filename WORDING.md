@@ -34,7 +34,9 @@ not the view moving.
 The whole puzzle **rotates** (`x`, `y`, `z`): "Rotate the whole puzzle so the white
 center is up". A half rotation (`x2`, `y2`, `z2`) may be called a **flip**: "Flip the
 puzzle over, so yellow is up", "Flip the puzzle around, so blue is in front". A flip is
-always 180 degrees; a quarter rotation is never a flip. Don't say "spin" for the
+always 180 degrees; a quarter rotation is never a flip. A flip over and around at once
+is one move, so it is said as one: "Reorient the puzzle in your hand so that white is up
+and blue is in front". Don't say "spin" for the
 puzzle: it suggests continuous motion.
 
 A cubelet's **orientation** is which way it faces in its spot, and to **orient** one is to

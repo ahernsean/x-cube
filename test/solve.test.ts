@@ -305,3 +305,13 @@ test("solve: a position no turns reach is refused", () => {
   assert.ok(unreachableReason(st));
   assert.throws(() => solveSteps(st), /turns can't reach this position/);
 });
+
+test("solve: a regrip that flips the puzzle both over and around is said as one move", () => {
+  const st = State.solved();
+  for (const t of parseAlg("R H L F M L M M M F D R H M U H H S")) applyTurn(st, t);
+  applyTurns(st, parseAlg("x' R y R L' U2 F R' U F' R' D2 R y2 R' D2 R R F U F U' F2 R' x2 L2 D2 R' U2 R2 F U L F' L' F' L U2 F U2 F' U2 L' F D U' F R F' D' F' R' U2 R U R' U R y2 R F L F' U2 F L' F' R' U"));
+  const step = nextStep(st, "layers")!;
+  assert.equal(step.stage, "regrip");
+  assert.equal(step.alg, "x2 y2");
+  assert.equal(step.goal, "Reorient the puzzle in your hand so that white is up and blue is in front. Nothing else moves");
+});
