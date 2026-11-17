@@ -58,6 +58,25 @@ test("edit: one cubelet needed in two places is refused", () => {
   assert.deepEqual([...fit.problems[0].slots].sort(), [at(0, 0, 2), at(2, 0, 0)].sort());
 });
 
+test("edit: once every sticker of a kind has a color, the counts say what an extra one should probably be", () => {
+  const st = State.solved();
+  const corner = visibleColors(st);
+  corner[at(1, 1, 1) * 6 + U] = "Y"; // five yellow core corners, three white
+  assert.equal(fitColors(st, corner).problems[0].text, "Five core corners are yellow, but there can be only four. One of these yellow stickers should probably be white");
+  // Other extension edges show yellow too, so the hint is about all of their yellow stickers.
+  const edge = visibleColors(st);
+  edge[at(0, 1, 2) * 6 + U] = "Y";
+  assert.equal(fitColors(st, edge).problems[0].text, "Two extension edges are yellow and green, but there can be only one. One of the yellow stickers on extension edges should probably be white");
+  // Two colors too many: the counts can't say which should be which.
+  const two = visibleColors(st);
+  two[at(0, 1, 2) * 6 + U] = "Y";
+  two[at(2, 1, 0) * 6 + U] = "G";
+  assert.ok(fitColors(st, two).problems.every((p) => !/probably/.test(p.text)));
+  // A sticker of that kind with no color yet: no hint.
+  corner[at(-1, 1, 1) * 6 + U] = UNPAINTED;
+  assert.ok(fitColors(st, corner).problems.every((p) => !/probably/.test(p.text)));
+});
+
 test("edit: more spots than cubelets say what the spots share and how many have a wrong sticker", () => {
   const st = State.solved();
   const shared = visibleColors(st);
@@ -113,11 +132,11 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
   assert.equal(fitColors(st, swapped).problems[0].text, "Wrong color order");
   // Look-alike core cubelets: more painted than the puzzle has.
   const lookAlike = say(1, 1, 1, U, "Y");
-  assert.equal(lookAlike.text, "Five core corners are yellow, but there can be only four");
+  assert.equal(lookAlike.text, "Five core corners are yellow, but there can be only four. One of these yellow stickers should probably be white");
   assert.deepEqual([...lookAlike.slots].sort(), [at(1, 1, 1), at(1, -1, 1), at(-1, -1, 1), at(1, -1, -1), at(-1, -1, -1)].sort(), "names every spot competing for them");
   // Outer cubelets with the same colors are not look-alikes, but the count works the same.
   const threeGreenOrange = say(-1, 0, -2, 5, "G");
-  assert.equal(threeGreenOrange.text, "Three extension edges are green and orange, but there can be only two");
+  assert.equal(threeGreenOrange.text, "Three extension edges are green and orange, but there can be only two. One of the green stickers on extension edges should probably be blue");
   assert.deepEqual([...threeGreenOrange.slots].sort(), [at(-1, 0, 2), at(-2, 0, 1), at(-1, 0, -2)].sort());
 });
 

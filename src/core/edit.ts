@@ -362,6 +362,47 @@ function reachableFit(shape: State, colors: FaceColors): { state: State; problem
 
 /** Finds real cubelets showing `colors` on the shape of `shape` (see the top of this file). */
 /**
+ * Which colors the competing spots' stickers should probably be, from counting: once every
+ * sticker on the cubelets of one kind has a color, each color shows as many times as the
+ * puzzle has cubelets of that kind with it. When one color shows too often and these spots
+ * all show it, the colors that show too seldom are what the extra stickers should be
+ * ("Two of these white stickers should probably be yellow"). "Probably": the counts give
+ * the fewest stickers to change, and more than that may be wrong. Null when the counts
+ * can't say: a sticker of that kind with no color yet, or more than one color too many.
+ */
+export function missingColors(shape: State, colors: FaceColors, spots: number[]): string | null {
+  const kind = kindOf(shape, spots[0]);
+  // A center color shows on a center of either kind, so centers aren't counted by kind.
+  if (kind === "center" || kind === "extCenter") return null;
+  const many = KIND_NAME[kind][1];
+  const shown = new Map<Color, number>(), have = new Map<Color, number>();
+  let showing = 0;
+  for (let s = 0; s < NUM_SLOTS; s++) {
+    if (shape.occ[s] < 0 || CUBELETS[shape.occ[s]].kind !== kind) continue;
+    for (let d = 0; d < 6; d++) {
+      const c = colors[s * 6 + d];
+      if (c === UNPAINTED) return null;
+      if (c) shown.set(c, (shown.get(c) ?? 0) + 1);
+    }
+  }
+  for (const c of CUBELETS) if (c.kind === kind) for (const x of c.stickers) if (x) have.set(x, (have.get(x) ?? 0) + 1);
+  const over = COLOR_ORDER.filter((c) => (shown.get(c) ?? 0) > (have.get(c) ?? 0));
+  if (over.length !== 1) return null;
+  const [o] = over;
+  const short = COLOR_ORDER.filter((c) => (have.get(c) ?? 0) > (shown.get(c) ?? 0)).map((c) => [c, have.get(c)! - (shown.get(c) ?? 0)] as const);
+  if (!short.length || !spots.every((t) => shownColors(colors, t).includes(o))) return null;
+  for (let s = 0; s < NUM_SLOTS; s++) if (shape.occ[s] >= 0 && CUBELETS[shape.occ[s]].kind === kind && shownColors(colors, s).includes(o)) showing++;
+  const which = showing === spots.length ? `these ${COLOR_NAME[o]} stickers` : `the ${COLOR_NAME[o]} stickers on ${many}`;
+  if (short.length === 1) {
+    const [c, m] = short[0];
+    return `${cap(numberWord(m))} of ${which} should probably be ${COLOR_NAME[c]}`;
+  }
+  const parts = short.map(([c, m]) => `${numberWord(m)} ${COLOR_NAME[c]}`);
+  const list = parts.length < 3 ? parts.join(" and ") : `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+  return `Of ${which}, probably ${list.replace(/^(\w+) /, "$1 should be ")}`;
+}
+
+/**
  * More spots than cubelets that fit them, the spots showing different colors: says what they
  * share when that alone leaves so few cubelets ("show green, but only four have green"), and
  * how many of the spots have a sticker with the wrong color.
@@ -374,9 +415,11 @@ function tooFew(shape: State, colors: FaceColors, spots: number[], fit: number):
   const fix = `At least ${numberWord(wrong)} of them ${wrong === 1 ? "has" : "have"} a sticker with the wrong color`;
   const shared = COLOR_ORDER.filter((c) => spots.every((t) => shownColors(colors, t).includes(c)));
   const having = CUBELETS.filter((c) => c.kind === kind && shared.every((x) => c.stickers.includes(x))).length;
+  const missing = missingColors(shape, colors, spots);
+  const end = missing ?? fix;
   if (shared.length && having === fit)
-    return `These ${n} ${many} show ${listColors(shared)}, but only ${k} ${fit === 1 ? "has" : "have"} ${listColors(shared)}. ${fix}`;
-  return `Only ${k} ${fit === 1 ? one : many} ${fit === 1 ? "has" : "have"} colors like these ${n} do. ${fix}`;
+    return `These ${n} ${many} show ${listColors(shared)}, but only ${k} ${fit === 1 ? "has" : "have"} ${listColors(shared)}. ${end}`;
+  return `Only ${k} ${fit === 1 ? one : many} ${fit === 1 ? "has" : "have"} colors like these ${n} do. ${end}`;
 }
 
 export function fitColors(shape: State, colors: FaceColors): Fit {
@@ -435,7 +478,7 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
       problems.push(
         problem(
           shown.size === 1
-            ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k}`
+            ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k}${((m) => (m ? `. ${m}` : ""))(missingColors(shape, colors, spots))}`
             : tooFew(shape, colors, spots, g.ids.size),
           spots,
         ),
