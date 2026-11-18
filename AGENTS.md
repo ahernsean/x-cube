@@ -243,6 +243,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - `src/core/search.ts`, `src/core/goals.ts`: iterative-deepening search with goal masks
   based on appearance (look-alike twins compare equal).
 - `src/core/solve.ts`: the step-by-step solver (see "Solving method" above).
+- `src/web/planner.ts`, `src/web/plan-worker.ts`: the step guide's plan of the whole solve, made
+  in a Web Worker.
 - `src/cli/xc.ts`: command-line driver (see `README.md`).
 - `src/web/`: **X-Cube Lab**, the browser viewer, built by `scripts/build-web.ts` into
   `dist/x-cube-lab.html` (published as a claude.ai artifact, which supplies the document
@@ -268,8 +270,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Corner buttons** of the 3D view, round icons with no button edge (drawn as SVG, so the
   ⓘ and ◐ circles match): ⓘ (help) top right, ◐ (Display) bottom right, and ↶ (Undo, the
   last turn however it was made) top left, shown only while there is a turn to undo.
-- **Highlight color:** the page's accent blue marks every selected or active control (the
-  turn amount, Order, an inverted turn button, the playing transport button).
+- **Color rule** for the page's controls: the accent blue (the highlight) marks a selected
+  or active control (the turn amount, Order, an inverted turn button, the playing transport
+  button), green a good state, and gray one that is off or doesn't apply. This file states
+  the rule, not each element's color (the CSS has those); `scripts/browser-tests.mjs` checks
+  the rule (`controls: the color rule`).
 - **Disclosure triangles:** one shape for section headings and `details` summaries, drawn
   in CSS (the browser's own marker is hidden).
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
@@ -335,7 +340,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   list says "Shuffling…" while they play), which would give the way back away (the probe's
   `shuffleTurns` has them for the tests).
 - **Turn buttons:** tap for the shown turn; long press flips it to the inverse (U to U');
-  slide off to cancel. The rotations show their axes behind the letter, in mid gray: a line
+  slide off to cancel. The rotations show their axes faintly behind the letter: a line
   across x, a line up and down y, and a ring around z (its axis points at you). The x and z
   letters are moved so their ink sits at the button's middle (`centerAxisLetters`): a
   lowercase letter's ink sits below its line box's middle by an amount that depends on
@@ -346,16 +351,15 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   beside the heading. It shows the current position's code as a read-out (no fill), drawn
   over the field at the size that fits it on one line, measured (13px at most, about 9.5px on an iPhone);
   tapping into it empties it for a code to be pasted or typed, and leaving it empty shows
-  the code again. Typed text that isn't a code gets a thick red outline and Load stays
+  the code again. Typed text that isn't a code is outlined as an error and Load stays
   off. Copy copies the current position's code (putting it back in the field). If the
   position changes while typed text waits, the text is replaced by the new code, the field
   flashes and a message says so. Its ✕ puts the current code back.
 - **Text fields** each have a ✕ at the right end while they hold text; it empties the field.
   Their text is 16px: iOS zooms the page into a focused field with smaller text.
-- **Status chips**, in the playback row: one shape chip ("Solved", or "X shape", green in
-  shape and gray out of it), and a 3 by 2 grid of one-letter chips for the outer turns
-  (r l u / d f b), green when that turn can be made and gray when not. Green: green means
-  a state is good, blue (the highlight) means a control is selected or active.
+- **Status chips**, in the playback row: one shape chip ("Solved", or "X shape", good in
+  shape and off out of it), and a 3 by 2 grid of one-letter chips for the outer turns
+  (r l u / d f b), good when that turn can be made and off when not (the color rule).
 - **Edge glow:** a soft band at a depth discontinuity, in the color of the sticker around
   the edge. No glow means that side has no sticker. Only shown where the side face points
   away from the viewer or is edge-on. Where two visible faces of one cubelet meet, the
@@ -461,8 +465,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
   most unblocked, then each as squarely as possible, from the preset views and the
   directions between the stickers), again each time it is tapped. **Hide** removes the
-  halo until the shown problem names other cubelets; while the halo shows, a purple
-  **Hide** pill in the 3D view does the same, placed clear of the puzzle as drawn, just past
+  halo until the shown problem names other cubelets; while the halo shows, a **Hide** pill in
+  the halo's color in the 3D view does the same, placed clear of the puzzle as drawn, just past
   its edge on the haloed cubelets' side (above it if they are at the middle; a play-tester
   found it too much beside them, and the halo and the arrow already mark them), following
   the view and kept inside it. Done, available only when valid, makes the fitted position the start
@@ -485,16 +489,24 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   a suggested name, selected and focused, and its Save then saves the step's turns from
   where the step starts), under the counts ("3 / 17 steps, 18 / 183 total turns": the newest step's number of
   the steps the solver planned when it was loaded, and the turns so far of the turns those
-  steps add up to); the list is top-aligned, the newest step always at its top, and when a
+  steps add up to; until the plan is done the totals read … and the counts say what is
+  being planned, "Planning: Yellow core corners…", named by the last step planned, as the
+  step's line reads "Step 2 of …"); the list is top-aligned, the newest step always at its top, and when a
   step is added the older ones slide down to make room; on phones the list scrolls between
   the step's line and Stop solving. The order can't change during a solve. Anything that
   sets a new start (Shuffle, Reset, Edit puzzle, a code, a saved position, an algorithm,
   clearing the turn list) asks "End the solve in progress?" first, and ends it. In the
   playback strip, once a solve's turns have all played, ▶ gives way to a **Next step**
-  button (two dots with an arrow from one to the other, in the highlight blue), which
+  button (two dots with an arrow from one to the other), which
   loads the next step; ▶ comes back with it. **Next
   step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
-  the position shown, adds its turns at the current step, unplayed, and a line under the
+  the position shown, adds its turns at the current step, unplayed. The whole solve is
+  planned at the first tap, a step at a time, in a Web Worker (`src/web/planner.ts`, the
+  worker's script bundled into the page as a string; where no worker starts, on the page,
+  a step per task), and a tap at a position the plan has loads its step at once; a tap
+  anywhere else plans afresh from there (until the step loads, the button
+  reads Working… and pulses, the line says "Working out the next step…", a second tap does
+  nothing, and after 250 ms a message says so too; a turn made meanwhile drops it), and a line under the
   button gives "Step 2 of 9 —" (no "(done)" once played: the step list's ✓ says that; counted from when the guide was started; a step taken
   from anywhere but the end of the one before starts the count again), the stage and the goal,
   then on its own line "Turns:" with the turns as the solver writes them (`[setup: cycle]`). Until the step has

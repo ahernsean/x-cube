@@ -121,9 +121,6 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .edit-actions .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .status { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .transport > .status { flex: none; margin-left: auto; flex-wrap: nowrap; justify-content: flex-end; overflow: hidden; }
-/* Next step, in place of ▶ once a solve's step has played through: a move from one state
-   to the next, in the highlight color so it can't be taken for Play. */
-
 /* The playback buttons as one strip: one rounded outline, faint lines between the buttons. */
 .tp-group { display: flex; flex: 0 1 auto; min-width: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
 .tp-group > .btn.tp { border: 0; border-radius: 0; min-height: 32px; min-width: 38px; padding: 0 8px; }
@@ -131,6 +128,12 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 @media (hover: hover) { .tp-group > .tp:not(.stop):not(:disabled):hover { background: var(--off-bg); } }
 .tp.next-tp[hidden], .tp[hidden] { display: none; }
 .tp .ico { width: 20px; height: 18px; display: block; margin: 0 auto; }
+/* Next step while its step is being worked out: not grayed out, but pulsing, so a tap that took shows. */
+.btn.working:disabled, .btn.working:disabled:hover { opacity: 1; cursor: progress; }
+.tp-group > .btn.tp.working:disabled { color: inherit; }
+.btn.working { animation: working 1.1s ease-in-out infinite; }
+@keyframes working { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .btn.working { animation: none; } }
 /* The Solve panel: the order and Start solving until a solve starts; then the step's controls. */
 #guide:not(.solving) .solve-only, #guide.solving .solve-idle { display: none; }
 /* The turn list's ✕: one tap arms it ("Clear?"), a second clears. */

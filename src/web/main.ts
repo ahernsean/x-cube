@@ -29,6 +29,7 @@ import { decodeState, encodeState, unreachableReason } from "../core/serialize.t
 import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
+import { Planner, type Plan } from "./planner.ts";
 
 declare const THREE: any;
 
@@ -1843,6 +1844,7 @@ let playingBack = false; // playing toward the start (◀) rather than the end (
 
 function enqueue(turn: Turn, forward: boolean) {
   if (guideArrows) guideArrows.visible = false; // the arrows describe the position before the step's first turn
+  if (dropWorking()) render(); // the position the tapped Next step was for is about to change
   queue.push({ turn, forward });
 }
 
@@ -3720,8 +3722,10 @@ const turnsWhole = (step: SolveStep) => step.stage === "hold" || step.stage === 
 
 interface Guide {
   step: SolveStep;
-  /** Steps left after this one, and this step's number since the guide was last started. */
-  after: number;
+  /** The plan the step came from, and which of its steps it is. */
+  plan: Plan;
+  at: number;
+  /** This step's number since the guide was last started. */
   index: number;
   /** Where in the turn list the step's turns begin, and the position there. */
   start: number;
@@ -3731,8 +3735,6 @@ interface Guide {
   free: Set<number>;
   /** A path for each cubelet the step moves to another spot. */
   arrows: StickerPath[];
-  /** Turns of this step and every step the solver planned after it, when it was loaded. */
-  planned: number;
 }
 /** Every step the guide has put in the turn list that is still there, in order; `guide` is the one being shown, if any. */
 let trail: Guide[] = [];
@@ -3821,45 +3823,103 @@ function nothingToSolve(): boolean {
 /** A solve is under way: from Start solving until Stop. The order can be chosen only between solves. */
 let solving = false;
 const SOLVED_LINE = "Solved. Nothing left to do.";
+/**
+ * Next step was tapped and its step is being worked out, from this position. Until it
+ * loads, the line and the button say so, and a second tap does nothing; after a moment a
+ * message says so too, for whichever panel is showing.
+ */
+let working: State | null = null;
+let workingTimer: ReturnType<typeof setTimeout> | undefined;
+const WORKING_LINE = "Working out the next step…";
+const WORKING_MESSAGE_MS = 250;
+function stopWorking() {
+  working = null;
+  clearTimeout(workingTimer);
+  if (app.message === WORKING_LINE) dismissMessage();
+}
+/** A turn, queued or made, leaves the step a tapped Next step is waiting for behind. */
+function dropWorking(): boolean {
+  if (!working) return false;
+  stopWorking();
+  if (guideLine === WORKING_LINE) guideLine = "";
+  return true;
+}
+/** The whole solve, planned off the page's main thread, which Next step takes its steps from. */
+const planner = new Planner();
+planner.onChange = () => {
+  if (working) takeStep();
+  if (solving) render();
+};
 function nextStep() {
-  if (edit) return;
+  if (edit || working) return;
   flushAnimations();
   solving = true;
-  let steps: SolveStep[];
-  try {
-    steps = solveSteps(app.current, guideMode);
-  } catch (e) {
-    clearGuide();
-    guideLine = "";
-    setMessage(`Can't solve from here: ${(e as Error).message}`, "error");
-    return render();
+  working = app.current.clone();
+  if (takeStep()) return;
+  clearGuide();
+  guideLine = WORKING_LINE;
+  workingTimer = setTimeout(() => {
+    if (!working) return;
+    setMessage(WORKING_LINE);
+    render();
+  }, WORKING_MESSAGE_MS);
+  // Unless the plan reaches this position and is still working toward its step, plan from here.
+  if (planner.indexOf(encodeState(app.current), guideMode) < 0) planner.start(app.current, guideMode);
+  render();
+}
+
+/** Loads the step the plan has for the position Next step was tapped at, once it has one. Whether it is done with the tap. */
+function takeStep(): boolean {
+  const plan = planner.plan;
+  // A turn swiped or still to be made changes the position: the step would be for the old one.
+  if (working && (live || settle || queue.length)) {
+    dropWorking();
+    render();
+    return true;
+  }
+  if (!working || !plan || !solving || !app.current.equals(working)) return false;
+  const i = planner.indexOf(encodeState(working), guideMode);
+  if (i < 0 || (i === plan.steps.length && !plan.done && !plan.error)) return false;
+  stopWorking();
+  guideLine = "";
+  clearGuide();
+  if (i === plan.steps.length && plan.error) {
+    setMessage(`Can't solve from here: ${plan.error}`, "error");
+    render();
+    return true;
   }
   // Carrying on from the end of a step, the count carries on too.
   trail = trail.filter((g) => guideHolds(g) && g.start + g.step.turns.length <= app.cursor);
   const prev = trail.find((g) => g.start + g.step.turns.length === app.cursor);
   const index = prev ? prev.index + 1 : 1;
-  clearGuide();
-  if (!steps.length) {
+  if (i === plan.steps.length) {
     guideLine = SOLVED_LINE;
-    return render();
+    render();
+    return true;
   }
-  const [step] = steps;
+  const step = plan.steps[i];
   const st = app.current;
-  guide = {
-    step,
-    after: steps.length - 1,
-    index,
-    start: app.cursor,
-    from: st.clone(),
-    ...stepColors(st, step),
-    arrows: stickerPaths(st, step),
-    planned: steps.reduce((n, s) => n + s.turns.length, 0),
-  };
+  guide = { step, plan, at: i, index, start: app.cursor, from: st.clone(), ...stepColors(st, step), arrows: stickerPaths(st, step) };
   trail.push(guide);
   scrollToStep = true;
   app.history = app.history.slice(0, app.cursor).concat(step.turns);
   setMessage(`${step.turns.length} ${step.turns.length === 1 ? "turn" : "turns"} loaded`, "ok");
   render();
+  return true;
+}
+
+/** The steps the plan has after a guide's step, and the turns of it and them: once the plan is done. */
+function guideRest(g: Guide): { after: number; planned: number } | null {
+  if (!g.plan.done) return null;
+  const rest = g.plan.steps.slice(g.at);
+  return { after: rest.length - 1, planned: rest.reduce((n, s) => n + s.turns.length, 0) };
+}
+
+/** While the plan a guide's step came from is still being made, what it is up to: "Planning: Yellow core corners…". */
+function planningText(g: Guide): string {
+  if (planner.plan !== g.plan || !planner.running) return "";
+  const stage = [...g.plan.steps].reverse().find((s) => !turnsWhole(s));
+  return `Planning${stage ? `: ${STAGE_NAME[stage.stage]}` : ""}…`;
 }
 
 /**
@@ -3897,6 +3957,8 @@ function clearGuide() {
 /** Stop, or closing the disclosure: drops the shown step's grays, arrows and line. The turn list keeps its turns and its step boxes. */
 function stopGuide() {
   if (!solving && !guide && !guideLine) return;
+  stopWorking();
+  planner.stop();
   solving = false;
   clearGuide();
   guideLine = "";
@@ -3972,9 +4034,15 @@ function renderSteps() {
   const turns = trail.reduce((n, g) => n + g.step.turns.length, 0);
   // "5 / 17 steps, 30 / 122 total turns": the newest step's number of all the steps the solver
   // planned then, and the turns so far of those the steps so far and the planned rest add up to.
+  // Until the plan is done, the totals aren't known: "5 / … steps, 30 / … total turns. Planning: Yellow corners…".
   const last = trail[trail.length - 1];
-  const planned = last ? turns - last.step.turns.length + last.planned : 0;
-  const head = last ? `${last.index} / ${last.index + last.after} steps, ${turns} / ${planned} total turns` : "No steps yet";
+  const rest = last && guideRest(last);
+  const planning = last ? planningText(last) : "";
+  const head = !last
+    ? "No steps yet"
+    : rest
+      ? `${last.index} / ${last.index + rest.after} steps, ${turns} / ${turns - last.step.turns.length + rest.planned} total turns`
+      : `${last.index} / … steps, ${turns} / … total turns${planning ? `. ${planning}` : ""}`;
   const key = head + "|" + trail.map((g) => `${g.start}:${g === guide}:${app.cursor >= g.start + g.step.turns.length}`).join();
   if (key === stepsKey) return;
   const grew = trail.length > list.children.length && list.children.length > 0;
@@ -4038,6 +4106,7 @@ function turnListHtml(): string {
 /** Drops the guide when its turns are gone from the list, redraws its grays and arrows, and writes its line. */
 function refreshGuide() {
   trail = trail.filter(guideHolds);
+  if (working && !app.current.equals(working)) dropWorking();
   if (guide && !trail.includes(guide)) {
     guide = null;
     guideLine = "";
@@ -4048,14 +4117,16 @@ function refreshGuide() {
   $("guide-colors").setAttribute("aria-pressed", String(guideFullColor));
   ($("guide-stop") as HTMLButtonElement).disabled = !solving;
   $("guide").classList.toggle("solving", solving);
-  $("next-step").textContent = solving ? "Next step" : "Start solving";
+  $("next-step").textContent = working ? "Working…" : solving ? "Next step" : "Start solving";
+  for (const id of ["next-step", "strip-next"]) $(id).classList.toggle("working", !!working);
   // In the playback strip, once a solve's turns have all played, ▶ gives way to Next step.
   const atEnd = app.cursor >= app.history.length;
   const solvedNow = nothingToSolve();
   const showNext = solving && atEnd && !playing && !shuffling && guideLine !== SOLVED_LINE && !solvedNow;
   // Next step loads the step after the one played; with turns still to play, play them first.
   // Not during a shuffle either: a step loaded partway through one would cut it short.
-  ($("next-step") as HTMLButtonElement).disabled = shuffling || solvedNow || (solving && !atEnd);
+  ($("next-step") as HTMLButtonElement).disabled = !!working || shuffling || solvedNow || (solving && !atEnd);
+  ($("strip-next") as HTMLButtonElement).disabled = !!working;
   $("strip-next").hidden = !showNext;
   $("last").hidden = showNext;
   // At the step's start the button plays the step; anywhere else it goes back to the start.
@@ -4072,10 +4143,11 @@ function refreshGuide() {
   const line = $("guide-line");
   line.textContent = "";
   if (guide) {
-    const { step, after, index, start } = guide;
-    const done = app.cursor >= start + step.turns.length;
+    const { step, index } = guide;
+    const rest = guideRest(guide);
+    const of = rest ? ` of ${index + rest.after}` : planningText(guide) ? " of …" : "";
     const head = document.createElement("strong");
-    head.textContent = `Step ${index} of ${index + after} — ${STAGE_NAME[step.stage]}: `;
+    head.textContent = `Step ${index}${of} — ${STAGE_NAME[step.stage]}: `;
     const alg = document.createElement("span");
     alg.className = "known-alg";
     alg.textContent = step.alg;
@@ -5494,7 +5566,10 @@ function probe3d() {
 function installProbe() {
   const canvas = () => renderer.domElement as HTMLCanvasElement;
   (window as any).xcubeProbe = {
-    idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim,
+    idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim && !working && !planner.running,
+    /** Where the step guide's plan is made ("worker" or "page"), and making it on the page from now on. */
+    planWhere: () => planner.where,
+    planInPage: () => void (planner.inPage = true),
     /** The debug info Copy debug info copies, and putting it back (for reproducing what a person saw). */
     debugInfo: () => debugInfo(),
     restoreDebug: (json: string) => restoreDebug(json),
@@ -5512,7 +5587,7 @@ function installProbe() {
         stage: guide.step.stage,
         alg: guide.step.alg,
         turns: guide.step.turns.length,
-        after: guide.after,
+        after: guideRest(guide)?.after ?? null,
         index: guide.index,
         start: guide.start,
         focus: [...guide.focus].map((id) => slotName(app.current.occ.indexOf(id))).sort(),

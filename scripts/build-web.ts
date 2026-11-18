@@ -8,6 +8,17 @@
 import { build } from "esbuild";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
+// The step guide's planning worker, bundled on its own and put into the page's script as a
+// string (src/web/planner.ts starts it from that), so the page stays one file.
+const worker = await build({
+  entryPoints: ["src/web/plan-worker.ts"],
+  bundle: true,
+  format: "iife",
+  target: "es2020",
+  minify: true,
+  define: { PLAN_WORKER_JS: '""' },
+  write: false,
+});
 const out = await build({
   entryPoints: ["src/web/main.ts"],
   bundle: true,
@@ -15,6 +26,7 @@ const out = await build({
   target: "es2020",
   minify: true,
   sourcemap: process.argv.includes("--sourcemap") ? "inline" : false,
+  define: { PLAN_WORKER_JS: JSON.stringify(worker.outputFiles[0].text) },
   write: false,
 });
 const js = out.outputFiles[0].text.replace(/<\/script/gi, "<\\/script");

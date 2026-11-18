@@ -928,13 +928,21 @@ function outerStep(st: State, mode: Mode): SolveStep | null {
 
 /** Every step from st to solved, in order. Throws if turns can't reach st. */
 export function solveSteps(start: State, mode: Mode = "kinds"): SolveStep[] {
+  return [...planSteps(start, mode)];
+}
+
+/**
+ * The steps from st to solved, one at a time, each found when it is asked for, so a caller
+ * can show the plan growing. Throws, when the step it can't give is asked for, if turns
+ * can't reach st or the method goes wrong.
+ */
+export function* planSteps(start: State, mode: Mode = "kinds"): Generator<SolveStep, void, void> {
   const st = start.clone();
-  const steps: SolveStep[] = [];
+  let n = 0;
   for (let step = nextStep(st, mode); step; step = nextStep(st, mode)) {
-    if (steps.length > 60) throw new Error("the method did not finish");
+    if (n++ > 60) throw new Error("the method did not finish");
     for (const t of step.turns) if (!applyTurn(st, t)) throw new Error(`a step's turn was refused (${step.alg})`);
-    steps.push(step);
+    yield step;
   }
   if (!isSolved(st)) throw new Error("the method finished without solving the puzzle");
-  return steps;
 }
