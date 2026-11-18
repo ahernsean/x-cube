@@ -1844,6 +1844,7 @@ let playingBack = false; // playing toward the start (◀) rather than the end (
 
 function enqueue(turn: Turn, forward: boolean) {
   if (guideArrows) guideArrows.visible = false; // the arrows describe the position before the step's first turn
+  if (dropWorking()) render(); // the position the tapped Next step was for is about to change
   queue.push({ turn, forward });
 }
 
@@ -3836,6 +3837,13 @@ function stopWorking() {
   clearTimeout(workingTimer);
   if (app.message === WORKING_LINE) dismissMessage();
 }
+/** A turn, queued or made, leaves the step a tapped Next step is waiting for behind. */
+function dropWorking(): boolean {
+  if (!working) return false;
+  stopWorking();
+  if (guideLine === WORKING_LINE) guideLine = "";
+  return true;
+}
 /** The whole solve, planned off the page's main thread, which Next step takes its steps from. */
 const planner = new Planner();
 planner.onChange = () => {
@@ -3863,6 +3871,12 @@ function nextStep() {
 /** Loads the step the plan has for the position Next step was tapped at, once it has one. Whether it is done with the tap. */
 function takeStep(): boolean {
   const plan = planner.plan;
+  // A turn swiped or still to be made changes the position: the step would be for the old one.
+  if (working && (live || settle || queue.length)) {
+    dropWorking();
+    render();
+    return true;
+  }
   if (!working || !plan || !solving || !app.current.equals(working)) return false;
   const i = planner.indexOf(encodeState(working), guideMode);
   if (i < 0 || (i === plan.steps.length && !plan.done && !plan.error)) return false;
@@ -4092,11 +4106,7 @@ function turnListHtml(): string {
 /** Drops the guide when its turns are gone from the list, redraws its grays and arrows, and writes its line. */
 function refreshGuide() {
   trail = trail.filter(guideHolds);
-  // A turn made while a step was being worked out leaves that step behind.
-  if (working && !app.current.equals(working)) {
-    stopWorking();
-    guideLine = "";
-  }
+  if (working && !app.current.equals(working)) dropWorking();
   if (guide && !trail.includes(guide)) {
     guide = null;
     guideLine = "";

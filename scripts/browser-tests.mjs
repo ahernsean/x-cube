@@ -1693,14 +1693,18 @@ labTest("guide: a tapped Next step shows it is working until its step loads, and
   await page.click("#last");
   await settle();
   await play("F");
+  // Dropped as soon as the turn is queued, before it moves anything: a step arriving
+  // before the turn starts must not take its place.
   const dropped = await page.evaluate(() => {
     document.getElementById("next-step").click();
+    const waiting = document.getElementById("next-step").classList.contains("working");
     document.getElementById("back").click();
-    return window.xcubeProbe.turns();
+    return { waiting, after: document.getElementById("next-step").classList.contains("working"), line: document.getElementById("guide-line").textContent };
   });
+  check(dropped.waiting && !dropped.after && dropped.line !== "Working out the next step…", `a turn queued while a step is worked out drops it at once (${JSON.stringify(dropped)})`);
   await settle();
   const after = await page.evaluate(() => ({ line: document.getElementById("guide-line").textContent, text: document.getElementById("next-step").textContent, boxes: document.querySelectorAll("#history .step-box").length }));
-  check(after.line !== "Working out the next step…" && after.text === "Next step" && after.boxes === 1 && (await probe("guide")) === null, `a turn made meanwhile drops the step being worked out (${dropped}: ${JSON.stringify(after)})`);
+  check(after.line !== "Working out the next step…" && after.text === "Next step" && after.boxes === 1 && (await probe("guide")) === null, `and once the turn has played, no step loads (${JSON.stringify(after)})`);
 });
 
 labTest("guide: the solve is planned in a worker, and a step the plan has loads at once", async ({ page, check, probe, settle, play }) => {
