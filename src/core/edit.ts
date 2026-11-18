@@ -362,44 +362,62 @@ function reachableFit(shape: State, colors: FaceColors): { state: State; problem
 
 /** Finds real cubelets showing `colors` on the shape of `shape` (see the top of this file). */
 /**
- * Which colors the competing spots' stickers should probably be, from counting: once every
- * sticker on the cubelets of one kind has a color, each color shows as many times as the
- * puzzle has cubelets of that kind with it. When one color shows too often and these spots
- * all show it, the colors that show too seldom are what the extra stickers should be
- * ("Two of these white stickers should probably be yellow"). "Probably": the counts give
- * the fewest stickers to change, and more than that may be wrong. Null when the counts
- * can't say: a sticker of that kind with no color yet, or more than one color too many.
+ * What the spots should probably show instead, from counting. No sticker is ever covered,
+ * so once every sticker on the cubelets of one kind has a color, the colors they show,
+ * cubelet by cubelet, are exactly the puzzle's cubelets of that kind. A cubelet no spot
+ * shows is what one of the wrong spots should be; of those, the ones sharing the most
+ * colors with what these spots show are named ("One of these should probably be yellow,
+ * blue, and red"). Every center color shows on exactly one center of either kind, so for
+ * centers it is the color no center shows. "Probably" for one answer, "maybe" for several:
+ * the counts give the fewest stickers to change, and more than that may be wrong. Null when
+ * the counts can't say: a sticker of that kind with no color yet, or nothing missing.
+ * `wrong` is how many of the spots are wrong at least.
  */
-export function missingColors(shape: State, colors: FaceColors, spots: number[]): string | null {
+export function missingColors(shape: State, colors: FaceColors, spots: number[], wrong = 1): string | null {
   const kind = kindOf(shape, spots[0]);
-  // A center color shows on a center of either kind, so centers aren't counted by kind.
-  if (kind === "center" || kind === "extCenter") return null;
-  const many = KIND_NAME[kind][1];
-  const shown = new Map<Color, number>(), have = new Map<Color, number>();
-  let showing = 0;
+  const lead = spots.length === 1 ? "It" : `${cap(numberWord(wrong))} of these`;
+  const say = (names: string[]) =>
+    names.length === 1 ? `${lead} should probably be ${names[0]}` : `${lead} should maybe be ${names.join(names.some((n) => / and |,/.test(n)) ? ", or " : " or ")}`;
+  const centers = kind === "center" || kind === "extCenter";
+  const counted = (s: number) => shape.occ[s] >= 0 && (centers ? ["center", "extCenter"].includes(CUBELETS[shape.occ[s]].kind) : CUBELETS[shape.occ[s]].kind === kind);
+  const key = (cs: readonly (Color | null)[]) => COLOR_ORDER.filter((c) => cs.includes(c)).join("");
+  const shown = new Map<string, number>();
   for (let s = 0; s < NUM_SLOTS; s++) {
-    if (shape.occ[s] < 0 || CUBELETS[shape.occ[s]].kind !== kind) continue;
+    if (!counted(s)) continue;
+    const cs: Color[] = [];
     for (let d = 0; d < 6; d++) {
       const c = colors[s * 6 + d];
       if (c === UNPAINTED) return null;
-      if (c) shown.set(c, (shown.get(c) ?? 0) + 1);
+      if (c) cs.push(c);
     }
+    if (centers) for (const c of cs) shown.set(c, (shown.get(c) ?? 0) + 1);
+    else shown.set(key(cs), (shown.get(key(cs)) ?? 0) + 1);
   }
-  for (const c of CUBELETS) if (c.kind === kind) for (const x of c.stickers) if (x) have.set(x, (have.get(x) ?? 0) + 1);
-  const over = COLOR_ORDER.filter((c) => (shown.get(c) ?? 0) > (have.get(c) ?? 0));
-  if (over.length !== 1) return null;
-  const [o] = over;
-  const short = COLOR_ORDER.filter((c) => (have.get(c) ?? 0) > (shown.get(c) ?? 0)).map((c) => [c, have.get(c)! - (shown.get(c) ?? 0)] as const);
-  if (!short.length || !spots.every((t) => shownColors(colors, t).includes(o))) return null;
-  for (let s = 0; s < NUM_SLOTS; s++) if (shape.occ[s] >= 0 && CUBELETS[shape.occ[s]].kind === kind && shownColors(colors, s).includes(o)) showing++;
-  const which = showing === spots.length ? `these ${COLOR_NAME[o]} stickers` : `the ${COLOR_NAME[o]} stickers on ${many}`;
-  if (short.length === 1) {
-    const [c, m] = short[0];
-    return `${cap(numberWord(m))} of ${which} should probably be ${COLOR_NAME[c]}`;
+  if (centers) {
+    const none = COLOR_ORDER.filter((c) => !shown.get(c));
+    if (!none.length) return null;
+    // A center's color is opposite the color of the center across from it, so of the colors
+    // no center shows, the ones opposite those across from these spots are likelier.
+    const across = (t: number) => {
+      const p = SLOT_POS[t], far = Math.max(...p.map(Math.abs));
+      for (const r of [far, 3 - far]) {
+        const o = slotAt(p.map((v) => (-v / far) * r) as [number, number, number]);
+        const c = o >= 0 ? shownColors(colors, o)[0] : undefined;
+        if (c) return FACE_COLOR[FACE_COLOR.indexOf(c) ^ 1];
+      }
+      return undefined;
+    };
+    const likely = none.filter((c) => spots.some((t) => across(t) === c));
+    return say((likely.length ? likely : none).map((c) => COLOR_NAME[c]));
   }
-  const parts = short.map(([c, m]) => `${numberWord(m)} ${COLOR_NAME[c]}`);
-  const list = parts.length < 3 ? parts.join(" and ") : `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
-  return `Of ${which}, probably ${list.replace(/^(\w+) /, "$1 should be ")}`;
+  const have = new Map<string, number>();
+  for (const c of CUBELETS) if (c.kind === kind) have.set(key(c.stickers), (have.get(key(c.stickers)) ?? 0) + 1);
+  const short = [...have].filter(([k, n]) => n > (shown.get(k) ?? 0)).map(([k]) => k);
+  if (!short.length) return null;
+  // Nearest to what the spots show: the fewest of a spot's colors left out.
+  const apart = (k: string) => Math.min(...spots.map((t) => shownColors(colors, t).filter((c) => !k.includes(c)).length));
+  const best = Math.min(...short.map(apart));
+  return say(short.filter((k) => apart(k) === best).map((k) => listColors([...k] as Color[])));
 }
 
 /**
@@ -415,8 +433,7 @@ function tooFew(shape: State, colors: FaceColors, spots: number[], fit: number):
   const fix = `At least ${numberWord(wrong)} of them ${wrong === 1 ? "has" : "have"} a sticker with the wrong color`;
   const shared = COLOR_ORDER.filter((c) => spots.every((t) => shownColors(colors, t).includes(c)));
   const having = CUBELETS.filter((c) => c.kind === kind && shared.every((x) => c.stickers.includes(x))).length;
-  const missing = missingColors(shape, colors, spots);
-  const end = missing ?? fix;
+  const end = missingColors(shape, colors, spots, wrong) ?? fix;
   if (shared.length && having === fit)
     return `These ${n} ${many} show ${listColors(shared)}, but only ${k} ${fit === 1 ? "has" : "have"} ${listColors(shared)}. ${end}`;
   return `Only ${k} ${fit === 1 ? one : many} ${fit === 1 ? "has" : "have"} colors like these ${n} do. ${end}`;
@@ -437,11 +454,13 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         // White and yellow never point out: that rule needs no knowledge of the cubelet.
         const facing = colors[s * 6 + outwardDir(s)];
         if (facing === "W" || facing === "Y") {
-          problems.push(problem(`This cubelet's ${COLOR_NAME[facing]} sticker has the wrong color`, [s]));
+          const fix = missingColors(shape, colors, [s]);
+          problems.push(problem(`This cubelet's ${COLOR_NAME[facing]} sticker has the wrong color${fix ? `. ${fix}` : ""}`, [s]));
           continue;
         }
         const cs = shownColors(colors, s);
-        problems.push(problem(`No cubelet has ${listColors(cs)} arranged this way. One of its stickers has the wrong color`, [s]));
+        const fix = missingColors(shape, colors, [s]);
+        problems.push(problem(`No cubelet has ${listColors(cs)} arranged this way. ${fix ?? "One of its stickers has the wrong color"}`, [s]));
       }
     // Every spot fits a cubelet turned a way the rule allows, but some compete for too few.
     if (!problems.length)
@@ -451,11 +470,12 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         const shown = new Set(spots.map((t) => listColors(shownColors(colors, t))));
         const [o] = out;
         const n = numberWord(spots.length), k = numberWord(g.ids.size);
+        const fix = missingColors(shape, colors, spots, spots.length - g.ids.size) ?? "One of them has a sticker with the wrong color";
         problems.push(
           problem(
             out.size === 1 && o && o !== UNPAINTED && shown.size === 1
-              ? `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} look the same, but the puzzle has only ${k} like that. One of them has a sticker with the wrong color`
-              : `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be right at once. One of them has a sticker with the wrong color`,
+              ? `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} look the same, but the puzzle has only ${k} like that. ${fix}`
+              : `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be right at once. ${fix}`,
             spots,
           ),
         );
@@ -466,7 +486,8 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
   for (const s of loose.slots)
     if (loose.cand.get(s)!.length === 0) {
       const cs = shownColors(colors, s);
-      problems.push(problem(noCubelet(CUBELETS[shape.occ[s]].kind, cs), [s]));
+      const fix = missingColors(shape, colors, [s]);
+      problems.push(problem(noCubelet(CUBELETS[shape.occ[s]].kind, cs) + (fix ? `. ${fix}` : ""), [s]));
     }
   if (!problems.length) {
     // Every slot has candidates, but some spots compete for too few cubelets.
@@ -478,7 +499,7 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
       problems.push(
         problem(
           shown.size === 1
-            ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k}${((m) => (m ? `. ${m}` : ""))(missingColors(shape, colors, spots))}`
+            ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k}${((m) => (m ? `. ${m}` : ""))(missingColors(shape, colors, spots, spots.length - g.ids.size))}`
             : tooFew(shape, colors, spots, g.ids.size),
           spots,
         ),
