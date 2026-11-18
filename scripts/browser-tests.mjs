@@ -1647,6 +1647,32 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   check(solvedEnd.next && solvedEnd.strip && solvedEnd.play, `once solved, Next step is grayed out and ▶ (grayed out) doesn't give way to it (${JSON.stringify(solvedEnd)})`);
 });
 
+labTest("controls: the color rule: blue for a selected control, green for a good state, else neither", async ({ page, check, play }) => {
+  const colors = () =>
+    page.evaluate(() => {
+      const resolve = (css) => {
+        const p = document.createElement("span");
+        p.style.cssText = css;
+        document.body.append(p);
+        const c = getComputedStyle(p);
+        const out = { color: c.color, background: c.backgroundColor };
+        p.remove();
+        return out;
+      };
+      const accent = resolve("background: var(--accent)").background;
+      const good = resolve("color: var(--good)").color;
+      const picks = [...document.querySelectorAll(".mods button")].map((b) => ({ sel: b.classList.contains("sel"), blue: getComputedStyle(b).backgroundColor === accent }));
+      const chips = [document.getElementById("shape-chip"), ...document.querySelectorAll("#outer-grid .chip")].map((c) => ({ name: c.textContent, good: c.classList.contains("good") || c.classList.contains("on"), green: getComputedStyle(c).color === good }));
+      return { picks, chips };
+    });
+  const solved = await colors();
+  check(solved.picks.length > 2 && solved.picks.some((p) => p.sel) && solved.picks.every((p) => p.sel === p.blue), `the selected turn amount and Order are blue, the others aren't (${JSON.stringify(solved.picks)})`);
+  check(solved.chips.every((x) => x.good === x.green) && solved.chips[0].green && solved.chips.filter((x) => x.green).length === 5, `solved: the shape chip and the four outer turns that can turn are green, u and d aren't (${JSON.stringify(solved.chips)})`);
+  await play("R");
+  const out = await colors();
+  check(out.chips.every((x) => x.good === x.green) && !out.chips[0].green && out.chips.slice(1).some((x) => x.green) && out.chips.slice(1).some((x) => !x.green), `out of shape: the shape chip and the refused outer turns aren't green, the others are (${JSON.stringify(out.chips)})`);
+});
+
 labTest("guide: a tapped Next step shows it is working until its step loads, and a second tap does nothing", async ({ page, check, probe, settle, play }) => {
   await play("R U");
   await page.evaluate(() => (document.getElementById("guide").open = true));
