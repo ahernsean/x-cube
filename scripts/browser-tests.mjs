@@ -1210,14 +1210,30 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   const paintedGlow = (await probe("glowColors", "Fx.U", "F")).join();
   check(paintedGlow === "R", `the edge glow of a painted sticker takes the paint (${paintedGlow})`);
   // A problem puts a purple halo on the cubelets it names by itself, in the 3D view and
-  // on the flat view's faces where they show, without moving the view. Show (or tapping
-  // the line) tumbles the 3D view to show all their stickers, again after any tumble;
-  // Hide removes the halo.
+  // on the flat view's faces where they show, without moving the view. In the 3D view it
+  // is a rim around a cubelet that can be seen; one behind the puzzle draws nothing over
+  // what is in front of it, and an arrow points around to it instead, which a tap follows.
+  // Show (or tapping the line) tumbles the 3D view to show all their stickers, again
+  // after any tumble; Hide removes the halo.
+  const front = { px3d: await probe("haloPixels", "3d"), arrow: await probe("haloArrow") };
+  check(front.px3d > 0 && front.arrow.at === null && front.arrow.behind.length === 0, `cubelets that can be seen have a rim and no arrow (${JSON.stringify(front)})`);
   const seenBoth = async () => `${await probe("facesSeen", "Fx.U")},${await probe("facesSeen", "Rx.U")}`;
   await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await settle();
   const lit = { slots: (await probe("highlighted")).sort().join(), seen: await seenBoth(), px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), flatD: await probe("haloPixels", "D"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
-  check(lit.slots === "Fx.U,Rx.U" && lit.seen === "0,0" && lit.px3d > 0 && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `a problem haloes the cubelets it names by itself, without turning the view (${JSON.stringify(lit)})`);
+  check(lit.slots === "Fx.U,Rx.U" && lit.seen === "0,0" && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `a problem haloes the cubelets it names by itself, without turning the view (${JSON.stringify(lit)})`);
+  const behind = await probe("haloArrow");
+  const box = await page.locator("#scene").boundingBox();
+  const inView = behind.at && behind.at.x > box.x && behind.at.x < box.x + box.width && behind.at.y > box.y && behind.at.y < box.y + box.height;
+  check(lit.px3d === 0 && behind.behind.join() === "Fx.U,Rx.U" && inView, `behind the puzzle they draw nothing over it, and the arrow shows, inside the view (${lit.px3d} pixels, ${JSON.stringify(behind)})`);
+  // The arrow is in the scene, starting on the side facing the viewer: tap its middle.
+  await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 1);
+  const mid = (await probe("haloArrow")).mid;
+  await page.mouse.click(mid.x, mid.y);
+  await settle();
+  await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 0);
+  const found = { seen: await seenBoth(), arrow: await probe("haloArrow"), px3d: await probe("haloPixels", "3d") };
+  check(found.seen === "2,2" && found.arrow.at === null && found.px3d > 0, `a tap on the arrow turns the view to them, and the arrow goes (${JSON.stringify(found)})`);
   await page.click("#edit-status");
   await settle();
   const shownAt = await seenBoth();
@@ -1264,7 +1280,7 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await paint("R", "Fx.U", "U"); // flip the white-red edge now at Fx.U in place
   await paint("W", "Fx.U", "F");
   const flipped = await editLine();
-  check(/^Not valid: White can't point straight out from the core on an extension cubelet\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  check(/^Not valid: This cubelet's white sticker has the wrong color\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
   // With several problems, ‹ and › step through them, and the halo moves with the line
   // without turning the view.
   await paint("Y", "Rx.U", "R");
@@ -1283,6 +1299,33 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   sw = await sweep3d();
   const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");
   check((await probe("state")) === editedState && sw.wrong.length === 0 && cancelGlow === "W R", `Cancel leaves the position, and its drawing and glow, as they were (glow ${cancelGlow})`);
+});
+
+labTest("shape editing: Show and the arrow reach a cubelet bared by taking an extension cubelet off", async ({ page, check, probe, gesture, settle }) => {
+  // The owner's case: a core edge left with no extensions. The cubelet taken off is hidden,
+  // not gone, and must neither cover the core edge's face nor block the view of it.
+  const tapAt = async ({ x, y }) => {
+    await gesture([["pointerdown", x, y], ["pointerup", x, y]]);
+    await page.waitForFunction(() => window.xcubeProbe.idle());
+  };
+  await page.click("#edit-start");
+  await page.click('[data-paint="shape"]');
+  await tapAt(await probe("sticker", "Fx.U", "F"));
+  const line = await page.$eval("#edit-status", (e) => e.textContent);
+  check(/This core edge has no extensions/.test(line) && (await probe("haloed")).join() === "UF", `taking the edge's only extension off names the core edge (${line})`);
+  // From the front, its front shows where the cubelet taken off was: the hidden cubelet
+  // neither covers that face nor blocks the view of it.
+  await page.evaluate(() => document.querySelector('[data-view="front"]').click());
+  await settle();
+  check((await probe("facesSeen", "UF")) === 1, `the face the cubelet taken off bared counts as seen (${await probe("facesSeen", "UF")} faces)`);
+  await page.evaluate(() => document.querySelector('[data-view="back"]').click());
+  await settle();
+  await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 1);
+  await page.click('[data-halo="show"]');
+  await settle();
+  await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 0, null, { timeout: 5000 }).catch(() => {});
+  const after = { seen: await probe("facesSeen", "UF"), arrow: await probe("haloArrow") };
+  check(after.seen >= 1 && after.arrow.behind.length === 0 && after.arrow.opacity === 0, `Show turns the view to it, and the arrow goes (${JSON.stringify(after)})`);
 });
 
 labTest("info: the help says what taps and drags do in each mode, and Copy debug info puts an edit back", async ({ page, check, probe, play, settle, gesture }) => {
@@ -1379,9 +1422,26 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     steps.push(await editLine());
   }
   check(
-    steps[0] !== steps[1] && steps.slice(0, 2).every((t) => /^Not valid: Five (core edges|centers) .*‹[12]\/2›$/.test(t)) && steps[2] === steps[0],
+    steps[0] !== steps[1] && steps.slice(0, 2).every((t) => /^Not valid: Five (core edges|centers) .*‹[12]\/2›( Show Hide)?$/.test(t)) && steps[2] === steps[0],
     `› steps through problems that name no cubelets (${steps.join(" | ")})`,
   );
+  // The core edges with two extensions each: one enclosed on every side (UF, with the
+  // cubelet just put over it) can't be seen, so the cubelets around it carry its halo.
+  if (!/Five core edges/.test(await editLine())) await page.click('[data-halo="next"]');
+  const edges = { named: await probe("highlighted"), haloed: await probe("haloed") };
+  check(
+    edges.named.includes("UF") && !edges.haloed.includes("UF") && ["Fx.U", "Ux.F"].every((t) => edges.haloed.includes(t)),
+    `a named cubelet nothing shows is haloed by the cubelets around it (${JSON.stringify(edges)})`,
+  );
+  // The cubelet put in is a blank until the shape is right: it carries a rim too, and from
+  // below, where it can't be seen, the arrow counts it.
+  const rimmed = await probe("rimmed");
+  await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
+  await page.waitForFunction(() => window.xcubeProbe.idle());
+  const below = (await probe("haloArrow")).behind;
+  check(rimmed.includes("Ux.F") && below.includes("Ux.F"), `the blank put in has a rim, and the arrow points to it when it can't be seen (${JSON.stringify({ rimmed, below })})`);
+  await page.evaluate(() => document.querySelector('[data-view="home"]').click());
+  await page.waitForFunction(() => window.xcubeProbe.idle());
   await tapAt(await probe("spot", "Ux.F"));
   await tapAt(await probe("spot", "Ux"));
   check((await probe("shapeEdit")).added.length === 0, "a tap on each blank takes it away again");
@@ -1391,7 +1451,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   const one = { e: await probe("shapeEdit"), line: await editLine(), kept: await probe("painted", "Rx.F", "R"), gone: await probe("painted", "Fx.R", "F"), fell: await probe("painted", "FR", "F") };
   check(
     one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line === "Not valid: Only three core edges have two extensions, but there must be four." && one.kept === "R" && one.gone === null && one.fell === "G",
-    `a tap takes one cubelet away, its color falls onto the core edge it bares, and the line says what the shape lacks, with no halo controls while Shape is selected (${JSON.stringify(one)})`,
+    `a tap takes one cubelet away, its color falls onto the core edge it bares, and the line says what the shape lacks (${JSON.stringify(one)})`,
   );
   // A tap on an empty spot puts a cubelet there; the shape is right again, made of real cubelets, with stickers to paint.
   // (Fx.R's green, fallen onto the FR core edge, is a color no core edge has, so the line names that first.)
@@ -1445,22 +1505,23 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     /^Not valid: A core single edge must be white or yellow, never green\./.test(few.line) && few.halo === "UF" && few.took === "W" && few.pill && few.pill.x > box.l && few.pill.x < box.r && few.pill.y > box.t && few.pill.y < box.b,
     `a cubelet moved onto a core edge's bare side takes the white it covers, and the green left on the core edge has a halo, with a Hide pill inside the 3D view (${JSON.stringify(few)})`,
   );
+  // The pill sits clear of the puzzle as drawn, not on it.
+  const under = await probe("at3d", few.pill.x, few.pill.y);
+  check(!under?.slot, `the Hide pill sits off the puzzle (${JSON.stringify({ pill: few.pill, under })})`);
   await page.click("#halo-hide");
   const hidden = { halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill, wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(hidden.halo === 0 && hidden.pill === null && hidden.wide <= 0, `the pill hides the halo, and itself (${JSON.stringify(hidden)})`);
-  // Many cubelets with stickers to paint get halos. A haloed cubelet hides the halos behind
-  // it, so the glows don't pile up over its stickers: the glow drawn over the 3D view is
-  // less than with nothing hiding it.
+  // Many cubelets with stickers to paint get halos.
   await tool("shape");
   await move("Rx.U", "R", "Ux.R");
   await move("Fx.UR", "F", "Ux.FR");
   await move("Fx.UL", "F", "Ux.FL");
   await tool("W");
-  for (let k = 0; k < 12 && !/stickers aren't painted yet/.test(await editLine()); k++) await page.click('[data-halo="next"]');
-  const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: !!(await probe("shapeEdit")).pill, px: await probe("haloPixels", "3d"), alone: await probe("haloPixels", "3d", false) };
+  for (let k = 0; k < 12 && !/stickers have no color yet/.test(await editLine()); k++) await page.click('[data-halo="next"]');
+  const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: !!(await probe("shapeEdit")).pill, px: await probe("haloPixels", "3d") };
   check(
-    /^Not valid: \d+ stickers aren't painted yet\./.test(many.line) && many.halo === 4 && many.pill && many.px < many.alone,
-    `many cubelets with stickers to paint get halos, which hide each other (${JSON.stringify(many)})`,
+    /^Not valid: \d+ stickers have no color yet\./.test(many.line) && many.halo === 4 && many.pill && many.px > 0,
+    `many cubelets with stickers to paint get halos (${JSON.stringify(many)})`,
   );
   await page.click("#edit-cancel");
   await idle();
@@ -1593,7 +1654,7 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   await next();
   const holdStep = { g: await probe("guide"), line: await line() };
   check(
-    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Step 1 of 1 — Regrip: Turn the whole puzzle so the white center is up \(now \w+ is up\)\. Nothing else moves\. Turns: x'$/.test(holdStep.line),
+    holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Step 1 of 1 — Regrip: Rotate the whole puzzle so the white center is up \(now \w+ is up\)\. Nothing else moves\. Turns: x'$/.test(holdStep.line),
     `a Regrip step says to turn the whole puzzle, and keeps every color ("${holdStep.line}")`,
   );
   // Out of shape, the step applies to the core cubelets that are wrong; it may leave the
@@ -1655,7 +1716,7 @@ labTest("guide: a regrip is a step of its own, and the step after it is as the p
   const flip = await probe("guide");
   const showOff = await page.$eval("#guide-show", (b) => b.disabled);
   check(
-    flip?.stage === "regrip" && flip.alg === "x2" && flip.gray === 0 && flip.darkGray === 0 && flip.arrows === 0 && showOff && /^Step 1 of \d+ — Regrip: Turn the puzzle over, so yellow is up\. Nothing else moves\. Turns: x2$/.test(await line()),
+    flip?.stage === "regrip" && flip.alg === "x2" && flip.gray === 0 && flip.darkGray === 0 && flip.arrows === 0 && showOff && /^Step 1 of \d+ — Regrip: Flip the puzzle over, so yellow is up\. Nothing else moves\. Turns: x2$/.test(await line()),
     `turning the puzzle over is a step of its own, which grays nothing and has nothing to show (${JSON.stringify(flip)}; "${await line()}")`,
   );
   await page.click("#last");

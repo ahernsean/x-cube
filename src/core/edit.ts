@@ -356,11 +356,29 @@ function reachableFit(shape: State, colors: FaceColors): { state: State; problem
   // A shape edit can leave the core corners turned as no turns leave them. Any one of
   // them may be the one turned wrong, so the problem points at none.
   if (unreachableReason(st) === "the core corners are twisted")
-    return { state: null, problem: problem("The core corners can't all be turned this way at once. One of them needs another turn", []) };
+    return { state: null, problem: problem("The core corners can't all have these orientations at once. One of them needs to be rotated", []) };
   return { state: null, problem: problem(`${start} (${unreachableReason(st)})`, []) };
 }
 
 /** Finds real cubelets showing `colors` on the shape of `shape` (see the top of this file). */
+/**
+ * More spots than cubelets that fit them, the spots showing different colors: says what they
+ * share when that alone leaves so few cubelets ("show green, but only four have green"), and
+ * how many of the spots have a sticker with the wrong color.
+ */
+function tooFew(shape: State, colors: FaceColors, spots: number[], fit: number): string {
+  const kind = kindOf(shape, spots[0]);
+  const [one, many] = KIND_NAME[kind];
+  const n = numberWord(spots.length), k = numberWord(fit);
+  const wrong = spots.length - fit;
+  const fix = `At least ${numberWord(wrong)} of them ${wrong === 1 ? "has" : "have"} a sticker with the wrong color`;
+  const shared = COLOR_ORDER.filter((c) => spots.every((t) => shownColors(colors, t).includes(c)));
+  const having = CUBELETS.filter((c) => c.kind === kind && shared.every((x) => c.stickers.includes(x))).length;
+  if (shared.length && having === fit)
+    return `These ${n} ${many} show ${listColors(shared)}, but only ${k} ${fit === 1 ? "has" : "have"} ${listColors(shared)}. ${fix}`;
+  return `Only ${k} ${fit === 1 ? one : many} ${fit === 1 ? "has" : "have"} colors like these ${n} do. ${fix}`;
+}
+
 export function fitColors(shape: State, colors: FaceColors): Fit {
   const strict = attempt(shape, colors, "outward");
   if (strict.state) {
@@ -376,15 +394,11 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         // White and yellow never point out: that rule needs no knowledge of the cubelet.
         const facing = colors[s * 6 + outwardDir(s)];
         if (facing === "W" || facing === "Y") {
-          problems.push(problem(`${cap(COLOR_NAME[facing])} can't point straight out from the core on an extension cubelet`, [s]));
+          problems.push(problem(`This cubelet's ${COLOR_NAME[facing]} sticker has the wrong color`, [s]));
           continue;
         }
         const cs = shownColors(colors, s);
-        const kind = CUBELETS[shape.occ[s]].kind;
-        const holders = CUBELETS.filter((c) => c.kind === kind && c.outward !== null && cs.every((x) => c.stickers.includes(x)));
-        const outs = COLOR_ORDER.filter((x) => holders.some((c) => c.stickers[c.outward!] === x));
-        const one = holders.length === 1;
-        problems.push(problem(`The ${one ? "cubelet" : "cubelets"} with ${listColors(cs)} always ${one ? "has" : "have"} ${listColors(outs, "or")} pointing straight out from the core`, [s]));
+        problems.push(problem(`No cubelet has ${listColors(cs)} arranged this way. One of its stickers has the wrong color`, [s]));
       }
     // Every spot fits a cubelet turned a way the rule allows, but some compete for too few.
     if (!problems.length)
@@ -397,13 +411,13 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         problems.push(
           problem(
             out.size === 1 && o && o !== UNPAINTED && shown.size === 1
-              ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} have ${COLOR_NAME[o]} pointing straight out from the core, but only ${k} with ${[...shown][0]} ${g.ids.size === 1 ? "does" : "do"}`
-              : `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be turned this way at once. A sticker is probably painted wrong`,
+              ? `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} look the same, but the puzzle has only ${k} like that. One of them has a sticker with the wrong color`
+              : `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be right at once. One of them has a sticker with the wrong color`,
             spots,
           ),
         );
       }
-    if (!problems.length) problems.push({ text: "Each spot matches a cubelet, but they can't all be turned this way at once. A sticker is probably painted wrong", slots: [] });
+    if (!problems.length) problems.push({ text: "These colors can't all be right at once. A sticker has the wrong color", slots: [] });
     return { level: "cubelets", state: loose.state, problems };
   }
   for (const s of loose.slots)
@@ -422,7 +436,7 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         problem(
           shown.size === 1
             ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k}`
-            : `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} can only be filled by ${k} ${g.ids.size === 1 ? "cubelet" : "cubelets"} on the puzzle`,
+            : tooFew(shape, colors, spots, g.ids.size),
           spots,
         ),
       );
@@ -682,10 +696,12 @@ function unitOf(s: number): number[] {
 
 /**
  * What the draft's shape shows, given the stickers painted so far (`paint`, by slot * 6 +
- * direction). Where a cubelet's stickers are follows from the shape around that cubelet
- * alone, right or wrong: an outer cubelet's are on the faces nothing can touch, and a
- * core cubelet's one is on its bare side (a core edge with cubelets on both sides has
- * none). A sticker without paint is UNPAINTED.
+ * direction). An outer cubelet's stickers are on the faces nothing can touch. A core
+ * cubelet's one is where the cubelet in the shape has it, when that face is bare: the
+ * sticker drawn there can always be painted, even while the shape is wrong (a core corner
+ * with one extension has two bare sides, and the sticker is on one of them). When that
+ * face is covered, it is on the cubelet's bare side, if it has just one (a core edge with
+ * cubelets on both sides has none). A sticker without paint is UNPAINTED.
  */
 export function draftColors(d: Draft, paint: readonly (Color | undefined)[]): FaceColors {
   const out: FaceColors = new Array(NUM_SLOTS * 6).fill(undefined);
@@ -693,10 +709,16 @@ export function draftColors(d: Draft, paint: readonly (Color | undefined)[]): Fa
     if (!draftFilled(d, s)) continue;
     const outer = outwardDir(s) >= 0;
     const bare = outer ? [] : outerOf(s).filter((n) => !draftFilled(d, n));
+    const open = (dir: number) => {
+      const n = SLOT_NEIGHBOR[s * 6 + dir];
+      return n !== -2 && !(n >= 0 && draftFilled(d, n));
+    };
+    // Where the cubelet in the shape has its sticker, if that face is bare.
+    const drawn = outer || d.shape.occ[s] < 0 ? -1 : [0, 1, 2, 3, 4, 5].find((dir) => d.shape.colorAt(s, dir) !== null && open(dir)) ?? -1;
     for (let dir = 0; dir < 6; dir++) {
       const n = SLOT_NEIGHBOR[s * 6 + dir];
-      if (n === -2 || (n >= 0 && draftFilled(d, n))) continue;
-      const sticker = outer ? n === -1 : bare.length === 1 && n === bare[0];
+      if (!open(dir)) continue;
+      const sticker = outer ? n === -1 : drawn >= 0 ? dir === drawn : bare.length === 1 && n === bare[0];
       out[s * 6 + dir] = sticker ? (paint[s * 6 + dir] ?? UNPAINTED) : null;
     }
   }

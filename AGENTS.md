@@ -116,6 +116,12 @@ corner 3-cycle is `R' F' R b R' F R b'` (both verified by tests).
   slot in slot order: cubelet id (`A-Z a-z 0-9 - _`) or `.` for empty, then orientation
   `a..x` (index into the 24 cube rotations). Older saved states and test files hold X1 codes.
 
+## Wording
+
+`WORDING.md` says which words the Lab uses in anything a user sees or hears (color, never
+paint; puzzle, never cube; no "outward"), and how to phrase messages and help. Follow it
+for every user-facing string.
+
 ## Algorithms
 
 `ALGORITHMS.md` collects algorithms found or verified with the engine, each with the
@@ -182,8 +188,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   these eight holds the puzzle is in, from white up and green front (`GRIPS`), and each
   outer cubelet's home turns with it. A regrip is chosen with the step it is for, but
   `nextStep` gives it as a **regrip step** of its own first (stage `regrip`, its goal
-  naming the center that ends up up or in front: "Turn the puzzle over, so yellow is up";
-  "Turn the puzzle around, so blue is in front"), and the step after it is found again
+  naming the center that ends up up or in front: "Flip the puzzle over, so yellow is up";
+  "Rotate the puzzle, so blue is in front"), and the step after it is found again
   from the regripped position. So every other step's goal, turns and paths are for one
   way of holding the puzzle, and its `regrip` is "" (should that fresh step want a regrip
   of its own, the step keeps its regrip instead; no sampled solve has needed it). About
@@ -385,8 +391,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     and an empty spot gets a cubelet. Every empty spot next to the core is marked while
     Shape is selected: small gray glass boxes with white edges, unlit, so they show over
     white, over black and in shadow. Nothing turns or swings: a tap only takes an
-    extension cubelet away or puts one in. There is no halo while Shape is selected (it
-    covered what to tap).
+    extension cubelet away or puts one in.
   - **A wrong shape for a while:** as paint may be wrong, so may the shape. The line names
     what keeps it from being one the puzzle can have ("This core corner has only one
     extension, but it has to have two", "These two core corners have three extensions
@@ -398,7 +403,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     in the flat view too, with its stickers, as is every dashed outline). Once
     the shape is one the puzzle can have, real cubelets take the blanks' places at once.
     The core corners' twists can still be wrong, as no turns leave them: "The core corners
-    can't all be turned this way at once. One of them needs another turn" (no halo: any
+    can't all have these orientations at once. One of them needs to be rotated" (no halo: any
     of them may be the one).
   - **Paint stays on its spot**, not on a cubelet: what a tap turns (a core cubelet with
     the extension cubelets on it) loses its paint. A cubelet that only comes or goes changes only its own spot
@@ -407,7 +412,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     neighbor's), and one taken away leaves each of its colors on the face it bares behind
     it (`repaint`); a face with nothing behind it starts unpainted. A sticker not painted yet (`UNPAINTED`) fits any color
     and is drawn as a dashed outline on the plastic, with no edge glow; the line counts
-    them ("6 stickers aren't painted yet", with a halo on their cubelets), and Done waits
+    them ("6 stickers have no color yet", with a halo on their cubelets), and Done waits
     for them. Where a cubelet's stickers are follows from the shape around it alone
     (`draftColors`), so a sticker can be painted while the shape is still wrong. Until
     every center is painted, the center arrangement isn't checked.
@@ -416,29 +421,51 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
   wrong: no cubelet of that kind can have a color ("A core corner must be white or
   yellow, never blue"), two stickers of one color or opposite colors, a corner's colors going around it
-  in mirrored order ("Wrong color order"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two"; the halo marks every competing spot), or an outer
+  in mirrored order ("Wrong color order"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two"; with different colors showing, "These six extension edges show white, but only four have white. At least two of them have a sticker with the wrong color", or "Only two X-face corners have colors like these three do. At least one of them …" when the colors they share don't explain it; the halo marks every competing spot), or an outer
   cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
   physical cube can't do that). Outward-rule problems name only what the owner can check on
-  the cube: "White can't point straight out from the core on an extension cubelet" (no
-  extension cubelet's outward sticker is white or yellow), or "Two extension edges
-  have red pointing straight out from the core, but only one with green and red does". Each names the problem
+  the cube: "This cubelet's white sticker has the wrong color" (no
+  extension cubelet's outward sticker is white or yellow), "No cubelet has green and red
+  arranged this way. One of its stickers has the wrong color", or "These two X-face corners
+  look the same, but the puzzle has only one like that. One of them has a sticker with the
+  wrong color"; none of them says "outward" or which color points out, which the owner
+  can't act on. Each names the problem
   itself ("Red and orange can never be on the same cubelet"), not "a cubelet" (the halo
   marks it), and says what, not where: words for a spot proved unreliable (center colors move with
   slices, extensions leave their sides, left depends on the viewpoint), so the Lab points
   the spot out instead. Lists of three colors use the serial comma. The line shows one
   problem at a time; with several, tiny ‹ and › buttons step through them ("‹2/4›"), and the
   choice is kept across paints while that problem remains. The shown problem's
-  cubelets get a **halo** by themselves: a purple glow around the whole cubelet, drawn
-  over the rest of the puzzle (so it shows a cubelet behind others) but hidden by a haloed
-  cubelet in front of it (so many halos don't pile up over each other's stickers), in the 3D view and on each
-  flat-view face where the cubelet shows. A halo appearing never moves the view. **Show**
+  cubelets get a **halo** by themselves, in purple. In the 3D view it is a thin rim around
+  the cubelet, off its stickers, hidden by whatever is in front of it like any other part
+  of the puzzle: a play-tester found a glow drawn through the puzzle covered the cubelet he
+  was painting in front. In every frame in which a haloed cubelet isn't turned well toward the
+  viewer (no face at least 0.4 toward the viewer with its middle unblocked; `hiddenHalos`),
+  a purple **arrow** in the scene points to it, even while other haloed cubelets can be
+  seen, drawn as one would on a whiteboard to say "look here" (`HALO_ARROW`): a lit tube that
+  starts thin on the side facing the viewer, off to one side, runs around the puzzle just
+  inside the edge of the view, then turns in and ends in a head pointing straight at those
+  cubelets. It thickens toward the head and lighter chevrons run along it toward the head,
+  so the way to follow it is plain even when the head is behind the puzzle (drawn faintly
+  there); it casts a shadow, which shows its depth. It is rebuilt as the view turns, so it
+  always starts on the near side; it fades out once every haloed cubelet is turned well
+  toward the viewer and back in when one isn't; a tap on it turns the view to them. The
+  Hide pill keeps off it. The halo, Show, Hide and the arrow are there whichever tool is
+  selected, Shape included (the rim doesn't cover what to tap). A named cubelet enclosed on every side (a
+  core edge with extension cubelets on both sides, which nothing shows) is haloed through
+  the extension cubelets around it (`haloSlots`), which can be seen, turned to with Show
+  and pointed at; a cubelet put in that is still a blank carries the halo, and is pointed at and shown, like any other (`drawnAt`). The arrow points at one hidden cubelet at a time, the one nearest to
+  coming into view, and goes on to the next once that one is turned toward the viewer. On each flat-view face where the cubelet shows, the halo is a
+  soft glow around it, hidden only by a haloed cubelet in front (so many halos don't pile
+  up over each other's stickers). A halo appearing never moves the view. **Show**
   (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
   most unblocked, then each as squarely as possible, from the preset views and the
   directions between the stickers), again each time it is tapped. **Hide** removes the
   halo until the shown problem names other cubelets; while the halo shows, a purple
-  **Hide** pill in the 3D view does the same, placed just past the haloed cubelets on the
-  side away from the middle of the puzzle as drawn (above them if they are at the middle),
-  following the view and kept inside it. Done, available only when valid, makes the fitted position the start
+  **Hide** pill in the 3D view does the same, placed clear of the puzzle as drawn, just past
+  its edge on the haloed cubelets' side (above it if they are at the middle; a play-tester
+  found it too much beside them, and the halo and the arrow already mark them), following
+  the view and kept inside it. Done, available only when valid, makes the fitted position the start
   ("Edited"). **Valid means turns can reach it:** some position showing the paint can
   be reached by turning, and Done gives that position (so it has an X2 code). Many positions
   show the same paint, because look-alike core cubelets can trade places and core double

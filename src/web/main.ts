@@ -303,6 +303,7 @@ function initScene(canvas: HTMLCanvasElement) {
   key.shadow.normalBias = 0.025;
   key.shadow.radius = LIGHT.shadowSoft;
   key.shadow.blurSamples = 16;
+  key.shadow.camera.layers.enable(HALO_ARROW_LAYER); // the halo's arrow casts a shadow too
   scene.add(key);
   keyLight = key;
   pivot = new THREE.Group();
@@ -1089,6 +1090,7 @@ const GLOW3D_LAYER = 3;
 const GLOWNET_LAYER = 4;
 const HALO_LAYER = 5; // the editor's highlight in the 3D view
 const FLAT_HALO_LAYER = 6; // ... and in the flat view: 6 + direction, one layer per face
+const HALO_ARROW_LAYER = 12; // the arrow to haloed cubelets behind the puzzle, 3D view only
 const BODY_RADIUS = 0.07; // rounding of cubelet edges
 // The glow band lies just below the face's surface (GLOW_DEPTH) and starts under the
 // cubelet (GLOW_START), so the cubelet hides its inner part and the glow appears to
@@ -1227,6 +1229,7 @@ function makeGlowTexture() {
 function applyGlowSettings() {
   camera.layers.set(0);
   camera.layers.enable(HALO_LAYER);
+  camera.layers.enable(HALO_ARROW_LAYER);
   if (glowOn["3d"]) camera.layers.enable(GLOW3D_LAYER);
   for (const nc of netCams) {
     nc.cam.layers.set(NET_LAYER);
@@ -1378,6 +1381,7 @@ function frame() {
   }
   stepShapeAnim();
   placeHidePill();
+  placeHaloArrow();
   const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
   if (showTarget) updateShowButton();
   if (view3dOpen) updateCompass();
@@ -1408,6 +1412,9 @@ interface CubeHit {
 }
 
 function pickCube(el: HTMLElement, clientX: number, clientY: number): CubeHit | null {
+  // Meshes moved since the last frame (a tap's own edits, before the next frame is drawn)
+  // would otherwise be hit where they were.
+  pivot.updateMatrixWorld(true);
   const rect = el.getBoundingClientRect();
   const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
   const ray = new THREE.Raycaster();
@@ -1785,7 +1792,8 @@ function bindOrbit(el: HTMLElement) {
       const now = e.timeStamp;
       const isTap =
         tap && tap.ok && e.type === "pointerup" && now - tap.t < TAP_MS && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < SWIPE_PX;
-      if (isTap && edit) {
+      if (isTap && edit && hitsHaloArrow(el, e.clientX, e.clientY)) showHiddenHalos();
+      else if (isTap && edit) {
         const h = pickCube(el, e.clientX, e.clientY);
         if (edit.paint === "shape") tapShape(el, e.clientX, e.clientY, h);
         else if (h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
@@ -2942,7 +2950,7 @@ function infoHelp(): string[] {
         : "Tap a sticker to give it the picked color.";
     return [
       `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it.`,
-      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple. <span class="ui-name">Show</span> turns the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
+      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
     ];
   }
   const gestures = "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn.";
@@ -3435,7 +3443,7 @@ function refitEdit() {
     // Until every center is painted, how the centers are arranged isn't known.
     const centers = blank.some((t) => SLOT_POS[t].filter((c) => c !== 0).length === 1);
     const problems = fit.level === "reachable" || (fit.level === "possible" && centers) ? [] : fit.problems;
-    problems.push({ text: n === 1 ? "One sticker isn't painted yet" : `${n} stickers aren't painted yet`, slots: blank });
+    problems.push({ text: n === 1 ? "One sticker has no color yet" : `${n} stickers have no color yet`, slots: blank });
     edit.fit = { level: fit.level === "reachable" ? "possible" : fit.level, state: fit.state, problems };
   } else edit.fit = fit;
   edit.shown = edit.fit.state ?? (edit.shown.shapeKey() === edit.shape.shapeKey() ? edit.shown : edit.shape.clone());
@@ -3559,6 +3567,7 @@ function placeOverlays(list: [number, number, Color | typeof UNPAINTED][]) {
 
 /** The ghost under a point of the 3D view, unless a cubelet (hit `h`) is in front of it. */
 function pickMarker(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null): number | null {
+  pivot.updateMatrixWorld(true); // markers placed since the last frame are where they are now
   const rect = el.getBoundingClientRect();
   const ray = new THREE.Raycaster();
   ray.layers.set(HALO_LAYER);
@@ -3687,8 +3696,8 @@ function drawEdit() {
   }
   placeOverlays(over);
   syncMeshes(drawn);
-  placeHalos();
   placeGhosts();
+  placeHalos();
 }
 
 // ------------------------------------------------------------------ step guide
@@ -3924,7 +3933,7 @@ function updateShowButton() {
   const homeIsIt = !!showTarget && Math.abs(showTarget.dot(new THREE.Quaternion(h[0], h[1], h[2], h[3]))) > 0.9999;
   const label = there && !homeIsIt ? "Home" : "Show step";
   if (btn.textContent !== label) btn.textContent = label;
-  btn.title = label === "Home" ? "Turn the view back to Home" : "Turn the view to where this step's paths begin and end";
+  btn.title = label === "Home" ? "Rotate the view back to Home" : "Rotate the view to where this step's paths begin and end";
   if (there && homeIsIt) btn.disabled = true;
 }
 function showStepIdle(): boolean {
@@ -4006,7 +4015,7 @@ function goToStep(g: Guide | undefined) {
   jump(g.start);
 }
 
-const PART_TITLE = { regrip: "Regrip: turn the whole puzzle", setup: "Setup", cycle: "The cycle", undo: "The setup, undone", turns: "" };
+const PART_TITLE = { regrip: "Regrip: rotate the whole puzzle", setup: "Setup", cycle: "The cycle", undo: "The setup, undone", turns: "" };
 
 /** The turn list's chips, with each step the guide put there in a box behind a tag that goes to its start. */
 function turnListHtml(): string {
@@ -4776,26 +4785,31 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
 
 // ------------------------------------------------------------------ highlight halo
 
-// A soft purple glow around a whole cubelet, outside its body, to point out the spot a
-// color-editing problem names. Drawn on a box shell around the cubelet: each pixel finds
-// how close its view ray passes to the cubelet's rounded body (the distance along the ray
-// is convex, so a ternary search finds the closest point) and is purple by how near that
-// is. Rays that hit the body draw nothing, so the cubelet itself keeps its look. It is drawn
-// over everything, so it also shows where a cubelet is behind others. The 3D view has one
-// halo per cubelet; the flat view has one for each face the cubelet shows, each seen only
-// by that face's camera (layer FLAT_HALO_LAYER + direction), so it never marks a face where
-// the cubelet is buried. Halos sit in the cubelet's group, so they follow turns, and on
-// their own layers, so the probe's passes don't see them.
-const HALO = { reach: 0.5, color: 0xa63dff, strength: 1 };
-let haloMaterial: any = null;
+// Purple around a whole cubelet, outside its body, to point out the spot a color-editing
+// problem names. Drawn on a box shell around the cubelet: each pixel finds how close its
+// view ray passes to the cubelet's rounded body (the distance along the ray is convex, so
+// a ternary search finds the closest point) and is purple by how near that is. Rays that
+// hit the body draw nothing, so the cubelet itself keeps its look.
+// In the 3D view it is a thin rim (HALO.rim), hidden by whatever is in front of it like
+// any other part of the puzzle: it marks only a cubelet that can be seen, and never lies
+// over the cubelets in front of one that can't. A cubelet that can't be seen has the
+// arrow instead (placeHaloArrow).
+// In the flat view it is a soft glow (HALO.glow), one for each face the cubelet shows, each
+// seen only by that face's camera (layer FLAT_HALO_LAYER + direction), so it never marks a
+// face where the cubelet is buried. Halos sit in the cubelet's group, so they follow turns,
+// and on their own layers, so the probe's passes don't see them.
+const HALO = { color: 0xa63dff, glow: { reach: 0.5, shape: 1.5 }, rim: { reach: 0.21, shape: 0.45 } };
+const haloMaterials: Record<string, any> = {};
 const halos: any[] = [];
 
-function haloMesh() {
-  haloMaterial ??= new THREE.ShaderMaterial({
-    uniforms: { color: { value: new THREE.Color(HALO.color) }, size: { value: 0.985 / 2 }, round: { value: BODY_RADIUS }, reach: { value: HALO.reach }, strength: { value: HALO.strength } },
+function haloMesh(kind: "glow" | "rim") {
+  const { reach, shape } = HALO[kind];
+  haloMaterials[kind] ??= new THREE.ShaderMaterial({
+    uniforms: { color: { value: new THREE.Color(HALO.color) }, size: { value: 0.985 / 2 }, round: { value: BODY_RADIUS }, reach: { value: reach }, shape: { value: shape } },
     transparent: true,
     depthWrite: false,
-    depthTest: true, // against the haloed cubelets only (placeHalos clears the rest first)
+    // The glow: against the haloed cubelets only (placeHalos clears the rest first). The rim: against the puzzle.
+    depthTest: true,
     vertexShader: `
       varying vec3 vOrigin;
       varying vec3 vDir;
@@ -4814,7 +4828,7 @@ function haloMesh() {
       uniform float size;
       uniform float round;
       uniform float reach;
-      uniform float strength;
+      uniform float shape;
       varying vec3 vOrigin;
       varying vec3 vDir;
       float body(vec3 p) {
@@ -4838,13 +4852,236 @@ function haloMesh() {
         float dist = body(o + d * (0.5 * (a + b)));
         if (dist <= 0.0) discard;
         float k = 1.0 - clamp(dist / reach, 0.0, 1.0);
-        gl_FragColor = vec4(color, strength * pow(k, 1.5));
+        gl_FragColor = vec4(color, pow(k, shape));
       }`,
   });
-  const size = 0.985 + 2 * HALO.reach;
-  const m = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), haloMaterial);
+  const size = 0.985 + 2 * reach;
+  const m = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), haloMaterials[kind]);
   m.renderOrder = 3;
+  m.userData.kind = kind;
   return m;
+}
+
+/** What the 3D view draws in slot s of the shown position: its cubelet, or while editing the blank put in there; null if nothing. */
+function drawnAt(st: State, s: number): any {
+  if (st.occ[s] >= 0) return meshes[st.occ[s]];
+  return (edit && blanks.find((b) => b.parent && b.userData.slot === s)) ?? null;
+}
+
+/** Whether the 3D view shows any face of the cubelet in slot s now: one turned at all toward the viewer, its middle unblocked. */
+function slotSeen(st: State, s: number): boolean {
+  // Turned well toward the viewer, not just glimpsed at the edge.
+  for (let d = 0; d < 6; d++) if (faceView(st, s, d, 0.4) > 0) return true;
+  return false;
+}
+
+/**
+ * The cubelets the halo marks for the problem shown: the ones it names, except that one
+ * enclosed on every side (a core edge with extension cubelets on both sides, which nothing
+ * shows) is marked by the extension cubelets that enclose it, which can be seen.
+ */
+function haloSlots(): number[] {
+  if (!edit?.highlight) return [];
+  const e = edit;
+  const out = new Set<number>();
+  for (const s of e.highlight!) {
+    const near = [0, 1, 2, 3, 4, 5].map((d) => SLOT_NEIGHBOR[s * 6 + d]);
+    const enclosed = draftFilled(e, s) && near.every((n) => n === -2 || (n >= 0 && draftFilled(e, n)));
+    if (!enclosed) out.add(s);
+    else for (const n of near) if (n >= 0 && SLOT_POS[n].some((c) => Math.abs(c) === 2)) out.add(n);
+  }
+  return [...out];
+}
+
+/** The haloed slots whose cubelets the 3D view doesn't show now (they are behind the puzzle as it is turned). */
+let hiddenKey = "", hiddenVal: number[] = [];
+function hiddenHalos(): number[] {
+  if (!edit?.highlight) return [];
+  const q = pivot.quaternion;
+  const slots = haloSlots();
+  const key = `${slots.join()}|${[q.x, q.y, q.z, q.w].map((v) => v.toFixed(4)).join()}|${haloStamp}`;
+  if (key !== hiddenKey) {
+    hiddenKey = key;
+    const st = edit.shown;
+    hiddenVal = slots.filter((s) => drawnAt(st, s) && !slotSeen(st, s));
+  }
+  return hiddenVal;
+}
+/** Goes up whenever the haloed cubelets may have changed (placeHalos), so hiddenHalos looks again. */
+let haloStamp = 0;
+
+/**
+ * The arrow to haloed cubelets the 3D view doesn't show well: a lit purple tube in the
+ * scene, as one would draw on a whiteboard to say "look here". It starts thin on the side
+ * of the puzzle facing the viewer, off to one side, runs around the puzzle just inside the
+ * edge of the view, then turns in and ends in a head pointing straight at those cubelets.
+ * It thickens toward the head and lighter chevrons run along it toward the head, so which
+ * way to follow it is plain even when its head is behind the puzzle (where it is drawn
+ * faintly). It casts a shadow, which shows how far it is from the puzzle. It is rebuilt as
+ * the view turns, so it always starts on the near side; it fades out once every haloed
+ * cubelet is turned well toward the viewer, and back in when one isn't. A tap on it turns
+ * the view to them.
+ */
+const HALO_ARROW = { radius: 3.65, tube: 0.085, tubeStart: 0.03, head: 0.55, headWidth: 0.26, gap: 0.62, fadeMs: 300, chevrons: 5, chevronMs: 1600 };
+let haloArrow: any = null;
+let haloArrowKey = "";
+let haloArrowFade = { value: 0, target: 0, t: 0 };
+function placeHaloArrow() {
+  const hidden = edit && !shapeAnim ? hiddenHalos() : [];
+  const now = performance.now();
+  const dt = Math.min(1, (now - (haloArrowFade.t || now)) / HALO_ARROW.fadeMs);
+  haloArrowFade.t = now;
+  haloArrowFade.target = hidden.length ? 1 : 0;
+  haloArrowFade.value += Math.sign(haloArrowFade.target - haloArrowFade.value) * Math.min(Math.abs(haloArrowFade.target - haloArrowFade.value), reduceMotionView() ? 1 : dt);
+  if (!edit || (!hidden.length && haloArrowFade.value <= 0)) {
+    if (haloArrow) haloArrow.visible = false;
+    return;
+  }
+  const eye = pivot.worldToLocal(camera.position.clone()).normalize();
+  // One cubelet at a time, the one nearest to coming into view: an arrow aimed between
+  // several points at none of them. Once it is in view, the arrow goes on to the next.
+  const nearest = [...hidden].sort((a, b) => new THREE.Vector3(...SLOT_POS[b]).normalize().dot(eye) - new THREE.Vector3(...SLOT_POS[a]).normalize().dot(eye))[0];
+  const aim: number[] = nearest !== undefined ? [nearest] : (haloArrow?.userData.slots ?? []);
+  if (!aim.length) return;
+  const key = `${aim.join()}|${eye.toArray().map((v: number) => v.toFixed(2)).join()}`;
+  if (key !== haloArrowKey || !haloArrow) {
+    haloArrowKey = key;
+    buildHaloArrow(eye, aim);
+  }
+  haloArrow.visible = true;
+  const shown = haloArrowFade.value;
+  for (const m of haloArrow.userData.mats) m.opacity = m.userData.full * shown;
+  for (const m of haloArrow.userData.casters) m.castShadow = shown > 0.5;
+  // The chevrons run toward the head, each fading in at the start and out at the head.
+  const { chevrons, curve } = haloArrow.userData;
+  const phase = reduceMotionView() ? 0 : (now % HALO_ARROW.chevronMs) / HALO_ARROW.chevronMs;
+  chevrons.forEach((c: any, k: number) => {
+    const u = (k + phase) / chevrons.length;
+    c.position.copy(curve.getPointAt(u));
+    c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), curve.getTangentAt(u));
+    c.scale.setScalar(0.6 + 0.6 * u);
+    c.material.opacity = shown * Math.min(1, u * 6, (1 - u) * 6);
+  });
+  // Where it is on screen, so the Hide pill can keep off it.
+  const el = renderer.domElement as HTMLElement;
+  haloArrow.userData.screen = haloArrow.userData.pts.filter((_: any, i: number) => i % 3 === 0).map((p: any) => toScreen(el, p));
+}
+
+/** Builds the arrow from the side facing the viewer (eye, a unit vector in the puzzle's frame) to the cubelets in slots. */
+function buildHaloArrow(eye: any, slots: number[]) {
+  if (haloArrow) {
+    pivot.remove(haloArrow);
+    disposeTree(haloArrow);
+  }
+  // Where the head points: at the middle of the cubelets, coming straight in from outside.
+  const center = new THREE.Vector3();
+  for (const t of slots) center.add(new THREE.Vector3(...SLOT_POS[t]));
+  center.multiplyScalar(1 / slots.length);
+  const out = center.lengthSq() > 1e-6 ? center.clone().normalize() : new THREE.Vector3(0, 1, 0);
+  const tip = center.clone().add(out.clone().multiplyScalar(HALO_ARROW.gap + (center.length() > 0 ? 0.25 : 0.5)));
+  const base = tip.clone().add(out.clone().multiplyScalar(HALO_ARROW.head));
+  const R = HALO_ARROW.radius;
+  // The run around the puzzle, by angle from the viewer (polar) and around the line of
+  // sight (azimuth, 0 toward the target): it starts off to one side and swings round as it
+  // goes, so it reads as curving around the puzzle, not as a line straight away from the viewer.
+  let u = out.clone().sub(eye.clone().multiplyScalar(out.dot(eye)));
+  if (u.lengthSq() < 1e-4) u = new THREE.Vector3(0, 1, 0).applyQuaternion(pivot.quaternion.clone().invert()).projectOnPlane(eye);
+  u.normalize();
+  const w = new THREE.Vector3().crossVectors(eye, u);
+  const total = eye.angleTo(out);
+  const th0 = 0.95, ps0 = -1.2;
+  const around = (t: number) => {
+    const th = th0 + (total - th0) * t, ps = ps0 * (1 - t) * (1 - t);
+    return eye.clone().multiplyScalar(Math.cos(th)).add(u.clone().multiplyScalar(Math.cos(ps) * Math.sin(th))).add(w.clone().multiplyScalar(Math.sin(ps) * Math.sin(th))).multiplyScalar(R);
+  };
+  // Around, then in toward the cubelets: the last stretch drops from the sphere to the head's base.
+  const lead = Array.from({ length: 24 }, (_, i) => around(i / 26));
+  const above = out.clone().multiplyScalar(R);
+  const turnIn = above.clone().lerp(base, 0.55);
+  const curve = new THREE.CatmullRomCurve3([...lead, above, turnIn, base], false, "centripetal");
+  const pts = curve.getSpacedPoints(80);
+
+  const group = new THREE.Group();
+  const mats: any[] = [];
+  const casters: any[] = [];
+  const add = (m: any, order: number) => {
+    m.renderOrder = order;
+    m.layers.set(HALO_ARROW_LAYER);
+    group.add(m);
+  };
+  // The tube, thickening from its start to the head.
+  const tubeGeo = new THREE.TubeGeometry(curve, 96, 1, 12, false);
+  {
+    const pos = tubeGeo.attributes.position;
+    const rings = 97, perRing = 13;
+    for (let i = 0; i < rings; i++) {
+      const c = curve.getPointAt(i / 96);
+      const r = HALO_ARROW.tubeStart + (HALO_ARROW.tube - HALO_ARROW.tubeStart) * Math.min(1, (i / 96) * 1.6);
+      for (let j = 0; j < perRing; j++) {
+        const k = i * perRing + j;
+        const v = new THREE.Vector3(pos.getX(k), pos.getY(k), pos.getZ(k)).sub(c).multiplyScalar(r).add(c);
+        pos.setXYZ(k, v.x, v.y, v.z);
+      }
+    }
+    tubeGeo.computeVertexNormals();
+  }
+  const headGeo = new THREE.ConeGeometry(HALO_ARROW.headWidth, HALO_ARROW.head, 24);
+  const placeHead = (m: any) => {
+    m.position.copy(base.clone().add(tip).multiplyScalar(0.5));
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tip.clone().sub(base).normalize());
+  };
+  // Lit, where nothing is in front of it.
+  const lit = new THREE.MeshStandardMaterial({ color: HALO.color, roughness: 0.35, metalness: 0, transparent: true, depthWrite: true });
+  lit.userData.full = 1;
+  mats.push(lit);
+  const tube = new THREE.Mesh(tubeGeo, lit), head = new THREE.Mesh(headGeo, lit);
+  placeHead(head);
+  for (const m of [tube, head]) {
+    add(m, 12);
+    casters.push(m);
+  }
+  // Faintly, where the puzzle is in front of it.
+  const faint = new THREE.MeshBasicMaterial({ color: HALO.color, transparent: true, depthWrite: false, depthFunc: THREE.GreaterDepth });
+  faint.userData.full = 0.35;
+  mats.push(faint);
+  const tube2 = new THREE.Mesh(tubeGeo, faint), head2 = new THREE.Mesh(headGeo, faint);
+  placeHead(head2);
+  add(tube2, 11);
+  add(head2, 11);
+  // Chevrons running along it toward the head.
+  const chevronGeo = new THREE.ConeGeometry(HALO_ARROW.tube * 1.9, HALO_ARROW.tube * 2.2, 3);
+  const chevrons = Array.from({ length: HALO_ARROW.chevrons }, () => {
+    const m = new THREE.Mesh(chevronGeo, new THREE.MeshBasicMaterial({ color: 0xe2c4ff, transparent: true, depthWrite: false }));
+    add(m, 13);
+    return m;
+  });
+  // A fatter, unseen tube along the arrow: what a tap has to hit.
+  const hit = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.42, 8, false), new THREE.MeshBasicMaterial({ visible: false }));
+  hit.layers.set(HALO_ARROW_LAYER);
+  group.add(hit);
+  group.userData = { mats, casters, hit, slots, curve, chevrons, pts, screen: [], start: curve.getPointAt(0.04), mid: curve.getPointAt(0.3) };
+  haloArrow = group;
+  pivot.add(group);
+}
+
+/** Whether a tap at (clientX, clientY) lands on the arrow. */
+function hitsHaloArrow(el: HTMLElement, clientX: number, clientY: number): boolean {
+  if (!haloArrow?.visible || haloArrowFade.value < 0.5) return false;
+  const r = el.getBoundingClientRect();
+  const ray = new THREE.Raycaster();
+  ray.layers.set(HALO_ARROW_LAYER);
+  ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), camera);
+  return ray.intersectObject(haloArrow.userData.hit, false).length > 0;
+}
+
+/** The arrow's tap: turns the 3D view to show the haloed cubelets it can't show now. */
+function showHiddenHalos() {
+  if (!edit) return;
+  const st = edit.shown, hidden = hiddenHalos();
+  const faces: [number, number][] = [];
+  for (const s of hidden) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
+  if (!faces.length) for (const s of hidden) for (let d = 0; d < 6; d++) if (bareFace(st, s, d)) faces.push([s, d]);
+  showFaces(st, faces);
 }
 
 /**
@@ -4856,7 +5093,7 @@ function placeHidePill() {
   if (!edit?.highlight || pill.hidden) return;
   const el = renderer.domElement as HTMLElement;
   const at = (v: any) => toScreen(el, v);
-  const pts = edit.highlight.map((t) => at(new THREE.Vector3(...SLOT_POS[t])));
+  const pts = haloSlots().map((t) => at(new THREE.Vector3(...SLOT_POS[t])));
   const mid = [0, 1].map((k) => pts.reduce((a, q) => a + q[k], 0) / pts.length);
   const center = at(new THREE.Vector3());
   // How big a cubelet is on screen, from a step across the view at the puzzle's center.
@@ -4866,30 +5103,41 @@ function placeHidePill() {
   const len = Math.hypot(dx, dy);
   if (len < unit * 0.4) (dx = 0), (dy = -1);
   else (dx /= len), (dy /= len);
-  const reach = Math.max(...pts.map((q) => Math.hypot(q[0] - mid[0], q[1] - mid[1]))) + unit * 0.95;
   const hw = pill.offsetWidth / 2, hh = pill.offsetHeight / 2;
-  const far = reach + Math.abs(dx) * hw + Math.abs(dy) * hh;
-  const x = Math.min(el.clientWidth - hw - 4, Math.max(hw + 4, mid[0] + dx * far));
-  const y = Math.min(el.clientHeight - hh - 4, Math.max(hh + 4, mid[1] + dy * far));
+  // Clear of the whole puzzle as drawn, out past its edge on the haloed cubelets' side: the
+  // halo and the arrow mark the cubelets, so the pill needn't sit beside them.
+  const drawn: [number, number][] = [];
+  for (let s = 0; s < NUM_SLOTS; s++) if (draftFilled(edit, s)) drawn.push(at(new THREE.Vector3(...SLOT_POS[s])));
+  const edge = (cx: number, cy: number) => Math.max(...drawn.map(([px, py]) => (px - center[0]) * cx + (py - center[1]) * cy)) + unit * 0.75;
+  // Off the halo's arrow: the first of the ways round (straight out, then turning further each try) that clears it.
+  const arrowPts: [number, number][] = haloArrow?.visible && haloArrowFade.value > 0 ? haloArrow.userData.screen : [];
+  let x = 0, y = 0;
+  for (const turn of [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8, Math.PI]) {
+    const cx = dx * Math.cos(turn) - dy * Math.sin(turn), cy = dx * Math.sin(turn) + dy * Math.cos(turn);
+    const far = edge(cx, cy) + Math.abs(cx) * hw + Math.abs(cy) * hh;
+    x = Math.min(el.clientWidth - hw - 4, Math.max(hw + 4, center[0] + cx * far));
+    y = Math.min(el.clientHeight - hh - 4, Math.max(hh + 4, center[1] + cy * far));
+    if (!arrowPts.some(([px, py]) => Math.abs(px - x) < hw + 10 && Math.abs(py - y) < hh + 10)) break;
+  }
   pill.style.left = `${x}px`;
   pill.style.top = `${y}px`;
 }
 
-// Halos hide each other but nothing else does: the rest of the puzzle can't hide a halo
-// (a problem on the far side still shows), but a haloed cubelet hides the halos behind it,
-// so its stickers aren't buried under the glow of every haloed cubelet behind it. Drawn
-// after everything else: one mesh clears the depth buffer (haloClearer), each haloed
-// cubelet's body is drawn into it alone, with no color (haloBodies), then the halos test
-// against it.
+// In the flat view, halos hide each other but nothing else does: a haloed cubelet hides
+// the halos behind it, so its stickers aren't buried under the glow of every haloed
+// cubelet behind it. Drawn after everything else: one mesh clears the depth buffer
+// (haloClearer), each haloed cubelet's body is drawn into it alone, with no color
+// (haloBodies), then the halos test against it.
 const haloBodies: any[] = [];
 let haloClearer: any = null;
-const HALO_VIEWS = [HALO_LAYER, ...[0, 1, 2, 3, 4, 5].map((d) => FLAT_HALO_LAYER + d)];
+const HALO_VIEWS = [0, 1, 2, 3, 4, 5].map((d) => FLAT_HALO_LAYER + d);
 
 /** Puts halos on the cubelet in each highlighted slot of the shown state, and removes the rest. */
 function placeHalos() {
   for (const h of [...halos, ...haloBodies]) h.parent?.remove(h);
   haloClearer?.parent?.remove(haloClearer);
-  const marked = edit?.highlight;
+  haloStamp++;
+  const marked = edit?.highlight ? haloSlots() : null;
   if (!edit || !marked) return;
   if (!haloClearer) {
     haloClearer = new THREE.Mesh(new THREE.PlaneGeometry(1e-3, 1e-3), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true }));
@@ -4900,16 +5148,20 @@ function placeHalos() {
     haloClearer.layers.disable(0);
   }
   pivot.add(haloClearer);
-  let n = 0, b = 0;
-  const add = (id: number, layer: number) => {
-    if (n === halos.length) halos.push(haloMesh());
-    const h = halos[n++];
+  let b = 0;
+  const free = halos.filter((h) => !h.parent);
+  const add = (on: any, layer: number) => {
+    const kind = layer === HALO_LAYER ? "rim" : "glow";
+    const at = free.findIndex((h) => h.userData.kind === kind);
+    const h = at >= 0 ? free.splice(at, 1)[0] : haloMesh(kind);
+    if (at < 0) halos.push(h);
     h.layers.set(layer);
-    meshes[id].add(h);
+    on.add(h);
   };
   for (const s of marked) {
-    const id = edit.shown.occ[s];
-    if (id < 0) continue;
+    // A cubelet put in is drawn as a blank until the shape is one the puzzle can have.
+    const on = drawnAt(edit.shown, s);
+    if (!on) continue;
     if (b === haloBodies.length) {
       const body = new THREE.Mesh(new THREE.BoxGeometry(0.985, 0.985, 0.985), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true, transparent: true }));
       body.renderOrder = 2.95;
@@ -4917,26 +5169,42 @@ function placeHalos() {
       body.layers.disable(0);
       haloBodies.push(body);
     }
-    meshes[id].add(haloBodies[b++]);
-    add(id, HALO_LAYER);
-    for (let d = 0; d < 6; d++) if (isExposed(edit.shown, s, d)) add(id, FLAT_HALO_LAYER + d);
+    on.add(haloBodies[b++]);
+    add(on, HALO_LAYER);
+    for (let d = 0; d < 6; d++) if (bareFace(edit.shown, s, d)) add(on, FLAT_HALO_LAYER + d);
   }
 }
 
 /** How well the 3D view shows face d of slot s now: the cosine toward the camera, or -1 if it faces away, is edge-on or is blocked. */
-function faceView(st: State, s: number, d: number): number {
-  const id = st.occ[s];
-  if (id < 0 || !isExposed(st, s, d)) return -1;
+/** Whether face d of slot s is bare: by the shape being edited while editing, else by st. */
+function bareFace(st: State, s: number, d: number): boolean {
+  if (!edit) return isExposed(st, s, d);
+  const n = SLOT_NEIGHBOR[s * 6 + d];
+  return draftFilled(edit, s) && n !== -2 && !(n >= 0 && draftFilled(edit, n));
+}
+
+function faceView(st: State, s: number, d: number, minCos = 0.2): number {
+  const drawn = drawnAt(st, s);
+  // While editing, the shape being edited decides what is there: a cubelet taken off is
+  // not, and one put in is (as a blank).
+  const there = (t: number) => (edit ? draftFilled(edit, t) : st.occ[t] >= 0);
+  const n = SLOT_NEIGHBOR[s * 6 + d];
+  if (!drawn || !there(s) || n === -2 || (n >= 0 && there(n))) return -1;
   pivot.updateMatrixWorld(true);
   const p = SLOT_POS[s], v = DIRS[d];
   const target = pivot.localToWorld(new THREE.Vector3(p[0] + v[0] * 0.45, p[1] + v[1] * 0.45, p[2] + v[2] * 0.45));
   const cos = new THREE.Vector3(...v).applyQuaternion(pivot.quaternion).dot(camera.position.clone().sub(target).normalize());
-  if (cos < 0.2) return -1;
+  if (cos < minCos) return -1;
   const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize());
   ray.layers.set(0);
-  let o = ray.intersectObjects(pivot.children, true)[0]?.object;
-  while (o && o.parent && o.parent !== pivot) o = o.parent;
-  return o === meshes[id] ? cos : -1;
+  // The first cubelet the ray meets that is drawn: one taken off in the editor is hidden, not gone.
+  for (const h of ray.intersectObjects(pivot.children, true)) {
+    let o = h.object;
+    while (o.parent && o.parent !== pivot) o = o.parent;
+    if ((!meshes.includes(o) && !blanks.includes(o)) || !o.visible) continue;
+    return o === drawn ? cos : -1;
+  }
+  return -1;
 }
 
 /** How many of slot s's exposed faces the 3D view shows now, unblocked. */
@@ -4964,8 +5232,9 @@ function showHighlighted() {
   if (!edit?.highlight) return;
   const st = edit.shown;
   const faces: [number, number][] = [];
-  for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
-  if (!faces.length) for (const s of edit.highlight) for (let d = 0; d < 6; d++) if (isExposed(st, s, d)) faces.push([s, d]);
+  const slots = haloSlots();
+  for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
+  if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d)) faces.push([s, d]);
   showFaces(st, faces);
 }
 
@@ -5026,7 +5295,7 @@ function updateHighlight() {
   edit.selected = problem ? problemKey(problem) : "";
   if (edit.hidden !== slots.join()) edit.hidden = null; // Hide lasts until other cubelets are named
   // No halo while the Shape tool is in hand: it would cover the cubelets and spots to tap.
-  edit.highlight = slots.length && edit.hidden === null && edit.paint !== "shape" ? [...slots] : null;
+  edit.highlight = slots.length && edit.hidden === null ? [...slots] : null;
 }
 
 /** Returns every glow band to its own sticker's color. */
@@ -5049,8 +5318,8 @@ function renderEdit() {
   const { i } = shownProblem();
   $("edit-hint").textContent =
     edit.paint === "shape"
-      ? "Tap an extension cubelet that isn't there on your puzzle, or a faint spot where one is missing. Drag to turn the view."
-      : "Pick a color, then tap stickers on the cube to paint them. Drag to turn the view.";
+      ? "Tap an extension cubelet to remove it, or a gray box to add one. Drag to tumble the view."
+      : "Pick a color, then tap stickers to color them. Drag to tumble the view.";
   if (level === "reachable") {
     st.className = "edit-status good";
     st.textContent = "Valid";
@@ -5075,7 +5344,7 @@ function renderEdit() {
     nav.append(step("prev", "‹", "Previous problem"), `${i + 1}/${problems.length}`, step("next", "›", "Next problem"));
     st.append(" ", nav);
   }
-  const tappable = level !== "reachable" && problems[i].slots.length > 0 && edit.paint !== "shape";
+  const tappable = level !== "reachable" && problems[i].slots.length > 0;
   st.classList.toggle("tappable", tappable || (level !== "reachable" && problems.length > 1));
   if (tappable) {
     const actions: [string, string][] = edit.highlight ? [["show", "Show"], ["hide", "Hide"]] : [["show", "Show"]];
@@ -5090,6 +5359,7 @@ function renderEdit() {
   ($("edit-done") as HTMLButtonElement).disabled = level !== "reachable";
   $("halo-hide").hidden = !edit.highlight;
   placeHidePill();
+  placeHaloArrow();
 }
 
 function endEdit(apply: boolean) {
@@ -5100,8 +5370,8 @@ function endEdit(apply: boolean) {
   for (const m of e.painted) m.material = m.userData.ownMaterial;
   clearGlowPaint();
   edit = null;
-  placeHalos();
   placeGhosts();
+  placeHalos();
   placeOverlays([]);
   document.body.classList.remove("editing");
   for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
@@ -5153,7 +5423,7 @@ function probeMaterial(info: { id: number; d: number } | undefined, mode: "id" |
 }
 
 /** The scene drawn by cam into a w x h offscreen buffer, as RGBA rows from the bottom ("drawn": with the meshes' own materials). */
-function probeImage(cam: any, layer: number, w: number, h: number, mode: "id" | "color" | "drawn"): Uint8Array {
+function probeImage(cam: any, layer: number, w: number, h: number, mode: "id" | "color" | "drawn", also?: number): Uint8Array {
   probeTarget ??= new THREE.WebGLRenderTarget(1, 1);
   if (probeTarget.width !== w || probeTarget.height !== h) probeTarget.setSize(w, h);
   const swapped: [any, any][] = [];
@@ -5164,6 +5434,7 @@ function probeImage(cam: any, layer: number, w: number, h: number, mode: "id" | 
   });
   const mask = cam.layers.mask;
   cam.layers.set(layer);
+  if (also !== undefined) cam.layers.enable(also);
   const clear = renderer.getClearColor(new THREE.Color());
   const alpha = renderer.getClearAlpha();
   const out = new Uint8Array(w * h * 4);
@@ -5323,13 +5594,24 @@ function installProbe() {
     /** While editing colors: how the painted colors fit, and the color of a painted face. */
     editing: () => edit && { level: edit.fit.level, problems: edit.fit.problems.map((p) => p.text), paint: edit.paint },
     // The slots with a halo, how many of a slot's faces the 3D view shows unblocked, and
-    // how much halo a view ("3d" or a flat-view face letter) draws, alone (its pixels' summed
-    // opacity, in whole pixels).
+    // how much halo a view draws. A flat-view face letter: the glow alone (its pixels'
+    // summed opacity, in whole pixels). "3d": how many pixels of the puzzle as drawn the
+    // rims change, so a rim hidden behind the puzzle counts nothing.
     highlighted: () => (edit?.highlight ?? []).map(slotName),
+    /** The cubelets the halo marks: those named, or for one nothing shows, those around it. */
+    haloed: () => haloSlots().map(slotName).sort(),
+    /** The slots whose drawn cubelet (or blank) carries a rim now. */
+    rimmed: () => haloSlots().filter((s) => edit && drawnAt(edit.shown, s)?.children.some((c: any) => halos.includes(c) && c.userData.kind === "rim")).map(slotName).sort(),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),
     // `hiding` false draws them as if no haloed cubelet hid the halos behind it, to compare.
     haloPixels: (view: string, hiding = true) => {
       const nc = netCams.find((c) => c.face === view);
+      if (!nc) {
+        const plain = probeImage(camera, 0, 96, 96, "drawn"), rimmed = probeImage(camera, 0, 96, 96, "drawn", HALO_LAYER);
+        let px = 0;
+        for (let i = 0; i < plain.length; i += 4) if (Math.abs(plain[i] - rimmed[i]) + Math.abs(plain[i + 1] - rimmed[i + 1]) + Math.abs(plain[i + 2] - rimmed[i + 2]) > 24) px++;
+        return px;
+      }
       const bodies = haloBodies.filter((b) => b.parent);
       if (!hiding) for (const b of bodies) b.visible = false;
       const img = probeImage(nc ? nc.cam : camera, nc ? FLAT_HALO_LAYER + dirIndex(nc.view) : HALO_LAYER, 96, 96, "drawn");
@@ -5337,6 +5619,18 @@ function installProbe() {
       let n = 0;
       for (let i = 3; i < img.length; i += 4) n += img[i];
       return Math.round(n / 255);
+    },
+    /** The haloed slots the 3D view can't show now, and where their arrow is (client coordinates; null while hidden). */
+    haloArrow: () => {
+      // Where on screen its start and its middle are, and how far it has faded in.
+      const shown = haloArrow?.visible && haloArrowFade.value > 0;
+      const el = renderer.domElement as HTMLElement;
+      const r = el.getBoundingClientRect();
+      const scr = (p: any) => {
+        const [x, y] = toScreen(el, p);
+        return { x: r.left + x, y: r.top + y };
+      };
+      return { behind: hiddenHalos().map(slotName).sort(), opacity: Math.round(haloArrowFade.value * 100) / 100, at: shown ? scr(haloArrow.userData.start) : null, mid: shown ? scr(haloArrow.userData.mid) : null };
     },
     painted: (slot: string, face: string) => edit?.colors[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)] ?? null,
     /**
