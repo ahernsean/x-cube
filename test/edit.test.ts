@@ -78,12 +78,12 @@ test("edit: each problem in a play-tester's edit names what a wrong spot should 
   const colors = [...".G.W.R.Y.G...............B.....B..O........RW....OW.G........R.G...W.BO..G.W.R...W.........Y.....Y.BR..Y...O.Y.................B..Y..YR..G.Y......W.....Y....OW.G..YR..G...............R.Y.........BR............Y...Y...........RB......O................R...W..O..W.....Y.....W.....R.B...................Y..G.OW..B..B..RW.Y..G.OY.....W.........W..................W..........Y..................W......Y.....W.R.B.W.R..GO.G...Y.O.B.............B..OY.G....WO.....G...O.O.B..WO.G........."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
   assert.deepEqual(fitColors(st, colors).problems.map((p) => p.text), [
     "Two centers are yellow, but there can be only one. One of these should probably be white",
-    "Three extension edges are blue and red, but there can be only two. One of these should maybe be blue and orange, or green and red",
+    "Three extension edges are blue and red, but there can be only two. One of these should maybe be blue and orange. It could also be green and red",
     "Five core single edges are white, but there can be only four. One of these should probably be yellow",
     "Five core corners are yellow, but there can be only four. One of these should probably be white",
     "Three X-face corners are white, green, and red, but there can be only two. One of these should probably be yellow, blue, and red",
     "Two centers are orange, but there can be only one. One of these should probably be green",
-    "Three extension edges are green and orange, but there can be only two. One of these should maybe be blue and orange, or green and red",
+    "Three extension edges are green and orange, but there can be only two. One of these should maybe be blue and orange. It could also be green and red",
   ]);
 });
 

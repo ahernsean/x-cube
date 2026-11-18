@@ -376,8 +376,13 @@ function reachableFit(shape: State, colors: FaceColors): { state: State; problem
 export function missingColors(shape: State, colors: FaceColors, spots: number[], wrong = 1): string | null {
   const kind = kindOf(shape, spots[0]);
   const lead = spots.length === 1 ? "It" : `${cap(numberWord(wrong))} of these`;
+  // Single colors join with "or"; lists of colors each get a sentence, so their commas can't run together.
   const say = (names: string[]) =>
-    names.length === 1 ? `${lead} should probably be ${names[0]}` : `${lead} should maybe be ${names.join(names.some((n) => / and |,/.test(n)) ? ", or " : " or ")}`;
+    names.length === 1
+      ? `${lead} should probably be ${names[0]}`
+      : names.some((n) => / and |,/.test(n))
+        ? [`${lead} should maybe be ${names[0]}`, ...names.slice(1).map((n) => `It could also be ${n}`)].join(". ")
+        : `${lead} should maybe be ${names.join(" or ")}`;
   const centers = kind === "center" || kind === "extCenter";
   const counted = (s: number) => shape.occ[s] >= 0 && (centers ? ["center", "extCenter"].includes(CUBELETS[shape.occ[s]].kind) : CUBELETS[shape.occ[s]].kind === kind);
   const key = (cs: readonly (Color | null)[]) => COLOR_ORDER.filter((c) => cs.includes(c)).join("");
