@@ -1505,6 +1505,9 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     /^Not valid: A core single edge must be white or yellow, never green\./.test(few.line) && few.halo === "UF" && few.took === "W" && few.pill && few.pill.x > box.l && few.pill.x < box.r && few.pill.y > box.t && few.pill.y < box.b,
     `a cubelet moved onto a core edge's bare side takes the white it covers, and the green left on the core edge has a halo, with a Hide pill inside the 3D view (${JSON.stringify(few)})`,
   );
+  // The pill sits clear of the puzzle as drawn, not on it.
+  const under = await probe("at3d", few.pill.x, few.pill.y);
+  check(!under?.slot, `the Hide pill sits off the puzzle (${JSON.stringify({ pill: few.pill, under })})`);
   await page.click("#halo-hide");
   const hidden = { halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill, wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(hidden.halo === 0 && hidden.pill === null && hidden.wide <= 0, `the pill hides the halo, and itself (${JSON.stringify(hidden)})`);

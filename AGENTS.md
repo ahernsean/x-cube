@@ -462,9 +462,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   most unblocked, then each as squarely as possible, from the preset views and the
   directions between the stickers), again each time it is tapped. **Hide** removes the
   halo until the shown problem names other cubelets; while the halo shows, a purple
-  **Hide** pill in the 3D view does the same, placed just past the haloed cubelets on the
-  side away from the middle of the puzzle as drawn (above them if they are at the middle),
-  following the view and kept inside it. Done, available only when valid, makes the fitted position the start
+  **Hide** pill in the 3D view does the same, placed clear of the puzzle as drawn, just past
+  its edge on the haloed cubelets' side (above it if they are at the middle; a play-tester
+  found it too much beside them, and the halo and the arrow already mark them), following
+  the view and kept inside it. Done, available only when valid, makes the fitted position the start
   ("Edited"). **Valid means turns can reach it:** some position showing the paint can
   be reached by turning, and Done gives that position (so it has an X2 code). Many positions
   show the same paint, because look-alike core cubelets can trade places and core double

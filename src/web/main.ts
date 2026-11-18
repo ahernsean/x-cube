@@ -5103,16 +5103,20 @@ function placeHidePill() {
   const len = Math.hypot(dx, dy);
   if (len < unit * 0.4) (dx = 0), (dy = -1);
   else (dx /= len), (dy /= len);
-  const reach = Math.max(...pts.map((q) => Math.hypot(q[0] - mid[0], q[1] - mid[1]))) + unit * 0.95;
   const hw = pill.offsetWidth / 2, hh = pill.offsetHeight / 2;
+  // Clear of the whole puzzle as drawn, out past its edge on the haloed cubelets' side: the
+  // halo and the arrow mark the cubelets, so the pill needn't sit beside them.
+  const drawn: [number, number][] = [];
+  for (let s = 0; s < NUM_SLOTS; s++) if (draftFilled(edit, s)) drawn.push(at(new THREE.Vector3(...SLOT_POS[s])));
+  const edge = (cx: number, cy: number) => Math.max(...drawn.map(([px, py]) => (px - center[0]) * cx + (py - center[1]) * cy)) + unit * 0.75;
   // Off the halo's arrow: the first of the ways round (straight out, then turning further each try) that clears it.
   const arrowPts: [number, number][] = haloArrow?.visible && haloArrowFade.value > 0 ? haloArrow.userData.screen : [];
   let x = 0, y = 0;
   for (const turn of [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8, Math.PI]) {
     const cx = dx * Math.cos(turn) - dy * Math.sin(turn), cy = dx * Math.sin(turn) + dy * Math.cos(turn);
-    const far = reach + Math.abs(cx) * hw + Math.abs(cy) * hh;
-    x = Math.min(el.clientWidth - hw - 4, Math.max(hw + 4, mid[0] + cx * far));
-    y = Math.min(el.clientHeight - hh - 4, Math.max(hh + 4, mid[1] + cy * far));
+    const far = edge(cx, cy) + Math.abs(cx) * hw + Math.abs(cy) * hh;
+    x = Math.min(el.clientWidth - hw - 4, Math.max(hw + 4, center[0] + cx * far));
+    y = Math.min(el.clientHeight - hh - 4, Math.max(hh + 4, center[1] + cy * far));
     if (!arrowPts.some(([px, py]) => Math.abs(px - x) < hw + 10 && Math.abs(py - y) < hh + 10)) break;
   }
   pill.style.left = `${x}px`;
