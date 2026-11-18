@@ -29,6 +29,7 @@ import { decodeState, encodeState, unreachableReason } from "../core/serialize.t
 import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
+import { Planner, type Plan } from "./planner.ts";
 
 declare const THREE: any;
 
@@ -3720,8 +3721,10 @@ const turnsWhole = (step: SolveStep) => step.stage === "hold" || step.stage === 
 
 interface Guide {
   step: SolveStep;
-  /** Steps left after this one, and this step's number since the guide was last started. */
-  after: number;
+  /** The plan the step came from, and which of its steps it is. */
+  plan: Plan;
+  at: number;
+  /** This step's number since the guide was last started. */
   index: number;
   /** Where in the turn list the step's turns begin, and the position there. */
   start: number;
@@ -3731,8 +3734,6 @@ interface Guide {
   free: Set<number>;
   /** A path for each cubelet the step moves to another spot. */
   arrows: StickerPath[];
-  /** Turns of this step and every step the solver planned after it, when it was loaded. */
-  planned: number;
 }
 /** Every step the guide has put in the turn list that is still there, in order; `guide` is the one being shown, if any. */
 let trail: Guide[] = [];
@@ -3835,62 +3836,76 @@ function stopWorking() {
   clearTimeout(workingTimer);
   if (app.message === WORKING_LINE) dismissMessage();
 }
+/** The whole solve, planned off the page's main thread, which Next step takes its steps from. */
+const planner = new Planner();
+planner.onChange = () => {
+  if (working) takeStep();
+  if (solving) render();
+};
 function nextStep() {
   if (edit || working) return;
   flushAnimations();
   solving = true;
+  working = app.current.clone();
+  if (takeStep()) return;
   clearGuide();
   guideLine = WORKING_LINE;
-  working = app.current.clone();
   workingTimer = setTimeout(() => {
     if (!working) return;
     setMessage(WORKING_LINE);
     render();
   }, WORKING_MESSAGE_MS);
+  // Unless the plan reaches this position and is still working toward its step, plan from here.
+  if (planner.indexOf(encodeState(app.current), guideMode) < 0) planner.start(app.current, guideMode);
   render();
-  // The solver holds the main thread while it works, so the page draws the above first.
-  requestAnimationFrame(() => setTimeout(loadNextStep));
 }
-function loadNextStep() {
-  const asked = working;
+
+/** Loads the step the plan has for the position Next step was tapped at, once it has one. Whether it is done with the tap. */
+function takeStep(): boolean {
+  const plan = planner.plan;
+  if (!working || !plan || !solving || !app.current.equals(working)) return false;
+  const i = planner.indexOf(encodeState(working), guideMode);
+  if (i < 0 || (i === plan.steps.length && !plan.done && !plan.error)) return false;
   stopWorking();
-  if (!asked || !solving || !app.current.equals(asked)) return;
   guideLine = "";
-  let steps: SolveStep[];
-  try {
-    steps = solveSteps(app.current, guideMode);
-  } catch (e) {
-    clearGuide();
-    guideLine = "";
-    setMessage(`Can't solve from here: ${(e as Error).message}`, "error");
-    return render();
+  clearGuide();
+  if (i === plan.steps.length && plan.error) {
+    setMessage(`Can't solve from here: ${plan.error}`, "error");
+    render();
+    return true;
   }
   // Carrying on from the end of a step, the count carries on too.
   trail = trail.filter((g) => guideHolds(g) && g.start + g.step.turns.length <= app.cursor);
   const prev = trail.find((g) => g.start + g.step.turns.length === app.cursor);
   const index = prev ? prev.index + 1 : 1;
-  clearGuide();
-  if (!steps.length) {
+  if (i === plan.steps.length) {
     guideLine = SOLVED_LINE;
-    return render();
+    render();
+    return true;
   }
-  const [step] = steps;
+  const step = plan.steps[i];
   const st = app.current;
-  guide = {
-    step,
-    after: steps.length - 1,
-    index,
-    start: app.cursor,
-    from: st.clone(),
-    ...stepColors(st, step),
-    arrows: stickerPaths(st, step),
-    planned: steps.reduce((n, s) => n + s.turns.length, 0),
-  };
+  guide = { step, plan, at: i, index, start: app.cursor, from: st.clone(), ...stepColors(st, step), arrows: stickerPaths(st, step) };
   trail.push(guide);
   scrollToStep = true;
   app.history = app.history.slice(0, app.cursor).concat(step.turns);
   setMessage(`${step.turns.length} ${step.turns.length === 1 ? "turn" : "turns"} loaded`, "ok");
   render();
+  return true;
+}
+
+/** The steps the plan has after a guide's step, and the turns of it and them: once the plan is done. */
+function guideRest(g: Guide): { after: number; planned: number } | null {
+  if (!g.plan.done) return null;
+  const rest = g.plan.steps.slice(g.at);
+  return { after: rest.length - 1, planned: rest.reduce((n, s) => n + s.turns.length, 0) };
+}
+
+/** While the plan a guide's step came from is still being made, what it is up to: "Planning: Yellow core corners…". */
+function planningText(g: Guide): string {
+  if (planner.plan !== g.plan || !planner.running) return "";
+  const stage = [...g.plan.steps].reverse().find((s) => !turnsWhole(s));
+  return `Planning${stage ? `: ${STAGE_NAME[stage.stage]}` : ""}…`;
 }
 
 /**
@@ -3929,6 +3944,7 @@ function clearGuide() {
 function stopGuide() {
   if (!solving && !guide && !guideLine) return;
   stopWorking();
+  planner.stop();
   solving = false;
   clearGuide();
   guideLine = "";
@@ -4004,9 +4020,15 @@ function renderSteps() {
   const turns = trail.reduce((n, g) => n + g.step.turns.length, 0);
   // "5 / 17 steps, 30 / 122 total turns": the newest step's number of all the steps the solver
   // planned then, and the turns so far of those the steps so far and the planned rest add up to.
+  // Until the plan is done, the totals aren't known: "5 / … steps, 30 / … total turns. Planning: Yellow corners…".
   const last = trail[trail.length - 1];
-  const planned = last ? turns - last.step.turns.length + last.planned : 0;
-  const head = last ? `${last.index} / ${last.index + last.after} steps, ${turns} / ${planned} total turns` : "No steps yet";
+  const rest = last && guideRest(last);
+  const planning = last ? planningText(last) : "";
+  const head = !last
+    ? "No steps yet"
+    : rest
+      ? `${last.index} / ${last.index + rest.after} steps, ${turns} / ${turns - last.step.turns.length + rest.planned} total turns`
+      : `${last.index} / … steps, ${turns} / … total turns${planning ? `. ${planning}` : ""}`;
   const key = head + "|" + trail.map((g) => `${g.start}:${g === guide}:${app.cursor >= g.start + g.step.turns.length}`).join();
   if (key === stepsKey) return;
   const grew = trail.length > list.children.length && list.children.length > 0;
@@ -4111,10 +4133,11 @@ function refreshGuide() {
   const line = $("guide-line");
   line.textContent = "";
   if (guide) {
-    const { step, after, index, start } = guide;
-    const done = app.cursor >= start + step.turns.length;
+    const { step, index } = guide;
+    const rest = guideRest(guide);
+    const of = rest ? ` of ${index + rest.after}` : planningText(guide) ? " of …" : "";
     const head = document.createElement("strong");
-    head.textContent = `Step ${index} of ${index + after} — ${STAGE_NAME[step.stage]}: `;
+    head.textContent = `Step ${index}${of} — ${STAGE_NAME[step.stage]}: `;
     const alg = document.createElement("span");
     alg.className = "known-alg";
     alg.textContent = step.alg;
@@ -5533,7 +5556,10 @@ function probe3d() {
 function installProbe() {
   const canvas = () => renderer.domElement as HTMLCanvasElement;
   (window as any).xcubeProbe = {
-    idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim && !working,
+    idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim && !working && !planner.running,
+    /** Where the step guide's plan is made ("worker" or "page"), and making it on the page from now on. */
+    planWhere: () => planner.where,
+    planInPage: () => void (planner.inPage = true),
     /** The debug info Copy debug info copies, and putting it back (for reproducing what a person saw). */
     debugInfo: () => debugInfo(),
     restoreDebug: (json: string) => restoreDebug(json),
@@ -5551,7 +5577,7 @@ function installProbe() {
         stage: guide.step.stage,
         alg: guide.step.alg,
         turns: guide.step.turns.length,
-        after: guide.after,
+        after: guideRest(guide)?.after ?? null,
         index: guide.index,
         start: guide.start,
         focus: [...guide.focus].map((id) => slotName(app.current.occ.indexOf(id))).sort(),

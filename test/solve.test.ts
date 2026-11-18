@@ -6,8 +6,9 @@ import { fitColors, visibleColors } from "../src/core/edit.ts";
 import { DIRS } from "../src/core/geometry.ts";
 import { parseAlg } from "../src/core/notation.ts";
 import { CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, turnName, type Kind } from "../src/core/puzzle.ts";
-import { decodeState, rotsTo, unreachableReason } from "../src/core/serialize.ts";
-import { nextStep, solveSteps, type Mode, type SolveStep } from "../src/core/solve.ts";
+import { decodeState, encodeState, rotsTo, unreachableReason } from "../src/core/serialize.ts";
+import { nextStep, planSteps, solveSteps, type Mode, type SolveStep } from "../src/core/solve.ts";
+import { planMessages } from "../src/web/planner.ts";
 
 const after = (alg: string) => {
   const st = State.solved();
@@ -314,4 +315,33 @@ test("solve: a regrip that flips the puzzle both over and around is said as one 
   assert.equal(step.stage, "regrip");
   assert.equal(step.alg, "x2 y2");
   assert.equal(step.goal, "Reorient the puzzle in your hand so that white is up and blue is in front. Nothing else moves");
+});
+
+test("solve: the guide's plan gives the solve's steps one at a time, each with the position after it", () => {
+  const rnd = random(5);
+  for (const mode of ["kinds", "layers"] as Mode[]) {
+    const st = scrambled(rnd);
+    const steps = solveSteps(st, mode);
+    assert.deepEqual([...planSteps(st, mode)], steps);
+    const messages = [...planMessages(7, encodeState(st), mode)];
+    assert.ok(messages.every((m) => m.id === 7));
+    assert.deepEqual(messages.at(-1), { id: 7, done: true });
+    const walk = st.clone();
+    messages.slice(0, -1).forEach((m, i) => {
+      assert.ok("step" in m);
+      assert.deepEqual(m.step, steps[i]);
+      applyTurns(walk, m.step.turns);
+      assert.equal(m.at, encodeState(walk));
+    });
+  }
+});
+
+test("solve: the guide's plan says why, for a position turns can't reach", () => {
+  const st = State.solved();
+  const [a, b] = [CUBELETS.find((c) => c.name === "Fx.U")!.home, CUBELETS.find((c) => c.name === "Rx.U")!.home];
+  const [ia, ib] = [st.occ[a], st.occ[b]];
+  [st.occ[a], st.ori[a], st.occ[b], st.ori[b]] = [ib, rotsTo(ib, a)[0], ia, rotsTo(ia, b)[0]];
+  const messages = [...planMessages(1, encodeState(st), "kinds")];
+  assert.equal(messages.length, 1);
+  assert.ok("error" in messages[0] && /turns can't reach/.test(messages[0].error));
 });

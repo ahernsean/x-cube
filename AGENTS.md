@@ -243,6 +243,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - `src/core/search.ts`, `src/core/goals.ts`: iterative-deepening search with goal masks
   based on appearance (look-alike twins compare equal).
 - `src/core/solve.ts`: the step-by-step solver (see "Solving method" above).
+- `src/web/planner.ts`, `src/web/plan-worker.ts`: the step guide's plan of the whole solve, made
+  in a Web Worker.
 - `src/cli/xc.ts`: command-line driver (see `README.md`).
 - `src/web/`: **X-Cube Lab**, the browser viewer, built by `scripts/build-web.ts` into
   `dist/x-cube-lab.html` (published as a claude.ai artifact, which supplies the document
@@ -485,7 +487,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   a suggested name, selected and focused, and its Save then saves the step's turns from
   where the step starts), under the counts ("3 / 17 steps, 18 / 183 total turns": the newest step's number of
   the steps the solver planned when it was loaded, and the turns so far of the turns those
-  steps add up to); the list is top-aligned, the newest step always at its top, and when a
+  steps add up to; until the plan is done the totals read … and the counts say what is
+  being planned, "Planning: Yellow core corners…", named by the last step planned, as the
+  step's line reads "Step 2 of …"); the list is top-aligned, the newest step always at its top, and when a
   step is added the older ones slide down to make room; on phones the list scrolls between
   the step's line and Stop solving. The order can't change during a solve. Anything that
   sets a new start (Shuffle, Reset, Edit puzzle, a code, a saved position, an algorithm,
@@ -494,7 +498,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   button (two dots with an arrow from one to the other, in the highlight blue), which
   loads the next step; ▶ comes back with it. **Next
   step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
-  the position shown, adds its turns at the current step, unplayed (until it loads, the button
+  the position shown, adds its turns at the current step, unplayed. The whole solve is
+  planned at the first tap, a step at a time, in a Web Worker (`src/web/planner.ts`, the
+  worker's script bundled into the page as a string; where no worker starts, on the page,
+  a step per task), and a tap at a position the plan has loads its step at once; a tap
+  anywhere else plans afresh from there (until the step loads, the button
   reads Working… and pulses, the line says "Working out the next step…", a second tap does
   nothing, and after 250 ms a message says so too; a turn made meanwhile drops it), and a line under the
   button gives "Step 2 of 9 —" (no "(done)" once played: the step list's ✓ says that; counted from when the guide was started; a step taken

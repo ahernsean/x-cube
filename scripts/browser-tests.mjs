@@ -1662,9 +1662,11 @@ labTest("guide: a tapped Next step shows it is working until its step loads, and
   const loaded = await page.evaluate(() => ({ line: document.getElementById("guide-line").textContent, text: document.getElementById("next-step").textContent, working: document.querySelectorAll(".working").length, boxes: document.querySelectorAll("#history .step-box").length }));
   const g = await probe("guide");
   check(g?.index === 1 && /^Step 1 of \d+ — /.test(loaded.line) && loaded.text === "Next step" && loaded.working === 0 && loaded.boxes === 1, `then one step loads, from the two taps, and nothing says working any more (${JSON.stringify(loaded)})`);
-  // A turn made while a step is being worked out leaves that step behind.
+  // A turn made while a step is being worked out leaves that step behind. (A turn by hand
+  // first, so the plan doesn't have the step already.)
   await page.click("#last");
   await settle();
+  await play("F");
   const dropped = await page.evaluate(() => {
     document.getElementById("next-step").click();
     document.getElementById("back").click();
@@ -1673,6 +1675,42 @@ labTest("guide: a tapped Next step shows it is working until its step loads, and
   await settle();
   const after = await page.evaluate(() => ({ line: document.getElementById("guide-line").textContent, text: document.getElementById("next-step").textContent, boxes: document.querySelectorAll("#history .step-box").length }));
   check(after.line !== "Working out the next step…" && after.text === "Next step" && after.boxes === 1 && (await probe("guide")) === null, `a turn made meanwhile drops the step being worked out (${dropped}: ${JSON.stringify(after)})`);
+});
+
+labTest("guide: the solve is planned in a worker, and a step the plan has loads at once", async ({ page, check, probe, settle, play }) => {
+  await play("R U F");
+  await page.evaluate(() => (document.getElementById("guide").open = true));
+  await page.click("#next-step");
+  const where = await probe("planWhere");
+  await settle();
+  const first = await probe("guide");
+  check(where === "worker" && first?.index === 1 && first.after > 0, `the plan is made in a worker, and the first step loads (${where}, ${JSON.stringify(first && { stage: first.stage, after: first.after })})`);
+  await page.click("#last");
+  await page.waitForFunction(() => !document.getElementById("strip-next").hidden, null, { timeout: 60000 });
+  // Read in the same task as the tap: the step comes from the plan, with nothing to wait for.
+  const second = await page.evaluate(() => {
+    const t0 = performance.now();
+    document.getElementById("strip-next").click();
+    const ms = Math.round(performance.now() - t0);
+    const g = window.xcubeProbe.guide();
+    return { ms, index: g?.index, after: g?.after, working: document.querySelectorAll(".working").length, line: document.getElementById("guide-line").textContent };
+  });
+  check(second.index === 2 && second.after === first.after - 1 && second.working === 0 && /^Step 2 of /.test(second.line), `following the plan, the next step loads in the same moment as the tap (${JSON.stringify(second)})`);
+});
+
+labTest("guide: on the page, where no worker runs, the plan is made between frames, its counts shown once known", async ({ page, check, probe, settle, play }) => {
+  await probe("planInPage");
+  await page.click('[data-guide-mode="layers"]');
+  await play("R U F r U' R2 f");
+  await page.evaluate(() => (document.getElementById("guide").open = true));
+  await page.click("#next-step");
+  // The first step loads while later ones are still being found: its count waits for the plan.
+  const early = await page.waitForFunction(() => /^Step 1 of … — /.test(document.getElementById("guide-line").textContent) && document.getElementById("steps-head").textContent, null, { timeout: 60000 }).then((h) => h.jsonValue());
+  const where = await probe("planWhere");
+  await settle();
+  const line = await page.$eval("#guide-line", (e) => e.textContent);
+  const head = await page.$eval("#steps-head", (e) => e.textContent);
+  check(where === "page" && /^1 \/ … steps, \d+ \/ … total turns\. Planning(: [\w ]+)?…$/.test(early) && /^Step 1 of \d+ — /.test(line) && /^1 \/ \d+ steps, \d+ \/ \d+ total turns$/.test(head), `planned on the page, the counts read … with what is being planned, then the totals ("${early}", then "${head}"; ${where})`);
 });
 
 labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, and an edit before the step", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
