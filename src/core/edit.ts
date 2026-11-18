@@ -504,7 +504,7 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
       problems.push(
         problem(
           shown.size === 1
-            ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k}${((m) => (m ? `. ${m}` : ""))(missingColors(shape, colors, spots, spots.length - g.ids.size))}`
+            ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k} like that${((m) => (m ? `. ${m}` : ""))(missingColors(shape, colors, spots, spots.length - g.ids.size))}`
             : tooFew(shape, colors, spots, g.ids.size),
           spots,
         ),
