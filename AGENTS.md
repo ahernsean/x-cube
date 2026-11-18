@@ -494,7 +494,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   button (two dots with an arrow from one to the other, in the highlight blue), which
   loads the next step; ▶ comes back with it. **Next
   step** asks the solver (`src/core/solve.ts`, "Solving method" above) for one step from
-  the position shown, adds its turns at the current step, unplayed, and a line under the
+  the position shown, adds its turns at the current step, unplayed (until it loads, the button
+  reads Working… and pulses, the line says "Working out the next step…", a second tap does
+  nothing, and after 250 ms a message says so too; a turn made meanwhile drops it), and a line under the
   button gives "Step 2 of 9 —" (no "(done)" once played: the step list's ✓ says that; counted from when the guide was started; a step taken
   from anywhere but the end of the one before starts the count again), the stage and the goal,
   then on its own line "Turns:" with the turns as the solver writes them (`[setup: cycle]`). Until the step has

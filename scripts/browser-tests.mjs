@@ -1647,6 +1647,34 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
   check(solvedEnd.next && solvedEnd.strip && solvedEnd.play, `once solved, Next step is grayed out and ▶ (grayed out) doesn't give way to it (${JSON.stringify(solvedEnd)})`);
 });
 
+labTest("guide: a tapped Next step shows it is working until its step loads, and a second tap does nothing", async ({ page, check, probe, settle, play }) => {
+  await play("R U");
+  await page.evaluate(() => (document.getElementById("guide").open = true));
+  // The tap and what shows right after it, before the solver has had a turn at the main thread.
+  const tapped = await page.evaluate(() => {
+    const btn = document.getElementById("next-step");
+    btn.click();
+    btn.click();
+    return { line: document.getElementById("guide-line").textContent, text: btn.textContent, disabled: btn.disabled, working: btn.classList.contains("working"), idle: window.xcubeProbe.idle() };
+  });
+  check(tapped.line === "Working out the next step…" && tapped.text === "Working…" && tapped.disabled && tapped.working && !tapped.idle, `right after the tap, the line and the button say a step is being worked out (${JSON.stringify(tapped)})`);
+  await settle();
+  const loaded = await page.evaluate(() => ({ line: document.getElementById("guide-line").textContent, text: document.getElementById("next-step").textContent, working: document.querySelectorAll(".working").length, boxes: document.querySelectorAll("#history .step-box").length }));
+  const g = await probe("guide");
+  check(g?.index === 1 && /^Step 1 of \d+ — /.test(loaded.line) && loaded.text === "Next step" && loaded.working === 0 && loaded.boxes === 1, `then one step loads, from the two taps, and nothing says working any more (${JSON.stringify(loaded)})`);
+  // A turn made while a step is being worked out leaves that step behind.
+  await page.click("#last");
+  await settle();
+  const dropped = await page.evaluate(() => {
+    document.getElementById("next-step").click();
+    document.getElementById("back").click();
+    return window.xcubeProbe.turns();
+  });
+  await settle();
+  const after = await page.evaluate(() => ({ line: document.getElementById("guide-line").textContent, text: document.getElementById("next-step").textContent, boxes: document.querySelectorAll("#history .step-box").length }));
+  check(after.line !== "Working out the next step…" && after.text === "Next step" && after.boxes === 1 && (await probe("guide")) === null, `a turn made meanwhile drops the step being worked out (${dropped}: ${JSON.stringify(after)})`);
+});
+
 labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, and an edit before the step", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
   const { line, next } = guideHelpers(page, settle);
   // A puzzle tipped over gets a Regrip step, which grays nothing: the center colors are what it goes by.

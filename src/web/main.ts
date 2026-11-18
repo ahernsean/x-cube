@@ -3821,10 +3821,41 @@ function nothingToSolve(): boolean {
 /** A solve is under way: from Start solving until Stop. The order can be chosen only between solves. */
 let solving = false;
 const SOLVED_LINE = "Solved. Nothing left to do.";
+/**
+ * Next step was tapped and its step is being worked out, from this position. Until it
+ * loads, the line and the button say so, and a second tap does nothing; after a moment a
+ * message says so too, for whichever panel is showing.
+ */
+let working: State | null = null;
+let workingTimer: ReturnType<typeof setTimeout> | undefined;
+const WORKING_LINE = "Working out the next step…";
+const WORKING_MESSAGE_MS = 250;
+function stopWorking() {
+  working = null;
+  clearTimeout(workingTimer);
+  if (app.message === WORKING_LINE) dismissMessage();
+}
 function nextStep() {
-  if (edit) return;
+  if (edit || working) return;
   flushAnimations();
   solving = true;
+  clearGuide();
+  guideLine = WORKING_LINE;
+  working = app.current.clone();
+  workingTimer = setTimeout(() => {
+    if (!working) return;
+    setMessage(WORKING_LINE);
+    render();
+  }, WORKING_MESSAGE_MS);
+  render();
+  // The solver holds the main thread while it works, so the page draws the above first.
+  requestAnimationFrame(() => setTimeout(loadNextStep));
+}
+function loadNextStep() {
+  const asked = working;
+  stopWorking();
+  if (!asked || !solving || !app.current.equals(asked)) return;
+  guideLine = "";
   let steps: SolveStep[];
   try {
     steps = solveSteps(app.current, guideMode);
@@ -3897,6 +3928,7 @@ function clearGuide() {
 /** Stop, or closing the disclosure: drops the shown step's grays, arrows and line. The turn list keeps its turns and its step boxes. */
 function stopGuide() {
   if (!solving && !guide && !guideLine) return;
+  stopWorking();
   solving = false;
   clearGuide();
   guideLine = "";
@@ -4038,6 +4070,11 @@ function turnListHtml(): string {
 /** Drops the guide when its turns are gone from the list, redraws its grays and arrows, and writes its line. */
 function refreshGuide() {
   trail = trail.filter(guideHolds);
+  // A turn made while a step was being worked out leaves that step behind.
+  if (working && !app.current.equals(working)) {
+    stopWorking();
+    guideLine = "";
+  }
   if (guide && !trail.includes(guide)) {
     guide = null;
     guideLine = "";
@@ -4048,14 +4085,16 @@ function refreshGuide() {
   $("guide-colors").setAttribute("aria-pressed", String(guideFullColor));
   ($("guide-stop") as HTMLButtonElement).disabled = !solving;
   $("guide").classList.toggle("solving", solving);
-  $("next-step").textContent = solving ? "Next step" : "Start solving";
+  $("next-step").textContent = working ? "Working…" : solving ? "Next step" : "Start solving";
+  for (const id of ["next-step", "strip-next"]) $(id).classList.toggle("working", !!working);
   // In the playback strip, once a solve's turns have all played, ▶ gives way to Next step.
   const atEnd = app.cursor >= app.history.length;
   const solvedNow = nothingToSolve();
   const showNext = solving && atEnd && !playing && !shuffling && guideLine !== SOLVED_LINE && !solvedNow;
   // Next step loads the step after the one played; with turns still to play, play them first.
   // Not during a shuffle either: a step loaded partway through one would cut it short.
-  ($("next-step") as HTMLButtonElement).disabled = shuffling || solvedNow || (solving && !atEnd);
+  ($("next-step") as HTMLButtonElement).disabled = !!working || shuffling || solvedNow || (solving && !atEnd);
+  ($("strip-next") as HTMLButtonElement).disabled = !!working;
   $("strip-next").hidden = !showNext;
   $("last").hidden = showNext;
   // At the step's start the button plays the step; anywhere else it goes back to the start.
@@ -5494,7 +5533,7 @@ function probe3d() {
 function installProbe() {
   const canvas = () => renderer.domElement as HTMLCanvasElement;
   (window as any).xcubeProbe = {
-    idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim,
+    idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim && !working,
     /** The debug info Copy debug info copies, and putting it back (for reproducing what a person saw). */
     debugInfo: () => debugInfo(),
     restoreDebug: (json: string) => restoreDebug(json),
