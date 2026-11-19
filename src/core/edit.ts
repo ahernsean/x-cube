@@ -399,10 +399,17 @@ export function missingColors(shape: State, colors: FaceColors, spots: number[],
     else shown.set(key(cs), (shown.get(key(cs)) ?? 0) + 1);
   }
   if (centers) {
-    const none = COLOR_ORDER.filter((c) => !shown.get(c));
-    if (!none.length) return null;
-    // A center's color is opposite the color of the center across from it, so of the colors
-    // no center shows, the ones opposite those across from these spots are likelier.
+    // The colors a center of these spots' kind can have (white or yellow on a core center,
+    // a side color on an extension center) that no center of that kind shows.
+    const kinds = new Set(spots.map((t) => CUBELETS[shape.occ[t]].kind));
+    const can = new Set(CUBELETS.filter((c) => kinds.has(c.kind)).flatMap((c) => c.stickers.filter((x): x is Color => !!x)));
+    const there = new Set<Color>();
+    for (let s = 0; s < NUM_SLOTS; s++) if (shape.occ[s] >= 0 && kinds.has(CUBELETS[shape.occ[s]].kind)) for (const c of shownColors(colors, s)) there.add(c);
+    const none = COLOR_ORDER.filter((c) => can.has(c) && !there.has(c));
+    // Every color the kind can have is no help: the problem already says so.
+    if (!none.length || none.length === can.size) return null;
+    // A center's color is opposite the color of the center across from it, so of those
+    // colors, the ones opposite those across from these spots are likelier.
     const across = (t: number) => {
       const p = SLOT_POS[t], far = Math.max(...p.map(Math.abs));
       for (const r of [far, 3 - far]) {

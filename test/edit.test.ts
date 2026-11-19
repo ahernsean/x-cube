@@ -469,3 +469,13 @@ test("edit: one sticker's colors merge, up to three", () => {
   paint(2, -1, 0, 0, "G");
   assert.ok(fitColors(st, colors).problems.some((p) => p.text === "No cubelet has two green stickers. One of its green stickers should maybe be yellow, red, or orange"));
 });
+
+test("edit: a center's hint names only a color its kind of center can have", () => {
+  // From a play-tester's edit: no center shows blue, but the core center painted red can
+  // only be white or yellow, and the other core center is white.
+  const st = decodeState("ENXT MPGI RKFS LMAK NOZS GBQQ CXFR GDCZ LLFV QQCA IFKP");
+  const colors = [...".R.B.Y.O.G...R.BW........G.....O..Y..GW..O.OG....BO.Y....................Y.O.G...Y.....W.....Y...W.BO..B...O.Y.................R..B..YG..O..W...........Y....RW.B........WB............O.Y...R...................Y.........W.....YO............R....W..................Y..............G.W...R..B..Y.....O.W.W..B.RR..G........G..W.YO..............W..O..WB.O....BW...............W..................R..Y...Y.....B.Y.O.Y.G..R......W.B.O.......O..W..G..BR.......O.....R...W.O.Y..BB.B........."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
+  const texts = fitColors(st, colors).problems.map((p) => p.text);
+  assert.ok(texts.includes("A core center must be white or yellow, never red. It should be yellow"), texts.join("\n"));
+  assert.ok(texts.includes("An extension center must be green, blue, red, or orange, never yellow. It should be blue"), texts.join("\n"));
+});
