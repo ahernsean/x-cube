@@ -450,7 +450,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     for them. Where a cubelet's stickers are follows from the shape around it alone
     (`draftColors`), so a sticker can be painted while the shape is still wrong. Until
     every center is painted, the center arrangement isn't checked.
-  - **Painting:** pick a color, then tap stickers. A painted sticker's edge glow takes the
+  - **Painting:** pick a color, then tap stickers; a tap on a sticker that already shows the
+    picked color clears it (no color yet). A painted sticker's edge glow takes the
     paint too. Each paint is refit to cubelets
   (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
   wrong: no cubelet of that kind can have a color ("A core corner must be white or

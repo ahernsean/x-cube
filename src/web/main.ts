@@ -2970,7 +2970,7 @@ function infoHelp(): string[] {
     const tool =
       edit.paint === "shape"
         ? "Tap a cubelet to remove it, or tap a gray box to add one."
-        : "Tap a sticker to give it the picked color.";
+        : "Tap a sticker to give it the picked color. Tap one that already has that color to clear it.";
     return [
       `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it.`,
       'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple, and a sticker the message calls circled has a white ring around it. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
@@ -3442,8 +3442,8 @@ function paintSticker(slot: number, dir: number) {
   if (!edit || edit.paint === "shape") return;
   const i = slot * 6 + dir;
   if (!edit.view[i]) return; // hidden, or bare plastic
-  if (edit.colors[i] === edit.paint) return;
-  edit.colors[i] = edit.paint;
+  // A tap with the color a sticker already has takes its color off.
+  edit.colors[i] = edit.view[i] === edit.paint ? undefined : edit.paint;
   refitEdit();
   renderEdit();
 }
@@ -5755,7 +5755,7 @@ function renderEdit() {
   $("edit-hint").textContent =
     edit.paint === "shape"
       ? "Tap an extension cubelet to remove it, or a gray box to add one. Drag to tumble the view."
-      : "Pick a color, then tap stickers to color them. Drag to tumble the view.";
+      : "Pick a color, then tap stickers to color them; tap one again to clear it. Drag to tumble the view.";
   if (level === "reachable") {
     st.className = "edit-status good";
     st.textContent = "Valid";

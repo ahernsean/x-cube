@@ -1475,10 +1475,10 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   );
   // A sticker can be painted while the shape is wrong.
   await tapSticker("Fx.L", "F");
-  await tool("W");
+  await tool("R");
   await tapSticker("Ux.F", "U");
   const wrong = { e: await probe("shapeEdit"), painted: await probe("painted", "Ux.F", "U"), line: await editLine() };
-  check(wrong.e.removed.join() === "Fx.L" && wrong.painted === "W" && /^Not valid: Only three core edges/.test(wrong.line), `a sticker takes paint while the shape is wrong (${JSON.stringify(wrong)})`);
+  check(wrong.e.removed.join() === "Fx.L" && wrong.painted === "R" && /^Not valid: Only three core edges/.test(wrong.line), `a sticker takes paint while the shape is wrong (${JSON.stringify(wrong)})`);
   // The flat view shows what the editor draws over the puzzle too: a cubelet put in while
   // the shape is wrong, with its stickers.
 
@@ -1619,6 +1619,24 @@ labTest("shape editing: a shape problem halos the glass box where an extension s
   await settle();
   const hidden = await probe("ghostBoxes");
   check(boxes.length > 1 && lit.join() === "Rx.UF" && hidden.length === boxes.length && hidden.every((b) => !b.dim), `the other glass boxes are fainter while the halo marks one (${JSON.stringify({ boxes: boxes.length, lit, dimAfterHide: hidden.filter((b) => b.dim).length })})`);
+});
+
+labTest("color editing: a tap with a sticker's own color clears it", async ({ page, check, probe, gesture }) => {
+  const idle = () => page.waitForFunction(() => window.xcubeProbe.idle());
+  const tap = async (slot, face) => {
+    await page.locator("#scene").scrollIntoViewIfNeeded();
+    const at = await probe("sticker", slot, face);
+    await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+    await idle();
+  };
+  const line = () => page.$eval("#edit-status", (e) => e.textContent);
+  await page.click("#edit-start");
+  await page.click('[data-paint="W"]');
+  await tap("Fx.U", "U");
+  const cleared = { painted: await probe("painted", "Fx.U", "U"), line: await line() };
+  await tap("Fx.U", "U");
+  const back = { painted: await probe("painted", "Fx.U", "U"), line: await line() };
+  check(cleared.painted === null && /One sticker has no color yet/.test(cleared.line) && back.painted === "W" && back.line === "Valid", `tapping a white sticker with white clears it, and again colors it (${JSON.stringify({ cleared, back })})`);
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {
