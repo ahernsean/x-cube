@@ -75,7 +75,7 @@ export interface Problem {
   text: string;
   /** The slots it is about. */
   slots: number[];
-  /** Stickers its hint calls "marked" (slot, face direction): ones its colors can't tell apart. */
+  /** Stickers its hint calls "circled" (slot, face direction): ones its colors can't tell apart. */
   marks?: { slot: number; face: number }[];
 }
 
@@ -646,7 +646,7 @@ function fixesText(colors: FaceColors, spots: number[], options: { spot: number;
   const its = one ? "its" : "the";
   const marks: { slot: number; face: number }[] = [];
   // One clause per sticker, or per pair of stickers trading places. Stickers of one color
-  // can't be told apart by it, so one meant alone is marked in the view ("its marked
+  // can't be told apart by it, so one meant alone is circled in the view ("its circled
   // yellow sticker"), when the hint is sure which; else "one of its yellow stickers".
   const clauses = (t: number, changes: Change[], modal: string, sure: boolean) => {
     const left = [...changes];
@@ -667,11 +667,11 @@ function fixesText(colors: FaceColors, spots: number[], options: { spot: number;
         for (const x of alike) left.splice(left.indexOf(x), 1);
         if (sure && n === 2) {
           mark(face);
-          out.push(`${its} marked ${COLOR_NAME[from]} sticker ${verb} be ${COLOR_NAME[to]}, and ${its} other ${COLOR_NAME[from]} sticker ${COLOR_NAME[alike[0][1]]}`);
+          out.push(`${its} circled ${COLOR_NAME[from]} sticker ${verb} be ${COLOR_NAME[to]}, and ${its} other ${COLOR_NAME[from]} sticker ${COLOR_NAME[alike[0][1]]}`);
         } else out.push(`${its} ${COLOR_NAME[from]} stickers ${verb} be ${listColors([to, ...alike.map(([, x]) => x)])}, one each`);
       } else if (n > 1 && sure && !alike.length) {
         mark(face);
-        out.push(`${its} marked ${COLOR_NAME[from]} sticker ${verb} be ${COLOR_NAME[to]}`);
+        out.push(`${its} circled ${COLOR_NAME[from]} sticker ${verb} be ${COLOR_NAME[to]}`);
       } else out.push(`${n > 1 ? `one of ${its} ${COLOR_NAME[from]} stickers` : `${its} ${COLOR_NAME[from]} sticker`} ${verb} be ${COLOR_NAME[to]}`);
     }
     return out.length < 3 ? out.join(", and ") : `${out.slice(0, -1).join(", ")}, and ${out[out.length - 1]}`;
@@ -684,7 +684,7 @@ function fixesText(colors: FaceColors, spots: number[], options: { spot: number;
     if (o.to.length > 1) {
       const [from, , face] = o.changes[0];
       const n = shownColors(colors, o.spot).filter((c) => c === from).length;
-      const named = n > 1 && sure && o.faces.size === 1 ? (marks.push({ slot: o.spot, face }), `${its} marked ${COLOR_NAME[from]} sticker`) : n > 1 ? `one of ${its} ${COLOR_NAME[from]} stickers` : `${its} ${COLOR_NAME[from]} sticker`;
+      const named = n > 1 && sure && o.faces.size === 1 ? (marks.push({ slot: o.spot, face }), `${its} circled ${COLOR_NAME[from]} sticker`) : n > 1 ? `one of ${its} ${COLOR_NAME[from]} stickers` : `${its} ${COLOR_NAME[from]} sticker`;
       body = `${named} ${i ? "should" : modal} be ${listColors(COLOR_ORDER.filter((c) => o.to.includes(c)), "or")}`;
     } else body = clauses(o.spot, o.changes, i ? "should" : modal, sure);
     const text = `${i && where(o.spot) === where(list[i - 1].spot) ? "" : where(o.spot)}${body}`;

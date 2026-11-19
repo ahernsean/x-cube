@@ -1383,7 +1383,7 @@ function frame() {
   stepShapeAnim();
   placeHidePill();
   placeHaloArrow();
-  pulseMarks();
+  showMarks();
   const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
   if (showTarget) updateShowButton();
   if (view3dOpen) updateCompass();
@@ -2959,7 +2959,7 @@ function infoHelp(): string[] {
         : "Tap a sticker to give it the picked color.";
     return [
       `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it.`,
-      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple, and a sticker the message calls marked has a pulsing purple frame. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
+      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple, and a sticker the message calls circled has a white ring around it. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
     ];
   }
   const gestures = "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn.";
@@ -3403,7 +3403,7 @@ interface Edit {
   added: Set<number>;
   painted: any[]; // meshes currently drawn in a color other than their own
   highlight: number[] | null; // slots shown with a halo: the first problem's, unless hidden
-  marks: { slot: number; face: number }[]; // stickers the shown problem's hint calls marked
+  marks: { slot: number; face: number }[]; // stickers the shown problem's hint circles
   hidden: string | null; // the slots (joined) whose halo was hidden with Hide
   selected: string; // the problem the line shows (problemKey), kept across paints
 }
@@ -4968,7 +4968,7 @@ function drawOutlineMask(target: any, cam: any, roots: any[]) {
   const clear = renderer.getClearColor(new THREE.Color()), alpha = renderer.getClearAlpha();
   const shown: [any, boolean][] = [];
   const hide = (o: any, v: boolean) => { shown.push([o, o.visible]); o.visible = v; };
-  for (const g of [...ghosts, ...markFrames]) hide(g, false);
+  for (const g of [...ghosts, ...markRings.map((r) => r.view)]) hide(g, false);
   try {
     renderer.shadowMap.autoUpdate = false;
     cam.layers.set(0);
@@ -5336,41 +5336,47 @@ let haloClearer: any = null;
 const HALO_VIEWS = [0, 1, 2, 3, 4, 5].map((d) => FLAT_HALO_LAYER + d);
 
 /**
- * A sticker a hint calls "marked" (one its colors can't tell from another of the same color
- * on its cubelet): a purple frame around the sticker, pulsing, in the 3D view and on its
- * face in the flat view.
+ * A sticker a hint circles (one its colors can't tell from another of the same color on
+ * its cubelet): a white ring with a dark casing on the sticker, as Lost? marks the sticker
+ * it asks about, drawn over everything so neighbors don't cut it. In the 3D view it shows
+ * only while the sticker faces the viewer, so it never shows through the puzzle; the flat
+ * view has its own copy on the sticker's face.
  */
-const markFrames: any[] = [];
-let markMaterial: any = null;
-function markFrame() {
-  markMaterial ??= new THREE.MeshBasicMaterial({ color: HALO.color, transparent: true, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
-  const outer = 0.49, inner = 0.33;
-  const shape = new THREE.Shape([new THREE.Vector2(-outer, -outer), new THREE.Vector2(outer, -outer), new THREE.Vector2(outer, outer), new THREE.Vector2(-outer, outer)]);
-  shape.holes.push(new THREE.Path([new THREE.Vector2(-inner, -inner), new THREE.Vector2(-inner, inner), new THREE.Vector2(inner, inner), new THREE.Vector2(inner, -inner)]));
-  const m = new THREE.Mesh(new THREE.ShapeGeometry(shape), markMaterial);
-  m.renderOrder = 3;
-  return m;
+const markRings: { view: any; flat: any }[] = [];
+function markRing() {
+  const group = new THREE.Group();
+  for (const [r, w, c] of [[0.42, 0.075, 0x111111], [0.42, 0.045, 0xffffff]] as const) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, w, 10, 48), new THREE.MeshBasicMaterial({ color: c, depthTest: false, transparent: true, toneMapped: false }));
+    ring.renderOrder = 10 + (c === 0xffffff ? 1 : 0);
+    group.add(ring);
+  }
+  return group;
 }
-/** The marked stickers' frames pulse, so the eye finds them; steady where the device asks for less motion. */
-function pulseMarks() {
-  if (markMaterial) markMaterial.opacity = reduceMotionView() ? 1 : 0.8 + 0.2 * Math.sin(performance.now() / 180);
+/** Shows each 3D-view ring only while its sticker faces the viewer. */
+function showMarks() {
+  if (!edit) return;
+  edit.marks.forEach((m, i) => {
+    const r = markRings[i];
+    if (r?.view.parent) r.view.visible = faceView(edit!.shown, m.slot, m.face, 0.2) > 0;
+  });
 }
 
 /** Puts halos on the cubelet in each highlighted slot of the shown state, and removes the rest. */
 function placeHalos() {
-  for (const h of [...halos, ...haloBodies, ...markFrames]) h.parent?.remove(h);
+  for (const h of [...halos, ...haloBodies, ...markRings.flatMap((r) => [r.view, r.flat])]) h.parent?.remove(h);
   haloClearer?.parent?.remove(haloClearer);
   haloStamp++;
   const marked = edit?.highlight ? haloSlots() : null;
   if (!edit || !marked) return;
   edit.marks.forEach((m, i) => {
-    const f = (markFrames[i] ??= markFrame());
+    const r = (markRings[i] ??= { view: markRing(), flat: markRing() });
     const n = new THREE.Vector3(...DIRS[m.face]);
-    f.position.set(...SLOT_POS[m.slot]).addScaledVector(n, 0.985 / 2 + 0.006);
-    f.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
-    f.layers.set(HALO_LAYER);
-    f.layers.enable(FLAT_HALO_LAYER + m.face);
-    pivot.add(f);
+    for (const [g, layer] of [[r.view, HALO_LAYER], [r.flat, FLAT_HALO_LAYER + m.face]] as const) {
+      g.position.set(...SLOT_POS[m.slot]).addScaledVector(n, 0.53);
+      g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+      g.traverse((o: any) => o.layers.set(layer));
+      pivot.add(g);
+    }
   });
   if (!haloClearer) {
     haloClearer = new THREE.Mesh(new THREE.PlaneGeometry(1e-3, 1e-3), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true }));
@@ -5870,7 +5876,7 @@ function installProbe() {
         }
       return { changed, purple, over };
     },
-    /** The stickers the shown problem's hint marks, and how many pixels of the 3D view their frames cover. */
+    /** The stickers the shown problem's hint circles, and how many pixels of the 3D view their rings cover. */
     marks: () => {
       const list = (edit?.marks ?? []).map((m) => ({ slot: slotName(m.slot), face: COMPASS_FACES[m.face] }));
       const plain = probeImage(camera, 0, 192, 192, "drawn"), framed = probeImage(camera, 0, 192, 192, "drawn", HALO_LAYER);

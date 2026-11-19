@@ -135,7 +135,7 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
   // Two orange stickers can't be told apart by color, so the hint marks the one it means:
   // the one painted over the green.
   const twoOrange = say(-1, 1, 2, F, "O");
-  assert.equal(twoOrange.text, "No cubelet has two orange stickers. Its marked orange sticker should probably be green");
+  assert.equal(twoOrange.text, "No cubelet has two orange stickers. Its circled orange sticker should probably be green");
   assert.deepEqual(twoOrange.marks, [{ slot: at(-1, 1, 2), face: F }]);
   // A color no cubelet of that kind has: core corners are only white or yellow.
   assert.equal(say(1, -1, 1, 3, "B").text, "A core corner must be white or yellow, never blue. It should be yellow");
