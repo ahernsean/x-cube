@@ -497,10 +497,16 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   up over each other's stickers). A halo appearing never moves the view. **Show**
   (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
   most unblocked, then each as squarely as possible, from the preset views and the
-  directions between the stickers), again each time it is tapped. For a shape problem it
-  counts every face of the cubelets and spots instead, and first takes the view that shows
-  faces on the most sides, then the one nearest the view now: a view straight at a core
-  edge showed the spots on it edge-on, and a play-tester wanted to see how they sit on it. **Hide** removes the
+  directions between the stickers), again each time it is tapped. For a shape problem about
+  one core cubelet it looks at that cubelet from its own direction, tilted along an edge
+  by about 20 degrees (`EDGE_TILT`; a corner's own view shows its three sides): straight
+  at its sticker showed the spots on it edge-on, and a corner view from below crowded them
+  with other glass boxes, where a play-tester liked a slight angle best. Of the tilts up to
+  40 degrees (`coreViews`), it takes the one showing the most of the halo (`haloShare`: of
+  points over each haloed cubelet and spot, those a ray from the camera reaches first, a
+  glass box in front counting as covering), each degree from the aim costing 1% of it; then
+  from above, then nearest the view now. For other shape problems it counts every face of
+  the cubelets and spots, and first takes the view showing faces on the most sides. **Hide** removes the
   halo until the shown problem names other cubelets; while the halo shows, a **Hide** pill in
   the halo's color in the 3D view does the same, placed clear of the puzzle as drawn, just past
   its edge on the haloed cubelets' side (above it if they are at the middle; a play-tester

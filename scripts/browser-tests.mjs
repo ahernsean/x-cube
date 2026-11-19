@@ -1556,18 +1556,23 @@ labTest("color editing: a hint circles the sticker it means when its color can't
   check(hidden.list.length === 0 && hidden.px === 0, `Hide takes the ring away with the halo (${JSON.stringify(hidden)})`);
 });
 
-labTest("shape editing: Show looks at a core edge and its spots from an angle", async ({ page, check, probe, settle }) => {
-  // From a play-tester's edit: the UR core edge has no extensions. Looking straight at its
-  // one sticker showed the two spots on it edge-on; an angle shows how they sit on it.
-  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.13223,0.8614,0.28584,-0.3985],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:AaBaCaDaEaFaGaHaIa......JaKaLaMaNaOaPaQaRaSaTaUaVaWaXa..........coYaZaaabo..daeafagahaiajaudla....vv......manaoapaqarasatakg..waxayaza0a......1a2a3a4a5a6a7a8a9a","removed":["Rx.U","Rx.D","Bx.R","Lx.DB","Bx.DL","Lx.UF"],"added":["Ux.L"],"colors":".......O.Y.B.O.YG..O.Y.B.O.....OW.G..OW..B.OW.G................................O.Y.B...Y.....Y...O.YG..O.Y.B...................O..G..OW..B..W..........OW....OW.G.........W............................O.Y.B...Y.....Y..............R....B............R...G...W..B..W.....W...........W.G...............W.....................R..Y.B...Y..R..Y.....Y..R..YG............B..........G.......R.W..B..W...R.W.....W...R.W.G...................R..Y.B......R..YG.R....BR.WY..R...G.R.W..B......R.W.G.","tool":"shape","problems":[],"selected":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots|65,69,78","hidden":null}}));
-  await settle();
-  const line = await page.$eval("#edit-status", (e) => e.textContent);
-  await page.click("#edit-status");
-  await settle();
-  const [x, y, z, w] = JSON.parse(await probe("debugInfo")).view;
-  // The direction the view looks from, in the puzzle's frame: the camera's axis turned back by the view.
-  const v = [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)];
-  check(/This core edge has no extensions/.test(line) && v.every((c) => Math.abs(c) > 0.25) && v[0] > 0 && v[1] > 0, `Show looks at the edge from an angle (${JSON.stringify({ line, from: v.map((c) => +c.toFixed(2)) })})`);
+labTest("shape editing: Show looks at a core edge and its spots at a slight angle", async ({ page, check, probe, settle }) => {
+  // From play-testers' edits: a core edge with no extensions, at the top right and at the
+  // bottom left among other empty spots. Straight at its sticker showed the spots on it
+  // edge-on, and a corner view from below crowded them with other glass boxes; a slight
+  // tilt along the edge shows how they sit on it.
+  for (const [debug, sign] of [[{"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.13223,0.8614,0.28584,-0.3985],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:AaBaCaDaEaFaGaHaIa......JaKaLaMaNaOaPaQaRaSaTaUaVaWaXa..........coYaZaaabo..daeafagahaiajaudla....vv......manaoapaqarasatakg..waxayaza0a......1a2a3a4a5a6a7a8a9a","removed":["Rx.U","Rx.D","Bx.R","Lx.DB","Bx.DL","Lx.UF"],"added":["Ux.L"],"colors":".......O.Y.B.O.YG..O.Y.B.O.....OW.G..OW..B.OW.G................................O.Y.B...Y.....Y...O.YG..O.Y.B...................O..G..OW..B..W..........OW....OW.G.........W............................O.Y.B...Y.....Y..............R....B............R...G...W..B..W.....W...........W.G...............W.....................R..Y.B...Y..R..Y.....Y..R..YG............B..........G.......R.W..B..W...R.W.....W...R.W.G...................R..Y.B......R..YG.R....BR.WY..R...G.R.W..B......R.W.G.","tool":"shape","problems":[],"selected":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots|65,69,78","hidden":null}}, 1], [{"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.27985,0.36471,-0.11592,0.88048],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:AaBaCaDaEaFaGaHaIa......JaKaLaMaNaOaPaQaRaSaTaUaVaWaXa............YaZaaabacadaeafagahaiajakala..........3wmanaoapw..rasatauavawaxayaza0a......1a2aqw4a5a6a7a8a9a","removed":["Fx.R","Rx","Fx.L","Lx.UB","Lx.D","Bx","Bx.DL","Rx.DF"],"added":["Dx.R","Fx.DR","Dx.BL","Ux.BL"],"colors":".O.Y.B.......O.YG..OW..B.O.Y...O..G........OW..B.OW.G....Y.........................B.O.Y.....Y...O.YG..O.Y.B................G........OW..B.O......W.....W....OW.G...W..................................O.Y.B...Y.....Y.....Y.....YG............B......RO..G...W..B..W.....W.....W.....W.G............................Y........R..Y.B...Y....................R....B......R.........G.......R.W..B..W.....W.....W...R.W.G...................R..Y.BR..Y........R....B......R...G.R.W..BR.W...R.W.G.","tool":"shape","problems":[],"selected":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots|14,1,10","hidden":null}}, -1]]) {
+    await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
+    await settle();
+    const line = await page.$eval("#edit-status", (e) => e.textContent);
+    await page.click("#edit-status");
+    await settle();
+    const [x, y, z, w] = JSON.parse(await probe("debugInfo")).view;
+    // The direction the view looks from, in the puzzle's frame: the camera's axis turned back by the view.
+    const v = [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)];
+    const tilt = (Math.asin(Math.min(1, Math.abs(v[2]))) * 180) / Math.PI;
+    check(/This core edge has no extensions/.test(line) && v[0] * sign > 0.5 && v[1] * sign > 0.5 && tilt > 5 && tilt < 30, `Show looks at the edge at a slight angle (${JSON.stringify({ line, from: v.map((c) => +c.toFixed(2)), tilt: Math.round(tilt) })})`);
+  }
 });
 
 labTest("shape editing: a shape problem halos the glass box where an extension should go", async ({ page, check, probe, settle, gesture }) => {

@@ -5539,9 +5539,103 @@ function showHighlighted() {
   // together, so every face of them counts: seeing the most of them takes a view from an
   // angle, not one straight at the core cubelet's own sticker.
   const shape = edit.removed.size > 0 || edit.added.size > 0;
+  // A problem about one core cubelet: a view of it at the angle that suits it.
+  const cores = edit.highlight.filter((s) => SLOT_POS[s].every((c) => Math.abs(c) <= 1) && SLOT_POS[s].filter((c) => c !== 0).length >= 2);
+  if (shape && cores.length === 1) {
+    if (tween) (pivot.quaternion.copy(tween.to), (tween = null));
+    const q = lookFrom(coreView(st, cores[0], slots));
+    goToView([q.x, q.y, q.z, q.w]);
+    return;
+  }
   for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && (shape || edit.view[s * 6 + d])) faces.push([s, d]);
   if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d)) faces.push([s, d]);
   showFaces(st, faces, shape);
+}
+
+/**
+ * The share of the haloed cubelets and spots the view from direction v shows: of points
+ * spread over each (its corners and face middles, drawn in a little), those where the first
+ * thing a ray from the camera meets is one of them. A glass box in front counts as covering,
+ * though it is see-through: other boxes in the way are what make a view hard to read.
+ */
+function haloShare(st: State, slots: number[], v: any): number {
+  const own = pivot.quaternion.clone();
+  pivot.quaternion.copy(lookFrom(v));
+  pivot.updateMatrixWorld(true);
+  const targets = new Set(slots.map((s) => drawnAt(st, s)).filter(Boolean));
+  const ray = new THREE.Raycaster();
+  ray.layers.set(0);
+  ray.layers.enable(HALO_LAYER);
+  let seen = 0, n = 0;
+  for (const s of slots) {
+    const t = drawnAt(st, s);
+    if (!t) continue;
+    const r = (t.geometry?.parameters?.width === GHOST_SIZE ? GHOST_SIZE : 0.9) * 0.42;
+    for (const o of [...[-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => [x, y, z]))), ...DIRS]) {
+      const at = pivot.localToWorld(new THREE.Vector3(SLOT_POS[s][0] + o[0] * r, SLOT_POS[s][1] + o[1] * r, SLOT_POS[s][2] + o[2] * r));
+      const to = at.clone().sub(camera.position);
+      const far = to.length();
+      ray.set(camera.position, to.normalize());
+      n++;
+      let first: any = null;
+      for (const h of ray.intersectObjects(pivot.children, true)) {
+        if (h.distance > far - 1e-3) break;
+        let obj = h.object;
+        while (obj.parent && obj.parent !== pivot) obj = obj.parent;
+        if (!obj.visible || !(meshes.includes(obj) || blanks.includes(obj) || ghosts.includes(obj) || hintGhosts.includes(obj))) continue;
+        first = obj;
+        break;
+      }
+      if (!first || targets.has(first)) seen++;
+    }
+  }
+  pivot.quaternion.copy(own);
+  pivot.updateMatrixWorld(true);
+  return n ? seen / n : 0;
+}
+
+/** Degrees from straight at a core edge that Show aims for: enough to show the spots on it in depth. */
+const EDGE_TILT = 20;
+
+/**
+ * The direction Show looks at a core cubelet from, for a problem about it alone. A view
+ * straight at an edge shows the spots on it edge-on, and a tilt along it shows how they sit
+ * on it, but too far and other cubelets and glass boxes crowd in; a play-tester liked a slight
+ * angle best. So of the views `coreViews` gives, the one aiming for `EDGE_TILT` (none for a
+ * corner, whose own view shows its three sides) that shows the most of the halo, each degree
+ * away from the aim costing 1% of it; then from above, then nearest the view now.
+ */
+function coreView(st: State, core: number, slots: number[]): any {
+  const aim = SLOT_POS[core].includes(0) ? EDGE_TILT : 0;
+  const now = new THREE.Vector3(0, 0, 1).applyQuaternion(pivot.quaternion.clone().invert());
+  let best: any = null, bestScore = -Infinity;
+  for (const { v, tilt } of coreViews(core)) {
+    const score = haloShare(st, slots, v) - Math.abs(tilt - aim) * 0.01 + v.y * 0.005 + v.dot(now) * 0.002;
+    if (score > bestScore) (best = v), (bestScore = score);
+  }
+  return best;
+}
+
+/**
+ * Views of a core cubelet for Show: from its own direction (straight at an edge, the corner
+ * view for a corner), and tilted from it by up to 40 degrees: along an edge's length, or
+ * toward and away from each of a corner's sides.
+ */
+function coreViews(core: number): { v: any; tilt: number }[] {
+  const p = SLOT_POS[core], c = new THREE.Vector3(...p).normalize();
+  const axes = p.some((x) => x === 0) ? [0, 1, 2].filter((a) => p[a] === 0).flatMap((a) => [1, -1].map((g) => DIRS[2 * a].map((x) => x * g))) : DIRS;
+  const out = [{ v: c.clone(), tilt: 0 }];
+  for (const e of axes) {
+    const t = new THREE.Vector3(...e);
+    t.sub(c.clone().multiplyScalar(t.dot(c)));
+    if (t.lengthSq() < 1e-6) continue;
+    t.normalize();
+    for (const deg of [10, 20, 30, 40]) {
+      const a = (deg * Math.PI) / 180;
+      out.push({ v: c.clone().multiplyScalar(Math.cos(a)).add(t.clone().multiplyScalar(Math.sin(a))), tilt: deg });
+    }
+  }
+  return out;
 }
 
 /** Tumbles the 3D view to the direction that shows these faces (slot, direction) of st best: the most unblocked, then each as squarely as possible. */
@@ -5828,6 +5922,8 @@ function installProbe() {
     /** The debug info Copy debug info copies, and putting it back (for reproducing what a person saw). */
     debugInfo: () => debugInfo(),
     restoreDebug: (json: string) => restoreDebug(json),
+    /** For each view Show weighs for a core cubelet (slot name): its direction, tilt and the share of the halo it shows. */
+    coreViewShares: (name: string) => coreViews(slotByName(name)).map(({ v, tilt }) => ({ v: v.toArray().map((x: number) => +x.toFixed(2)), tilt, share: +haloShare(edit!.shown, haloSlots(), v).toFixed(2) })),
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
     /** The turns of the last shuffle (the page doesn't show them). */
