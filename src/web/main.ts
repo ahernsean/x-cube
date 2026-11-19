@@ -3148,6 +3148,7 @@ function bindUI() {
     b.addEventListener("click", () => {
       if (!edit) return;
       edit.paint = b.dataset.paint as Color | "shape";
+      if (edit.paint === "shape") stopShapeFlash();
       renderEdit();
     });
   }
@@ -3595,8 +3596,15 @@ function pickMarker(el: HTMLElement, clientX: number, clientY: number, h: CubeHi
 /**
  * With a color picked, a tap on what a shape hint says to tap (a glass box in a spot to
  * fill, or an extension to take away) means a shape edit, which only the Shape tool makes:
- * the tap colors nothing, a message says to pick Shape, and the Shape button flashes.
+ * the tap colors nothing, a message says to pick Shape, and the Shape button pulses until
+ * Shape is picked or for `SHAPE_FLASH_MS`, long enough to read the message and look for it.
  */
+const SHAPE_FLASH_MS = 8000;
+let shapeFlashTimer: ReturnType<typeof setTimeout> | undefined;
+function stopShapeFlash() {
+  clearTimeout(shapeFlashTimer);
+  document.querySelector('[data-paint="shape"]')?.classList.remove("flash");
+}
 function shapeFirst(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null): boolean {
   if (!edit?.highlight) return false;
   const taps = edit.fit.problems[shownProblem().i]?.taps;
@@ -3606,9 +3614,10 @@ function shapeFirst(el: HTMLElement, clientX: number, clientY: number, h: CubeHi
   setMessage("To add or remove an extension, pick Shape first", "info");
   render();
   const b = document.querySelector('[data-paint="shape"]') as HTMLElement;
-  b.classList.remove("flash");
-  void b.offsetWidth; // restart the flash
+  stopShapeFlash();
+  void b.offsetWidth; // restart the pulse
   b.classList.add("flash");
+  shapeFlashTimer = setTimeout(stopShapeFlash, SHAPE_FLASH_MS);
   return true;
 }
 

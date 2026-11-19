@@ -418,7 +418,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     says so ("Two extensions should probably be added, one in each of these spots"). With a
     color picked, a tap on what the hint says to tap (`Problem.taps`: a glass box, or an
     extension to take away) colors nothing: "To add or remove an extension, pick Shape
-    first", and the Shape button flashes (`shapeFirst`). A halo marks a cubelet or a spot for one (3D); a
+    first", and the Shape button pulses until Shape is picked or for 8 seconds (`shapeFirst`,
+    `SHAPE_FLASH_MS`; a play-tester missed a one-second flash while reading the message). A halo marks a cubelet or a spot for one (3D); a
     ring marks a sticker (2D), so shape hints have no rings. In the shape messages an
     extension cubelet is "an extension", as in "This core corner has only one extension". One tap at a time; the next problem goes on from there. Over 200 simulated
     edits of 2 to 6 random taps followed hint by hint, every one reached a valid shape in at

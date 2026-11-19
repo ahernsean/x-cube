@@ -1574,6 +1574,14 @@ labTest("shape editing: a shape problem halos the glass box where an extension s
   await page.waitForFunction(() => /pick Shape first/.test(document.getElementById("message").textContent), null, { timeout: 3000 }).catch(() => {});
   const tapped = { message: await page.$eval("#message", (e) => e.textContent), flash: await page.$eval('[data-paint="shape"]', (b) => b.classList.contains("flash")), removed: (await probe("shapeEdit")).removed.join() };
   check(/To add or remove an extension, pick Shape first/.test(tapped.message) && tapped.flash && tapped.removed === before.removed.join(), `a tap on the box with a color picked says to pick Shape (${JSON.stringify(tapped)})`);
+  // It keeps pulsing while the message is read, and stops once Shape is picked.
+  await page.waitForTimeout(2500);
+  const still = await page.$eval('[data-paint="shape"]', (b) => b.classList.contains("flash"));
+  await page.click('[data-paint="shape"]');
+  const stopped = !(await page.$eval('[data-paint="shape"]', (b) => b.classList.contains("flash")));
+  check(still && stopped, `the Shape button pulses for a while, and stops when Shape is picked (${JSON.stringify({ still, stopped })})`);
+  await page.click('[data-paint="W"]');
+  await settle();
   // With the Shape tool, its own box in that spot carries the halo: no second box.
   await page.click('[data-paint="shape"]');
   await settle();
