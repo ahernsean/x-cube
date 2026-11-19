@@ -118,7 +118,7 @@ function noCubelet(kind: Kind, cs: Color[]): string {
   // The colors are on a cubelet of this kind, but not in this arrangement: on a corner,
   // the three colors go around it in a fixed order that no turn can mirror.
   const holders = sameKind.filter((c) => cs.every((x) => c.stickers.includes(x))).length;
-  if (holders && cs.length === 3) return "Wrong color order";
+  if (holders && cs.length === 3) return `No cubelet has ${listColors(cs)} arranged this way`;
   if (holders) return `No cubelet in this position can show ${listColors(cs)} this way`;
   return `No cubelet in this position has ${listColors(cs)}`;
 }
@@ -417,12 +417,111 @@ export function missingColors(shape: State, colors: FaceColors, spots: number[],
   }
   const have = new Map<string, number>();
   for (const c of CUBELETS) if (c.kind === kind) have.set(key(c.stickers), (have.get(key(c.stickers)) ?? 0) + 1);
-  const short = [...have].filter(([k, n]) => n > (shown.get(k) ?? 0)).map(([k]) => k);
-  if (!short.length) return null;
-  // Nearest to what the spots show: the fewest of a spot's colors left out.
-  const apart = (k: string) => Math.min(...spots.map((t) => shownColors(colors, t).filter((c) => !k.includes(c)).length));
-  const best = Math.min(...short.map(apart));
-  return say(short.filter((k) => apart(k) === best).map((k) => listColors([...k] as Color[])));
+  let short = new Set([...have].filter(([k, n]) => n > (shown.get(k) ?? 0)).map(([k]) => k));
+  // With no cubelet missing, a spot's own colors are right and only their arrangement is wrong.
+  if (!short.size) short = new Set(spots.map((t) => key(shownColors(colors, t))).filter((k) => have.has(k)));
+  if (!short.size) return null;
+  // A cubelet with one sticker is fixed by naming its color.
+  if (spots.every((t) => shownColors(colors, t).length === 1)) {
+    const best = Math.min(...[...short].map((k) => Math.min(...spots.map((t) => (k.includes(shownColors(colors, t)[0]) ? 0 : 1)))));
+    return say([...short].filter((k) => spots.some((t) => (k.includes(shownColors(colors, t)[0]) ? 0 : 1) === best)).map((k) => listColors([...k] as Color[])));
+  }
+  // Otherwise, the fewest stickers to recolor so that a spot shows a missing cubelet, turned
+  // as the outward-color rule allows, sticker by sticker (two trading colors is one change).
+  const options: { spot: number; changes: [Color, Color][] }[] = [];
+  let best = Infinity;
+  for (const t of spots) {
+    const outDir = outwardDir(t);
+    for (const c of CUBELETS) {
+      if (c.kind !== kind || !short.has(key(c.stickers))) continue;
+      for (let o = 0; o < NUM_ROT; o++) {
+        if (c.outward !== null && ROT_DIR[o * 6 + c.outward] !== outDir) continue;
+        const changes: [Color, Color][] = [];
+        let ok = true;
+        for (let d = 0; d < 6 && ok; d++) {
+          const want = colors[t * 6 + d];
+          if (want === undefined) continue;
+          const has = c.stickers[ROT_DIR[ROT_INV[o] * 6 + d]];
+          if (want === null || want === UNPAINTED) ok = want === null ? has === null : has !== null;
+          else if (has === null) ok = false;
+          else if (has !== want) changes.push([want, has]);
+        }
+        // Two stickers trading colors, and nothing else, is one mistake, as likely as one wrong color.
+        const cost = changes.length === 2 && changes[0][0] === changes[1][1] && changes[0][1] === changes[1][0] ? 1 : changes.length;
+        if (!ok || cost > best) continue;
+        if (cost < best) (best = cost), (options.length = 0);
+        options.push({ spot: t, changes });
+      }
+    }
+  }
+  if (!options.length || best === 0) return null;
+  return fixesText(colors, spots, options, wrong);
+}
+
+/** The colors of one spot, as a key that tells spots showing the same colors apart. */
+const shownKey = (colors: FaceColors, s: number) => shownColors(colors, s).join("");
+
+/**
+ * Says which stickers to recolor: "Its red sticker should probably be orange", "Its blue and
+ * orange stickers should probably trade colors". Options on one sticker merge ("should maybe
+ * be orange or blue"); each other option gets its own sentence, starting "Or". With several
+ * spots, each option says which one by its colors, unless they all show the same.
+ */
+function fixesText(colors: FaceColors, spots: number[], options: { spot: number; changes: [Color, Color][] }[], wrong: number): string {
+  const one = spots.length === 1;
+  const same = spots.every((t) => shownKey(colors, t) === shownKey(colors, spots[0]));
+  const where = (t: number) => {
+    if (one) return "";
+    if (same) return "on one of these, ";
+    const like = spots.filter((u) => shownKey(colors, u) === shownKey(colors, t)).length;
+    const cs = listColors(shownColors(colors, t));
+    return like === 1 ? `on the one that is ${cs}, ` : `on one of those that are ${cs}, `;
+  };
+  const its = one ? "its" : "the";
+  // One clause per sticker, or per pair of stickers trading colors.
+  const clauses = (t: number, changes: [Color, Color][], modal: string) => {
+    const left = [...changes];
+    const out: string[] = [];
+    while (left.length) {
+      const [from, to] = left.shift()!;
+      const back = left.findIndex(([f, x]) => f === to && x === from);
+      if (back >= 0) {
+        left.splice(back, 1);
+        out.push(`${its} ${listColors(COLOR_ORDER.filter((c) => c === from || c === to))} stickers ${out.length ? "should" : modal} trade colors`);
+        continue;
+      }
+      // Stickers of one color can't be told apart by it: "one of its yellow stickers", or
+      // when each of them changes, "its yellow stickers should be white and blue".
+      const n = shownColors(colors, t).filter((c) => c === from).length;
+      const alike = left.filter(([f]) => f === from);
+      const verb = out.length ? "should" : modal;
+      if (n > 1 && alike.length === n - 1) {
+        for (const a of alike) left.splice(left.indexOf(a), 1);
+        out.push(`${its} ${COLOR_NAME[from]} stickers ${verb} be ${listColors([to, ...alike.map(([, x]) => x)])}, one each`);
+      } else out.push(`${n > 1 ? `one of ${its} ${COLOR_NAME[from]} stickers` : `${its} ${COLOR_NAME[from]} sticker`} ${verb} be ${COLOR_NAME[to]}`);
+    }
+    return out.length < 3 ? out.join(", and ") : `${out.slice(0, -1).join(", ")}, and ${out[out.length - 1]}`;
+  };
+  // Merge options that recolor the same single sticker of the same spot.
+  const seen = new Map<string, { spot: number; changes: [Color, Color][]; to: Color[] }>();
+  for (const o of options) {
+    const k = o.changes.length === 1 ? `${shownKey(colors, o.spot)}|${o.changes[0][0]}` : `${shownKey(colors, o.spot)}|${o.changes.map((c) => c.join(">")).sort().join(",")}`;
+    const had = seen.get(k);
+    if (!had) seen.set(k, { ...o, to: o.changes.length === 1 ? [o.changes[0][1]] : [] });
+    else if (o.changes.length === 1 && !had.to.includes(o.changes[0][1])) had.to.push(o.changes[0][1]);
+  }
+  const list = [...seen.values()];
+  const modal = list.length === 1 && list[0].to.length <= 1 ? "should probably" : "should maybe";
+  const sentences = list.map((o, i) => {
+    const body =
+      o.to.length > 1
+        ? `${o.changes[0] && shownColors(colors, o.spot).filter((c) => c === o.changes[0][0]).length > 1 ? `one of ${its} ${COLOR_NAME[o.changes[0][0]]} stickers` : `${its} ${COLOR_NAME[o.changes[0][0]]} sticker`} ${i ? "should" : modal} be ${listColors(COLOR_ORDER.filter((c) => o.to.includes(c)), "or")}`
+        : clauses(o.spot, o.changes, i ? "should" : modal);
+    const text = `${i && where(o.spot) === where(list[i - 1].spot) ? "" : where(o.spot)}${body}`;
+    return i ? `Or ${text}` : cap(text);
+  });
+  const lead = wrong > 1 ? `At least ${numberWord(wrong)} of these have a sticker with the wrong color. ` : "";
+  return lead + sentences.join(". ");
 }
 
 /**
