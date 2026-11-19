@@ -1001,14 +1001,19 @@ function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
   const off = pool.filter((t) => draftFilled(d, t));
   const pick = off.length ? off : pool;
   const noun = pick.every((t) => span(coreOf(t)) === 1) ? "extension center" : "extension";
-  // A core corner with none must get two, on that corner and nowhere else: no "should".
-  const two = !off.length && p.slots.length === 1 && span(p.slots[0]) === 3 && !filledOn(d, p.slots[0]).length && pick.length > 1;
-  const text = off.length
-    ? pick.length === 1
-      ? `This ${noun} should probably be removed`
-      : `One of these ${noun}s should probably be removed`
-    : two
-      ? `Add two ${noun}s to this corner`
+  // A problem about one core corner or edge is fixed on that cubelet and nowhere else, so
+  // what to do is certain and said plainly; only which of its spots is a guess, which the
+  // halo shows. A core corner with none must get two.
+  const own = p.slots.length === 1 && (span(p.slots[0]) === 3 || span(p.slots[0]) === 2) && outwardDir(p.slots[0]) < 0 ? (span(p.slots[0]) === 3 ? "corner" : "edge") : null;
+  const two = !off.length && own === "corner" && !filledOn(d, p.slots[0]).length;
+  const text = own
+    ? off.length
+      ? `Remove an ${noun} from this ${own}`
+      : `Add ${two ? `two ${noun}s` : `an ${noun}`} to this ${own}`
+    : off.length
+      ? pick.length === 1
+        ? `This ${noun} should probably be removed`
+        : `One of these ${noun}s should probably be removed`
       : `An ${noun} should probably be added ${pick.length === 1 ? "here" : "in one of these spots"}`;
   // The halo marks the extensions to take away, or the empty spots to fill (the Lab draws a
   // glass box in each, haloed).

@@ -409,14 +409,18 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     is the one to fill), and of the spots some such fewest taps change, those on the core
     cubelets the problem names (or of its kind, when it names none), taking one away before
     putting one in, the halo on the core cubelet the problem names as well as on what the
-    hint names ("this" always points at something marked; `WORDING.md`): "This extension should probably be removed" (the halo on it), "An
+    hint names ("this" always points at something marked; `WORDING.md`). A problem about one core
+    corner or edge is fixed on that cubelet and nowhere else, so its hint says what to do
+    plainly ("Add an extension to this corner", "Remove an extension from this corner",
+    "Add an extension to this edge"), the halo showing the likeliest spots; the count
+    problems, where which cubelet to change is a guess, say "This extension should probably
+    be removed" (the halo on it), "An
     extension should probably be added here" (the halo on the Shape tool's glass box in the
     empty spot, the control a tap fills it with; with another tool picked, the hint draws
     that one box itself, the same size: `hintGhosts`, `ghostBox`; the arrow, Show and the
     view's checks take the box for what is in that spot), or "One of these extensions ..." / "in
-    one of these spots" when the taps tie; a core corner with none must get two, there and
-    nowhere else, so its hint says so plainly ("Add two extensions to this corner"), with
-    the halo on the corner and the spots that keep the twists whole. With a
+    one of these spots" when the taps tie; a core corner with none must get two ("Add two
+    extensions to this corner"). With a
     color picked, a tap on what the hint says to tap (`Problem.taps`: a glass box, or an
     extension to take away) colors nothing: "To add or remove an extension, pick Shape
     first", and the Shape button pulses until Shape is picked or for 8 seconds (`shapeFirst`,

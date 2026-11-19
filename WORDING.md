@@ -72,9 +72,11 @@ circled orange sticker should probably be green". A center is named by its color
 red center"), since no two centers show one color.
 
 A halo marks a cubelet, or the spot where one should go (the Shape tool's glass box
-there); a ring marks a sticker. So a shape hint points with the halo and says "this" or "here":
-"This extension should probably be removed", "An extension should probably be added
-here". In shape messages an extension cubelet is "an extension"; a center's is "an
+there); a ring marks a sticker. So a shape hint points with the halo and says "this" or "here".
+Where the fix is certain, say it plainly, without "should" or "probably": a core corner
+with one extension must get another, on that corner and nowhere else ("Add an extension to
+this corner"). Keep "probably" for guesses: which of the corner's spots (the halo shows the
+likeliest), or which of several cubelets ("This extension should probably be removed"). In shape messages an extension cubelet is "an extension"; a center's is "an
 extension center". Two stickers in each other's spots "trade places", not colors: a sticker
 is the thing that is wrong, and the user moves it.
 

@@ -1314,7 +1314,7 @@ labTest("shape editing: Show and the arrow reach a cubelet bared by taking an ex
   await tapAt(await probe("sticker", "Fx.U", "F"));
   const line = await page.$eval("#edit-status", (e) => e.textContent);
   const haloed = (await probe("haloed")).sort().join();
-  check(/This core edge has no extensions, but it has to have one or two\. An extension should probably be added in one of these spots/.test(line) && haloed === "Fx.U,UF,Ux.F", `taking the edge's only extension off halos the edge and the spots to fill (${line}, ${haloed})`);
+  check(/This core edge has no extensions, but it has to have one or two\. Add an extension to this edge/.test(line) && haloed === "Fx.U,UF,Ux.F", `taking the edge's only extension off halos the edge and the spots to fill (${line}, ${haloed})`);
   // From the front, the box where the cubelet taken off was shows: the hidden cubelet
   // doesn't block the view of it.
   await page.evaluate(() => document.querySelector('[data-view="front"]').click());
@@ -1565,7 +1565,7 @@ labTest("shape editing: a shape problem halos the glass box where an extension s
   await page.click('[data-halo="show"]');
   await settle();
   const seen = { line: await page.$eval("#edit-status", (e) => e.textContent), outlined: await probe("outlined"), px3d: await probe("haloPixels", "3d"), behind: (await probe("haloArrow")).behind, faces: await probe("facesSeen", "Rx.UF") };
-  check(/This core corner has only one extension, but it has to have two\. An extension should probably be added here/.test(seen.line) && seen.outlined.join() === "Rx.UF,UFR" && seen.px3d > 0 && seen.behind.length === 0 && seen.faces > 0 && (await probe("hintBoxes")) === 1, `the spot to fill has a haloed glass box, in view after Show (${JSON.stringify(seen)})`);
+  check(/This core corner has only one extension, but it has to have two\. Add an extension to this corner/.test(seen.line) && seen.outlined.join() === "Rx.UF,UFR" && seen.px3d > 0 && seen.behind.length === 0 && seen.faces > 0 && (await probe("hintBoxes")) === 1, `the spot to fill has a haloed glass box, in view after Show (${JSON.stringify(seen)})`);
   // With a color picked, a tap on the box means a shape edit: it colors nothing, says to
   // pick Shape, and the Shape button flashes.
   const before = await probe("shapeEdit");

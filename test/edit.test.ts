@@ -293,7 +293,7 @@ test("edit: an extension cubelet on a core corner comes and goes alone, and the 
   assert.ok(!draftFilled(d, at(2, 1, 1)) && draftFilled(d, at(1, 1, 2)), "only the tapped cubelet goes");
   // Either bare spot gives the corner two again, but only the one it came from keeps the
   // corners' twists whole, so only that one is haloed.
-  assert.deepEqual(draftProblems(d).map((p) => p.text), ["This core corner has only one extension, but it has to have two. An extension should probably be added here"]);
+  assert.deepEqual(draftProblems(d).map((p) => p.text), ["This core corner has only one extension, but it has to have two. Add an extension to this corner"]);
   assert.deepEqual([...draftProblems(d)[0].slots].sort(), [at(1, 1, 1), at(2, 1, 1)].sort(), "the halo marks the corner and the spot it came from");
   draftTap(d, at(1, 2, 1)); // its top gets one: two again, but not where they were
   assert.deepEqual(draftProblems(d), [], "two extensions on every core corner");
@@ -308,7 +308,7 @@ test("edit: an extension cubelet on a core corner comes and goes alone, and the 
   const e = draft();
   draftTap(e, at(1, 2, 1)); // UFR's bare top
   draftTap(e, at(0, 1, 2)); // UF's one extension
-  assert.deepEqual(draftProblems(e).map((p) => p.text).slice(0, 2), ["This core corner has three extensions, but it can have only two. This extension should probably be removed", "This core edge has no extensions, but it has to have one or two. An extension should probably be added in one of these spots"]);
+  assert.deepEqual(draftProblems(e).map((p) => p.text).slice(0, 2), ["This core corner has three extensions, but it can have only two. Remove an extension from this corner", "This core edge has no extensions, but it has to have one or two. Add an extension to this edge"]);
   const f = draft();
   draftTap(f, at(2, 1, 1));
   draftTap(f, at(-2, 1, 1)); // UFR and UFL down to one each
