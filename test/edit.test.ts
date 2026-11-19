@@ -44,7 +44,7 @@ test("edit: colors no cubelet has are refused, naming the spot", () => {
   const fit = fitColors(st, colors);
   assert.equal(fit.level, null);
   assert.equal(fit.state, null);
-  assert.deepEqual(fit.problems, [{ text: "White and yellow can never be on the same cubelet. Its yellow sticker should probably be green", slots: [at(0, 1, 2)] }]);
+  assert.deepEqual(fit.problems, [{ text: "This cubelet's yellow sticker has the wrong color. Its yellow sticker should probably be green", slots: [at(0, 1, 2)] }]);
 });
 
 test("edit: one cubelet needed in two places is refused", () => {
@@ -77,6 +77,8 @@ test("edit: each problem in a play-tester's edit names what a wrong spot should 
   const st = decodeState("MBFV RRHB EEWZ YJGF IQHJ IJGI MRLQ JDLT DNOI PDYD AEZZ");
   const colors = [...".G.W.R.Y.G...............B.....B..O........RW....OW.G........R.G...W.BO..G.W.R...W.........Y.....Y.BR..Y...O.Y.................B..Y..YR..G.Y......W.....Y....OW.G..YR..G...............R.Y.........BR............Y...Y...........RB......O................R...W..O..W.....Y.....W.....R.B...................Y..G.OW..B..B..RW.Y..G.OY.....W.........W..................W..........Y..................W......Y.....W.R.B.W.R..GO.G...Y.O.B.............B..OY.G....WO.....G...O.O.B..WO.G........."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
   assert.deepEqual(fitColors(st, colors).problems.map((p) => p.text), [
+    "This cubelet's yellow sticker has the wrong color. Its yellow sticker should probably be red",
+    "This cubelet's yellow sticker has the wrong color. Its yellow sticker should probably be orange",
     "Two centers are yellow, but there can be only one like that. One of these should be white",
     "Three extension edges are blue and red, but there can be only two like that. On one of these, the red sticker should maybe be yellow. Or the blue and red stickers should trade places",
     "Five core single edges are white, but there can be only four like that. One of these should be yellow",
@@ -91,13 +93,14 @@ test("edit: spots competing for too few cubelets are found among finished spots"
   const st = State.solved();
   // Two extension edges white and blue, a third with white and a sticker with no color yet:
   // only the two finished ones are reported.
+  // Three extension edges green and red, and a fourth with green and a sticker with no
+  // color yet: only the three finished ones are reported.
   const shared = visibleColors(st);
-  shared[280] = UNPAINTED;
-  shared[201] = "W";
-  shared[456] = "W";
+  shared[at(-1, 0, 2) * 6 + 1] = "R"; // Fx.L, green and orange, now green and red
+  shared[at(-2, 0, 1) * 6 + 1] = UNPAINTED; // Lx.F's orange
   const problems = fitColors(st, shared).problems;
-  assert.deepEqual(problems.map((p) => p.text), ["Two extension edges are white and blue, but there can be only one like that"]);
-  assert.ok(!problems[0].slots.includes(Math.floor(280 / 6)));
+  assert.deepEqual(problems.map((p) => p.text), ["Three extension edges are green and red, but there can be only two like that"]);
+  assert.ok(!problems[0].slots.includes(at(-2, 0, 1)));
   // From a play-tester's edit: two unfinished X-face corners, one red so far and one white,
   // can each be only the last red, white, and blue one. Proving that took 13 corners for 12
   // cubelets, all haloed; nothing is said until those corners are finished.
@@ -105,7 +108,22 @@ test("edit: spots competing for too few cubelets are found among finished spots"
   const paint = [...".O.Y.B.O.Y...O.YG..O...B.......OW.G..OW..B.OW.G..........R.........................Y...Y.....Y...O.YG..O.Y.B.......W...........O..G..OW..B..W.....W....W.....OW.G...............W............R.....Y...O.Y.B...Y.................YG......B............R.W.G...W..B..W.............Y...............O.....W.....................R..Y.B...Y...........Y..R..YG.R....B......Y.........Y.......R.W..B..W.....W.....W...R.W.G...................R..Y.B......R..YG.R...........R...GBO.W..GR.W...R.W.G."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
   const colors = draftColors({ shape: edited, removed: new Set(), added: new Set() }, paint);
   assert.ok(colors.includes(UNPAINTED));
-  assert.deepEqual(fitColors(edited, colors).problems, []);
+  assert.ok(fitColors(edited, colors).problems.every((p) => !/X-face corners/.test(p.text)));
+});
+
+test("edit: a white or yellow sticker facing away from the core is told first", () => {
+  // From a play-tester's edit: an extension edge in the down extension's back spot with
+  // yellow facing down. Every color on its other sticker was refused for the pair or a
+  // count; the yellow one is the wrong one.
+  const st = decodeState("X1:JgBaCaDaEaFaGaHaIaAg......KgLaMaNaOaPaQaRaSaTaUaVaWaXa......vf..4sYaufaasscadaeafaga..iojakq..ho..lq......manaoapaqarabstaZu..waxayaza0a......1a2a3a..5a6a7a8a9a");
+  const paint = [...".O.Y.B.O.Y...O.YG..O...B.O.....O..G..OW..B.OW....OW.G....Y.........................W...Y.....Y...O.YG..O.Y.B...................O..G..OW..B..W.....W.....Y....OW.G......................Y.W.........Y...O.Y.B.........Y...........YG...W..B............R.W.G............Y..W.......Y.........W...........W.....................R..Y.B...Y.....Y.....Y..R..YG.R....BW...............W.......R.W..B..W.....W.....W...R.W.G...................R..Y.BR..Y..R..YG.......R....BR...G.R.W..BR.W...R.W.G."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
+  const spot = at(0, -2, -1); // Dx.B
+  for (const c of ["W", "Y", "G", "B", "R", "O"] as Color[]) {
+    paint[spot * 6 + 5] = c;
+    const problems = fitColors(st, draftColors({ shape: st, removed: new Set(), added: new Set() }, paint)).problems;
+    const mine = problems.filter((p) => p.slots.includes(spot));
+    assert.deepEqual(mine.map((p) => p.text), ["This cubelet's yellow sticker has the wrong color"], c);
+  }
 });
 
 test("edit: two corners painted alike are named as looking the same, without saying which sticker is wrong", () => {
@@ -482,7 +500,7 @@ test("edit: a hint offers only the fixes that fit the likeliest fix of every spo
   const texts = fitColors(st, colors).problems.map((p) => p.text);
   assert.ok(texts.includes("No cubelet has yellow, blue, and red arranged this way. Its red sticker should probably be orange"), texts.join("\n"));
   assert.ok(texts.includes("No cubelet has white, green, and red arranged this way. Its white and red stickers should probably trade places"), texts.join("\n"));
-  assert.ok(texts.includes("White and yellow can never be on the same cubelet. Its green sticker should probably be blue, and its white sticker should be red"), texts.join("\n"));
+  assert.ok(texts.includes("This cubelet's white sticker has the wrong color. Its green sticker should probably be blue, and its white sticker should be red"), texts.join("\n"));
   for (const t of texts) assert.ok((t.match(/\. Or /g) ?? []).length <= 2, t);
 });
 
@@ -512,7 +530,7 @@ test("edit: several wrong centers are each given a different missing color", () 
   // the three colors no center shows, not all to the one opposite their red neighbors.
   const st = decodeState("VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS");
   const colors = [...".R.Y.G.B.R...O.YG..G...Y.R.....O..G..OW..B.GW....OW.G....................O.Y.B...Y.....Y.....W...O.YG..O...W...................B..O..OW..B..Y.....Y.....W....OW.G........................................G.R...W.....Y.....W.....YR......R................R...R..Y..W.....W.....W.....W.B.....................................R..Y.B...W.....Y.....W..R..YG.R....B..................R...G.G.W..R..Y.....Y.....Y...R.W.G...................R..Y.BB..O..O..YB.B....YR.....G...O.R.W..BO.Y...B.W.R."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
-  assert.equal(fitColors(st, colors).problems[0].text, "Four centers are red, but there can be only one like that. Three of these should be green, blue, and orange, one each");
+  assert.ok(fitColors(st, colors).problems.some((p) => p.text === "Four centers are red, but there can be only one like that. Three of these should be green, blue, and orange, one each"));
 });
 
 test("edit: a core corner with no extensions is said to have none, not one", () => {

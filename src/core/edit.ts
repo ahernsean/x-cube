@@ -709,7 +709,30 @@ function fixesText(colors: FaceColors, spots: number[], options: { spot: number;
   return { text: lead + sentences.join(". "), slots: at !== spots ? at : undefined, marks: marks.length ? marks : undefined };
 }
 
+/**
+ * Fits the colors to cubelets (see `Fit`). An extension cubelet's sticker facing away from
+ * the core is never white or yellow, which needs no counting and says for certain which
+ * sticker is wrong, so it is told first, and other problems on that cubelet wait for it:
+ * a play-tester recolored the other sticker of an extension edge with yellow facing down
+ * through all six colors, told each time about the pair or a count.
+ */
 export function fitColors(shape: State, colors: FaceColors): Fit {
+  const facing: Problem[] = [];
+  for (let s = 0; s < NUM_SLOTS; s++) {
+    const id = shape.occ[s], out = outwardDir(s);
+    if (id < 0 || out < 0 || !["outerCorner", "outerEdge"].includes(CUBELETS[id].kind)) continue;
+    const c = colors[s * 6 + out];
+    if (c === "W" || c === "Y") facing.push(hinted(`This cubelet's ${COLOR_NAME[c]} sticker has the wrong color`, [s], missingColors(shape, colors, [s])));
+  }
+  const fit = fitAll(shape, colors);
+  if (!facing.length) return fit;
+  const named = new Set(facing.map((p) => p.slots.join()));
+  const wrong = new Set(facing.flatMap((p) => p.slots));
+  const rest = fit.problems.filter((p) => !named.has(p.slots.join()) && !p.slots.some((t) => wrong.has(t)));
+  return { level: fit.level, state: fit.state, problems: [...facing, ...rest] };
+}
+
+function fitAll(shape: State, colors: FaceColors): Fit {
   const strict = attempt(shape, colors, "outward");
   if (strict.state) {
     const reach = reachableFit(shape, colors);

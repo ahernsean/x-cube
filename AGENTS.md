@@ -459,7 +459,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
   physical cube can't do that). Outward-rule problems name only what the owner can check on
   the cube: "This cubelet's white sticker has the wrong color" (no
-  extension cubelet's outward sticker is white or yellow), "No cubelet has green and red
+  extension cubelet's outward sticker is white or yellow; that needs no counting and says
+  for certain which sticker is wrong, so it is told first, before any other problem, and
+  other problems on that cubelet wait for it: a play-tester recolored the other sticker of
+  an edge with yellow facing down through all six colors, told each time about the pair or
+  a count), "No cubelet has green and red
   arranged this way. One of its stickers has the wrong color", or "Two X-face corners
   look the same, but the puzzle has only one like that. One of them has a sticker with the
   wrong color"; none of them says "outward" or which color points out, which the owner

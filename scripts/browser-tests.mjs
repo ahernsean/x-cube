@@ -1292,9 +1292,10 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   const stepped = { line: await editLine(), lit: (await probe("highlighted")).join(), still: JSON.stringify(await probe("view")) === viewBefore };
   await page.click('[data-halo="next"]');
   const wrapped = (await probe("highlighted")).join();
-  // The line stays on the problem it showed (Rx.U's) when the new one sorts ahead of it.
+  // Yellow facing away from the core on both is wrong too, and told with the first: the line
+  // stays on the problem it showed (Fx.U's) as the others appear.
   const at = (line) => line.match(/‹(\d)\/(\d)›/)?.slice(1).join("/");
-  check(firstLit === "Rx.U" && at(navLine) === "2/2" && at(stepped.line) === "1/2" && stepped.lit === "Fx.UR" && stepped.still && wrapped === firstLit, `the line stays on its problem when another appears; ‹ and › step through them, moving the halo, not the view (${at(navLine)} ${firstLit}, then ${at(stepped.line)} ${stepped.lit}, then ${wrapped})`);
+  check(firstLit === "Fx.U" && at(navLine) === "1/3" && at(stepped.line) === "2/3" && stepped.lit === "Fx.UR" && stepped.still && wrapped === "Rx.U", `the line stays on its problem when another appears; ‹ and › step through them, moving the halo, not the view (${at(navLine)} ${firstLit}, then ${at(stepped.line)} ${stepped.lit}, then ${wrapped})`);
   await page.click("#edit-cancel");
   sw = await sweep3d();
   const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");
@@ -1494,14 +1495,19 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   const back = { fell, line: await editLine(), colors: [await probe("painted", "Fx.UR", "F"), await probe("painted", "Fx.UR", "U"), await probe("painted", "Fx.UR", "R")].join() };
   check(back.fell === "G,W,R" && back.colors === "G,W,R" && back.line === "Valid", `a cubelet's colors fall onto every face it bares, and come back when it is put back (${JSON.stringify(back)})`);
   // Moved from the front of a core edge to its top, a cubelet takes the white it covers;
-  // its other stickers are to paint, and the green that fell onto the core edge is a
-  // problem, with a halo and a Hide pill in the 3D view.
+  // its other stickers are to paint. White facing away from the core is told first, and
+  // the green that fell onto the core edge is a problem too, with a halo and a Hide pill
+  // in the 3D view.
   const move = async (from, face, to) => {
     await tapSticker(from, face);
     await tapAt(await probe("spot", to));
   };
   await move("Fx.U", "F", "Ux.F");
   await tool("W");
+  const facing = await editLine();
+  check(/^Not valid: This cubelet's white sticker has the wrong color\./.test(facing), `the white facing away from the core is told first ("${facing}")`);
+  await page.click('[data-halo="next"]');
+  await idle();
   const box = await page.$eval("#scene", (c) => { const r = c.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
   const few = { line: await editLine(), halo: (await probe("highlighted")).join(), pill: (await probe("shapeEdit")).pill, took: await probe("painted", "Ux.F", "U") };
   check(
