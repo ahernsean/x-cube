@@ -413,7 +413,8 @@ export function missingColors(shape: State, colors: FaceColors, spots: number[],
       return undefined;
     };
     const likely = none.filter((c) => spots.some((t) => across(t) === c));
-    return say((likely.length ? likely : none).map((c) => COLOR_NAME[c]));
+    const left = likely.length ? likely : none;
+    return left.length === 1 ? `${lead} should be ${COLOR_NAME[left[0]]}` : say(left.map((c) => COLOR_NAME[c]));
   }
   const have = new Map<string, number>();
   for (const c of CUBELETS) if (c.kind === kind) have.set(key(c.stickers), (have.get(key(c.stickers)) ?? 0) + 1);
@@ -421,10 +422,15 @@ export function missingColors(shape: State, colors: FaceColors, spots: number[],
   // With no cubelet missing, a spot's own colors are right and only their arrangement is wrong.
   if (!short.size) short = new Set(spots.map((t) => key(shownColors(colors, t))).filter((k) => have.has(k)));
   if (!short.size) return null;
-  // A cubelet with one sticker is fixed by naming its color.
+  // A cubelet with one sticker is fixed by naming its color: the one color the counts
+  // leave, said plainly. When they leave every color its kind can have, they add nothing
+  // to the problem ("must be white or yellow"), so there is no hint.
   if (spots.every((t) => shownColors(colors, t).length === 1)) {
     const best = Math.min(...[...short].map((k) => Math.min(...spots.map((t) => (k.includes(shownColors(colors, t)[0]) ? 0 : 1)))));
-    return say([...short].filter((k) => spots.some((t) => (k.includes(shownColors(colors, t)[0]) ? 0 : 1) === best)).map((k) => listColors([...k] as Color[])));
+    const left = [...short].filter((k) => spots.some((t) => (k.includes(shownColors(colors, t)[0]) ? 0 : 1) === best));
+    if (left.length === [...have.keys()].length) return null;
+    if (left.length === 1) return `${lead} should be ${listColors([...left[0]] as Color[])}`;
+    return say(left.map((k) => listColors([...k] as Color[])));
   }
   // Otherwise, the fewest stickers to recolor so that a spot shows a missing cubelet, turned
   // as the outward-color rule allows, sticker by sticker (two trading colors is one change).
