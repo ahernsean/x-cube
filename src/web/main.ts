@@ -5526,8 +5526,8 @@ function lookFrom(v: any): any {
 }
 
 /**
- * Turns the 3D view to show the highlighted cubelets' stickers best: the most of them
- * unblocked, then each as squarely as possible. Tries the preset views and looking from
+ * Turns the 3D view to show the highlighted cubelets' stickers best (for a shape problem,
+ * all their faces): the most of them unblocked, then each as squarely as possible. Tries the preset views and looking from
  * between the stickers' directions. Only on the owner's tap: a halo appearing never moves the view.
  */
 function showHighlighted() {
@@ -5535,24 +5535,37 @@ function showHighlighted() {
   const st = edit.shown;
   const faces: [number, number][] = [];
   const slots = haloSlots();
-  for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
+  // A shape problem is about how a core cubelet and the extensions or spots on it fit
+  // together, so every face of them counts: seeing the most of them takes a view from an
+  // angle, not one straight at the core cubelet's own sticker.
+  const shape = edit.removed.size > 0 || edit.added.size > 0;
+  for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && (shape || edit.view[s * 6 + d])) faces.push([s, d]);
   if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d)) faces.push([s, d]);
-  showFaces(st, faces);
+  showFaces(st, faces, shape);
 }
 
 /** Tumbles the 3D view to the direction that shows these faces (slot, direction) of st best: the most unblocked, then each as squarely as possible. */
-function showFaces(st: State, faces: [number, number][]) {
+function showFaces(st: State, faces: [number, number][], sides = false) {
   if (!faces.length) return;
   if (tween) (pivot.quaternion.copy(tween.to), (tween = null));
-  const best = bestView(st, faces);
+  const best = bestView(st, faces, sides);
   goToView([best.x, best.y, best.z, best.w]);
 }
-/** The view that shows the given sticker faces best (see showFaces). */
-function bestView(st: State, faces: [number, number][]): any {
+/**
+ * The view that shows the given faces best (see showFaces). With `sides`, first the one
+ * showing faces on the most sides of the puzzle, so the cubelets show in depth (a view
+ * straight at a core edge shows the spots on it edge-on); then, of views alike, the one
+ * nearest the view now.
+ */
+function bestView(st: State, faces: [number, number][], sides = false): any {
   if (!faces.length) return pivot.quaternion.clone();
+  const now = new THREE.Vector3(0, 0, 1).applyQuaternion(pivot.quaternion.clone().invert());
   const score = () => {
-    const seen = faces.map(([s, d]) => faceView(st, s, d)).filter((c) => c > 0);
-    return seen.length * 10 + seen.reduce((a, b) => a + b, 0) / faces.length;
+    const seen = faces.filter(([s, d]) => faceView(st, s, d) > 0);
+    const cos = seen.reduce((a, [s, d]) => a + faceView(st, s, d), 0) / faces.length;
+    if (!sides) return seen.length * 10 + cos;
+    const from = new THREE.Vector3(0, 0, 1).applyQuaternion(pivot.quaternion.clone().invert());
+    return new Set(seen.map(([, d]) => d)).size * 1000 + seen.length * 10 + cos + from.dot(now) * 0.01;
   };
   const dirs = [...new Set(faces.map(([, d]) => d))];
   const candidates: any[] = Object.values(VIEWS).map((q) => new THREE.Quaternion(q[0], q[1], q[2], q[3]));
