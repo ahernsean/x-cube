@@ -3058,10 +3058,40 @@ async function copyDebug() {
   render();
 }
 
+/**
+ * The JSON in pasted text: from a "{" to the "}" that closes it (braces inside strings
+ * don't count), so debug info pasted with words around it, as in a message to a developer,
+ * still reads. The first such span that parses as JSON, trying each "{" in turn (the words
+ * may hold braces of their own); the whole text when none does.
+ */
+function jsonIn(text: string): string {
+  for (let start = text.indexOf("{"); start >= 0; start = text.indexOf("{", start + 1)) {
+    let depth = 0, quoted = false;
+    for (let i = start; i < text.length; i++) {
+      const c = text[i];
+      if (quoted) {
+        if (c === "\\") i++;
+        else if (c === '"') quoted = false;
+      } else if (c === '"') quoted = true;
+      else if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) {
+        const span = text.slice(start, i + 1);
+        try {
+          JSON.parse(span);
+          return span;
+        } catch {
+          break;
+        }
+      }
+    }
+  }
+  return text;
+}
+
 /** Whether text is debug info the Lab can put back: its start, its turns and its edit's shape all read. */
 function isDebugInfo(text: string): boolean {
   try {
-    const d = JSON.parse(text);
+    const d = JSON.parse(jsonIn(text));
     if (d?.lab !== "x-cube debug 1") return false;
     decodeState(d.base);
     parseAlg(d.turns ?? "");
@@ -3080,7 +3110,7 @@ function putBackDebug(text: string) {
     return;
   }
   endingSolve(() => {
-    restoreDebug(text);
+    restoreDebug(jsonIn(text));
     $("debug-text").hidden = true;
     $("info-pop").hidden = true;
     $("info-btn").setAttribute("aria-expanded", "false");

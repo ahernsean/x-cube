@@ -1361,7 +1361,8 @@ labTest("info: Paste debug info puts back an edit that isn't valid", async ({ pa
   const field = await page.$eval("#debug-text", (f) => ({ shown: !f.hidden, editable: !f.readOnly }));
   await page.fill("#debug-text", "not debug info");
   const refused = await message();
-  await page.fill("#debug-text", json);
+  // Words around it, as in a message to a developer, are left out.
+  await page.fill("#debug-text", `Here is what I saw {see below}:\n${json}\nWhat do you think?`);
   await settle();
   const typed = await putBack();
   check(field.shown && field.editable && /That isn't debug info/.test(refused) && typed.removed === "Fx.U" && typed.line === line, `without the clipboard the field takes it, refusing other text (${JSON.stringify({ field, refused, typed })})`);
