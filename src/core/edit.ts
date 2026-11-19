@@ -159,7 +159,7 @@ const hinted = (text: string, slots: number[], hint: Hint | null, fallback?: str
   return out;
 };
 
-const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen"];
 const numberWord = (n: number) => NUMBER_WORDS[n] ?? String(n);
 
 /**
@@ -195,6 +195,15 @@ function candidates(shape: State, colors: FaceColors, s: number, rule: Rule): [n
   return out;
 }
 
+/**
+ * Whether a spot still has a sticker with no color. Spots competing for too few cubelets
+ * are found among finished spots only: an unfinished spot fits many cubelets, so a group
+ * that takes one in can spread over most of a kind (13 X-face corners for 12 in a
+ * play-tester's edit, where two unfinished corners each needed the last red, white, and
+ * blue one), and no hint can narrow it until its colors are in.
+ */
+const unfinished = (colors: FaceColors, spots: number[]) => spots.some((t) => [0, 1, 2, 3, 4, 5].some((d) => colors[t * 6 + d] === UNPAINTED));
+
 /** Assigns each filled slot a distinct cubelet (bipartite matching by augmenting paths). */
 function match(slots: number[], cand: Map<number, [number, number][]>) {
   const slotOf = new Map<number, number>(); // cubelet id -> slot
@@ -217,8 +226,9 @@ function match(slots: number[], cand: Map<number, [number, number][]>) {
   return { choice, slotOf, unmatched };
 }
 
-function attempt(shape: State, colors: FaceColors, rule: Rule) {
-  const slots = [...Array(NUM_SLOTS).keys()].filter((s) => shape.occ[s] >= 0);
+/** A matching of the filled slots to cubelets; with `finished`, of only those whose stickers all have a color. */
+function attempt(shape: State, colors: FaceColors, rule: Rule, finished = false) {
+  const slots = [...Array(NUM_SLOTS).keys()].filter((s) => shape.occ[s] >= 0 && !(finished && unfinished(colors, [s])));
   const cand = new Map(slots.map((s) => [s, candidates(shape, colors, s, rule)] as const));
   const m = match(slots, cand);
   let state: State | null = null;
@@ -699,26 +709,6 @@ function fixesText(colors: FaceColors, spots: number[], options: { spot: number;
   return { text: lead + sentences.join(". "), slots: at !== spots ? at : undefined, marks: marks.length ? marks : undefined };
 }
 
-/**
- * More spots than cubelets that fit them, the spots showing different colors: says what they
- * share when that alone leaves so few cubelets ("show green, but only four have green"), and
- * how many of the spots have a sticker with the wrong color.
- */
-function tooFew(shape: State, colors: FaceColors, spots: number[], fit: number): [string, Hint | null] {
-  const kind = kindOf(shape, spots[0]);
-  const [one, many] = KIND_NAME[kind];
-  const n = numberWord(spots.length), k = numberWord(fit);
-  const wrong = spots.length - fit;
-  const fix = `At least ${numberWord(wrong)} of them ${wrong === 1 ? "has" : "have"} a sticker with the wrong color`;
-  const shared = COLOR_ORDER.filter((c) => spots.every((t) => shownColors(colors, t).includes(c)));
-  const having = CUBELETS.filter((c) => c.kind === kind && shared.every((x) => c.stickers.includes(x))).length;
-  const hint = missingColors(shape, colors, spots, wrong);
-  const end = hint?.text ?? fix;
-  if (shared.length && having === fit)
-    return [`${cap(n)} ${many} show ${listColors(shared)}, but only ${k} ${fit === 1 ? "has" : "have"} ${listColors(shared)}. ${end}`, hint];
-  return [`${cap(n)} ${many} show colors that only ${k} ${fit === 1 ? "has" : "have"}. ${end}`, hint];
-}
-
 export function fitColors(shape: State, colors: FaceColors): Fit {
   const strict = attempt(shape, colors, "outward");
   if (strict.state) {
@@ -742,7 +732,7 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
       }
     // Every spot fits a cubelet turned a way the rule allows, but some compete for too few.
     if (!problems.length)
-      for (const g of competing(strict)) {
+      for (const g of competing(attempt(shape, colors, "outward", true))) {
         const spots = [...g.slots];
         const out = new Set(spots.map((t) => colors[t * 6 + outwardDir(t)]));
         const shown = new Set(spots.map((t) => listColors(shownColors(colors, t))));
@@ -759,7 +749,7 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
           ),
         );
       }
-    if (!problems.length) problems.push({ text: "The colors can't all be right at once. A sticker has the wrong color", slots: [] });
+    if (!problems.length && !unfinished(colors, strict.slots)) problems.push({ text: "The colors can't all be right at once. A sticker has the wrong color", slots: [] });
     return { level: "cubelets", state: loose.state, problems };
   }
   for (const s of loose.slots)
@@ -769,17 +759,15 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
     }
   if (!problems.length) {
     // Every slot has candidates, but some spots compete for too few cubelets.
-    const groups = competing(loose);
+    const groups = competing(attempt(shape, colors, "none", true));
     for (const g of groups) {
       const spots = [...g.slots];
       const shown = new Set(spots.map((t) => listColors(shownColors(colors, t))));
       const n = numberWord(spots.length), k = numberWord(g.ids.size);
       if (shown.size === 1)
         problems.push(hinted(`${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k} like that`, spots, missingColors(shape, colors, spots, spots.length - g.ids.size)));
-      else {
-        const [text, hint] = tooFew(shape, colors, spots, g.ids.size);
-        problems.push({ ...hinted(text, spots, null), slots: hint?.slots ?? spots, ...(hint?.marks ? { marks: hint.marks } : {}) });
-      }
+      // Finished spots compete only with spots showing the same colors, so this is a fallback.
+      else problems.push(hinted(`${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} have colors that only ${k} can have`, spots, missingColors(shape, colors, spots, spots.length - g.ids.size), "At least one of them has a sticker with the wrong color"));
     }
   }
   return { level: null, state: null, problems };

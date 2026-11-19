@@ -87,19 +87,25 @@ test("edit: each problem in a play-tester's edit names what a wrong spot should 
   ]);
 });
 
-test("edit: more spots than cubelets say what the spots share and how many have a wrong sticker", () => {
+test("edit: spots competing for too few cubelets are found among finished spots", () => {
   const st = State.solved();
+  // Two extension edges white and blue, a third with white and a sticker with no color yet:
+  // only the two finished ones are reported.
   const shared = visibleColors(st);
   shared[280] = UNPAINTED;
   shared[201] = "W";
   shared[456] = "W";
-  assert.equal(fitColors(st, shared).problems[0].text, "Six extension edges show white, but only four have white. At least two of them have a sticker with the wrong color");
-  const mixed = visibleColors(st);
-  mixed[158] = "R";
-  mixed[152] = "Y";
-  mixed[157] = UNPAINTED;
-  // This paint has a second problem too (five yellow core corners); the corners' is among them.
-  assert.ok(fitColors(st, mixed).problems.some((p) => p.text === "Three X-face corners show colors that only two have. At least one of them has a sticker with the wrong color"));
+  const problems = fitColors(st, shared).problems;
+  assert.deepEqual(problems.map((p) => p.text), ["Two extension edges are white and blue, but there can be only one like that"]);
+  assert.ok(!problems[0].slots.includes(Math.floor(280 / 6)));
+  // From a play-tester's edit: two unfinished X-face corners, one red so far and one white,
+  // can each be only the last red, white, and blue one. Proving that took 13 corners for 12
+  // cubelets, all haloed; nothing is said until those corners are finished.
+  const edited = decodeState("X1:JgBaCaDa..FaGaHa..Ag......KgLaMaNaOaPajdRaSaTaUaVaWiIi....Xi..EdvjYaZaQdujcaddedfdgdhaiatdkq....5dlq..2s..manaospaqarasaadbw..waxayaza0a......1a..3a4a..6a7a8a9a");
+  const paint = [...".O.Y.B.O.Y...O.YG..O...B.......OW.G..OW..B.OW.G..........R.........................Y...Y.....Y...O.YG..O.Y.B.......W...........O..G..OW..B..W.....W....W.....OW.G...............W............R.....Y...O.Y.B...Y.................YG......B............R.W.G...W..B..W.............Y...............O.....W.....................R..Y.B...Y...........Y..R..YG.R....B......Y.........Y.......R.W..B..W.....W.....W...R.W.G...................R..Y.B......R..YG.R...........R...GBO.W..GR.W...R.W.G."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
+  const colors = draftColors({ shape: edited, removed: new Set(), added: new Set() }, paint);
+  assert.ok(colors.includes(UNPAINTED));
+  assert.deepEqual(fitColors(edited, colors).problems, []);
 });
 
 test("edit: two corners painted alike are named as looking the same, without saying which sticker is wrong", () => {
