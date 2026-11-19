@@ -438,7 +438,7 @@ export function missingColors(shape: State, colors: FaceColors, spots: number[],
 
 function hintFor(shape: State, colors: FaceColors, spots: number[], wrong: number): string | Hint | null {
   const kind = kindOf(shape, spots[0]);
-  const lead = spots.length === 1 ? "It" : `${cap(numberWord(wrong))} of these`;
+  const lead = spots.length === 1 ? "This sticker" : `${cap(numberWord(wrong))} of these`;
   // Single colors join with "or"; lists of colors each get a sentence, so their commas can't run together.
   const say = (names: string[]) =>
     names.length === 1
