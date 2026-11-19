@@ -1211,12 +1211,12 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   check(paintedGlow === "R", `the edge glow of a painted sticker takes the paint (${paintedGlow})`);
   // A problem puts a purple halo on the cubelets it names by itself, in the 3D view and
   // on the flat view's faces where they show, without moving the view. In the 3D view it
-  // is a rim around a cubelet that can be seen; one behind the puzzle draws nothing over
-  // what is in front of it, and an arrow points around to it instead, which a tap follows.
+  // is an outline around a cubelet that can be seen; one behind the puzzle draws nothing
+  // over what is in front of it, and an arrow points around to it instead, which a tap follows.
   // Show (or tapping the line) tumbles the 3D view to show all their stickers, again
   // after any tumble; Hide removes the halo.
   const front = { px3d: await probe("haloPixels", "3d"), arrow: await probe("haloArrow") };
-  check(front.px3d > 0 && front.arrow.at === null && front.arrow.behind.length === 0, `cubelets that can be seen have a rim and no arrow (${JSON.stringify(front)})`);
+  check(front.px3d > 0 && front.arrow.at === null && front.arrow.behind.length === 0, `cubelets that can be seen have an outline and no arrow (${JSON.stringify(front)})`);
   const seenBoth = async () => `${await probe("facesSeen", "Fx.U")},${await probe("facesSeen", "Rx.U")}`;
   await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await settle();
@@ -1433,13 +1433,13 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     edges.named.includes("UF") && !edges.haloed.includes("UF") && ["Fx.U", "Ux.F"].every((t) => edges.haloed.includes(t)),
     `a named cubelet nothing shows is haloed by the cubelets around it (${JSON.stringify(edges)})`,
   );
-  // The cubelet put in is a blank until the shape is right: it carries a rim too, and from
+  // The cubelet put in is a blank until the shape is right: it is outlined too, and from
   // below, where it can't be seen, the arrow counts it.
-  const rimmed = await probe("rimmed");
+  const rimmed = await probe("outlined");
   await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await page.waitForFunction(() => window.xcubeProbe.idle());
   const below = (await probe("haloArrow")).behind;
-  check(rimmed.includes("Ux.F") && below.includes("Ux.F"), `the blank put in has a rim, and the arrow points to it when it can't be seen (${JSON.stringify({ rimmed, below })})`);
+  check(rimmed.includes("Ux.F") && below.includes("Ux.F"), `the blank put in is outlined, and the arrow points to it when it can't be seen (${JSON.stringify({ rimmed, below })})`);
   await page.evaluate(() => document.querySelector('[data-view="home"]').click());
   await page.waitForFunction(() => window.xcubeProbe.idle());
   await tapAt(await probe("spot", "Ux.F"));
@@ -1527,17 +1527,16 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await idle();
 });
 
-labTest("color editing: the halo's rim is hidden by the cubelets in front of it", async ({ page, check, probe, settle }) => {
-  // A play-tester's edit: the haloed core corner sits between extension cubelets, whose
-  // stickers are nearer than the rim around its edges.
-  const json = JSON.stringify({"lab":"x-cube debug 1","base":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","turns":"","cursor":0,"current":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","view":[0.19084,-0.80226,0.45429,-0.33702],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","removed":[],"added":[],"colors":".O.W.G.......R.WG..G...R.......G..O........GY....OG.Y........W.O.........B.Y.R...O...W.......R...R.YG..G...O.......Y...........B..R..YG..O.W......W.......W........YO..B.......BO.W..........G.....OB....Y.B...Y.................WY......G................G............Y........Y.....R.B...R..O..R.........B..R.GY..O........W..R.BG..............Y..Y..GR.W....YW.....W.........Y.......O.Y..B..G.....W.....Y...O.Y.O.........................R..G..B..RR.............G...W.B.R..OB.O...R.W.G.","tool":"R","problems":[],"selected":"A core corner must be white or yellow, never orange. It should maybe be yellow or white|13","hidden":null}});
-  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), json);
-  await settle();
-  // Bx.DL and Lx.DB stand in front of it; the rim showed over their stickers when it was
-  // depth tested at its box's faces instead of where the purple is.
-  const rim = await probe("rimOver");
-  const inFront = Object.keys(rim.over).filter((k) => /^(Bx\.DL|Lx\.DB)\//.test(k));
-  check(rim.changed > 0 && inFront.length === 0, `the rim shows, and not over the cubelets in front of it (${JSON.stringify(rim)})`);
+labTest("color editing: the halo's outline is bold whatever is around the cubelet", async ({ page, check, probe, settle }) => {
+  // Two play-testers' edits: a core corner set back between extension cubelets standing in
+  // front of it, and a core edge flush with its neighbors, where only seams lie beside it.
+  // The outline is a band on screen around the part the view shows, so both get a full one.
+  for (const [name, debug] of [["set back", {"lab":"x-cube debug 1","base":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","turns":"","cursor":0,"current":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","view":[0.19084,-0.80226,0.45429,-0.33702],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","removed":[],"added":[],"colors":".O.W.G.......R.WG..G...R.......G..O........GY....OG.Y........W.O.........B.Y.R...O...W.......R...R.YG..G...O.......Y...........B..R..YG..O.W......W.......W........YO..B.......BO.W..........G.....OB....Y.B...Y.................WY......G................G............Y........Y.....R.B...R..O..R.........B..R.GY..O........W..R.BG..............Y..Y..GR.W....YW.....W.........Y.......O.Y..B..G.....W.....Y...O.Y.O.........................R..G..B..RR.............G...W.B.R..OB.O...R.W.G.","tool":"R","problems":[],"selected":"A core corner must be white or yellow, never orange. It should maybe be yellow or white|13","hidden":null}}], ["flush", {"lab":"x-cube debug 1","base":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","turns":"","cursor":0,"current":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","view":[0.35003,-0.51635,-0.24334,0.74273],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","removed":[],"added":[],"colors":".R.W.G.......W.WG..G...O.......R..Y........GY....OB.R........W.O.........W.R.G...W...W.......Y...R.WG..G...B.......R...........B..W..YG..O.W......W.......W........YO..G.......BR.W..........O.....OB....Y.G...R.................WG......O................G............Y........O.....R.B...G..O..G.........B..R.YW..R........B..R.BW..............Y..Y..GG.W....BG.....W.........G.......O.Y..B..O.....G.....G...O.Y.G.........................R..G..B..YR.............G...R.B.W..OB.O...G.W.G.","tool":"B","problems":[],"selected":"x|65","hidden":null}}]]) {
+    await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
+    await settle();
+    const ring = await probe("outlineOver");
+    check(ring.purple >= 120, `a cubelet ${name} among its neighbors has a bold outline (${JSON.stringify(ring)})`);
+  }
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {

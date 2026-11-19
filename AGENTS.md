@@ -440,9 +440,13 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   the spot out instead. Lists of three colors use the serial comma. The line shows one
   problem at a time; with several, tiny ‹ and › buttons step through them ("‹2/4›"), and the
   choice is kept across paints while that problem remains. The shown problem's
-  cubelets get a **halo** by themselves, in purple. In the 3D view it is a thin rim around
-  the cubelet, off its stickers, hidden by whatever is in front of it like any other part
-  of the puzzle (depth tested where the purple is, beside the cubelet, not at the box it is drawn on, which would show it over a neighbor standing in front): a play-tester found a glow drawn through the puzzle covered the cubelet he
+  cubelets get a **halo** by themselves, in purple. In the 3D view it is an outline: a band
+  5 CSS pixels wide on screen, just outside the part of the cubelet the view shows, off its
+  stickers (a mask of the pixels where a haloed cubelet is the nearest thing drawn, and
+  the band drawn over the view around it). It is as bold beside a cubelet flush with its
+  neighbors or set back among them as beside one standing out: a rim in the space around
+  the cubelet was only a hairline in the seams there. A cubelet hidden behind the puzzle
+  has none: a play-tester found a glow drawn through the puzzle covered the cubelet he
   was painting in front. In every frame in which a haloed cubelet isn't turned well toward the
   viewer (no face at least 0.4 toward the viewer with its middle unblocked; `hiddenHalos`),
   a purple **arrow** in the scene points to it, even while other haloed cubelets can be
@@ -455,7 +459,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   always starts on the near side; it fades out once every haloed cubelet is turned well
   toward the viewer and back in when one isn't; a tap on it turns the view to them. The
   Hide pill keeps off it. The halo, Show, Hide and the arrow are there whichever tool is
-  selected, Shape included (the rim doesn't cover what to tap). A named cubelet enclosed on every side (a
+  selected, Shape included (the outline doesn't cover what to tap). A named cubelet enclosed on every side (a
   core edge with extension cubelets on both sides, which nothing shows) is haloed through
   the extension cubelets around it (`haloSlots`), which can be seen, turned to with Show
   and pointed at; a cubelet put in that is still a blank carries the halo, and is pointed at and shown, like any other (`drawnAt`). The arrow points at one hidden cubelet at a time, the one nearest to

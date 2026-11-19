@@ -1387,7 +1387,13 @@ function frame() {
   if (showTarget) updateShowButton();
   if (view3dOpen) updateCompass();
   renderNetAnimation();
-  if (view3dOpen) renderer.render(scene, camera);
+  if (view3dOpen) {
+    renderer.render(scene, camera);
+    if (edit?.highlight) {
+      const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+      drawOutline(camera, null, size.x, size.y, renderer.getPixelRatio());
+    }
+  }
   requestAnimationFrame(frame);
 }
 
@@ -4857,30 +4863,31 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
 
 // ------------------------------------------------------------------ highlight halo
 
-// Purple around a whole cubelet, outside its body, to point out the spot a color-editing
-// problem names. Drawn on a box shell around the cubelet: each pixel finds how close its
-// view ray passes to the cubelet's rounded body (the distance along the ray is convex, so
-// a ternary search finds the closest point) and is purple by how near that is. Rays that
-// hit the body draw nothing, so the cubelet itself keeps its look.
-// In the 3D view it is a thin rim (HALO.rim), hidden by whatever is in front of it like
-// any other part of the puzzle: it marks only a cubelet that can be seen, and never lies
-// over the cubelets in front of one that can't. A cubelet that can't be seen has the
-// arrow instead (placeHaloArrow).
+// Purple around a whole cubelet, outside it, to point out the spot a color-editing problem
+// names.
+// In the 3D view it is an outline (HALO.outline): a band a few pixels wide on screen, just
+// outside the part of the cubelet the view shows, the same width whatever is around it. A
+// mask holds the pixels where a haloed cubelet is the nearest thing drawn, and the band is
+// drawn over the view where the mask is empty but near it. A cubelet hidden behind the
+// puzzle has no outline; the arrow points to it instead (placeHaloArrow).
 // In the flat view it is a soft glow (HALO.glow), one for each face the cubelet shows, each
 // seen only by that face's camera (layer FLAT_HALO_LAYER + direction), so it never marks a
-// face where the cubelet is buried. Halos sit in the cubelet's group, so they follow turns,
-// and on their own layers, so the probe's passes don't see them.
-const HALO = { color: 0xa63dff, glow: { reach: 0.5, shape: 1.5 }, rim: { reach: 0.21, shape: 0.45 } };
+// face where the cubelet is buried. It is drawn on a box shell around the cubelet: each
+// pixel finds how close its view ray passes to the cubelet's rounded body (the distance
+// along the ray is convex, so a ternary search finds the closest point) and is purple by
+// how near that is. Glows sit in the cubelet's group, so they follow turns, and on their
+// own layers, so the probe's passes don't see them.
+const HALO = { color: 0xa63dff, glow: { reach: 0.5, shape: 1.5 }, outline: { width: 5, soft: 2 } }; // outline in CSS pixels
 const haloMaterials: Record<string, any> = {};
 const halos: any[] = [];
 
-function haloMesh(kind: "glow" | "rim") {
+function haloMesh(kind: "glow") {
   const { reach, shape } = HALO[kind];
   haloMaterials[kind] ??= new THREE.ShaderMaterial({
     uniforms: { color: { value: new THREE.Color(HALO.color) }, size: { value: 0.985 / 2 }, round: { value: BODY_RADIUS }, reach: { value: reach }, shape: { value: shape } },
     transparent: true,
     depthWrite: false,
-    // The glow: against the haloed cubelets only (placeHalos clears the rest first). The rim: against the puzzle.
+    // Against the haloed cubelets only (placeHalos clears the rest first).
     depthTest: true,
     vertexShader: `
       varying vec3 vOrigin;
@@ -4926,8 +4933,7 @@ function haloMesh(kind: "glow" | "rim") {
         vec3 near = o + d * (0.5 * (a + b));
         float dist = body(near);
         if (dist <= 0.0) discard;
-        // Tested at the depth of the purple itself, beside the cubelet, not at the shell's
-        // face, which can be in front of a neighbor that hides the cubelet's edge.
+        // Tested at the depth of the purple itself, beside the cubelet, not at the shell's face.
         vec4 clip = projectionMatrix * modelViewMatrix * vec4(near, 1.0);
         gl_FragDepth = 0.5 + 0.5 * clip.z / clip.w;
         float k = 1.0 - clamp(dist / reach, 0.0, 1.0);
@@ -4939,6 +4945,122 @@ function haloMesh(kind: "glow" | "rim") {
   m.renderOrder = 3;
   m.userData.kind = kind;
   return m;
+}
+
+/** The drawn cubelets (or blanks) the 3D view outlines now. */
+function outlined(): any[] {
+  if (!edit?.highlight) return [];
+  return haloSlots().map((s) => drawnAt(edit!.shown, s)).filter((o) => o);
+}
+
+const outlineMask = { black: null as any, white: null as any };
+/**
+ * Draws into `target` the mask of the haloed cubelets as `cam` sees them: white where one
+ * is the nearest thing drawn, black or clear elsewhere. The puzzle (and any blanks) goes
+ * into the depth first, then the haloed cubelets where they are frontmost.
+ */
+function drawOutlineMask(target: any, cam: any, roots: any[]) {
+  outlineMask.black ??= new THREE.MeshBasicMaterial({ color: 0x000000 });
+  outlineMask.white ??= new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: false, depthFunc: THREE.LessEqualDepth });
+  const mask = cam.layers.mask, auto = renderer.autoClear, shadows = renderer.shadowMap.autoUpdate;
+  const clear = renderer.getClearColor(new THREE.Color()), alpha = renderer.getClearAlpha();
+  const shown: [any, boolean][] = [];
+  const hide = (o: any, v: boolean) => { shown.push([o, o.visible]); o.visible = v; };
+  for (const g of ghosts) hide(g, false);
+  try {
+    renderer.shadowMap.autoUpdate = false;
+    cam.layers.set(0);
+    cam.layers.enable(HALO_LAYER);
+    renderer.setRenderTarget(target);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+    scene.overrideMaterial = outlineMask.black;
+    renderer.render(scene, cam);
+    const inRoot = (o: any) => { for (let p = o; p; p = p.parent) if (roots.includes(p)) return true; return false; };
+    pivot.traverse((o: any) => { if (o.isMesh && o.visible) hide(o, inRoot(o)); });
+    renderer.autoClear = false;
+    scene.overrideMaterial = outlineMask.white;
+    renderer.render(scene, cam);
+  } finally {
+    scene.overrideMaterial = null;
+    renderer.autoClear = auto;
+    renderer.shadowMap.autoUpdate = shadows;
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(clear, alpha);
+    cam.layers.mask = mask;
+    for (const [o, v] of shown.reverse()) o.visible = v;
+  }
+}
+
+/** The band drawn over the view around the mask: a full-screen triangle that reads the mask. */
+let outlineQuad: { scene: any; cam: any; mat: any; mask: any } | null = null;
+const OUTLINE_REACH = 8; // the most mask pixels the band reaches, for the shader's loop
+function outlinePass() {
+  if (outlineQuad) return outlineQuad;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { mask: { value: null }, texel: { value: new THREE.Vector2() }, width: { value: 4 }, soft: { value: 1 }, color: { value: new THREE.Color(HALO.color) } },
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    vertexShader: `
+      varying vec2 vUv;
+      void main() { vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+    fragmentShader: `
+      uniform sampler2D mask;
+      uniform vec2 texel;
+      uniform float width;
+      uniform float soft;
+      uniform vec3 color;
+      varying vec2 vUv;
+      void main() {
+        if (texture2D(mask, vUv).r > 0.5) discard;
+        float best = 1e9;
+        for (int i = -${OUTLINE_REACH}; i <= ${OUTLINE_REACH}; i++)
+          for (int j = -${OUTLINE_REACH}; j <= ${OUTLINE_REACH}; j++) {
+            vec2 o = vec2(float(i), float(j));
+            float d = length(o);
+            if (d > width || d >= best) continue;
+            if (texture2D(mask, vUv + o * texel).r > 0.5) best = d;
+          }
+        if (best > width) discard;
+        gl_FragColor = vec4(color, 1.0 - smoothstep(width - soft, width, best));
+      }`,
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
+  const tri = new THREE.Mesh(geo, mat);
+  tri.frustumCulled = false;
+  const scene2 = new THREE.Scene();
+  scene2.add(tri);
+  const mask = new THREE.WebGLRenderTarget(1, 1, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+  outlineQuad = { scene: scene2, cam: new THREE.Camera(), mat, mask };
+  return outlineQuad;
+}
+
+/**
+ * Draws the halo's outline over what `cam` has drawn into `target` (null: the screen), at
+ * w by h pixels, `scale` of them to a CSS pixel. The mask is half that size, read with
+ * smoothing, which keeps the band's work small on a phone.
+ */
+function drawOutline(cam: any, target: any, w: number, h: number, scale: number) {
+  const roots = outlined();
+  if (!roots.length) return;
+  const q = outlinePass();
+  const mw = Math.max(1, Math.round(w / 2)), mh = Math.max(1, Math.round(h / 2));
+  if (q.mask.width !== mw || q.mask.height !== mh) q.mask.setSize(mw, mh);
+  drawOutlineMask(q.mask, cam, roots);
+  const u = q.mat.uniforms;
+  u.mask.value = q.mask.texture;
+  u.texel.value.set(1 / mw, 1 / mh);
+  // In mask pixels: half the screen's.
+  u.width.value = Math.min(OUTLINE_REACH, Math.max(1.5, (HALO.outline.width * scale) / 2));
+  u.soft.value = Math.min(u.width.value, (HALO.outline.soft * scale) / 2);
+  const auto = renderer.autoClear;
+  renderer.autoClear = false;
+  renderer.setRenderTarget(target);
+  renderer.render(q.scene, q.cam);
+  renderer.setRenderTarget(null);
+  renderer.autoClear = auto;
 }
 
 /** What the 3D view draws in slot s of the shown position: its cubelet, or while editing the blank put in there; null if nothing. */
@@ -5230,10 +5352,8 @@ function placeHalos() {
   let b = 0;
   const free = halos.filter((h) => !h.parent);
   const add = (on: any, layer: number) => {
-    const kind = layer === HALO_LAYER ? "rim" : "glow";
-    const at = free.findIndex((h) => h.userData.kind === kind);
-    const h = at >= 0 ? free.splice(at, 1)[0] : haloMesh(kind);
-    if (at < 0) halos.push(h);
+    const h = free.length ? free.pop() : haloMesh("glow");
+    if (!halos.includes(h)) halos.push(h);
     h.layers.set(layer);
     on.add(h);
   };
@@ -5249,7 +5369,6 @@ function placeHalos() {
       haloBodies.push(body);
     }
     on.add(haloBodies[b++]);
-    add(on, HALO_LAYER);
     for (let d = 0; d < 6; d++) if (bareFace(edit.shown, s, d)) add(on, FLAT_HALO_LAYER + d);
   }
 }
@@ -5532,6 +5651,17 @@ function probeImage(cam: any, layer: number, w: number, h: number, mode: "id" | 
   return out;
 }
 
+/** The 3D view drawn at w by h without and with the halo's outline, as probeImage gives them. */
+function outlineImages(w: number, h: number): [Uint8Array, Uint8Array] {
+  const plain = probeImage(camera, 0, w, h, "drawn");
+  const ringed = probeImage(camera, 0, w, h, "drawn");
+  const cssWidth = (renderer.domElement as HTMLCanvasElement).getBoundingClientRect().width || w;
+  drawOutline(camera, probeTarget, w, h, w / cssWidth);
+  renderer.readRenderTargetPixels(probeTarget, 0, 0, w, h, ringed);
+  renderer.setRenderTarget(null);
+  return [plain, ringed];
+}
+
 type ProbeHit = { slot: string; face: string; color: string; cubelet: number; modelCubelet: number } | { plastic: true; slot: string; cubelet: number } | null;
 
 
@@ -5683,41 +5813,40 @@ function installProbe() {
     /** The cubelets the halo marks: those named, or for one nothing shows, those around it. */
     haloed: () => haloSlots().map(slotName).sort(),
     /**
-     * The pixels of the 3D view the rims change, and how many of them are on a sticker of a
-     * cubelet the halo doesn't mark: a rim hidden by the puzzle in front of it changes none.
+     * The pixels of the 3D view the halo's outline changes ("changed"), how many of them
+     * it turns the halo's own purple ("purple"), and how many are on each sticker
+     * ("slot/face") of each cubelet the halo doesn't mark.
      */
-    /**
-     * The pixels of the 3D view the rims change ("changed"), and of those, how many are on
-     * each sticker ("slot/face") of a cubelet the halo doesn't mark. A rim hidden by the
-     * cubelets in front of it changes none of theirs.
-     */
-    rimOver: () => {
+    outlineOver: () => {
       const w = 192, h = 192;
-      const plain = probeImage(camera, 0, w, h, "drawn"), rimmed = probeImage(camera, 0, w, h, "drawn", HALO_LAYER);
+      const [plain, ringed] = outlineImages(w, h);
       const ids = probeImage(camera, 0, w, h, "id"), colors = probeImage(camera, 0, w, h, "color");
       const marked = new Set(haloSlots().map(slotName));
       const over: Record<string, number> = {};
-      let changed = 0;
+      const c = new THREE.Color(HALO.color);
+      const [pr, pg, pb] = [c.r, c.g, c.b].map((v) => v * 255);
+      let changed = 0, purple = 0;
       for (let y = 0; y < h; y++)
         for (let x = 0; x < w; x++) {
           const i = ((h - 1 - y) * w + x) * 4;
-          if (Math.abs(plain[i] - rimmed[i]) + Math.abs(plain[i + 1] - rimmed[i + 1]) + Math.abs(plain[i + 2] - rimmed[i + 2]) <= 24) continue;
+          if (Math.abs(plain[i] - ringed[i]) + Math.abs(plain[i + 1] - ringed[i + 1]) + Math.abs(plain[i + 2] - ringed[i + 2]) <= 24) continue;
           changed++;
+          if (Math.abs(ringed[i] - pr) + Math.abs(ringed[i + 1] - pg) + Math.abs(ringed[i + 2] - pb) < 90) purple++;
           const hit = probeDecode(ids, colors, w, h, x, y);
           if (hit && !("plastic" in hit) && !marked.has(hit.slot)) over[`${hit.slot}/${hit.face}`] = (over[`${hit.slot}/${hit.face}`] ?? 0) + 1;
         }
-      return { changed, over };
+      return { changed, purple, over };
     },
-    /** The slots whose drawn cubelet (or blank) carries a rim now. */
-    rimmed: () => haloSlots().filter((s) => edit && drawnAt(edit.shown, s)?.children.some((c: any) => halos.includes(c) && c.userData.kind === "rim")).map(slotName).sort(),
+    /** The slots whose drawn cubelet (or blank) the 3D view outlines now. */
+    outlined: () => (edit?.highlight ? haloSlots().filter((s) => drawnAt(edit!.shown, s)).map(slotName).sort() : []),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),
     // `hiding` false draws them as if no haloed cubelet hid the halos behind it, to compare.
     haloPixels: (view: string, hiding = true) => {
       const nc = netCams.find((c) => c.face === view);
       if (!nc) {
-        const plain = probeImage(camera, 0, 96, 96, "drawn"), rimmed = probeImage(camera, 0, 96, 96, "drawn", HALO_LAYER);
+        const [plain, ringed] = outlineImages(192, 192);
         let px = 0;
-        for (let i = 0; i < plain.length; i += 4) if (Math.abs(plain[i] - rimmed[i]) + Math.abs(plain[i + 1] - rimmed[i + 1]) + Math.abs(plain[i + 2] - rimmed[i + 2]) > 24) px++;
+        for (let i = 0; i < plain.length; i += 4) if (Math.abs(plain[i] - ringed[i]) + Math.abs(plain[i + 1] - ringed[i + 1]) + Math.abs(plain[i + 2] - ringed[i + 2]) > 24) px++;
         return px;
       }
       const bodies = haloBodies.filter((b) => b.parent);
