@@ -4901,6 +4901,8 @@ function haloMesh(kind: "glow" | "rim") {
       uniform float round;
       uniform float reach;
       uniform float shape;
+      uniform mat4 modelViewMatrix;
+      uniform mat4 projectionMatrix;
       varying vec3 vOrigin;
       varying vec3 vDir;
       float body(vec3 p) {
@@ -4921,8 +4923,13 @@ function haloMesh(kind: "glow" | "rim") {
           float m1 = a + (b - a) / 3.0, m2 = b - (b - a) / 3.0;
           if (body(o + d * m1) < body(o + d * m2)) b = m2; else a = m1;
         }
-        float dist = body(o + d * (0.5 * (a + b)));
+        vec3 near = o + d * (0.5 * (a + b));
+        float dist = body(near);
         if (dist <= 0.0) discard;
+        // Tested at the depth of the purple itself, beside the cubelet, not at the shell's
+        // face, which can be in front of a neighbor that hides the cubelet's edge.
+        vec4 clip = projectionMatrix * modelViewMatrix * vec4(near, 1.0);
+        gl_FragDepth = 0.5 + 0.5 * clip.z / clip.w;
         float k = 1.0 - clamp(dist / reach, 0.0, 1.0);
         gl_FragColor = vec4(color, pow(k, shape));
       }`,
@@ -5675,6 +5682,32 @@ function installProbe() {
     highlighted: () => (edit?.highlight ?? []).map(slotName),
     /** The cubelets the halo marks: those named, or for one nothing shows, those around it. */
     haloed: () => haloSlots().map(slotName).sort(),
+    /**
+     * The pixels of the 3D view the rims change, and how many of them are on a sticker of a
+     * cubelet the halo doesn't mark: a rim hidden by the puzzle in front of it changes none.
+     */
+    /**
+     * The pixels of the 3D view the rims change ("changed"), and of those, how many are on
+     * each sticker ("slot/face") of a cubelet the halo doesn't mark. A rim hidden by the
+     * cubelets in front of it changes none of theirs.
+     */
+    rimOver: () => {
+      const w = 192, h = 192;
+      const plain = probeImage(camera, 0, w, h, "drawn"), rimmed = probeImage(camera, 0, w, h, "drawn", HALO_LAYER);
+      const ids = probeImage(camera, 0, w, h, "id"), colors = probeImage(camera, 0, w, h, "color");
+      const marked = new Set(haloSlots().map(slotName));
+      const over: Record<string, number> = {};
+      let changed = 0;
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          const i = ((h - 1 - y) * w + x) * 4;
+          if (Math.abs(plain[i] - rimmed[i]) + Math.abs(plain[i + 1] - rimmed[i + 1]) + Math.abs(plain[i + 2] - rimmed[i + 2]) <= 24) continue;
+          changed++;
+          const hit = probeDecode(ids, colors, w, h, x, y);
+          if (hit && !("plastic" in hit) && !marked.has(hit.slot)) over[`${hit.slot}/${hit.face}`] = (over[`${hit.slot}/${hit.face}`] ?? 0) + 1;
+        }
+      return { changed, over };
+    },
     /** The slots whose drawn cubelet (or blank) carries a rim now. */
     rimmed: () => haloSlots().filter((s) => edit && drawnAt(edit.shown, s)?.children.some((c: any) => halos.includes(c) && c.userData.kind === "rim")).map(slotName).sort(),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),

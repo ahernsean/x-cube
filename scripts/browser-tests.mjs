@@ -1527,6 +1527,19 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await idle();
 });
 
+labTest("color editing: the halo's rim is hidden by the cubelets in front of it", async ({ page, check, probe, settle }) => {
+  // A play-tester's edit: the haloed core corner sits between extension cubelets, whose
+  // stickers are nearer than the rim around its edges.
+  const json = JSON.stringify({"lab":"x-cube debug 1","base":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","turns":"","cursor":0,"current":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","view":[0.19084,-0.80226,0.45429,-0.33702],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","removed":[],"added":[],"colors":".O.W.G.......R.WG..G...R.......G..O........GY....OG.Y........W.O.........B.Y.R...O...W.......R...R.YG..G...O.......Y...........B..R..YG..O.W......W.......W........YO..B.......BO.W..........G.....OB....Y.B...Y.................WY......G................G............Y........Y.....R.B...R..O..R.........B..R.GY..O........W..R.BG..............Y..Y..GR.W....YW.....W.........Y.......O.Y..B..G.....W.....Y...O.Y.O.........................R..G..B..RR.............G...W.B.R..OB.O...R.W.G.","tool":"R","problems":[],"selected":"A core corner must be white or yellow, never orange. It should maybe be yellow or white|13","hidden":null}});
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), json);
+  await settle();
+  // Bx.DL and Lx.DB stand in front of it; the rim showed over their stickers when it was
+  // depth tested at its box's faces instead of where the purple is.
+  const rim = await probe("rimOver");
+  const inFront = Object.keys(rim.over).filter((k) => /^(Bx\.DL|Lx\.DB)\//.test(k));
+  check(rim.changed > 0 && inFront.length === 0, `the rim shows, and not over the cubelets in front of it (${JSON.stringify(rim)})`);
+});
+
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {
   // Valid means turns can reach some position showing the paint. Center colors arranged
   // as no turns arrange them are refused; a swap that look-alike cubelets can absorb is not.

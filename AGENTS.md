@@ -442,7 +442,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   choice is kept across paints while that problem remains. The shown problem's
   cubelets get a **halo** by themselves, in purple. In the 3D view it is a thin rim around
   the cubelet, off its stickers, hidden by whatever is in front of it like any other part
-  of the puzzle: a play-tester found a glow drawn through the puzzle covered the cubelet he
+  of the puzzle (depth tested where the purple is, beside the cubelet, not at the box it is drawn on, which would show it over a neighbor standing in front): a play-tester found a glow drawn through the puzzle covered the cubelet he
   was painting in front. In every frame in which a haloed cubelet isn't turned well toward the
   viewer (no face at least 0.4 toward the viewer with its middle unblocked; `hiddenHalos`),
   a purple **arrow** in the scene points to it, even while other haloed cubelets can be
