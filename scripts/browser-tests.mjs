@@ -1556,7 +1556,7 @@ labTest("color editing: a hint circles the sticker it means when its color can't
   check(hidden.list.length === 0 && hidden.px === 0, `Hide takes the ring away with the halo (${JSON.stringify(hidden)})`);
 });
 
-labTest("shape editing: a shape problem halos a glass box where an extension should go", async ({ page, check, probe, settle }) => {
+labTest("shape editing: a shape problem halos the glass box where an extension should go", async ({ page, check, probe, settle }) => {
   // An extension taken off a corner: either bare spot gives the corner two again, but only
   // the one it came from keeps the corners' twists whole. A glass box fills that spot, with
   // the halo on it, and Show turns the view to it.
@@ -1565,7 +1565,12 @@ labTest("shape editing: a shape problem halos a glass box where an extension sho
   await page.click('[data-halo="show"]');
   await settle();
   const seen = { line: await page.$eval("#edit-status", (e) => e.textContent), outlined: await probe("outlined"), px3d: await probe("haloPixels", "3d"), behind: (await probe("haloArrow")).behind, faces: await probe("facesSeen", "Rx.UF") };
-  check(/This core corner has only one extension, but it has to have two\. An extension should probably be added here/.test(seen.line) && seen.outlined.join() === "Rx.UF" && seen.px3d > 0 && seen.behind.length === 0 && seen.faces > 0, `the spot to fill has a haloed glass box, in view after Show (${JSON.stringify(seen)})`);
+  check(/This core corner has only one extension, but it has to have two\. An extension should probably be added here/.test(seen.line) && seen.outlined.join() === "Rx.UF" && seen.px3d > 0 && seen.behind.length === 0 && seen.faces > 0 && (await probe("hintBoxes")) === 1, `the spot to fill has a haloed glass box, in view after Show (${JSON.stringify(seen)})`);
+  // With the Shape tool, its own box in that spot carries the halo: no second box.
+  await page.click('[data-paint="shape"]');
+  await settle();
+  const shape = { outlined: await probe("outlined"), boxes: await probe("hintBoxes"), px3d: await probe("haloPixels", "3d") };
+  check(shape.outlined.join() === "Rx.UF" && shape.boxes === 0 && shape.px3d > 0, `with the Shape tool the halo is on its own box there (${JSON.stringify(shape)})`);
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {

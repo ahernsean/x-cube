@@ -3486,14 +3486,18 @@ function placeMarkers(pool: any[], slots: number[], make: () => any) {
   });
 }
 
-function placeGhosts() {
+/** The glass box that marks an empty spot where an extension can go (the Shape tool's, and a shape hint's). */
+const GHOST_SIZE = 0.62;
+function ghostBox() {
   ghostMaterial ??= new THREE.MeshBasicMaterial({ map: borderedFill(), transparent: true, depthWrite: false });
-  placeMarkers(ghosts, edit?.paint === "shape" ? draftSpots(edit) : [], () => {
-    const g = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.62), ghostMaterial);
-    g.layers.set(HALO_LAYER);
-    g.renderOrder = 2;
-    return g;
-  });
+  const g = new THREE.Mesh(new THREE.BoxGeometry(GHOST_SIZE, GHOST_SIZE, GHOST_SIZE), ghostMaterial);
+  g.layers.set(HALO_LAYER);
+  g.renderOrder = 2;
+  return g;
+}
+
+function placeGhosts() {
+  placeMarkers(ghosts, edit?.paint === "shape" ? draftSpots(edit) : [], ghostBox);
   placeMarkers(blanks, edit ? [...edit.added] : [], () => {
     const g = new THREE.Group();
     const body = new THREE.Mesh(withAoColors(copyLook!.body), copyLook!.bodyMat);
@@ -4968,7 +4972,7 @@ function drawOutlineMask(target: any, cam: any, roots: any[]) {
   const clear = renderer.getClearColor(new THREE.Color()), alpha = renderer.getClearAlpha();
   const shown: [any, boolean][] = [];
   const hide = (o: any, v: boolean) => { shown.push([o, o.visible]); o.visible = v; };
-  for (const g of [...ghosts, ...markRings.map((r) => r.view)]) hide(g, false);
+  for (const g of [...ghosts.filter((g) => !roots.includes(g)), ...markRings.map((r) => r.view)]) hide(g, false);
   try {
     renderer.shadowMap.autoUpdate = false;
     cam.layers.set(0);
@@ -5071,20 +5075,27 @@ function drawOutline(cam: any, target: any, w: number, h: number, scale: number)
  * so its own cubelet is still in the slot); null if nothing.
  */
 function drawnAt(st: State, s: number): any {
-  const ghost = edit ? hintGhosts.find((g) => g.parent && g.userData.slot === s) : undefined;
+  const ghost = markedGhost(s);
   if (ghost) return ghost;
   if (st.occ[s] >= 0) return meshes[st.occ[s]];
   return (edit && blanks.find((b) => b.parent && b.userData.slot === s)) ?? null;
 }
 
 /**
- * An empty spot a shape hint says to fill: a glass box where the cubelet would go, like the
- * Shape tool's, but whole, and haloed like a cubelet, so the halo marks where it should go
- * (3D, as a halo always is; a ring marks a sticker). The arrow, Show and the view's checks
- * treat it as a cubelet in that spot.
+ * An empty spot a shape hint says to fill gets the halo on the Shape tool's glass box there,
+ * the control a tap fills it with; with another tool picked, the hint draws that one box
+ * itself (`hintGhosts`). So the halo marks where the cubelet should go (3D, as a halo always
+ * is; a ring marks a sticker). The arrow, Show and the view's checks treat the box as what
+ * is in that spot.
  */
 const hintGhosts: any[] = [];
-const hintGhostAt = (s: number) => hintGhosts.some((g) => g.parent && g.userData.slot === s);
+function markedGhost(s: number): any {
+  if (!edit?.highlight) return undefined;
+  const own = hintGhosts.find((g) => g.parent && g.userData.slot === s);
+  if (own) return own;
+  return !draftFilled(edit, s) && edit.highlight.includes(s) ? ghosts.find((g) => g.parent && g.userData.slot === s) : undefined;
+}
+const hintGhostAt = (s: number) => !!markedGhost(s);
 
 /** Whether the 3D view shows any face of the cubelet in slot s now: one turned at all toward the viewer, its middle unblocked. */
 function slotSeen(st: State, s: number): boolean {
@@ -5384,11 +5395,8 @@ function placeHalos() {
   haloStamp++;
   const marked = edit?.highlight ? haloSlots() : null;
   if (!edit || !marked) return;
-  marked.filter((t) => !draftFilled(edit!, t)).forEach((t, i) => {
-    ghostMaterial ??= new THREE.MeshBasicMaterial({ map: borderedFill(), transparent: true, depthWrite: false });
-    const g = (hintGhosts[i] ??= new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), ghostMaterial));
-    g.layers.set(HALO_LAYER);
-    g.renderOrder = 2;
+  marked.filter((t) => !draftFilled(edit!, t) && !ghosts.some((g) => g.parent && g.userData.slot === t)).forEach((t, i) => {
+    const g = (hintGhosts[i] ??= ghostBox());
     g.userData.slot = t;
     g.position.set(...SLOT_POS[t]);
     pivot.add(g);
@@ -5453,7 +5461,9 @@ function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   if (!drawn || !there(s) || n === -2 || (n >= 0 && there(n))) return -1;
   pivot.updateMatrixWorld(true);
   const p = SLOT_POS[s], v = DIRS[d];
-  const target = pivot.localToWorld(new THREE.Vector3(p[0] + v[0] * 0.45, p[1] + v[1] * 0.45, p[2] + v[2] * 0.45));
+  // A glass box is smaller than a cubelet: look at its own face.
+  const out = drawn.geometry?.parameters?.width === GHOST_SIZE ? GHOST_SIZE / 2 - 0.02 : 0.45;
+  const target = pivot.localToWorld(new THREE.Vector3(p[0] + v[0] * out, p[1] + v[1] * out, p[2] + v[2] * out));
   const cos = new THREE.Vector3(...v).applyQuaternion(pivot.quaternion).dot(camera.position.clone().sub(target).normalize());
   if (cos < minCos) return -1;
   const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize());
@@ -5463,7 +5473,7 @@ function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   for (const h of ray.intersectObjects(pivot.children, true)) {
     let o = h.object;
     while (o.parent && o.parent !== pivot) o = o.parent;
-    if ((!meshes.includes(o) && !blanks.includes(o) && !hintGhosts.includes(o)) || !o.visible) continue;
+    if ((!meshes.includes(o) && !blanks.includes(o) && o !== drawn) || !o.visible) continue;
     return o === drawn ? cos : -1;
   }
   return -1;
@@ -5910,6 +5920,8 @@ function installProbe() {
       for (let i = 0; i < plain.length; i += 4) if (Math.abs(plain[i] - framed[i]) + Math.abs(plain[i + 1] - framed[i + 1]) + Math.abs(plain[i + 2] - framed[i + 2]) > 24) px++;
       return { list, px };
     },
+    /** The glass boxes a shape hint draws itself (none while the Shape tool's own boxes show). */
+    hintBoxes: () => hintGhosts.filter((g) => g.parent).length,
     /** The slots whose drawn cubelet (or blank) the 3D view outlines now. */
     outlined: () => (edit?.highlight ? haloSlots().filter((s) => drawnAt(edit!.shown, s)).map(slotName).sort() : []),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),
