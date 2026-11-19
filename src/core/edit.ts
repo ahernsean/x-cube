@@ -909,16 +909,15 @@ export function draftProblems(d: Draft): Problem[] {
   const out: Problem[] = [];
   const count = (n: number, one: string, many: string, limit: string) =>
     n > 4 ? `${cap(numberWord(n))} ${many}, but there can be only four` : `${n ? `Only ${numberWord(n)}` : "No"} ${n === 1 ? one : many}, but ${limit}`;
-  // Core cubelets with a number of extensions none of them can have, named one by one.
-  const wrong = (slots: number[], kind: string, one: string, each: string) => {
-    if (!slots.length) return;
-    const text = slots.length === 1 ? `This ${kind} ${one}` : `These ${numberWord(slots.length)} ${kind}s ${each}`;
-    out.push(problem(text, slots));
+  // Core cubelets with a number of extensions none of them can have: a problem for each,
+  // since each is fixed on its own.
+  const wrong = (slots: number[], text: string) => {
+    for (const c of slots) out.push(problem(text, [c]));
   };
-  wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length === 0), "core corner", "has no extensions, but it has to have two", "have no extensions, but each has to have two");
-  wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length === 1), "core corner", "has only one extension, but it has to have two", "have only one extension each, but each has to have two");
-  wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length > 2), "core corner", "has three extensions, but it can have only two", "have three extensions each, but each can have only two");
-  wrong(EDGE_SLOTS.filter((c) => filledOn(d, c).length === 0), "core edge", "has no extensions, but it has to have one or two", "have no extensions, but each has to have one or two");
+  wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length === 0), "This core corner has no extensions, but it has to have two");
+  wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length === 1), "This core corner has only one extension, but it has to have two");
+  wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length > 2), "This core corner has three extensions, but it can have only two");
+  wrong(EDGE_SLOTS.filter((c) => filledOn(d, c).length === 0), "This core edge has no extensions, but it has to have one or two");
   const doubles = EDGE_SLOTS.filter((c) => filledOn(d, c).length === 2);
   if (doubles.length !== 4) out.push(problem(count(doubles.length, "core edge has two extensions", "core edges have two extensions", "there must be four"), doubles.length > 4 ? doubles : []));
   const bare = CENTER_SLOTS.filter((c) => filledOn(d, c).length === 0);

@@ -312,9 +312,13 @@ test("edit: an extension cubelet on a core corner comes and goes alone, and the 
   const f = draft();
   draftTap(f, at(2, 1, 1));
   draftTap(f, at(-2, 1, 1)); // UFR and UFL down to one each
-  const two = draftProblems(f)[0];
-  assert.equal(two.text, "These two core corners have only one extension each, but each has to have two. An extension should probably be added in one of these spots");
-  assert.deepEqual([...two.slots].sort(), [at(2, 1, 1), at(1, 2, 1), at(-2, 1, 1), at(-1, 2, 1)].sort(), "the halo marks each corner's bare spots");
+  // Each corner is fixed on its own, so each is a problem of its own, its halo on its own spots.
+  const [one, other] = draftProblems(f);
+  assert.equal(one.text.split(". ")[0], "This core corner has only one extension, but it has to have two");
+  assert.equal(other.text.split(". ")[0], "This core corner has only one extension, but it has to have two");
+  const right = [at(2, 1, 1), at(1, 2, 1)], left = [at(-2, 1, 1), at(-1, 2, 1)];
+  const side = (p: { slots: number[] }) => (p.slots.every((t) => right.includes(t)) ? "right" : p.slots.every((t) => left.includes(t)) ? "left" : "both");
+  assert.deepEqual([side(one), side(other)].sort(), ["left", "right"], `each halo is on its own corner's spots (${one.slots}; ${other.slots})`);
 });
 
 test("edit: tapping a core corner turns it through its three ways, and a core single edge over", () => {
