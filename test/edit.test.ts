@@ -500,3 +500,10 @@ test("edit: several wrong centers are each given a different missing color", () 
   const colors = [...".R.Y.G.B.R...O.YG..G...Y.R.....O..G..OW..B.GW....OW.G....................O.Y.B...Y.....Y.....W...O.YG..O...W...................B..O..OW..B..Y.....Y.....W....OW.G........................................G.R...W.....Y.....W.....YR......R................R...R..Y..W.....W.....W.....W.B.....................................R..Y.B...W.....Y.....W..R..YG.R....B..................R...G.G.W..R..Y.....Y.....Y...R.W.G...................R..Y.BB..O..O..YB.B....YR.....G...O.R.W..BO.Y...B.W.R."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
   assert.equal(fitColors(st, colors).problems[0].text, "Four centers are red, but there can be only one like that. Three of these should be green, blue, and orange, one each");
 });
+
+test("edit: a core corner with no extensions is said to have none, not one", () => {
+  const d = draft();
+  draftTap(d, at(2, 1, 1)); // Rx.UF
+  draftTap(d, at(1, 1, 2)); // Fx.UR: the UFR corner has none left
+  assert.equal(draftProblems(d)[0].text.split(". ")[0], "This core corner has no extensions, but it has to have two");
+});

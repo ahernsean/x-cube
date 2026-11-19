@@ -915,7 +915,8 @@ export function draftProblems(d: Draft): Problem[] {
     const text = slots.length === 1 ? `This ${kind} ${one}` : `These ${numberWord(slots.length)} ${kind}s ${each}`;
     out.push(problem(text, slots));
   };
-  wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length < 2), "core corner", "has only one extension, but it has to have two", "have only one extension each, but each has to have two");
+  wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length === 0), "core corner", "has no extensions, but it has to have two", "have no extensions, but each has to have two");
+  wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length === 1), "core corner", "has only one extension, but it has to have two", "have only one extension each, but each has to have two");
   wrong(CORNER_SLOTS.filter((c) => filledOn(d, c).length > 2), "core corner", "has three extensions, but it can have only two", "have three extensions each, but each can have only two");
   wrong(EDGE_SLOTS.filter((c) => filledOn(d, c).length === 0), "core edge", "has no extensions, but it has to have one or two", "have no extensions, but each has to have one or two");
   const doubles = EDGE_SLOTS.filter((c) => filledOn(d, c).length === 2);

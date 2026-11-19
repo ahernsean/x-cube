@@ -398,7 +398,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     extension cubelet away or puts one in.
   - **A wrong shape for a while:** as paint may be wrong, so may the shape. The line names
     what keeps it from being one the puzzle can have ("This core corner has only one
-    extension, but it has to have two", "These two core corners have three extensions
+    extension, but it has to have two" or "has no extensions", "These two core corners have three extensions
     each, but each can have only two", "This core edge has no extensions, but it has to
     have one or two", each with a halo on the core cubelets; "Only three core edges have
     two extensions, but there must be four", "Five ... but there can be only four",
