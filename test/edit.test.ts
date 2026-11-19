@@ -78,12 +78,12 @@ test("edit: each problem in a play-tester's edit names what a wrong spot should 
   const colors = [...".G.W.R.Y.G...............B.....B..O........RW....OW.G........R.G...W.BO..G.W.R...W.........Y.....Y.BR..Y...O.Y.................B..Y..YR..G.Y......W.....Y....OW.G..YR..G...............R.Y.........BR............Y...Y...........RB......O................R...W..O..W.....Y.....W.....R.B...................Y..G.OW..B..B..RW.Y..G.OY.....W.........W..................W..........Y..................W......Y.....W.R.B.W.R..GO.G...Y.O.B.............B..OY.G....WO.....G...O.O.B..WO.G........."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
   assert.deepEqual(fitColors(st, colors).problems.map((p) => p.text), [
     "Two centers are yellow, but there can be only one like that. One of these should be white",
-    "Three extension edges are blue and red, but there can be only two like that. On one of these, the red sticker should maybe be orange. Or the blue sticker should be green",
+    "Three extension edges are blue and red, but there can be only two like that. On one of these, the red sticker should maybe be yellow. Or the blue and red stickers should trade places",
     "Five core single edges are white, but there can be only four like that. One of these should be yellow",
     "Five core corners are yellow, but there can be only four like that. One of these should be white",
-    "Three X-face corners are white, green, and red, but there can be only two like that. On one of these, the white sticker should probably be yellow, and the green sticker should be blue",
+    "Three X-face corners are white, green, and red, but there can be only two like that",
     "Two centers are orange, but there can be only one like that. One of these should be green",
-    "Three extension edges are green and orange, but there can be only two like that. On one of these, the green sticker should maybe be blue. Or the orange sticker should be red",
+    "Three extension edges are green and orange, but there can be only two like that. On one of these, the orange sticker should probably be yellow",
   ]);
 });
 
@@ -121,7 +121,7 @@ test("edit: an outer cubelet turned against the outward-color rule is real cubel
   colors[at(0, 1, 2) * 6 + U] = "G";
   const fit = fitColors(st, colors);
   assert.equal(fit.level, "cubelets");
-  assert.deepEqual(fit.problems, [{ text: "This cubelet's white sticker has the wrong color. Its white and green stickers should probably trade colors", slots: [at(0, 1, 2)] }]);
+  assert.deepEqual(fit.problems, [{ text: "This cubelet's white sticker has the wrong color. Its white and green stickers should probably trade places", slots: [at(0, 1, 2)] }]);
 });
 
 test("edit: problems say what's wrong, and which slots they are about", () => {
@@ -139,7 +139,7 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
   const swapped = visibleColors(st);
   swapped[at(-1, -1, -2) * 6 + 5] = "O";
   swapped[at(-1, -1, -2) * 6 + 1] = "B";
-  assert.equal(fitColors(st, swapped).problems[0].text, "No cubelet has yellow, blue, and orange arranged this way. Its yellow and blue stickers should maybe trade colors. Or its blue and orange stickers should trade colors");
+  assert.equal(fitColors(st, swapped).problems[0].text, "No cubelet has yellow, blue, and orange arranged this way. Its blue and orange stickers should probably trade places");
   // Look-alike core cubelets: more painted than the puzzle has.
   const lookAlike = say(1, 1, 1, U, "Y");
   assert.equal(lookAlike.text, "Five core corners are yellow, but there can be only four like that. One of these should be white");
@@ -157,7 +157,7 @@ test("edit: two spots wanting the one cubelet with a color pointing out are name
   colors[at(1, 0, 2) * 6 + R] = "G";
   const fit = fitColors(st, colors);
   assert.equal(fit.level, "cubelets");
-  assert.equal(fit.problems[0].text, "These two extension edges look the same, but the puzzle has only one like that. One of them has a sticker with the wrong color");
+  assert.equal(fit.problems[0].text, "These two extension edges look the same, but the puzzle has only one like that. On one of these, the green and red stickers should probably trade places");
   assert.deepEqual([...fit.problems[0].slots].sort(), [at(1, 0, 2), at(2, 0, 1)].sort());
 });
 
@@ -446,14 +446,26 @@ test("edit: a one-sticker hint is said plainly, and left out when it names every
   assert.deepEqual(fitColors(st, colors).problems.map((p) => p.text).sort(), ["A core corner must be white or yellow, never blue", "A core corner must be white or yellow, never green"]);
 });
 
-test("edit: a hint stays short, or is left out", () => {
-  // From a play-tester's edit: two spots whose fixes all recolor three stickers, four ways.
-  // A hint asks for at most two stickers, two ways; past that it is more a guess than help.
+test("edit: a hint offers only the fixes that fit the likeliest fix of every spot of its kind", () => {
+  // From a play-tester's edit. Alone, each of these spots could be fixed four ways, each
+  // recoloring all three stickers; counting every X-face corner together leaves one way,
+  // recoloring one sticker, or two trading places.
   const st = decodeState("LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF");
   const colors = [...".O.W.G.......R.WG..G...R.......O..Y........GY....OB.W........Y.O.........R.Y.G...Y...W.......Y...Y.OB..G...O.......Y...........B..R..YG..O.Y......W.......W........YR..B.......BR.W..........Y.....OY....Y.G...O.................WR......G................B............Y........G.....R.R...G..O..G.........G..W.YG..R........W..R.BY..............O..Y..GR.W....RW.....W.........Y.......O.Y..B..W.....R.....Y...O.Y.G.........................W..G..B..YR.............O...W.Y.W..OB.O...G.W.R."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
   const texts = fitColors(st, colors).problems.map((p) => p.text);
-  assert.ok(texts.includes("No cubelet has yellow, blue, and red arranged this way"), texts.join("\n"));
-  assert.ok(texts.includes("White and yellow can never be on the same cubelet"), texts.join("\n"));
-  assert.ok(texts.includes("No cubelet has white, green, and red arranged this way. Its red sticker should probably be orange"), texts.join("\n"));
-  for (const t of texts) assert.ok((t.match(/\. Or /g) ?? []).length <= 1, t);
+  assert.ok(texts.includes("No cubelet has yellow, blue, and red arranged this way. Its red sticker should probably be orange"), texts.join("\n"));
+  assert.ok(texts.includes("No cubelet has white, green, and red arranged this way. Its white and red stickers should probably trade places"), texts.join("\n"));
+  assert.ok(texts.includes("White and yellow can never be on the same cubelet. Its green sticker should probably be blue, and its white sticker should be red"), texts.join("\n"));
+  for (const t of texts) assert.ok((t.match(/\. Or /g) ?? []).length <= 2, t);
+});
+
+test("edit: one sticker's colors merge, up to three", () => {
+  const st = State.solved();
+  const colors = visibleColors(st);
+  const paint = (x: number, y: number, z: number, d: number, c: Color) => (colors[at(x, y, z) * 6 + d] = c);
+  paint(-1, 0, 2, 1, "W");
+  paint(0, -1, 0, 3, "G");
+  paint(0, -1, 2, 3, "G");
+  paint(2, -1, 0, 0, "G");
+  assert.ok(fitColors(st, colors).problems.some((p) => p.text === "No cubelet has two green stickers. One of its green stickers should maybe be yellow, red, or orange"));
 });

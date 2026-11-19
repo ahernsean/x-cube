@@ -1280,7 +1280,7 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await paint("R", "Fx.U", "U"); // flip the white-red edge now at Fx.U in place
   await paint("W", "Fx.U", "F");
   const flipped = await editLine();
-  check(/^Not valid: This cubelet's white sticker has the wrong color\. Its white and red stickers should probably trade colors\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  check(/^Not valid: This cubelet's white sticker has the wrong color\. Its white and red stickers should probably trade places\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
   // With several problems, ‹ and › step through them, and the halo moves with the line
   // without turning the view.
   await paint("Y", "Rx.U", "R");

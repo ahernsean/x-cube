@@ -432,38 +432,101 @@ export function missingColors(shape: State, colors: FaceColors, spots: number[],
     if (left.length === 1) return `${lead} should be ${listColors([...left[0]] as Color[])}`;
     return say(left.map((k) => listColors([...k] as Color[])));
   }
-  // Otherwise, the fewest stickers to recolor so that a spot shows a missing cubelet, turned
-  // as the outward-color rule allows, sticker by sticker (two trading colors is one change).
+  // Otherwise, sticker by sticker. Every spot of this kind is some cubelet of this kind,
+  // each a different one, turned as the outward-color rule allows. The likeliest ways to
+  // make that so recolor the fewest stickers over all those spots together (two trading
+  // places is one change), so a fix for one of these spots is offered only if some such
+  // way uses it. A fix that suits this spot alone, but leaves another spot without the
+  // cubelet it needs, is not.
+  const all = [...Array(NUM_SLOTS).keys()].filter(counted);
+  const ids = CUBELETS.filter((c) => c.kind === kind).map((c) => c.id);
+  if (all.length !== ids.length) return null;
+  const fits = all.map((t) => ids.map((id) => fitAt(colors, t, id)));
+  const cost = fits.map((row) => row.map((f) => f?.cost ?? IMPOSSIBLE));
+  const least = assignCost(cost);
+  if (least >= IMPOSSIBLE) return null;
   const options: { spot: number; changes: [Color, Color][] }[] = [];
   let best = Infinity;
   for (const t of spots) {
-    const outDir = outwardDir(t);
-    for (const c of CUBELETS) {
-      if (c.kind !== kind || !short.has(key(c.stickers))) continue;
-      for (let o = 0; o < NUM_ROT; o++) {
-        if (c.outward !== null && ROT_DIR[o * 6 + c.outward] !== outDir) continue;
-        const changes: [Color, Color][] = [];
-        let ok = true;
-        for (let d = 0; d < 6 && ok; d++) {
-          const want = colors[t * 6 + d];
-          if (want === undefined) continue;
-          const has = c.stickers[ROT_DIR[ROT_INV[o] * 6 + d]];
-          if (want === null || want === UNPAINTED) ok = want === null ? has === null : has !== null;
-          else if (has === null) ok = false;
-          else if (has !== want) changes.push([want, has]);
-        }
-        // Two stickers trading colors, and nothing else, is one mistake, as likely as one wrong color.
-        const cost = changes.length === 2 && changes[0][0] === changes[1][1] && changes[0][1] === changes[1][0] ? 1 : changes.length;
-        if (!ok || cost > best) continue;
-        if (cost < best) (best = cost), (options.length = 0);
-        options.push({ spot: t, changes });
-      }
+    const i = all.indexOf(t);
+    for (let j = 0; j < ids.length; j++) {
+      const f = fits[i][j];
+      if (!f || f.cost === 0) continue;
+      const rest = cost.filter((_, r) => r !== i).map((row) => row.filter((_, c) => c !== j));
+      if (f.cost + assignCost(rest) !== least) continue;
+      if (f.cost < best) (best = f.cost), (options.length = 0);
+      if (f.cost === best) options.push({ spot: t, changes: f.changes });
     }
   }
   // A hint is worth reading only while it is short: a fix of more than two stickers is
   // more a guess than a hint.
-  if (!options.length || best === 0 || best > HINT_STICKERS) return null;
+  if (!options.length || best > HINT_STICKERS) return null;
   return fixesText(colors, spots, options, wrong);
+}
+
+const IMPOSSIBLE = 1e6;
+
+/**
+ * The fewest stickers of spot t to recolor so that it shows cubelet `id`, turned as the
+ * outward-color rule allows, and which ones (from, to); null if no turn of it fits the spot's
+ * shape of stickers. Two stickers trading places, and nothing else, counts as one change.
+ */
+function fitAt(colors: FaceColors, t: number, id: number): { cost: number; changes: [Color, Color][] } | null {
+  const c = CUBELETS[id];
+  const outDir = outwardDir(t);
+  let best: { cost: number; changes: [Color, Color][] } | null = null;
+  for (let o = 0; o < NUM_ROT; o++) {
+    if (c.outward !== null && ROT_DIR[o * 6 + c.outward] !== outDir) continue;
+    const changes: [Color, Color][] = [];
+    let ok = true;
+    for (let d = 0; d < 6 && ok; d++) {
+      const want = colors[t * 6 + d];
+      if (want === undefined) continue;
+      const has = c.stickers[ROT_DIR[ROT_INV[o] * 6 + d]];
+      if (want === null || want === UNPAINTED) ok = want === null ? has === null : has !== null;
+      else if (has === null) ok = false;
+      else if (has !== want) changes.push([want, has]);
+    }
+    if (!ok) continue;
+    const cost = changes.length === 2 && changes[0][0] === changes[1][1] && changes[0][1] === changes[1][0] ? 1 : changes.length;
+    if (!best || cost < best.cost) best = { cost, changes };
+  }
+  return best;
+}
+
+/** The least total of a square cost matrix over one-to-one assignments (the Hungarian method). */
+function assignCost(a: number[][]): number {
+  const n = a.length;
+  if (!n) return 0;
+  const u = new Array(n + 1).fill(0), v = new Array(n + 1).fill(0), p = new Array(n + 1).fill(0), way = new Array(n + 1).fill(0);
+  for (let i = 1; i <= n; i++) {
+    p[0] = i;
+    let j0 = 0;
+    const minv = new Array(n + 1).fill(Infinity), used = new Array(n + 1).fill(false);
+    do {
+      used[j0] = true;
+      const i0 = p[j0];
+      let delta = Infinity, j1 = 0;
+      for (let j = 1; j <= n; j++)
+        if (!used[j]) {
+          const cur = a[i0 - 1][j - 1] - u[i0] - v[j];
+          if (cur < minv[j]) (minv[j] = cur), (way[j] = j0);
+          if (minv[j] < delta) (delta = minv[j]), (j1 = j);
+        }
+      for (let j = 0; j <= n; j++)
+        if (used[j]) (u[p[j]] += delta), (v[j] -= delta);
+        else minv[j] -= delta;
+      j0 = j1;
+    } while (p[j0] !== 0);
+    do {
+      const j1 = way[j0];
+      p[j0] = p[j1];
+      j0 = j1;
+    } while (j0);
+  }
+  let total = 0;
+  for (let j = 1; j <= n; j++) total += a[p[j] - 1][j - 1];
+  return total;
 }
 
 /** The colors of one spot, as a key that tells spots showing the same colors apart. */
@@ -471,12 +534,15 @@ const shownKey = (colors: FaceColors, s: number) => shownColors(colors, s).join(
 
 /**
  * Says which stickers to recolor: "Its red sticker should probably be orange", "Its blue and
- * orange stickers should probably trade colors". Options on one sticker merge ("should maybe
+ * orange stickers should probably trade places". Options on one sticker merge ("should maybe
  * be orange or blue"); each other option gets its own sentence, starting "Or". With several
  * spots, each option says which one by its colors, unless they all show the same.
  */
-/** The most stickers a hint asks to recolor, and the most ways it offers. */
-const HINT_STICKERS = 2, HINT_OPTIONS = 2;
+/**
+ * The most stickers a hint asks to recolor, and the most ways it offers: three when each
+ * recolors one sticker, which reads quickly, else two.
+ */
+const HINT_STICKERS = 2, HINT_OPTIONS = 2, HINT_ONE_STICKER_OPTIONS = 3;
 
 function fixesText(colors: FaceColors, spots: number[], options: { spot: number; changes: [Color, Color][] }[], wrong: number): string | null {
   const one = spots.length === 1;
@@ -498,7 +564,7 @@ function fixesText(colors: FaceColors, spots: number[], options: { spot: number;
       const back = left.findIndex(([f, x]) => f === to && x === from);
       if (back >= 0) {
         left.splice(back, 1);
-        out.push(`${its} ${listColors(COLOR_ORDER.filter((c) => c === from || c === to))} stickers ${out.length ? "should" : modal} trade colors`);
+        out.push(`${its} ${listColors(COLOR_ORDER.filter((c) => c === from || c === to))} stickers ${out.length ? "should" : modal} trade places`);
         continue;
       }
       // Stickers of one color can't be told apart by it: "one of its yellow stickers", or
@@ -522,7 +588,7 @@ function fixesText(colors: FaceColors, spots: number[], options: { spot: number;
     else if (o.changes.length === 1 && !had.to.includes(o.changes[0][1])) had.to.push(o.changes[0][1]);
   }
   const list = [...seen.values()];
-  if (list.length > HINT_OPTIONS) return null;
+  if (list.length > (list.every((o) => o.changes.length === 1) ? HINT_ONE_STICKER_OPTIONS : HINT_OPTIONS)) return null;
   const modal = list.length === 1 && list[0].to.length <= 1 ? "should probably" : "should maybe";
   const sentences = list.map((o, i) => {
     const body =
