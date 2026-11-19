@@ -5456,7 +5456,8 @@ function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   const drawn = drawnAt(st, s);
   // While editing, the shape being edited decides what is there: a cubelet taken off is
   // not, and one put in is (as a blank).
-  const there = (t: number) => (edit ? draftFilled(edit, t) || hintGhostAt(t) : st.occ[t] >= 0);
+  // A glass box stands for what is in its own spot; it doesn't cover the face behind it.
+  const there = (t: number) => (edit ? draftFilled(edit, t) || (t === s && hintGhostAt(t)) : st.occ[t] >= 0);
   const n = SLOT_NEIGHBOR[s * 6 + d];
   if (!drawn || !there(s) || n === -2 || (n >= 0 && there(n))) return -1;
   pivot.updateMatrixWorld(true);

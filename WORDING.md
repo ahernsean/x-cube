@@ -41,7 +41,7 @@ puzzle: it suggests continuous motion.
 
 A cubelet's **orientation** is which way it faces in its spot, and to **orient** one is to
 change that. A cubelet may also be **rotated**: a problem with the core corners says "The
-core corners can't all have these orientations at once. One of them needs to be
+core corners can't all be oriented as they are now. One of them needs to be
 rotated", not that one "needs another turn".
 
 The view **rotates** too ("Show rotates the view to them", "Drag to rotate the view");
@@ -55,7 +55,7 @@ known or saved sequence of turns, as in the Algorithms panel.
 Some ideas are how the Lab works something out, not something a user can see or act on,
 so they don't appear at all. The outward-color rule is one: a message never says which
 color points "outward" or "straight out from the core". It says what is wrong in terms
-the user can check against the puzzle in hand: "These two X-face corners look the same,
+the user can check against the puzzle in hand: "Two X-face corners look the same,
 but the puzzle has only one like that. One of them has a sticker with the wrong color."
 
 ## How to say it
@@ -77,6 +77,13 @@ there); a ring marks a sticker. So a shape hint points with the halo and says "t
 here". In shape messages an extension cubelet is "an extension"; a center's is "an
 extension center". Two stickers in each other's spots "trade places", not colors: a sticker
 is the thing that is wrong, and the user moves it.
+
+"This", "these" and "here" point: whatever they refer to is marked, with the halo (a
+cubelet, or the spot for one) or a ring (a sticker), so the user can see what is meant.
+"This core corner has three extensions, but it can have only two. This extension should
+probably be removed" halos both the corner and the extension. A message that names spots
+the halo doesn't mark says how many, without "these" ("Two X-face corners look the same,
+but the puzzle has only one like that").
 
 Point rather than place. A problem names what is wrong, not where; the purple halo shows
 where. Words for a spot have proved unreliable: center colors move with slices,

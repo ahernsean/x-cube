@@ -412,7 +412,7 @@ function reachableFit(shape: State, colors: FaceColors): { state: State; problem
   // A shape edit can leave the core corners turned as no turns leave them. Any one of
   // them may be the one turned wrong, so the problem points at none.
   if (unreachableReason(st) === "the core corners are twisted")
-    return { state: null, problem: problem("The core corners can't all have these orientations at once. One of them needs to be rotated", []) };
+    return { state: null, problem: problem("The core corners can't all be oriented as they are now. One of them needs to be rotated", []) };
   return { state: null, problem: problem(`${start} (${unreachableReason(st)})`, []) };
 }
 
@@ -693,7 +693,7 @@ function fixesText(colors: FaceColors, spots: number[], options: { spot: number;
     const text = `${i && where(o.spot) === where(list[i - 1].spot) ? "" : where(o.spot)}${body}`;
     return i ? `Or ${text}` : cap(text);
   });
-  const lead = wrong > 1 ? `At least ${numberWord(wrong)} of these have a sticker with the wrong color. ` : "";
+  const lead = wrong > 1 && at === spots ? `At least ${numberWord(wrong)} of these have a sticker with the wrong color. ` : "";
   return { text: lead + sentences.join(". "), slots: at !== spots ? at : undefined, marks: marks.length ? marks : undefined };
 }
 
@@ -713,8 +713,8 @@ function tooFew(shape: State, colors: FaceColors, spots: number[], fit: number):
   const hint = missingColors(shape, colors, spots, wrong);
   const end = hint?.text ?? fix;
   if (shared.length && having === fit)
-    return [`These ${n} ${many} show ${listColors(shared)}, but only ${k} ${fit === 1 ? "has" : "have"} ${listColors(shared)}. ${end}`, hint];
-  return [`Only ${k} ${fit === 1 ? one : many} ${fit === 1 ? "has" : "have"} colors like these ${n} do. ${end}`, hint];
+    return [`${cap(n)} ${many} show ${listColors(shared)}, but only ${k} ${fit === 1 ? "has" : "have"} ${listColors(shared)}. ${end}`, hint];
+  return [`${cap(n)} ${many} show colors that only ${k} ${fit === 1 ? "has" : "have"}. ${end}`, hint];
 }
 
 export function fitColors(shape: State, colors: FaceColors): Fit {
@@ -749,15 +749,15 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         problems.push(
           hinted(
             out.size === 1 && o && o !== UNPAINTED && shown.size === 1
-              ? `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} look the same, but the puzzle has only ${k} like that`
-              : `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be right at once`,
+              ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} look the same, but the puzzle has only ${k} like that`
+              : `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be right at once`,
             spots,
             missingColors(shape, colors, spots, spots.length - g.ids.size),
             "One of them has a sticker with the wrong color",
           ),
         );
       }
-    if (!problems.length) problems.push({ text: "These colors can't all be right at once. A sticker has the wrong color", slots: [] });
+    if (!problems.length) problems.push({ text: "The colors can't all be right at once. A sticker has the wrong color", slots: [] });
     return { level: "cubelets", state: loose.state, problems };
   }
   for (const s of loose.slots)
@@ -1006,7 +1006,8 @@ function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
     : `An ${noun} should probably be added ${pick.length === 1 ? "here" : "in one of these spots"}`;
   // The halo marks the extensions to take away, or the empty spots to fill (the Lab draws a
   // glass box in each, haloed).
-  return { text: `${p.text}. ${text}`, slots: pick };
+  // "This core corner" and "this extension" (or "here") are both pointed at.
+  return { text: `${p.text}. ${text}`, slots: [...new Set([...p.slots, ...pick])] };
 }
 
 /** Makes the draft's changes by moving real cubelets, if its shape is one the puzzle can have. */

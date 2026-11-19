@@ -1314,7 +1314,7 @@ labTest("shape editing: Show and the arrow reach a cubelet bared by taking an ex
   await tapAt(await probe("sticker", "Fx.U", "F"));
   const line = await page.$eval("#edit-status", (e) => e.textContent);
   const haloed = (await probe("haloed")).sort().join();
-  check(/This core edge has no extensions, but it has to have one or two\. An extension should probably be added in one of these spots/.test(line) && haloed === "Fx.U,Ux.F", `taking the edge's only extension off halos the spots to fill (${line}, ${haloed})`);
+  check(/This core edge has no extensions, but it has to have one or two\. An extension should probably be added in one of these spots/.test(line) && haloed === "Fx.U,UF,Ux.F", `taking the edge's only extension off halos the edge and the spots to fill (${line}, ${haloed})`);
   // From the front, the box where the cubelet taken off was shows: the hidden cubelet
   // doesn't block the view of it.
   await page.evaluate(() => document.querySelector('[data-view="front"]').click());
@@ -1559,18 +1559,18 @@ labTest("color editing: a hint circles the sticker it means when its color can't
 labTest("shape editing: a shape problem halos the glass box where an extension should go", async ({ page, check, probe, settle }) => {
   // An extension taken off a corner: either bare spot gives the corner two again, but only
   // the one it came from keeps the corners' twists whole. A glass box fills that spot, with
-  // the halo on it, and Show turns the view to it.
+  // the halo on it and on the corner the line names, and Show turns the view to them.
   await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.28,0.36,0.12,0.88],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","removed":["Rx.UF"],"added":[],"colors":".O.Y.B.O.Y...O.YG..O...B.O.....O..G..OW..B.OW....OW.G....................O.Y.B...Y.....Y.....Y...O.YG..O...B...................O..G..OW..B..W.....W.....W....OW.G........................................Y.B...Y.....Y.....Y.....YG......B................G...W..B..W.....W.....W.....W.G.....................................R..Y.B...Y.....Y.....Y..R..YG.R....B..................R...G.R.W..B..W.....W.....W...R.W.G...................R..Y.BR..Y..R..YG.R....BR.....R...G.R.W..BR.W...R.W.G.","tool":"W","problems":[],"selected":"","hidden":null}}));
   await settle();
   await page.click('[data-halo="show"]');
   await settle();
   const seen = { line: await page.$eval("#edit-status", (e) => e.textContent), outlined: await probe("outlined"), px3d: await probe("haloPixels", "3d"), behind: (await probe("haloArrow")).behind, faces: await probe("facesSeen", "Rx.UF") };
-  check(/This core corner has only one extension, but it has to have two\. An extension should probably be added here/.test(seen.line) && seen.outlined.join() === "Rx.UF" && seen.px3d > 0 && seen.behind.length === 0 && seen.faces > 0 && (await probe("hintBoxes")) === 1, `the spot to fill has a haloed glass box, in view after Show (${JSON.stringify(seen)})`);
+  check(/This core corner has only one extension, but it has to have two\. An extension should probably be added here/.test(seen.line) && seen.outlined.join() === "Rx.UF,UFR" && seen.px3d > 0 && seen.behind.length === 0 && seen.faces > 0 && (await probe("hintBoxes")) === 1, `the spot to fill has a haloed glass box, in view after Show (${JSON.stringify(seen)})`);
   // With the Shape tool, its own box in that spot carries the halo: no second box.
   await page.click('[data-paint="shape"]');
   await settle();
   const shape = { outlined: await probe("outlined"), boxes: await probe("hintBoxes"), px3d: await probe("haloPixels", "3d") };
-  check(shape.outlined.join() === "Rx.UF" && shape.boxes === 0 && shape.px3d > 0, `with the Shape tool the halo is on its own box there (${JSON.stringify(shape)})`);
+  check(shape.outlined.join() === "Rx.UF,UFR" && shape.boxes === 0 && shape.px3d > 0, `with the Shape tool the halo is on its own box there (${JSON.stringify(shape)})`);
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {

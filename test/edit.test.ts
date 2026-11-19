@@ -93,13 +93,13 @@ test("edit: more spots than cubelets say what the spots share and how many have 
   shared[280] = UNPAINTED;
   shared[201] = "W";
   shared[456] = "W";
-  assert.equal(fitColors(st, shared).problems[0].text, "These six extension edges show white, but only four have white. At least two of them have a sticker with the wrong color");
+  assert.equal(fitColors(st, shared).problems[0].text, "Six extension edges show white, but only four have white. At least two of them have a sticker with the wrong color");
   const mixed = visibleColors(st);
   mixed[158] = "R";
   mixed[152] = "Y";
   mixed[157] = UNPAINTED;
   // This paint has a second problem too (five yellow core corners); the corners' is among them.
-  assert.ok(fitColors(st, mixed).problems.some((p) => p.text === "Only two X-face corners have colors like these three do. At least one of them has a sticker with the wrong color"));
+  assert.ok(fitColors(st, mixed).problems.some((p) => p.text === "Three X-face corners show colors that only two have. At least one of them has a sticker with the wrong color"));
 });
 
 test("edit: two corners painted alike are named as looking the same, without saying which sticker is wrong", () => {
@@ -110,7 +110,7 @@ test("edit: two corners painted alike are named as looking the same, without say
   colors[s * 6 + U] = "G";
   colors[s * 6 + R] = "W";
   const fit = fitColors(st, colors);
-  assert.equal(fit.problems[0].text, "These two X-face corners look the same, but the puzzle has only one like that. One of them has a sticker with the wrong color");
+  assert.equal(fit.problems[0].text, "Two X-face corners look the same, but the puzzle has only one like that. One of them has a sticker with the wrong color");
   assert.deepEqual([...fit.problems[0].slots].sort(), [s, at(2, 1, 1)].sort());
 });
 
@@ -163,7 +163,7 @@ test("edit: two spots wanting the one cubelet with a color pointing out are name
   colors[at(1, 0, 2) * 6 + R] = "G";
   const fit = fitColors(st, colors);
   assert.equal(fit.level, "cubelets");
-  assert.equal(fit.problems[0].text, "These two extension edges look the same, but the puzzle has only one like that. On one of these, the green and red stickers should probably trade places");
+  assert.equal(fit.problems[0].text, "Two extension edges look the same, but the puzzle has only one like that. On one of these, the green and red stickers should probably trade places");
   assert.deepEqual([...fit.problems[0].slots].sort(), [at(1, 0, 2), at(2, 0, 1)].sort());
 });
 
@@ -268,7 +268,7 @@ test("edit: core corners twisted as no turns twist them are refused, naming none
   st.ori[corner] = rotsTo(st.occ[corner], corner).find((o) => o !== st.ori[corner])!; // a core corner twisted in place
   const fit = fitColors(st, visibleColors(st));
   assert.equal(fit.level, "possible");
-  assert.deepEqual(fit.problems, [{ text: "The core corners can't all have these orientations at once. One of them needs to be rotated", slots: [] }]);
+  assert.deepEqual(fit.problems, [{ text: "The core corners can't all be oriented as they are now. One of them needs to be rotated", slots: [] }]);
 });
 
 // ---------------------------------------------------------------- shape editing
@@ -294,7 +294,7 @@ test("edit: an extension cubelet on a core corner comes and goes alone, and the 
   // Either bare spot gives the corner two again, but only the one it came from keeps the
   // corners' twists whole, so only that one is haloed.
   assert.deepEqual(draftProblems(d).map((p) => p.text), ["This core corner has only one extension, but it has to have two. An extension should probably be added here"]);
-  assert.deepEqual(draftProblems(d)[0].slots, [at(2, 1, 1)], "the halo marks the spot it came from");
+  assert.deepEqual([...draftProblems(d)[0].slots].sort(), [at(1, 1, 1), at(2, 1, 1)].sort(), "the halo marks the corner and the spot it came from");
   draftTap(d, at(1, 2, 1)); // its top gets one: two again, but not where they were
   assert.deepEqual(draftProblems(d), [], "two extensions on every core corner");
   assert.equal(d.removed.size + d.added.size, 0, "made of real cubelets at once");
@@ -302,7 +302,7 @@ test("edit: an extension cubelet on a core corner comes and goes alone, and the 
   // One corner turned alone: no turns leave the corners so.
   const fit = fitColors(d.shape, visibleColors(d.shape));
   assert.equal(fit.level, "possible");
-  assert.deepEqual(fit.problems.map((p) => p.text), ["The core corners can't all have these orientations at once. One of them needs to be rotated"]);
+  assert.deepEqual(fit.problems.map((p) => p.text), ["The core corners can't all be oriented as they are now. One of them needs to be rotated"]);
   assert.deepEqual(fit.problems[0].slots, [], "any corner may be the wrong one, so none is named");
   // Three on one corner, and none on a core edge, each named.
   const e = draft();
@@ -317,7 +317,11 @@ test("edit: an extension cubelet on a core corner comes and goes alone, and the 
   assert.equal(one.text.split(". ")[0], "This core corner has only one extension, but it has to have two");
   assert.equal(other.text.split(". ")[0], "This core corner has only one extension, but it has to have two");
   const right = [at(2, 1, 1), at(1, 2, 1)], left = [at(-2, 1, 1), at(-1, 2, 1)];
-  const side = (p: { slots: number[] }) => (p.slots.every((t) => right.includes(t)) ? "right" : p.slots.every((t) => left.includes(t)) ? "left" : "both");
+  // Each halo is on its corner and that corner's spots.
+  const side = (p: { slots: number[] }) => {
+    const spots = p.slots.filter((t) => t !== at(1, 1, 1) && t !== at(-1, 1, 1));
+    return spots.every((t) => right.includes(t)) && p.slots.includes(at(1, 1, 1)) ? "right" : spots.every((t) => left.includes(t)) && p.slots.includes(at(-1, 1, 1)) ? "left" : "both";
+  };
   assert.deepEqual([side(one), side(other)].sort(), ["left", "right"], `each halo is on its own corner's spots (${one.slots}; ${other.slots})`);
 });
 
@@ -371,10 +375,10 @@ test("edit: extension centers come and go alone, and the two faces without one m
   const d = draft();
   draftTap(d, at(2, 0, 0)); // Rx
   assert.deepEqual(texts(d), ["Only three centers have an extension center, but there must be four. An extension center should probably be added here"]);
-  assert.deepEqual(draftProblems(d)[0].slots, [at(2, 0, 0)], "the halo marks the spot it came from");
+  assert.deepEqual(draftProblems(d)[0].slots, [at(2, 0, 0)], "the halo marks the spot it came from (the problem names no center)");
   draftTap(d, at(0, 2, 0)); // one over the up center
   assert.deepEqual(texts(d), ["The two centers without an extension center must be opposite each other. An extension center should probably be added in one of these spots"]);
-  assert.equal(draftProblems(d)[0].slots.length, 2, "the two centers are named");
+  assert.ok([at(1, 0, 0), at(0, -1, 0)].every((c) => draftProblems(d)[0].slots.includes(c)), "the two centers it names are haloed, with the spots to fill");
   draftTap(d, at(0, 2, 0));
   draftTap(d, at(-2, 0, 0)); // Lx: now up, down, left and right are bare, and front and back have theirs
   draftTap(d, at(0, 2, 0));
