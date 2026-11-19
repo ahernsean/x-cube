@@ -1282,8 +1282,10 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   const flipped = await editLine();
   check(/^Not valid: This cubelet's white sticker has the wrong color\. Its white and red stickers should probably trade places\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
   // With several problems, ‹ and › step through them, and the halo moves with the line
-  // without turning the view.
+  // without turning the view. Yellow facing away from the core on Rx.U and Fx.UR is wrong
+  // too; the line stays on the problem it shows (Rx.U's) when Fx.UR's sorts ahead of it.
   await paint("Y", "Rx.U", "R");
+  await page.click('[data-halo="next"]');
   await paint("Y", "Fx.UR", "F");
   const navLine = await editLine();
   const firstLit = (await probe("highlighted")).join();
@@ -1291,11 +1293,10 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await page.click('[data-halo="next"]');
   const stepped = { line: await editLine(), lit: (await probe("highlighted")).join(), still: JSON.stringify(await probe("view")) === viewBefore };
   await page.click('[data-halo="next"]');
+  await page.click('[data-halo="next"]');
   const wrapped = (await probe("highlighted")).join();
-  // Yellow facing away from the core on both is wrong too, and told with the first: the line
-  // stays on the problem it showed (Fx.U's) as the others appear.
   const at = (line) => line.match(/‹(\d)\/(\d)›/)?.slice(1).join("/");
-  check(firstLit === "Fx.U" && at(navLine) === "1/3" && at(stepped.line) === "2/3" && stepped.lit === "Fx.UR" && stepped.still && wrapped === "Rx.U", `the line stays on its problem when another appears; ‹ and › step through them, moving the halo, not the view (${at(navLine)} ${firstLit}, then ${at(stepped.line)} ${stepped.lit}, then ${wrapped})`);
+  check(firstLit === "Rx.U" && at(navLine) === "3/3" && at(stepped.line) === "1/3" && stepped.lit === "Fx.U" && stepped.still && wrapped === firstLit, `the line stays on its problem when another appears; ‹ and › step through them, moving the halo, not the view (${at(navLine)} ${firstLit}, then ${at(stepped.line)} ${stepped.lit}, then ${wrapped})`);
   await page.click("#edit-cancel");
   sw = await sweep3d();
   const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");

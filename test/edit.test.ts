@@ -40,11 +40,13 @@ test("edit: repainting two outer edges as each other moves those cubelets", () =
 test("edit: colors no cubelet has are refused, naming the spot", () => {
   const st = State.solved();
   const colors = visibleColors(st);
-  colors[at(0, 1, 2) * 6 + F] = "Y"; // white and yellow on one edge
+  // White and yellow on one X-face corner, neither facing away from the core. (On an
+  // extension edge one of them always would, which is told first.)
+  colors[at(1, 1, 2) * 6 + R] = "Y";
   const fit = fitColors(st, colors);
   assert.equal(fit.level, null);
   assert.equal(fit.state, null);
-  assert.deepEqual(fit.problems, [{ text: "This cubelet's yellow sticker has the wrong color. Its yellow sticker should probably be green", slots: [at(0, 1, 2)] }]);
+  assert.deepEqual(fit.problems, [{ text: "White and yellow can never be on the same cubelet. Its yellow sticker should probably be red", slots: [at(1, 1, 2)] }]);
 });
 
 test("edit: one cubelet needed in two places is refused", () => {
