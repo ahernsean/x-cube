@@ -487,3 +487,11 @@ test("edit: a center's hint names only a color its kind of center can have", () 
   assert.ok(texts.includes("A core center must be white or yellow, never red. It should be yellow"), texts.join("\n"));
   assert.ok(texts.includes("An extension center must be green, blue, red, or orange, never yellow. It should be blue"), texts.join("\n"));
 });
+
+test("edit: several wrong centers are each given a different missing color", () => {
+  // From a play-tester's edit: every extension center painted red. Three must change, to
+  // the three colors no center shows, not all to the one opposite their red neighbors.
+  const st = decodeState("VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS");
+  const colors = [...".R.Y.G.B.R...O.YG..G...Y.R.....O..G..OW..B.GW....OW.G....................O.Y.B...Y.....Y.....W...O.YG..O...W...................B..O..OW..B..Y.....Y.....W....OW.G........................................G.R...W.....Y.....W.....YR......R................R...R..Y..W.....W.....W.....W.B.....................................R..Y.B...W.....Y.....W..R..YG.R....B..................R...G.G.W..R..Y.....Y.....Y...R.W.G...................R..Y.BB..O..O..YB.B....YR.....G...O.R.W..BO.Y...B.W.R."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
+  assert.equal(fitColors(st, colors).problems[0].text, "Four centers are red, but there can be only one like that. Three of these should be green, blue, and orange, one each");
+});

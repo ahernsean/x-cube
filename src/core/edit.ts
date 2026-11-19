@@ -480,6 +480,9 @@ function hintFor(shape: State, colors: FaceColors, spots: number[], wrong: numbe
       }
       return undefined;
     };
+    // Several wrong centers each need a different missing color: name them all, when the
+    // counts leave exactly that many, else nothing a person could follow.
+    if (wrong > 1) return none.length === wrong ? `${lead} should be ${listColors(none)}, one each` : null;
     const likely = none.filter((c) => spots.some((t) => across(t) === c));
     const left = likely.length ? likely : none;
     return left.length === 1 ? `${lead} should be ${COLOR_NAME[left[0]]}` : say(left.map((c) => COLOR_NAME[c]));
