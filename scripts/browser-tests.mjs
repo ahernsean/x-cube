@@ -1332,6 +1332,41 @@ labTest("shape editing: Show and the arrow reach a cubelet bared by taking an ex
   check(after.seen >= 1 && after.arrow.behind.length === 0 && after.arrow.opacity === 0, `Show turns the view to it, and the arrow goes (${JSON.stringify(after)})`);
 });
 
+labTest("info: Paste debug info puts back an edit that isn't valid", async ({ page, check, probe, settle, gesture }) => {
+  // An edit whose shape isn't valid has no state code; its debug info is the way back to it.
+  await page.click("#edit-start");
+  await page.click('[data-paint="shape"]');
+  const at = await probe("sticker", "Fx.U", "F");
+  await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+  await settle();
+  const json = await probe("debugInfo");
+  const line = await page.$eval("#edit-status", (e) => e.textContent);
+  await page.click("#edit-cancel");
+  await settle();
+  const message = () => page.$eval("#message", (e) => e.textContent);
+  const putBack = async () => ({ removed: (await probe("shapeEdit"))?.removed.join(), line: await page.$eval("#edit-status", (e) => e.textContent), message: await message(), open: !(await page.$eval("#info-pop", (e) => e.hidden)) });
+  // From the clipboard.
+  await page.evaluate((j) => Object.defineProperty(navigator, "clipboard", { value: { readText: () => Promise.resolve(j), writeText: () => Promise.resolve() }, configurable: true }), json);
+  await page.click("#info-btn");
+  await page.click("#paste-debug");
+  await settle();
+  const read = await putBack();
+  check(read.removed === "Fx.U" && read.line === line && /Debug info put back/.test(read.message) && !read.open, `Paste debug info puts the edit back from the clipboard, and closes the panel (${JSON.stringify(read)})`);
+  await page.click("#edit-cancel");
+  await settle();
+  // Where the clipboard can't be read, the field takes it, and refuses what isn't debug info.
+  await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { value: { readText: () => Promise.reject(new Error("denied")) }, configurable: true }));
+  await page.click("#info-btn");
+  await page.click("#paste-debug");
+  const field = await page.$eval("#debug-text", (f) => ({ shown: !f.hidden, editable: !f.readOnly }));
+  await page.fill("#debug-text", "not debug info");
+  const refused = await message();
+  await page.fill("#debug-text", json);
+  await settle();
+  const typed = await putBack();
+  check(field.shown && field.editable && /That isn't debug info/.test(refused) && typed.removed === "Fx.U" && typed.line === line, `without the clipboard the field takes it, refusing other text (${JSON.stringify({ field, refused, typed })})`);
+});
+
 labTest("info: the help says what taps and drags do in each mode, and Copy debug info puts an edit back", async ({ page, check, probe, play, settle, gesture }) => {
   const help = async () => {
     if (await page.$eval("#info-pop", (p) => p.hidden)) await page.click("#info-btn");

@@ -3035,6 +3035,7 @@ async function copyDebug() {
   const text = debugInfo();
   const field = $("debug-text") as HTMLTextAreaElement;
   field.hidden = true;
+  field.readOnly = true;
   try {
     await navigator.clipboard.writeText(text);
     setMessage("Debug info copied", "ok");
@@ -3055,6 +3056,57 @@ async function copyDebug() {
     } else setMessage("Select and copy the debug info", "info");
   }
   render();
+}
+
+/** Whether text is debug info the Lab can put back: its start, its turns and its edit's shape all read. */
+function isDebugInfo(text: string): boolean {
+  try {
+    const d = JSON.parse(text);
+    if (d?.lab !== "x-cube debug 1") return false;
+    decodeState(d.base);
+    parseAlg(d.turns ?? "");
+    if (d.edit) decodeState(d.edit.shape);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Puts back pasted debug info (during a solve, after asking), and closes the ⓘ panel. */
+function putBackDebug(text: string) {
+  if (!isDebugInfo(text)) {
+    setMessage("That isn't debug info", "error");
+    render();
+    return;
+  }
+  endingSolve(() => {
+    restoreDebug(text);
+    $("debug-text").hidden = true;
+    $("info-pop").hidden = true;
+    $("info-btn").setAttribute("aria-expanded", "false");
+    setMessage("Debug info put back", "ok");
+    render();
+  });
+}
+
+/**
+ * Paste debug info: what Copy debug info copied goes back into the Lab, so what it showed can
+ * be seen again, even an edit that isn't valid, which has no state code. From the clipboard;
+ * where the browser won't read it, the text field takes it, pasted by hand.
+ */
+async function pasteDebug() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (isDebugInfo(text)) return putBackDebug(text);
+  } catch {
+    // No clipboard access: the field below takes it.
+  }
+  const field = $("debug-text") as HTMLTextAreaElement;
+  field.readOnly = false;
+  field.value = "";
+  field.placeholder = "Paste the debug info here";
+  field.hidden = false;
+  field.focus();
 }
 
 function slotByName(name: string): number {
@@ -3125,6 +3177,11 @@ function bindUI() {
   bindAlgorithms();
   $("next-step").addEventListener("click", () => nextStep());
   $("copy-debug").addEventListener("click", () => void copyDebug());
+  $("paste-debug").addEventListener("click", () => void pasteDebug());
+  $("debug-text").addEventListener("input", () => {
+    const field = $("debug-text") as HTMLTextAreaElement;
+    if (!field.readOnly && field.value.trim()) putBackDebug(field.value);
+  });
   $("strip-next").addEventListener("click", () => nextStep());
   $("guide-stop").addEventListener("click", () => stopGuide());
   $("guide-colors").addEventListener("click", () => setGuideFullColor(!guideFullColor));

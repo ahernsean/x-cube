@@ -288,8 +288,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   and the cursor, the view, the solve's steps, the device, and an edit in progress with
   its shape (a state code, X1 when turns can't reach it), cubelets taken off and put in,
   paint and problems; where the browser won't let it write the clipboard, the text shows selected under the link, to copy by hand. It is for the owner to hand to a developer when something looks
-  wrong, including an edit whose shape isn't valid, which has no state code of its own;
-  the probe's `restoreDebug` puts the position, the view and the edit back.
+  wrong, including an edit whose shape isn't valid, which has no state code of its own.
+  **Paste debug info**, beside it, puts the position, the view and the edit back (the
+  probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
+  won't read it, from text pasted into the field that opens; text that isn't debug info is
+  refused ("That isn't debug info"), and during a solve it asks first, as setting a new
+  start does. So the owner can come back to an invalid edit after the Lab is republished.
 - **Display panel:** the ◐ in the 3D view's corner opens the Edge glow, Shading, Shadows
   and Gloss switches, over the view and over the edge labels.
 - **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. The
