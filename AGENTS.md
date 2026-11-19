@@ -414,8 +414,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     empty spot, the control a tap fills it with; with another tool picked, the hint draws
     that one box itself, the same size: `hintGhosts`, `ghostBox`; the arrow, Show and the
     view's checks take the box for what is in that spot), or "One of these extensions ..." / "in
-    one of these spots" when the taps tie; a core corner with none needs two, and its hint
-    says so ("Two extensions should probably be added, one in each of these spots"). With a
+    one of these spots" when the taps tie; a core corner with none must get two, there and
+    nowhere else, so its hint says so plainly ("Add two extensions to this corner"), with
+    the halo on the corner and the spots that keep the twists whole. With a
     color picked, a tap on what the hint says to tap (`Problem.taps`: a glass box, or an
     extension to take away) colors nothing: "To add or remove an extension, pick Shape
     first", and the Shape button pulses until Shape is picked or for 8 seconds (`shapeFirst`,

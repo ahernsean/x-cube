@@ -515,6 +515,6 @@ test("edit: a core corner with no extensions is said to have none, not one", () 
   draftTap(d, at(1, 1, 2)); // Fx.UR: the UFR corner has none left
   assert.equal(draftProblems(d)[0].text.split(". ")[0], "This core corner has no extensions, but it has to have two");
   // It needs two, and the hint says so; the twists keep only the spots they came from.
-  assert.equal(draftProblems(d)[0].text, "This core corner has no extensions, but it has to have two. Two extensions should probably be added, one in each of these spots");
+  assert.equal(draftProblems(d)[0].text, "This core corner has no extensions, but it has to have two. Add two extensions to this corner");
   assert.deepEqual([...draftProblems(d)[0].taps!].sort(), [at(2, 1, 1), at(1, 1, 2)].sort());
 });
