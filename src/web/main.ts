@@ -1804,7 +1804,7 @@ function bindOrbit(el: HTMLElement) {
       else if (isTap && edit) {
         const h = pickCube(el, e.clientX, e.clientY);
         if (edit.paint === "shape") tapShape(el, e.clientX, e.clientY, h);
-        else if (h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
+        else if (!shapeFirst(el, e.clientX, e.clientY, h) && h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
       } else if (isTap) {
         if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DOUBLE_TAP_PX) {
           lastTap = null;
@@ -3580,16 +3580,36 @@ function placeOverlays(list: [number, number, Color | typeof UNPAINTED][]) {
 }
 
 /** The ghost under a point of the 3D view, unless a cubelet (hit `h`) is in front of it. */
-function pickMarker(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null): number | null {
+function pickMarker(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null, pool = ghosts): number | null {
   pivot.updateMatrixWorld(true); // markers placed since the last frame are where they are now
   const rect = el.getBoundingClientRect();
   const ray = new THREE.Raycaster();
   ray.layers.set(HALO_LAYER);
   ray.setFromCamera(new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1), camera);
-  const [g] = ray.intersectObjects(ghosts.filter((x) => x.parent), false);
+  const [g] = ray.intersectObjects(pool.filter((x) => x.parent), false);
   if (!g) return null;
   if (h && pivot.localToWorld(h.point.clone()).distanceTo(camera.position) < g.distance) return null;
   return g.object.userData.slot;
+}
+
+/**
+ * With a color picked, a tap on what a shape hint says to tap (a glass box in a spot to
+ * fill, or an extension to take away) means a shape edit, which only the Shape tool makes:
+ * the tap colors nothing, a message says to pick Shape, and the Shape button flashes.
+ */
+function shapeFirst(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null): boolean {
+  if (!edit?.highlight) return false;
+  const taps = edit.fit.problems[shownProblem().i]?.taps;
+  if (!taps?.length) return false;
+  const slot = pickMarker(el, clientX, clientY, h, hintGhosts) ?? (h ? slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]) : -1);
+  if (!taps.includes(slot)) return false;
+  setMessage("To add or remove an extension, pick Shape first", "info");
+  render();
+  const b = document.querySelector('[data-paint="shape"]') as HTMLElement;
+  b.classList.remove("flash");
+  void b.offsetWidth; // restart the flash
+  b.classList.add("flash");
+  return true;
 }
 
 function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null) {

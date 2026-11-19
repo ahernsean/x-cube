@@ -133,6 +133,9 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .tp-group > .btn.tp.working:disabled { color: inherit; }
 .btn.working { animation: working 1.1s ease-in-out infinite; }
 @keyframes working { 50% { opacity: 0.45; } }
+/* The Shape button, when a tap with a color picked meant a shape edit. */
+.swatch.shape-tool.flash { animation: shape-flash 1.2s ease-out; }
+@keyframes shape-flash { 0%, 40% { box-shadow: 0 0 0 4px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
 @media (prefers-reduced-motion: reduce) { .btn.working { animation: none; } }
 /* The Solve panel: the order and Start solving until a solve starts; then the step's controls. */
 #guide:not(.solving) .solve-only, #guide.solving .solve-idle { display: none; }

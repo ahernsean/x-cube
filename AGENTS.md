@@ -414,7 +414,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     empty spot, the control a tap fills it with; with another tool picked, the hint draws
     that one box itself, the same size: `hintGhosts`, `ghostBox`; the arrow, Show and the
     view's checks take the box for what is in that spot), or "One of these extensions ..." / "in
-    one of these spots" when the taps tie. A halo marks a cubelet or a spot for one (3D); a
+    one of these spots" when the taps tie. With a
+    color picked, a tap on what the hint says to tap (`Problem.taps`: a glass box, or an
+    extension to take away) colors nothing: "To add or remove an extension, pick Shape
+    first", and the Shape button flashes (`shapeFirst`). A halo marks a cubelet or a spot for one (3D); a
     ring marks a sticker (2D), so shape hints have no rings. In the shape messages an
     extension cubelet is "an extension", as in "This core corner has only one extension". One tap at a time; the next problem goes on from there. Over 200 simulated
     edits of 2 to 6 random taps followed hint by hint, every one reached a valid shape in at

@@ -1556,7 +1556,7 @@ labTest("color editing: a hint circles the sticker it means when its color can't
   check(hidden.list.length === 0 && hidden.px === 0, `Hide takes the ring away with the halo (${JSON.stringify(hidden)})`);
 });
 
-labTest("shape editing: a shape problem halos the glass box where an extension should go", async ({ page, check, probe, settle }) => {
+labTest("shape editing: a shape problem halos the glass box where an extension should go", async ({ page, check, probe, settle, gesture }) => {
   // An extension taken off a corner: either bare spot gives the corner two again, but only
   // the one it came from keeps the corners' twists whole. A glass box fills that spot, with
   // the halo on it and on the corner the line names, and Show turns the view to them.
@@ -1566,6 +1566,14 @@ labTest("shape editing: a shape problem halos the glass box where an extension s
   await settle();
   const seen = { line: await page.$eval("#edit-status", (e) => e.textContent), outlined: await probe("outlined"), px3d: await probe("haloPixels", "3d"), behind: (await probe("haloArrow")).behind, faces: await probe("facesSeen", "Rx.UF") };
   check(/This core corner has only one extension, but it has to have two\. An extension should probably be added here/.test(seen.line) && seen.outlined.join() === "Rx.UF,UFR" && seen.px3d > 0 && seen.behind.length === 0 && seen.faces > 0 && (await probe("hintBoxes")) === 1, `the spot to fill has a haloed glass box, in view after Show (${JSON.stringify(seen)})`);
+  // With a color picked, a tap on the box means a shape edit: it colors nothing, says to
+  // pick Shape, and the Shape button flashes.
+  const before = await probe("shapeEdit");
+  const at = await probe("spot", "Rx.UF");
+  await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+  await page.waitForFunction(() => /pick Shape first/.test(document.getElementById("message").textContent), null, { timeout: 3000 }).catch(() => {});
+  const tapped = { message: await page.$eval("#message", (e) => e.textContent), flash: await page.$eval('[data-paint="shape"]', (b) => b.classList.contains("flash")), removed: (await probe("shapeEdit")).removed.join() };
+  check(/To add or remove an extension, pick Shape first/.test(tapped.message) && tapped.flash && tapped.removed === before.removed.join(), `a tap on the box with a color picked says to pick Shape (${JSON.stringify(tapped)})`);
   // With the Shape tool, its own box in that spot carries the halo: no second box.
   await page.click('[data-paint="shape"]');
   await settle();

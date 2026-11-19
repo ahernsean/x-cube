@@ -77,6 +77,8 @@ export interface Problem {
   slots: number[];
   /** Stickers its hint calls "circled" (slot, face direction): ones its colors can't tell apart. */
   marks?: { slot: number; face: number }[];
+  /** For a shape problem, the spots its hint says to tap: extensions to take away or empty spots to fill. */
+  taps?: number[];
 }
 
 /** What a problem's spots should probably show instead: its words, and where it means. */
@@ -1007,7 +1009,7 @@ function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
   // The halo marks the extensions to take away, or the empty spots to fill (the Lab draws a
   // glass box in each, haloed).
   // "This core corner" and "this extension" (or "here") are both pointed at.
-  return { text: `${p.text}. ${text}`, slots: [...new Set([...p.slots, ...pick])] };
+  return { text: `${p.text}. ${text}`, slots: [...new Set([...p.slots, ...pick])], taps: pick };
 }
 
 /** Makes the draft's changes by moving real cubelets, if its shape is one the puzzle can have. */
