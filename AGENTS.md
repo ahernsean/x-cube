@@ -403,7 +403,18 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     have one or two", each with a halo on the core cubelets; "Only three core edges have
     two extensions, but there must be four", "Five ... but there can be only four",
     "Only three centers have an extension center", "The two centers without an extension
-    center must be opposite each other"); a cubelet put in is a blank body meanwhile (drawn
+    center must be opposite each other"). Each says what to tap (`shapeTaps`, `shapeHint`):
+    the nearest shape the puzzle can have, by fewest taps, with the core corners' twists
+    adding up to whole turns (so of a corner's two bare spots, the one that keeps them whole
+    is the one to fill), and of the spots some such fewest taps change, those on the core
+    cubelets the problem names (or of its kind, when it names none), taking one away before
+    putting one in: "The circled extension cubelet should probably come off" (haloed, with a
+    ring on its outer sticker), "An extension cubelet should probably go in the circled spot"
+    (a ring standing in the empty spot, facing the viewer), or "one of the circled ..." when
+    the taps tie. One tap at a time; the next problem goes on from there. Over 200 simulated
+    edits of 2 to 6 random taps followed hint by hint, every one reached a valid shape in at
+    most 6 taps (49 before), never back to a shape seen before (240 times before), and "needs
+    to be rotated" came up 12 times (171). A cubelet put in is a blank body meanwhile (drawn
     in the flat view too, with its stickers, as is every dashed outline). Once
     the shape is one the puzzle can have, real cubelets take the blanks' places at once.
     The core corners' twists can still be wrong, as no turns leave them: "The core corners

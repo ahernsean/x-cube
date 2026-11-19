@@ -1425,13 +1425,14 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     steps[0] !== steps[1] && steps.slice(0, 2).every((t) => /^Not valid: Five (core edges|centers) .*‹[12]\/2›( Show Hide)?$/.test(t)) && steps[2] === steps[0],
     `› steps through problems that name no cubelets (${steps.join(" | ")})`,
   );
-  // The core edges with two extensions each: one enclosed on every side (UF, with the
-  // cubelet just put over it) can't be seen, so the cubelets around it carry its halo.
+  // Five core edges with two extensions each: the hint names the extension cubelets one of
+  // which should come off, the two over UF (enclosed on every side, with the cubelet just
+  // put over it) among them, and halos them, never the core edge nothing shows.
   if (!/Five core edges/.test(await editLine())) await page.click('[data-halo="next"]');
-  const edges = { named: await probe("highlighted"), haloed: await probe("haloed") };
+  const edges = { named: await probe("highlighted"), haloed: await probe("haloed"), line: await editLine() };
   check(
-    edges.named.includes("UF") && !edges.haloed.includes("UF") && ["Fx.U", "Ux.F"].every((t) => edges.haloed.includes(t)),
-    `a named cubelet nothing shows is haloed by the cubelets around it (${JSON.stringify(edges)})`,
+    /should probably come off/.test(edges.line) && !edges.haloed.includes("UF") && ["Fx.U", "Ux.F"].every((t) => edges.haloed.includes(t)),
+    `the extension cubelets to take off are haloed, not the core edge they hide (${JSON.stringify(edges)})`,
   );
   // The cubelet put in is a blank until the shape is right: it is outlined too, and from
   // below, where it can't be seen, the arrow counts it.
@@ -1450,7 +1451,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await tapSticker("Fx.R", "F");
   const one = { e: await probe("shapeEdit"), line: await editLine(), kept: await probe("painted", "Rx.F", "R"), gone: await probe("painted", "Fx.R", "F"), fell: await probe("painted", "FR", "F") };
   check(
-    one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line === "Not valid: Only three core edges have two extensions, but there must be four." && one.kept === "R" && one.gone === null && one.fell === "G",
+    one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line.startsWith("Not valid: Only three core edges have two extensions, but there must be four. An extension cubelet should probably go in one of the circled spots.") && one.kept === "R" && one.gone === null && one.fell === "G",
     `a tap takes one cubelet away, its color falls onto the core edge it bares, and the line says what the shape lacks (${JSON.stringify(one)})`,
   );
   // A tap on an empty spot puts a cubelet there; the shape is right again, made of real cubelets, with stickers to paint.
@@ -1551,6 +1552,18 @@ labTest("color editing: a hint circles the sticker it means when its color can't
   await settle();
   const hidden = await probe("marks");
   check(hidden.list.length === 0 && hidden.px === 0, `Hide takes the ring away with the halo (${JSON.stringify(hidden)})`);
+});
+
+labTest("shape editing: a shape problem circles the spot to fill", async ({ page, check, probe, settle }) => {
+  // An extension cubelet taken off a corner: either bare spot gives the corner two again,
+  // but only the one it came from keeps the corners' twists whole, and that one is circled.
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.28,0.36,0.12,0.88],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","removed":["Rx.UF"],"added":[],"colors":".O.Y.B.O.Y...O.YG..O...B.O.....O..G..OW..B.OW....OW.G....................O.Y.B...Y.....Y.....Y...O.YG..O...B...................O..G..OW..B..W.....W.....W....OW.G........................................Y.B...Y.....Y.....Y.....YG......B................G...W..B..W.....W.....W.....W.G.....................................R..Y.B...Y.....Y.....Y..R..YG.R....B..................R...G.R.W..B..W.....W.....W...R.W.G...................R..Y.BR..Y..R..YG.R....BR.....R...G.R.W..BR.W...R.W.G.","tool":"W","problems":[],"selected":"","hidden":null}}));
+  await settle();
+  await page.click('[data-halo="show"]');
+  await settle();
+  const line = await page.$eval("#edit-status", (e) => e.textContent);
+  const marks = await probe("marks");
+  check(/This core corner has only one extension, but it has to have two\. An extension cubelet should probably go in the circled spot/.test(line) && marks.list.length === 1 && marks.list[0].slot === "Rx.UF" && marks.px > 20, `the spot to fill is circled (${JSON.stringify({ line, marks })})`);
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {

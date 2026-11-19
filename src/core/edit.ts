@@ -923,7 +923,92 @@ export function draftProblems(d: Draft): Problem[] {
   const bare = CENTER_SLOTS.filter((c) => filledOn(d, c).length === 0);
   if (bare.length !== 2) out.push(problem(count(6 - bare.length, "center has an extension center", "centers have an extension center", "there must be four"), []));
   else if (CENTER_SLOTS.indexOf(bare[0]) >> 1 !== CENTER_SLOTS.indexOf(bare[1]) >> 1) out.push(problem("The two centers without an extension center must be opposite each other", bare));
-  return out;
+  if (!out.length) return out;
+  const taps = shapeTaps(d);
+  return out.map((p) => shapeHint(d, p, taps));
+}
+
+/**
+ * The spots the fewest taps change on the way to a shape the puzzle can have. A shape is
+ * one when every core corner has two of its three spots filled, every core edge one or
+ * both of its two (both on exactly four of them), and every center its one spot filled but
+ * for two opposite ones; so each core cubelet is chosen on its own, but for which four edges
+ * have two, which two centers have none, and the corners' twists, which the bare spots set
+ * and which must add up to whole turns (so of a corner's two bare spots, the one that keeps
+ * the twists whole is the one to fill). A spot is in the answer when some way with the
+ * fewest taps changes it (the least cost with that spot forced to change is the least).
+ */
+/**
+ * How far a core corner is twisted when spot `bare` is its bare one: none with it up or
+ * down, else a third of a turn one way or the other, by which side and the corner's
+ * handedness. Turns keep the sum over the corners a whole number of turns.
+ */
+function cornerTwist(c: number, bare: number): number {
+  const axis = outwardDir(bare) >> 1;
+  const [x, y, z] = SLOT_POS[c];
+  return axis === 1 ? 0 : (axis === 0) === x * y * z > 0 ? 1 : 2;
+}
+
+function shapeTaps(d: Draft): number[] {
+  const BIG = 1000;
+  const cost = (forced: number) => {
+    const at = (t: number, want: boolean) => (want === draftFilled(d, t) ? (t === forced ? BIG : 0) : 1);
+    // Corners: which spot is bare, with the twists adding up to a whole turn (by dynamic
+    // programming over the sum, mod 3).
+    let sums = [0, BIG, BIG];
+    for (const c of CORNER_SLOTS) {
+      const o = outerOf(c);
+      const next = [BIG, BIG, BIG];
+      o.forEach((bare, drop) => {
+        const k = o.reduce((sum, t, i) => sum + at(t, i !== drop), 0);
+        const w = cornerTwist(c, bare);
+        for (let r = 0; r < 3; r++) next[(r + w) % 3] = Math.min(next[(r + w) % 3], sums[r] + k);
+      });
+      sums = next;
+    }
+    let total = sums[0];
+    const extra: number[] = [];
+    for (const c of EDGE_SLOTS) {
+      const [a, b] = outerOf(c);
+      const one = Math.min(at(a, true) + at(b, false), at(a, false) + at(b, true));
+      total += one;
+      extra.push(at(a, true) + at(b, true) - one);
+    }
+    total += extra.sort((x, y) => x - y).slice(0, 4).reduce((x, y) => x + y, 0);
+    total += Math.min(...[0, 1, 2].map((k) => CENTER_SLOTS.reduce((sum, c, i) => sum + outerOf(c).reduce((t2, t) => t2 + at(t, i >> 1 !== k), 0), 0)));
+    return total;
+  };
+  const least = cost(-1);
+  if (!least) return [];
+  return ALL_SLOTS().filter((t) => outwardDir(t) >= 0 && cost(t) === least);
+}
+
+/**
+ * A shape problem with what to tap: of the spots the fewest taps change (`taps`), those on
+ * the core cubelets the problem names (or of the kind it is about, when it names none),
+ * taking one away before putting one in, each circled ("The circled extension cubelet
+ * should probably come off", "An extension cubelet should probably go in the circled
+ * spot"). One tap at a time: the next problem's hint goes on from there.
+ */
+function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
+  if (!taps.length) return p;
+  const about = (t: number) =>
+    p.slots.length ? p.slots.includes(coreOf(t)) || p.slots.includes(t) : / centers? /.test(p.text) ? span(coreOf(t)) === 1 : / core edges? /.test(p.text) ? span(coreOf(t)) === 2 : true;
+  const mine = taps.filter(about);
+  const pool = mine.length ? mine : taps;
+  const off = pool.filter((t) => draftFilled(d, t));
+  const pick = off.length ? off : pool;
+  const noun = pick.every((t) => span(coreOf(t)) === 1) ? "extension center" : "extension cubelet";
+  const text = off.length
+    ? pick.length === 1
+      ? `The circled ${noun} should probably come off`
+      : `One of the circled ${noun}s should probably come off`
+    : `An ${noun} should probably go in ${pick.length === 1 ? "the circled spot" : "one of the circled spots"}`;
+  return {
+    text: `${p.text}. ${text}`,
+    slots: off.length ? pick : p.slots.length ? p.slots : [...new Set(pick.map(coreOf))],
+    marks: pick.map((t) => ({ slot: t, face: outwardDir(t) })),
+  };
 }
 
 /** Makes the draft's changes by moving real cubelets, if its shape is one the puzzle can have. */

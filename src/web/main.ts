@@ -5340,7 +5340,8 @@ const HALO_VIEWS = [0, 1, 2, 3, 4, 5].map((d) => FLAT_HALO_LAYER + d);
  * its cubelet): a white ring with a dark casing on the sticker, as Lost? marks the sticker
  * it asks about, drawn over everything so neighbors don't cut it. In the 3D view it shows
  * only while the sticker faces the viewer, so it never shows through the puzzle; the flat
- * view has its own copy on the sticker's face.
+ * view has its own copy on the sticker's face. A shape hint circles an empty spot the same
+ * way: there the ring stands at the spot's middle, facing the viewer, while that can be seen.
  */
 const markRings: { view: any; flat: any }[] = [];
 function markRing() {
@@ -5352,13 +5353,36 @@ function markRing() {
   }
   return group;
 }
-/** Shows each 3D-view ring only while its sticker faces the viewer. */
+/** Shows each 3D-view ring only while its sticker, or the empty spot it circles, faces the viewer. */
 function showMarks() {
   if (!edit) return;
   edit.marks.forEach((m, i) => {
     const r = markRings[i];
-    if (r?.view.parent) r.view.visible = faceView(edit!.shown, m.slot, m.face, 0.2) > 0;
+    if (!r?.view.parent) return;
+    if (draftFilled(edit!, m.slot)) r.view.visible = faceView(edit!.shown, m.slot, m.face, 0.2) > 0;
+    else {
+      // An empty spot has no face to lie on: the ring stands at its middle, facing the viewer.
+      r.view.position.set(...SLOT_POS[m.slot]);
+      r.view.quaternion.copy(pivot.quaternion).invert().multiply(camera.quaternion);
+      r.view.visible = openSpotSeen(m.slot);
+    }
   });
+}
+
+/** Whether the middle of empty spot s can be seen, nothing drawn in front of it. */
+function openSpotSeen(s: number): boolean {
+  pivot.updateMatrixWorld(true);
+  const target = pivot.localToWorld(new THREE.Vector3(...SLOT_POS[s]));
+  const toward = camera.position.clone().sub(target);
+  const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize());
+  ray.layers.set(0);
+  for (const h of ray.intersectObjects(pivot.children, true)) {
+    let o = h.object;
+    while (o.parent && o.parent !== pivot) o = o.parent;
+    if ((!meshes.includes(o) && !blanks.includes(o)) || !o.visible) continue;
+    return h.distance > toward.length() - 0.05;
+  }
+  return true;
 }
 
 /** Puts halos on the cubelet in each highlighted slot of the shown state, and removes the rest. */
@@ -5372,7 +5396,7 @@ function placeHalos() {
     const r = (markRings[i] ??= { view: markRing(), flat: markRing() });
     const n = new THREE.Vector3(...DIRS[m.face]);
     for (const [g, layer] of [[r.view, HALO_LAYER], [r.flat, FLAT_HALO_LAYER + m.face]] as const) {
-      g.position.set(...SLOT_POS[m.slot]).addScaledVector(n, 0.53);
+      g.position.set(...SLOT_POS[m.slot]).addScaledVector(n, 0.53); // an empty spot's 3D ring is placed each frame (showMarks)
       g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
       g.traverse((o: any) => o.layers.set(layer));
       pivot.add(g);

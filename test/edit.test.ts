@@ -291,7 +291,10 @@ test("edit: an extension cubelet on a core corner comes and goes alone, and the 
   assert.equal(paint[at(2, 0, 1) * 6 + U], "W", "its top's white falls onto the cubelet below it");
   assert.equal(paint[at(2, 1, 0) * 6 + F], "G", "its front's green onto the cubelet behind it");
   assert.ok(!draftFilled(d, at(2, 1, 1)) && draftFilled(d, at(1, 1, 2)), "only the tapped cubelet goes");
-  assert.deepEqual(draftProblems(d).map((p) => p.text), ["This core corner has only one extension, but it has to have two"]);
+  // Either bare spot gives the corner two again, but only the one it came from keeps the
+  // corners' twists whole, so only that one is circled.
+  assert.deepEqual(draftProblems(d).map((p) => p.text), ["This core corner has only one extension, but it has to have two. An extension cubelet should probably go in the circled spot"]);
+  assert.deepEqual(draftProblems(d)[0].marks, [{ slot: at(2, 1, 1), face: R }], "the spot it came from is circled");
   assert.deepEqual(draftProblems(d)[0].slots, [at(1, 1, 1)], "the line names the corner");
   draftTap(d, at(1, 2, 1)); // its top gets one: two again, but not where they were
   assert.deepEqual(draftProblems(d), [], "two extensions on every core corner");
@@ -306,11 +309,14 @@ test("edit: an extension cubelet on a core corner comes and goes alone, and the 
   const e = draft();
   draftTap(e, at(1, 2, 1)); // UFR's bare top
   draftTap(e, at(0, 1, 2)); // UF's one extension
-  assert.deepEqual(draftProblems(e).map((p) => p.text).slice(0, 2), ["This core corner has three extensions, but it can have only two", "This core edge has no extensions, but it has to have one or two"]);
+  assert.deepEqual(draftProblems(e).map((p) => p.text).slice(0, 2), ["This core corner has three extensions, but it can have only two. The circled extension cubelet should probably come off", "This core edge has no extensions, but it has to have one or two. An extension cubelet should probably go in one of the circled spots"]);
   const f = draft();
   draftTap(f, at(2, 1, 1));
   draftTap(f, at(-2, 1, 1)); // UFR and UFL down to one each
-  assert.deepEqual(draftProblems(f)[0], { text: "These two core corners have only one extension each, but each has to have two", slots: [at(1, 1, 1), at(-1, 1, 1)].sort((a, b) => a - b) });
+  const two = draftProblems(f)[0];
+  assert.equal(two.text, "These two core corners have only one extension each, but each has to have two. An extension cubelet should probably go in one of the circled spots");
+  assert.deepEqual(two.slots, [at(1, 1, 1), at(-1, 1, 1)].sort((a, b) => a - b));
+  assert.deepEqual(two.marks!.map((m) => m.slot).sort(), [at(2, 1, 1), at(1, 2, 1), at(-2, 1, 1), at(-1, 2, 1)].sort(), "each corner's bare spots are circled");
 });
 
 test("edit: tapping a core corner turns it through its three ways, and a core single edge over", () => {
@@ -342,7 +348,7 @@ test("edit: a cubelet comes or goes alone, and the shape may be wrong meanwhile"
   assert.equal(paint[at(0, 1, 2) * 6 + F], "G", "the others keep their paint");
   assert.equal(draftColors(d, paint)[at(1, 0, 1) * 6 + R], "R", "and the core edge shows it");
   assert.deepEqual([...d.removed], [at(2, 0, 1)]);
-  assert.deepEqual(texts(d), ["Only three core edges have two extensions, but there must be four"]);
+  assert.deepEqual(texts(d), ["Only three core edges have two extensions, but there must be four. An extension cubelet should probably go in one of the circled spots"]);
   assert.ok(draftSpots(d).includes(at(2, 0, 1)), "its spot is one a tap can fill again");
   paint = repaint(paint, draftTap(d, at(0, 2, 1))!); // the bare top of the UF single edge gets a cubelet
   assert.equal(paint[at(0, 2, 1) * 6 + U], "W", "a cubelet that comes takes the color of the sticker it covers");
@@ -355,16 +361,17 @@ test("edit: a cubelet comes or goes alone, and the shape may be wrong meanwhile"
   // One too many double edges names them all.
   draftTap(d, at(0, 2, -1));
   const [five] = draftProblems(d);
-  assert.equal(five.text, "Five core edges have two extensions, but there can be only four");
-  assert.equal(five.slots.length, 5);
+  assert.equal(five.text, "Five core edges have two extensions, but there can be only four. One of the circled extension cubelets should probably come off");
+  assert.ok(five.slots.includes(at(0, 2, -1)), `the one just put on is among those to take off (${five.slots})`);
 });
 
 test("edit: extension centers come and go alone, and the two faces without one must be opposite", () => {
   const d = draft();
   draftTap(d, at(2, 0, 0)); // Rx
-  assert.deepEqual(texts(d), ["Only three centers have an extension center, but there must be four"]);
+  assert.deepEqual(texts(d), ["Only three centers have an extension center, but there must be four. An extension center should probably go in the circled spot"]);
+  assert.deepEqual(draftProblems(d)[0].marks, [{ slot: at(2, 0, 0), face: 0 }], "the spot it came from is circled");
   draftTap(d, at(0, 2, 0)); // one over the up center
-  assert.deepEqual(texts(d), ["The two centers without an extension center must be opposite each other"]);
+  assert.deepEqual(texts(d), ["The two centers without an extension center must be opposite each other. An extension center should probably go in one of the circled spots"]);
   assert.equal(draftProblems(d)[0].slots.length, 2, "the two centers are named");
   draftTap(d, at(0, 2, 0));
   draftTap(d, at(-2, 0, 0)); // Lx: now up, down, left and right are bare, and front and back have theirs
