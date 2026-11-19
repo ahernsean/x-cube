@@ -1302,8 +1302,9 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
 });
 
 labTest("shape editing: Show and the arrow reach a cubelet bared by taking an extension cubelet off", async ({ page, check, probe, gesture, settle }) => {
-  // The owner's case: a core edge left with no extensions. The cubelet taken off is hidden,
-  // not gone, and must neither cover the core edge's face nor block the view of it.
+  // The owner's case: a core edge left with no extensions. The hint halos a glass box in
+  // each spot an extension could go; the cubelet taken off is hidden, not gone, and must not
+  // block the view of the box in its spot.
   const tapAt = async ({ x, y }) => {
     await gesture([["pointerdown", x, y], ["pointerup", x, y]]);
     await page.waitForFunction(() => window.xcubeProbe.idle());
@@ -1312,19 +1313,20 @@ labTest("shape editing: Show and the arrow reach a cubelet bared by taking an ex
   await page.click('[data-paint="shape"]');
   await tapAt(await probe("sticker", "Fx.U", "F"));
   const line = await page.$eval("#edit-status", (e) => e.textContent);
-  check(/This core edge has no extensions/.test(line) && (await probe("haloed")).join() === "UF", `taking the edge's only extension off names the core edge (${line})`);
-  // From the front, its front shows where the cubelet taken off was: the hidden cubelet
-  // neither covers that face nor blocks the view of it.
+  const haloed = (await probe("haloed")).sort().join();
+  check(/This core edge has no extensions, but it has to have one or two\. An extension should probably be added in one of these spots/.test(line) && haloed === "Fx.U,Ux.F", `taking the edge's only extension off halos the spots to fill (${line}, ${haloed})`);
+  // From the front, the box where the cubelet taken off was shows: the hidden cubelet
+  // doesn't block the view of it.
   await page.evaluate(() => document.querySelector('[data-view="front"]').click());
   await settle();
-  check((await probe("facesSeen", "UF")) === 1, `the face the cubelet taken off bared counts as seen (${await probe("facesSeen", "UF")} faces)`);
+  check((await probe("facesSeen", "Fx.U")) >= 1, `the box in the spot it was taken from counts as seen (${await probe("facesSeen", "Fx.U")} faces)`);
   await page.evaluate(() => document.querySelector('[data-view="back"]').click());
   await settle();
   await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 1);
   await page.click('[data-halo="show"]');
   await settle();
   await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 0, null, { timeout: 5000 }).catch(() => {});
-  const after = { seen: await probe("facesSeen", "UF"), arrow: await probe("haloArrow") };
+  const after = { seen: (await probe("facesSeen", "Fx.U")) + (await probe("facesSeen", "Ux.F")), arrow: await probe("haloArrow") };
   check(after.seen >= 1 && after.arrow.behind.length === 0 && after.arrow.opacity === 0, `Show turns the view to it, and the arrow goes (${JSON.stringify(after)})`);
 });
 
@@ -1431,7 +1433,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   if (!/Five core edges/.test(await editLine())) await page.click('[data-halo="next"]');
   const edges = { named: await probe("highlighted"), haloed: await probe("haloed"), line: await editLine() };
   check(
-    /should probably come off/.test(edges.line) && !edges.haloed.includes("UF") && ["Fx.U", "Ux.F"].every((t) => edges.haloed.includes(t)),
+    /One of these extensions should probably be removed/.test(edges.line) && !edges.haloed.includes("UF") && ["Fx.U", "Ux.F"].every((t) => edges.haloed.includes(t)),
     `the extension cubelets to take off are haloed, not the core edge they hide (${JSON.stringify(edges)})`,
   );
   // The cubelet put in is a blank until the shape is right: it is outlined too, and from
@@ -1451,7 +1453,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await tapSticker("Fx.R", "F");
   const one = { e: await probe("shapeEdit"), line: await editLine(), kept: await probe("painted", "Rx.F", "R"), gone: await probe("painted", "Fx.R", "F"), fell: await probe("painted", "FR", "F") };
   check(
-    one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line.startsWith("Not valid: Only three core edges have two extensions, but there must be four. An extension cubelet should probably go in one of the circled spots.") && one.kept === "R" && one.gone === null && one.fell === "G",
+    one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line.startsWith("Not valid: Only three core edges have two extensions, but there must be four. An extension should probably be added in one of these spots.") && one.kept === "R" && one.gone === null && one.fell === "G",
     `a tap takes one cubelet away, its color falls onto the core edge it bares, and the line says what the shape lacks (${JSON.stringify(one)})`,
   );
   // A tap on an empty spot puts a cubelet there; the shape is right again, made of real cubelets, with stickers to paint.
@@ -1554,16 +1556,16 @@ labTest("color editing: a hint circles the sticker it means when its color can't
   check(hidden.list.length === 0 && hidden.px === 0, `Hide takes the ring away with the halo (${JSON.stringify(hidden)})`);
 });
 
-labTest("shape editing: a shape problem circles the spot to fill", async ({ page, check, probe, settle }) => {
-  // An extension cubelet taken off a corner: either bare spot gives the corner two again,
-  // but only the one it came from keeps the corners' twists whole, and that one is circled.
+labTest("shape editing: a shape problem halos a glass box where an extension should go", async ({ page, check, probe, settle }) => {
+  // An extension taken off a corner: either bare spot gives the corner two again, but only
+  // the one it came from keeps the corners' twists whole. A glass box fills that spot, with
+  // the halo on it, and Show turns the view to it.
   await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.28,0.36,0.12,0.88],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","removed":["Rx.UF"],"added":[],"colors":".O.Y.B.O.Y...O.YG..O...B.O.....O..G..OW..B.OW....OW.G....................O.Y.B...Y.....Y.....Y...O.YG..O...B...................O..G..OW..B..W.....W.....W....OW.G........................................Y.B...Y.....Y.....Y.....YG......B................G...W..B..W.....W.....W.....W.G.....................................R..Y.B...Y.....Y.....Y..R..YG.R....B..................R...G.R.W..B..W.....W.....W...R.W.G...................R..Y.BR..Y..R..YG.R....BR.....R...G.R.W..BR.W...R.W.G.","tool":"W","problems":[],"selected":"","hidden":null}}));
   await settle();
   await page.click('[data-halo="show"]');
   await settle();
-  const line = await page.$eval("#edit-status", (e) => e.textContent);
-  const marks = await probe("marks");
-  check(/This core corner has only one extension, but it has to have two\. An extension cubelet should probably go in the circled spot/.test(line) && marks.list.length === 1 && marks.list[0].slot === "Rx.UF" && marks.px > 20, `the spot to fill is circled (${JSON.stringify({ line, marks })})`);
+  const seen = { line: await page.$eval("#edit-status", (e) => e.textContent), outlined: await probe("outlined"), px3d: await probe("haloPixels", "3d"), behind: (await probe("haloArrow")).behind, faces: await probe("facesSeen", "Rx.UF") };
+  check(/This core corner has only one extension, but it has to have two\. An extension should probably be added here/.test(seen.line) && seen.outlined.join() === "Rx.UF" && seen.px3d > 0 && seen.behind.length === 0 && seen.faces > 0, `the spot to fill has a haloed glass box, in view after Show (${JSON.stringify(seen)})`);
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {

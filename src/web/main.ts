@@ -5065,11 +5065,26 @@ function drawOutline(cam: any, target: any, w: number, h: number, scale: number)
   renderer.autoClear = auto;
 }
 
-/** What the 3D view draws in slot s of the shown position: its cubelet, or while editing the blank put in there; null if nothing. */
+/**
+ * What the 3D view draws in slot s of the shown position: its cubelet, or while editing the
+ * blank put in there, or a shape hint's glass box (first: a cubelet taken off is only hidden,
+ * so its own cubelet is still in the slot); null if nothing.
+ */
 function drawnAt(st: State, s: number): any {
+  const ghost = edit ? hintGhosts.find((g) => g.parent && g.userData.slot === s) : undefined;
+  if (ghost) return ghost;
   if (st.occ[s] >= 0) return meshes[st.occ[s]];
   return (edit && blanks.find((b) => b.parent && b.userData.slot === s)) ?? null;
 }
+
+/**
+ * An empty spot a shape hint says to fill: a glass box where the cubelet would go, like the
+ * Shape tool's, but whole, and haloed like a cubelet, so the halo marks where it should go
+ * (3D, as a halo always is; a ring marks a sticker). The arrow, Show and the view's checks
+ * treat it as a cubelet in that spot.
+ */
+const hintGhosts: any[] = [];
+const hintGhostAt = (s: number) => hintGhosts.some((g) => g.parent && g.userData.slot === s);
 
 /** Whether the 3D view shows any face of the cubelet in slot s now: one turned at all toward the viewer, its middle unblocked. */
 function slotSeen(st: State, s: number): boolean {
@@ -5340,8 +5355,7 @@ const HALO_VIEWS = [0, 1, 2, 3, 4, 5].map((d) => FLAT_HALO_LAYER + d);
  * its cubelet): a white ring with a dark casing on the sticker, as Lost? marks the sticker
  * it asks about, drawn over everything so neighbors don't cut it. In the 3D view it shows
  * only while the sticker faces the viewer, so it never shows through the puzzle; the flat
- * view has its own copy on the sticker's face. A shape hint circles an empty spot the same
- * way: there the ring stands at the spot's middle, facing the viewer, while that can be seen.
+ * view has its own copy on the sticker's face.
  */
 const markRings: { view: any; flat: any }[] = [];
 function markRing() {
@@ -5353,50 +5367,37 @@ function markRing() {
   }
   return group;
 }
-/** Shows each 3D-view ring only while its sticker, or the empty spot it circles, faces the viewer. */
+/** Shows each 3D-view ring only while its sticker faces the viewer. */
 function showMarks() {
   if (!edit) return;
   edit.marks.forEach((m, i) => {
     const r = markRings[i];
-    if (!r?.view.parent) return;
-    if (draftFilled(edit!, m.slot)) r.view.visible = faceView(edit!.shown, m.slot, m.face, 0.2) > 0;
-    else {
-      // An empty spot has no face to lie on: the ring stands at its middle, facing the viewer.
-      r.view.position.set(...SLOT_POS[m.slot]);
-      r.view.quaternion.copy(pivot.quaternion).invert().multiply(camera.quaternion);
-      r.view.visible = openSpotSeen(m.slot);
-    }
+    if (r?.view.parent) r.view.visible = faceView(edit!.shown, m.slot, m.face, 0.2) > 0;
   });
 }
 
-/** Whether the middle of empty spot s can be seen, nothing drawn in front of it. */
-function openSpotSeen(s: number): boolean {
-  pivot.updateMatrixWorld(true);
-  const target = pivot.localToWorld(new THREE.Vector3(...SLOT_POS[s]));
-  const toward = camera.position.clone().sub(target);
-  const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize());
-  ray.layers.set(0);
-  for (const h of ray.intersectObjects(pivot.children, true)) {
-    let o = h.object;
-    while (o.parent && o.parent !== pivot) o = o.parent;
-    if ((!meshes.includes(o) && !blanks.includes(o)) || !o.visible) continue;
-    return h.distance > toward.length() - 0.05;
-  }
-  return true;
-}
 
 /** Puts halos on the cubelet in each highlighted slot of the shown state, and removes the rest. */
 function placeHalos() {
-  for (const h of [...halos, ...haloBodies, ...markRings.flatMap((r) => [r.view, r.flat])]) h.parent?.remove(h);
+  for (const h of [...halos, ...haloBodies, ...hintGhosts, ...markRings.flatMap((r) => [r.view, r.flat])]) h.parent?.remove(h);
   haloClearer?.parent?.remove(haloClearer);
   haloStamp++;
   const marked = edit?.highlight ? haloSlots() : null;
   if (!edit || !marked) return;
+  marked.filter((t) => !draftFilled(edit!, t)).forEach((t, i) => {
+    ghostMaterial ??= new THREE.MeshBasicMaterial({ map: borderedFill(), transparent: true, depthWrite: false });
+    const g = (hintGhosts[i] ??= new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), ghostMaterial));
+    g.layers.set(HALO_LAYER);
+    g.renderOrder = 2;
+    g.userData.slot = t;
+    g.position.set(...SLOT_POS[t]);
+    pivot.add(g);
+  });
   edit.marks.forEach((m, i) => {
     const r = (markRings[i] ??= { view: markRing(), flat: markRing() });
     const n = new THREE.Vector3(...DIRS[m.face]);
     for (const [g, layer] of [[r.view, HALO_LAYER], [r.flat, FLAT_HALO_LAYER + m.face]] as const) {
-      g.position.set(...SLOT_POS[m.slot]).addScaledVector(n, 0.53); // an empty spot's 3D ring is placed each frame (showMarks)
+      g.position.set(...SLOT_POS[m.slot]).addScaledVector(n, 0.53);
       g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
       g.traverse((o: any) => o.layers.set(layer));
       pivot.add(g);
@@ -5440,14 +5441,14 @@ function placeHalos() {
 function bareFace(st: State, s: number, d: number): boolean {
   if (!edit) return isExposed(st, s, d);
   const n = SLOT_NEIGHBOR[s * 6 + d];
-  return draftFilled(edit, s) && n !== -2 && !(n >= 0 && draftFilled(edit, n));
+  return (draftFilled(edit, s) || hintGhostAt(s)) && n !== -2 && !(n >= 0 && draftFilled(edit, n));
 }
 
 function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   const drawn = drawnAt(st, s);
   // While editing, the shape being edited decides what is there: a cubelet taken off is
   // not, and one put in is (as a blank).
-  const there = (t: number) => (edit ? draftFilled(edit, t) : st.occ[t] >= 0);
+  const there = (t: number) => (edit ? draftFilled(edit, t) || hintGhostAt(t) : st.occ[t] >= 0);
   const n = SLOT_NEIGHBOR[s * 6 + d];
   if (!drawn || !there(s) || n === -2 || (n >= 0 && there(n))) return -1;
   pivot.updateMatrixWorld(true);
@@ -5457,11 +5458,12 @@ function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   if (cos < minCos) return -1;
   const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize());
   ray.layers.set(0);
+  ray.layers.enable(HALO_LAYER); // where a shape hint's glass box is
   // The first cubelet the ray meets that is drawn: one taken off in the editor is hidden, not gone.
   for (const h of ray.intersectObjects(pivot.children, true)) {
     let o = h.object;
     while (o.parent && o.parent !== pivot) o = o.parent;
-    if ((!meshes.includes(o) && !blanks.includes(o)) || !o.visible) continue;
+    if ((!meshes.includes(o) && !blanks.includes(o) && !hintGhosts.includes(o)) || !o.visible) continue;
     return o === drawn ? cos : -1;
   }
   return -1;

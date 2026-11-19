@@ -986,9 +986,9 @@ function shapeTaps(d: Draft): number[] {
 /**
  * A shape problem with what to tap: of the spots the fewest taps change (`taps`), those on
  * the core cubelets the problem names (or of the kind it is about, when it names none),
- * taking one away before putting one in, each circled ("The circled extension cubelet
- * should probably come off", "An extension cubelet should probably go in the circled
- * spot"). One tap at a time: the next problem's hint goes on from there.
+ * taking one away before putting one in, each haloed ("This extension should probably be
+ * removed", "An extension should probably be added here"). One tap at a time: the next
+ * problem's hint goes on from there.
  */
 function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
   if (!taps.length) return p;
@@ -998,17 +998,15 @@ function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
   const pool = mine.length ? mine : taps;
   const off = pool.filter((t) => draftFilled(d, t));
   const pick = off.length ? off : pool;
-  const noun = pick.every((t) => span(coreOf(t)) === 1) ? "extension center" : "extension cubelet";
+  const noun = pick.every((t) => span(coreOf(t)) === 1) ? "extension center" : "extension";
   const text = off.length
     ? pick.length === 1
-      ? `The circled ${noun} should probably come off`
-      : `One of the circled ${noun}s should probably come off`
-    : `An ${noun} should probably go in ${pick.length === 1 ? "the circled spot" : "one of the circled spots"}`;
-  return {
-    text: `${p.text}. ${text}`,
-    slots: off.length ? pick : p.slots.length ? p.slots : [...new Set(pick.map(coreOf))],
-    marks: pick.map((t) => ({ slot: t, face: outwardDir(t) })),
-  };
+      ? `This ${noun} should probably be removed`
+      : `One of these ${noun}s should probably be removed`
+    : `An ${noun} should probably be added ${pick.length === 1 ? "here" : "in one of these spots"}`;
+  // The halo marks the extensions to take away, or the empty spots to fill (the Lab draws a
+  // glass box in each, haloed).
+  return { text: `${p.text}. ${text}`, slots: pick };
 }
 
 /** Makes the draft's changes by moving real cubelets, if its shape is one the puzzle can have. */

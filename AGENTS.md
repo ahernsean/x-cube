@@ -408,10 +408,13 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     adding up to whole turns (so of a corner's two bare spots, the one that keeps them whole
     is the one to fill), and of the spots some such fewest taps change, those on the core
     cubelets the problem names (or of its kind, when it names none), taking one away before
-    putting one in: "The circled extension cubelet should probably come off" (haloed, with a
-    ring on its outer sticker), "An extension cubelet should probably go in the circled spot"
-    (a ring standing in the empty spot, facing the viewer), or "one of the circled ..." when
-    the taps tie. One tap at a time; the next problem goes on from there. Over 200 simulated
+    putting one in: "This extension should probably be removed" (the halo on it), "An
+    extension should probably be added here" (a glass box like the Shape tool's, but whole,
+    in the empty spot, with the halo on it: `hintGhosts`, which the arrow, Show and the
+    view's checks take for a cubelet in that spot), or "One of these extensions ..." / "in
+    one of these spots" when the taps tie. A halo marks a cubelet or a spot for one (3D); a
+    ring marks a sticker (2D), so shape hints have no rings. In the shape messages an
+    extension cubelet is "an extension", as in "This core corner has only one extension". One tap at a time; the next problem goes on from there. Over 200 simulated
     edits of 2 to 6 random taps followed hint by hint, every one reached a valid shape in at
     most 6 taps (49 before), never back to a shape seen before (240 times before), and "needs
     to be rotated" came up 12 times (171). A cubelet put in is a blank body meanwhile (drawn

@@ -69,7 +69,13 @@ can, what to fix, not how the Lab found it. Best is which sticker should be whic
 sticker with the wrong color". A sticker is named by its color, never by its place; where its color doesn't say which
 sticker (two of one color on a cubelet), the Lab circles it and calls it "circled": "Its
 circled orange sticker should probably be green". A center is named by its color too ("The
-red center"), since no two centers show one color. Two stickers in each other's spots "trade places", not colors: a sticker
+red center"), since no two centers show one color.
+
+A halo marks a cubelet, or the spot where one should go (a glass box drawn there); a
+ring marks a sticker. So a shape hint points with the halo and says "this" or "here":
+"This extension should probably be removed", "An extension should probably be added
+here". In shape messages an extension cubelet is "an extension"; a center's is "an
+extension center". Two stickers in each other's spots "trade places", not colors: a sticker
 is the thing that is wrong, and the user moves it.
 
 Point rather than place. A problem names what is wrong, not where; the purple halo shows
