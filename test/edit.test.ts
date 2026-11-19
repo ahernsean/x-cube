@@ -445,3 +445,15 @@ test("edit: a one-sticker hint is said plainly, and left out when it names every
   colors[at(1, 1, 1) * 6 + 2] = "G";
   assert.deepEqual(fitColors(st, colors).problems.map((p) => p.text).sort(), ["A core corner must be white or yellow, never blue", "A core corner must be white or yellow, never green"]);
 });
+
+test("edit: a hint stays short, or is left out", () => {
+  // From a play-tester's edit: two spots whose fixes all recolor three stickers, four ways.
+  // A hint asks for at most two stickers, two ways; past that it is more a guess than help.
+  const st = decodeState("LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF");
+  const colors = [...".O.W.G.......R.WG..G...R.......O..Y........GY....OB.W........Y.O.........R.Y.G...Y...W.......Y...Y.OB..G...O.......Y...........B..R..YG..O.Y......W.......W........YR..B.......BR.W..........Y.....OY....Y.G...O.................WR......G................B............Y........G.....R.R...G..O..G.........G..W.YG..R........W..R.BY..............O..Y..GR.W....RW.....W.........Y.......O.Y..B..W.....R.....Y...O.Y.G.........................W..G..B..YR.............O...W.Y.W..OB.O...G.W.R."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
+  const texts = fitColors(st, colors).problems.map((p) => p.text);
+  assert.ok(texts.includes("No cubelet has yellow, blue, and red arranged this way"), texts.join("\n"));
+  assert.ok(texts.includes("White and yellow can never be on the same cubelet"), texts.join("\n"));
+  assert.ok(texts.includes("No cubelet has white, green, and red arranged this way. Its red sticker should probably be orange"), texts.join("\n"));
+  for (const t of texts) assert.ok((t.match(/\. Or /g) ?? []).length <= 1, t);
+});

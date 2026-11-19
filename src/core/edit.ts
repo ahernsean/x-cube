@@ -460,7 +460,9 @@ export function missingColors(shape: State, colors: FaceColors, spots: number[],
       }
     }
   }
-  if (!options.length || best === 0) return null;
+  // A hint is worth reading only while it is short: a fix of more than two stickers is
+  // more a guess than a hint.
+  if (!options.length || best === 0 || best > HINT_STICKERS) return null;
   return fixesText(colors, spots, options, wrong);
 }
 
@@ -473,7 +475,10 @@ const shownKey = (colors: FaceColors, s: number) => shownColors(colors, s).join(
  * be orange or blue"); each other option gets its own sentence, starting "Or". With several
  * spots, each option says which one by its colors, unless they all show the same.
  */
-function fixesText(colors: FaceColors, spots: number[], options: { spot: number; changes: [Color, Color][] }[], wrong: number): string {
+/** The most stickers a hint asks to recolor, and the most ways it offers. */
+const HINT_STICKERS = 2, HINT_OPTIONS = 2;
+
+function fixesText(colors: FaceColors, spots: number[], options: { spot: number; changes: [Color, Color][] }[], wrong: number): string | null {
   const one = spots.length === 1;
   const same = spots.every((t) => shownKey(colors, t) === shownKey(colors, spots[0]));
   const where = (t: number) => {
@@ -517,6 +522,7 @@ function fixesText(colors: FaceColors, spots: number[], options: { spot: number;
     else if (o.changes.length === 1 && !had.to.includes(o.changes[0][1])) had.to.push(o.changes[0][1]);
   }
   const list = [...seen.values()];
+  if (list.length > HINT_OPTIONS) return null;
   const modal = list.length === 1 && list[0].to.length <= 1 ? "should probably" : "should maybe";
   const sentences = list.map((o, i) => {
     const body =
