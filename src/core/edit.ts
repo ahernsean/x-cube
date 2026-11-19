@@ -1001,11 +1001,15 @@ function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
   const off = pool.filter((t) => draftFilled(d, t));
   const pick = off.length ? off : pool;
   const noun = pick.every((t) => span(coreOf(t)) === 1) ? "extension center" : "extension";
+  // A core corner with none needs two, one in each of two of its spots.
+  const two = !off.length && p.slots.length === 1 && span(p.slots[0]) === 3 && !filledOn(d, p.slots[0]).length && pick.length > 1;
   const text = off.length
     ? pick.length === 1
       ? `This ${noun} should probably be removed`
       : `One of these ${noun}s should probably be removed`
-    : `An ${noun} should probably be added ${pick.length === 1 ? "here" : "in one of these spots"}`;
+    : two
+      ? `Two ${noun}s should probably be added, ${pick.length === 2 ? "one in each of these spots" : "in two of these spots"}`
+      : `An ${noun} should probably be added ${pick.length === 1 ? "here" : "in one of these spots"}`;
   // The halo marks the extensions to take away, or the empty spots to fill (the Lab draws a
   // glass box in each, haloed).
   // "This core corner" and "this extension" (or "here") are both pointed at.
