@@ -291,7 +291,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   wrong, including an edit whose shape isn't valid, which has no state code of its own.
   **Paste debug info**, beside it, puts the position, the view and the edit back (the
   probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
-  won't read it, from text pasted into the field that opens; text that isn't debug info is
+  won't read it, from text pasted into the field that opens; words around the debug info
+  are left out (the first span from a "{" to the "}" closing it that parses), so a whole
+  message holding it can be pasted; text that isn't debug info is
   refused ("That isn't debug info"), and during a solve it asks first, as setting a new
   start does. So the owner can come back to an invalid edit after the Lab is republished.
 - **Display panel:** the ◐ in the 3D view's corner opens the Edge glow, Shading, Shadows
@@ -486,7 +488,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   cubelets get a **halo** by themselves, in purple. In the 3D view it is an outline: a band
   5 CSS pixels wide on screen, just outside the part of the cubelet the view shows, off its
   stickers (a mask of the pixels where a haloed cubelet is the nearest thing drawn, and
-  the band drawn over the view around it). It is as bold beside a cubelet flush with its
+  the band drawn over the view around it). A sticker drawn over a cubelet (a color it
+  doesn't have, or the dashed outline of one with no color yet) counts as part of it, or
+  the band would ring that sticker too, as a play-tester saw. It is as bold beside a cubelet flush with its
   neighbors or set back among them as beside one standing out: a rim in the space around
   the cubelet was only a hairline in the seams there. A cubelet hidden behind the puzzle
   has none: a play-tester found a glow drawn through the puzzle covered the cubelet he

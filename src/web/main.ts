@@ -3678,6 +3678,7 @@ function placeOverlays(list: [number, number, Color | typeof UNPAINTED][]) {
       overlays.push(g);
     }
     const g = overlays[n];
+    g.userData.slot = t;
     const [sticker, outline, tile, flatOutline] = g.children;
     const painted = color !== UNPAINTED;
     g.position.set(SLOT_POS[t][0], SLOT_POS[t][1], SLOT_POS[t][2]);
@@ -5191,8 +5192,12 @@ function outlinePass() {
  * smoothing, which keeps the band's work small on a phone.
  */
 function drawOutline(cam: any, target: any, w: number, h: number, scale: number) {
-  const roots = outlined();
-  if (!roots.length) return;
+  const drawn = outlined();
+  if (!drawn.length) return;
+  // A sticker drawn over a cubelet (a color it doesn't have, or a dashed outline for none)
+  // is part of it: else the mask has a hole there, and the band rings the sticker too.
+  const lit = new Set(haloSlots());
+  const roots = [...drawn, ...overlays.filter((g) => g.parent && lit.has(g.userData.slot))];
   const q = outlinePass();
   const mw = Math.max(1, Math.round(w / 2)), mh = Math.max(1, Math.round(h / 2));
   if (q.mask.width !== mw || q.mask.height !== mh) q.mask.setSize(mw, mh);
@@ -6154,7 +6159,7 @@ function installProbe() {
       const over: Record<string, number> = {};
       const c = new THREE.Color(HALO.color);
       const [pr, pg, pb] = [c.r, c.g, c.b].map((v) => v * 255);
-      let changed = 0, purple = 0;
+      let changed = 0, purple = 0, inside = 0;
       for (let y = 0; y < h; y++)
         for (let x = 0; x < w; x++) {
           const i = ((h - 1 - y) * w + x) * 4;
@@ -6163,8 +6168,9 @@ function installProbe() {
           if (Math.abs(ringed[i] - pr) + Math.abs(ringed[i + 1] - pg) + Math.abs(ringed[i + 2] - pb) < 90) purple++;
           const hit = probeDecode(ids, colors, w, h, x, y);
           if (hit && !("plastic" in hit) && !marked.has(hit.slot)) over[`${hit.slot}/${hit.face}`] = (over[`${hit.slot}/${hit.face}`] ?? 0) + 1;
+          if (hit && marked.has(hit.slot)) inside++; // the band over a haloed cubelet itself
         }
-      return { changed, purple, over };
+      return { changed, purple, over, inside };
     },
     /** The stickers the shown problem's hint circles, and how many pixels of the 3D view their rings cover. */
     marks: () => {

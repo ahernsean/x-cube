@@ -1680,7 +1680,8 @@ labTest("color editing: Show turns a white or yellow sticker facing away from th
   // From a play-tester's edit: an extension edge below the puzzle with yellow facing down
   // and its other sticker without a color. The halo outlines the cubelet, whose uncolored
   // sticker was all the view showed of it; the yellow one is circled, and Show turns to it.
-  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.30345,0.48673,-0.18509,0.79797],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:Aa..CaDaEaFaGaHa....Bn..JaKaLnMaNa..VlQaZw..TaUaPbWiIi..ObXiSj......ilaabacadaeafagahaRsjakalaYb....mi..3w1inioapw..rasatauava..xuyaza0a7u......2aqw4a5a6awu8a9a","removed":[],"added":[],"colors":".O.Y.B.......O.YG..O...B.O.Y...OW.G..OW..B.OW.G................Y.........O.Y.B...Y...O.......Y...O.YG............B..........G........OW..B..W..........O.....OW.G.........W.....W......Y.........................B...Y.....Y..R..YG..O.Y.B.............O..G...W..B........W.....W.....W.G...W..................Y...........Y..R..Y.BR........Y......G.......R....B..................R..YG...............W.....W...R.W.G.........................R..Y.BR..YG.R..Y.BR.....R...G.......R.W...R.W.G.","tool":"shape","problems":[],"selected":"","hidden":null}}));
+  const debug = {"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.30345,0.48673,-0.18509,0.79797],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:Aa..CaDaEaFaGaHa....Bn..JaKaLnMaNa..VlQaZw..TaUaPbWiIi..ObXiSj......ilaabacadaeafagahaRsjakalaYb....mi..3w1inioapw..rasatauava..xuyaza0a7u......2aqw4a5a6awu8a9a","removed":[],"added":[],"colors":".O.Y.B.......O.YG..O...B.O.Y...OW.G..OW..B.OW.G................Y.........O.Y.B...Y...O.......Y...O.YG............B..........G........OW..B..W..........O.....OW.G.........W.....W......Y.........................B...Y.....Y..R..YG..O.Y.B.............O..G...W..B........W.....W.....W.G...W..................Y...........Y..R..Y.BR........Y......G.......R....B..................R..YG...............W.....W...R.W.G.........................R..Y.BR..YG.R..Y.BR.....R...G.......R.W...R.W.G.","tool":"shape","problems":[],"selected":"","hidden":null}};
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
   await settle();
   const line = await page.$eval("#edit-status", (e) => e.textContent);
   await page.click("#edit-status");
@@ -1688,6 +1689,14 @@ labTest("color editing: Show turns a white or yellow sticker facing away from th
   const at = await probe("sticker", "Dx.L", "D");
   const drawn = at && (await probe("at3d", at.x, at.y));
   check(/^Not valid: This cubelet's yellow sticker has the wrong color\. Its yellow sticker must be green, blue, red, or orange\./.test(line) && drawn?.slot === "Dx.L" && drawn?.face === "D", `Show turns the circled yellow sticker into view (${JSON.stringify({ line, drawn })})`);
+  // In the view the play-tester had, the cubelet's uncolored sticker, drawn as a dashed
+  // outline over it, faces the viewer: it is part of the cubelet, not a hole in it for the
+  // outline to ring too (a ring around it drew about 140 band pixels over the cubelet; its
+  // own outline's soft inner edge draws about 20).
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
+  await settle();
+  const ring = await probe("outlineOver");
+  check(ring.purple > 0 && ring.inside < 60, `the outline doesn't ring a sticker drawn over the cubelet (${JSON.stringify({ purple: ring.purple, inside: ring.inside })})`);
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {
