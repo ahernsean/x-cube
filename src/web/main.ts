@@ -3511,8 +3511,20 @@ function ghostBox() {
   return g;
 }
 
+/** How much fainter the Shape tool's other glass boxes are drawn while the halo marks some of them. */
+const GHOST_DIM = 0.35;
+let ghostDimMaterial: any = null;
+
 function placeGhosts() {
   placeMarkers(ghosts, edit?.paint === "shape" ? draftSpots(edit) : [], ghostBox);
+  // While the halo marks a box, the others are fainter, so the marked one stands out from
+  // the empty spots around it; they can still be tapped.
+  const placed = ghosts.filter((g) => g.parent);
+  const marked = new Set(placed.filter((g) => edit?.highlight?.includes(g.userData.slot) && !draftFilled(edit, g.userData.slot)));
+  if (ghostMaterial) {
+    ghostDimMaterial ??= Object.assign(ghostMaterial.clone(), { opacity: GHOST_DIM });
+    for (const g of placed) g.material = marked.size && !marked.has(g) ? ghostDimMaterial : ghostMaterial;
+  }
   placeMarkers(blanks, edit ? [...edit.added] : [], () => {
     const g = new THREE.Group();
     const body = new THREE.Mesh(withAoColors(copyLook!.body), copyLook!.bodyMat);
@@ -6075,6 +6087,8 @@ function installProbe() {
     },
     /** The glass boxes a shape hint draws itself (none while the Shape tool's own boxes show). */
     hintBoxes: () => hintGhosts.filter((g) => g.parent).length,
+    /** The Shape tool's glass boxes now: each one's spot (slot name) and whether it is drawn fainter. */
+    ghostBoxes: () => ghosts.filter((g) => g.parent).map((g) => ({ slot: slotName(g.userData.slot), dim: g.material === ghostDimMaterial })),
     /** The slots whose drawn cubelet (or blank) the 3D view outlines now. */
     outlined: () => (edit?.highlight ? haloSlots().filter((s) => drawnAt(edit!.shown, s)).map(slotName).sort() : []),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),

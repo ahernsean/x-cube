@@ -1606,6 +1606,13 @@ labTest("shape editing: a shape problem halos the glass box where an extension s
   await settle();
   const shape = { outlined: await probe("outlined"), boxes: await probe("hintBoxes"), px3d: await probe("haloPixels", "3d") };
   check(shape.outlined.join() === "Rx.UF,UFR" && shape.boxes === 0 && shape.px3d > 0, `with the Shape tool the halo is on its own box there (${JSON.stringify(shape)})`);
+  // The other boxes are fainter while the halo marks one, and all are alike once it is hidden.
+  const boxes = await probe("ghostBoxes");
+  const lit = boxes.filter((b) => !b.dim).map((b) => b.slot);
+  await page.click('[data-halo="hide"]');
+  await settle();
+  const hidden = await probe("ghostBoxes");
+  check(boxes.length > 1 && lit.join() === "Rx.UF" && hidden.length === boxes.length && hidden.every((b) => !b.dim), `the other glass boxes are fainter while the halo marks one (${JSON.stringify({ boxes: boxes.length, lit, dimAfterHide: hidden.filter((b) => b.dim).length })})`);
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {
