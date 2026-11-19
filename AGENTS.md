@@ -411,8 +411,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     putting one in, the halo on the core cubelet the problem names as well as on what the
     hint names ("this" always points at something marked; `WORDING.md`). A problem about one core
     corner or edge is fixed on that cubelet and nowhere else, so its hint says what to do
-    plainly ("Add an extension to this corner", "Remove an extension from this corner",
-    "Add an extension to this edge"), the halo showing the likeliest spots; the count
+    plainly, with "probably" only for which of its spots, and only when the halo marks
+    fewer than all the spots that could be ("Add an extension to this corner, probably
+    here", "Remove an extension from this corner, probably this one", "Add an extension to
+    this edge in one of these spots", "Add two extensions to this corner, probably in these
+    spots"); the count
     problems, where which cubelet to change is a guess, say "This extension should probably
     be removed" (the halo on it), "An
     extension should probably be added here" (the halo on the Shape tool's glass box in the

@@ -1002,14 +1002,19 @@ function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
   const pick = off.length ? off : pool;
   const noun = pick.every((t) => span(coreOf(t)) === 1) ? "extension center" : "extension";
   // A problem about one core corner or edge is fixed on that cubelet and nowhere else, so
-  // what to do is certain and said plainly; only which of its spots is a guess, which the
-  // halo shows. A core corner with none must get two.
+  // what to do is certain and said plainly. Which of its spots is a guess only when the
+  // halo marks fewer than all the spots that could be: then "probably". A core corner with
+  // none must get two.
   const own = p.slots.length === 1 && (span(p.slots[0]) === 3 || span(p.slots[0]) === 2) && outwardDir(p.slots[0]) < 0 ? (span(p.slots[0]) === 3 ? "corner" : "edge") : null;
   const two = !off.length && own === "corner" && !filledOn(d, p.slots[0]).length;
+  const could = own ? outerOf(p.slots[0]).filter((t) => draftFilled(d, t) === !!off.length).length : 0;
+  const which = pick.length >= could ? (pick.length > 1 && !two ? " in one of these spots" : "") : off.length
+    ? pick.length === 1 ? ", probably this one" : ", probably one of these"
+    : pick.length === 1 ? ", probably here" : two && pick.length === 2 ? ", probably in these spots" : ", probably in one of these spots";
   const text = own
     ? off.length
-      ? `Remove an ${noun} from this ${own}`
-      : `Add ${two ? `two ${noun}s` : `an ${noun}`} to this ${own}`
+      ? `Remove an ${noun} from this ${own}${which === " in one of these spots" ? "" : which}`
+      : `Add ${two ? `two ${noun}s` : `an ${noun}`} to this ${own}${which}`
     : off.length
       ? pick.length === 1
         ? `This ${noun} should probably be removed`
