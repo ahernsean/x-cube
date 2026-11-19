@@ -75,6 +75,16 @@ export interface Problem {
   text: string;
   /** The slots it is about. */
   slots: number[];
+  /** Stickers its hint calls "marked" (slot, face direction): ones its colors can't tell apart. */
+  marks?: { slot: number; face: number }[];
+}
+
+/** What a problem's spots should probably show instead: its words, and where it means. */
+export interface Hint {
+  text: string;
+  /** The one spot the hint is about, when the problem names several. */
+  slots?: number[];
+  marks?: { slot: number; face: number }[];
 }
 
 /** Direction pointing away from the core for an outer (extension) slot, or -1. */
@@ -139,6 +149,13 @@ const kindOf = (shape: State, s: number) => CUBELETS[shape.occ[s]].kind;
 const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
 
 const problem = (text: string, slots: number[]): Problem => ({ text, slots });
+/** A problem whose text ends in `hint`, if any (else `fallback`), haloing and marking where the hint means. */
+const hinted = (text: string, slots: number[], hint: Hint | null, fallback?: string): Problem => {
+  const end = hint?.text ?? fallback;
+  const out: Problem = { text: end ? `${text}. ${end}` : text, slots: hint?.slots ?? slots };
+  if (hint?.marks) out.marks = hint.marks;
+  return out;
+};
 
 const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
 const numberWord = (n: number) => NUMBER_WORDS[n] ?? String(n);
@@ -320,13 +337,52 @@ function centerProblem(st: State): Problem | null {
     const out = SLOT_NEIGHBOR[CENTER_SLOTS[d] * 6 + d];
     return out >= 0 && st.occ[out] >= 0 ? out : CENTER_SLOTS[d];
   };
+  const hint = centerHint(home, (d) => spot(d) === CENTER_SLOTS[d], spot);
   // Opposite spots whose colors aren't an opposite pair.
   const apart = [0, 2, 4].filter((d) => (home[d] ^ 1) !== home[d + 1]);
   if (apart.length) {
     const pairs = [0, 4, 2].map((h) => `${COLOR_NAME[FACE_COLOR[h]]} and ${COLOR_NAME[FACE_COLOR[h + 1]]}`);
-    return problem(`Opposite centers must be ${pairs[0]}, ${pairs[1]}, or ${pairs[2]}`, apart.flatMap((d) => [spot(d), spot(d + 1)]));
+    return hinted(`Opposite centers must be ${pairs[0]}, ${pairs[1]}, or ${pairs[2]}`, apart.flatMap((d) => [spot(d), spot(d + 1)]), hint);
   }
-  return problem("Wrong center color order", [0, 1, 2, 3, 4, 5].map(spot));
+  return hinted("Wrong center color order", [0, 1, 2, 3, 4, 5].map(spot), hint);
+}
+
+/**
+ * Which centers should be which color. A real puzzle's center colors are always some
+ * rotation of solved's, with white and yellow on the two core centers that show (`core`
+ * says which directions have one). The likeliest are those rotations that change the
+ * fewest centers; each center shows a different color, so its color names it ("The red
+ * center should probably be blue", "The red and orange centers should probably trade
+ * places"). A center has one sticker, so up to three ways, as for one-sticker hints; else none.
+ */
+function centerHint(home: number[], core: (d: number) => boolean, spot: (d: number) => number): Hint | null {
+  const name = (h: number) => COLOR_NAME[FACE_COLOR[h]];
+  let best = Infinity;
+  let ways: [number, number, number][][] = []; // per rotation: (direction, color now, color then)
+  for (let r = 0; r < NUM_ROT; r++) {
+    const want = [0, 1, 2, 3, 4, 5].map((d) => [0, 1, 2, 3, 4, 5].find((h) => ROT_DIR[r * 6 + h] === d)!);
+    if (want.some((h, d) => (h === 2 || h === 3) !== core(d))) continue;
+    const changes = [0, 1, 2, 3, 4, 5].filter((d) => want[d] !== home[d]).map((d): [number, number, number] => [d, home[d], want[d]]);
+    if (changes.length > best) continue;
+    if (changes.length < best) (best = changes.length), (ways = []);
+    ways.push(changes);
+  }
+  if (!ways.length || best === 0 || ways.length > HINT_ONE_STICKER_OPTIONS) return null;
+  // In the order colors are listed in, by the first color each way changes.
+  const rank = (w: [number, number, number][]) => Math.min(...w.map(([, now]) => COLOR_ORDER.indexOf(FACE_COLOR[now])));
+  ways.sort((a, b) => rank(a) - rank(b));
+  const say = (changes: [number, number, number][], modal: string) => {
+    if (changes.length === 2 && changes[0][1] === changes[1][2] && changes[0][2] === changes[1][1])
+      return `the ${listColors(COLOR_ORDER.filter((c) => c === FACE_COLOR[changes[0][1]] || c === FACE_COLOR[changes[1][1]]))} centers ${modal} trade places`;
+    if (changes.length > HINT_STICKERS) return null;
+    return changes.map(([, now, then], i) => `the ${name(now)} center ${i ? "should" : modal} be ${name(then)}`).join(", and ");
+  };
+  const texts = ways.map((w, i) => say(w, i ? "should" : ways.length === 1 ? "should probably" : "should maybe"));
+  if (texts.some((t) => t === null)) return null;
+  return {
+    text: texts.map((t, i) => (i ? `Or ${t}` : cap(t!))).join(". "),
+    slots: [...new Set(ways.flatMap((w) => w.map(([d]) => spot(d))))],
+  };
 }
 
 /**
@@ -373,7 +429,12 @@ function reachableFit(shape: State, colors: FaceColors): { state: State; problem
  * the counts can't say: a sticker of that kind with no color yet, or nothing missing.
  * `wrong` is how many of the spots are wrong at least.
  */
-export function missingColors(shape: State, colors: FaceColors, spots: number[], wrong = 1): string | null {
+export function missingColors(shape: State, colors: FaceColors, spots: number[], wrong = 1): Hint | null {
+  const h = hintFor(shape, colors, spots, wrong);
+  return h === null ? null : typeof h === "string" ? { text: h } : h;
+}
+
+function hintFor(shape: State, colors: FaceColors, spots: number[], wrong: number): string | Hint | null {
   const kind = kindOf(shape, spots[0]);
   const lead = spots.length === 1 ? "It" : `${cap(numberWord(wrong))} of these`;
   // Single colors join with "or"; lists of colors each get a sentence, so their commas can't run together.
@@ -452,7 +513,7 @@ export function missingColors(shape: State, colors: FaceColors, spots: number[],
   const cost = fits.map((row) => row.map((f) => f?.cost ?? IMPOSSIBLE));
   const least = assignCost(cost);
   if (least >= IMPOSSIBLE) return null;
-  const options: { spot: number; changes: [Color, Color][] }[] = [];
+  const options: { spot: number; changes: Change[] }[] = [];
   let best = Infinity;
   for (const t of spots) {
     const i = all.indexOf(t);
@@ -473,18 +534,21 @@ export function missingColors(shape: State, colors: FaceColors, spots: number[],
 
 const IMPOSSIBLE = 1e6;
 
+/** One sticker to recolor: its color, the color it should be, and the face it is on. */
+type Change = [Color, Color, number];
+
 /**
  * The fewest stickers of spot t to recolor so that it shows cubelet `id`, turned as the
  * outward-color rule allows, and which ones (from, to); null if no turn of it fits the spot's
  * shape of stickers. Two stickers trading places, and nothing else, counts as one change.
  */
-function fitAt(colors: FaceColors, t: number, id: number): { cost: number; changes: [Color, Color][] } | null {
+function fitAt(colors: FaceColors, t: number, id: number): { cost: number; changes: Change[] } | null {
   const c = CUBELETS[id];
   const outDir = outwardDir(t);
-  let best: { cost: number; changes: [Color, Color][] } | null = null;
+  let best: { cost: number; changes: Change[] } | null = null;
   for (let o = 0; o < NUM_ROT; o++) {
     if (c.outward !== null && ROT_DIR[o * 6 + c.outward] !== outDir) continue;
-    const changes: [Color, Color][] = [];
+    const changes: Change[] = [];
     let ok = true;
     for (let d = 0; d < 6 && ok; d++) {
       const want = colors[t * 6 + d];
@@ -492,7 +556,7 @@ function fitAt(colors: FaceColors, t: number, id: number): { cost: number; chang
       const has = c.stickers[ROT_DIR[ROT_INV[o] * 6 + d]];
       if (want === null || want === UNPAINTED) ok = want === null ? has === null : has !== null;
       else if (has === null) ok = false;
-      else if (has !== want) changes.push([want, has]);
+      else if (has !== want) changes.push([want, has, d]);
     }
     if (!ok) continue;
     const cost = changes.length === 2 && changes[0][0] === changes[1][1] && changes[0][1] === changes[1][0] ? 1 : changes.length;
@@ -551,62 +615,83 @@ const shownKey = (colors: FaceColors, s: number) => shownColors(colors, s).join(
  */
 const HINT_STICKERS = 2, HINT_OPTIONS = 2, HINT_ONE_STICKER_OPTIONS = 3;
 
-function fixesText(colors: FaceColors, spots: number[], options: { spot: number; changes: [Color, Color][] }[], wrong: number): string | null {
-  const one = spots.length === 1;
-  const same = spots.every((t) => shownKey(colors, t) === shownKey(colors, spots[0]));
+function fixesText(colors: FaceColors, spots: number[], options: { spot: number; changes: Change[] }[], wrong: number): Hint | null {
+  // Merge options that recolor the same single sticker of the same spot.
+  const seen = new Map<string, { spot: number; changes: Change[]; to: Color[]; faces: Set<number> }>();
+  for (const o of options) {
+    const k = o.changes.length === 1 ? `${o.spot}|${o.changes[0][0]}` : `${o.spot}|${o.changes.map((c) => `${c[0]}>${c[1]}`).sort().join(",")}`;
+    const had = seen.get(k);
+    if (!had) seen.set(k, { ...o, to: o.changes.length === 1 ? [o.changes[0][1]] : [], faces: new Set(o.changes.map((c) => c[2])) });
+    else {
+      if (o.changes.length === 1 && !had.to.includes(o.changes[0][1])) had.to.push(o.changes[0][1]);
+      for (const c of o.changes) had.faces.add(c[2]);
+    }
+  }
+  // The same fix on look-alike spots is one fix: either spot will do.
+  const list = [...new Map([...seen.values()].map((o) => [`${shownKey(colors, o.spot)}|${o.changes.map((c) => `${c[0]}>${c[1]}`).sort().join(",")}|${o.to.join()}`, o])).values()];
+  if (list.length > (list.every((o) => o.changes.length === 1) ? HINT_ONE_STICKER_OPTIONS : HINT_OPTIONS)) return null;
+  // The hint is about the spots its options are for, and the halo marks only those: a fix
+  // that works on one look-alike spot may not on another.
+  const mine = [...new Set(list.map((o) => o.spot).concat(options.map((o) => o.spot)))].filter((t) => spots.includes(t));
+  const at = mine.length < spots.length ? mine : spots;
+  const one = at.length === 1;
+  const same = at.every((t) => shownKey(colors, t) === shownKey(colors, at[0]));
   const where = (t: number) => {
     if (one) return "";
     if (same) return "on one of these, ";
-    const like = spots.filter((u) => shownKey(colors, u) === shownKey(colors, t)).length;
+    const like = at.filter((u) => shownKey(colors, u) === shownKey(colors, t)).length;
     const cs = listColors(shownColors(colors, t));
     return like === 1 ? `on the one that is ${cs}, ` : `on one of those that are ${cs}, `;
   };
   const its = one ? "its" : "the";
-  // One clause per sticker, or per pair of stickers trading colors.
-  const clauses = (t: number, changes: [Color, Color][], modal: string) => {
+  const marks: { slot: number; face: number }[] = [];
+  // One clause per sticker, or per pair of stickers trading places. Stickers of one color
+  // can't be told apart by it, so one meant alone is marked in the view ("its marked
+  // yellow sticker"), when the hint is sure which; else "one of its yellow stickers".
+  const clauses = (t: number, changes: Change[], modal: string, sure: boolean) => {
     const left = [...changes];
     const out: string[] = [];
+    const mark = (face: number) => marks.push({ slot: t, face });
     while (left.length) {
-      const [from, to] = left.shift()!;
+      const [from, to, face] = left.shift()!;
+      const verb = out.length ? "should" : modal;
       const back = left.findIndex(([f, x]) => f === to && x === from);
       if (back >= 0) {
         left.splice(back, 1);
-        out.push(`${its} ${listColors(COLOR_ORDER.filter((c) => c === from || c === to))} stickers ${out.length ? "should" : modal} trade places`);
+        out.push(`${its} ${listColors(COLOR_ORDER.filter((c) => c === from || c === to))} stickers ${verb} trade places`);
         continue;
       }
-      // Stickers of one color can't be told apart by it: "one of its yellow stickers", or
-      // when each of them changes, "its yellow stickers should be white and blue".
       const n = shownColors(colors, t).filter((c) => c === from).length;
       const alike = left.filter(([f]) => f === from);
-      const verb = out.length ? "should" : modal;
       if (n > 1 && alike.length === n - 1) {
-        for (const a of alike) left.splice(left.indexOf(a), 1);
-        out.push(`${its} ${COLOR_NAME[from]} stickers ${verb} be ${listColors([to, ...alike.map(([, x]) => x)])}, one each`);
+        for (const x of alike) left.splice(left.indexOf(x), 1);
+        if (sure && n === 2) {
+          mark(face);
+          out.push(`${its} marked ${COLOR_NAME[from]} sticker ${verb} be ${COLOR_NAME[to]}, and ${its} other ${COLOR_NAME[from]} sticker ${COLOR_NAME[alike[0][1]]}`);
+        } else out.push(`${its} ${COLOR_NAME[from]} stickers ${verb} be ${listColors([to, ...alike.map(([, x]) => x)])}, one each`);
+      } else if (n > 1 && sure && !alike.length) {
+        mark(face);
+        out.push(`${its} marked ${COLOR_NAME[from]} sticker ${verb} be ${COLOR_NAME[to]}`);
       } else out.push(`${n > 1 ? `one of ${its} ${COLOR_NAME[from]} stickers` : `${its} ${COLOR_NAME[from]} sticker`} ${verb} be ${COLOR_NAME[to]}`);
     }
     return out.length < 3 ? out.join(", and ") : `${out.slice(0, -1).join(", ")}, and ${out[out.length - 1]}`;
   };
-  // Merge options that recolor the same single sticker of the same spot.
-  const seen = new Map<string, { spot: number; changes: [Color, Color][]; to: Color[] }>();
-  for (const o of options) {
-    const k = o.changes.length === 1 ? `${shownKey(colors, o.spot)}|${o.changes[0][0]}` : `${shownKey(colors, o.spot)}|${o.changes.map((c) => c.join(">")).sort().join(",")}`;
-    const had = seen.get(k);
-    if (!had) seen.set(k, { ...o, to: o.changes.length === 1 ? [o.changes[0][1]] : [] });
-    else if (o.changes.length === 1 && !had.to.includes(o.changes[0][1])) had.to.push(o.changes[0][1]);
-  }
-  const list = [...seen.values()];
-  if (list.length > (list.every((o) => o.changes.length === 1) ? HINT_ONE_STICKER_OPTIONS : HINT_OPTIONS)) return null;
   const modal = list.length === 1 && list[0].to.length <= 1 ? "should probably" : "should maybe";
+  // Sure of a sticker: one option, on one spot, its changes on one face each.
+  const sure = list.length === 1 && one && list[0].faces.size === new Set(list[0].changes.map((c) => c[2])).size;
   const sentences = list.map((o, i) => {
-    const body =
-      o.to.length > 1
-        ? `${o.changes[0] && shownColors(colors, o.spot).filter((c) => c === o.changes[0][0]).length > 1 ? `one of ${its} ${COLOR_NAME[o.changes[0][0]]} stickers` : `${its} ${COLOR_NAME[o.changes[0][0]]} sticker`} ${i ? "should" : modal} be ${listColors(COLOR_ORDER.filter((c) => o.to.includes(c)), "or")}`
-        : clauses(o.spot, o.changes, i ? "should" : modal);
+    let body: string;
+    if (o.to.length > 1) {
+      const [from, , face] = o.changes[0];
+      const n = shownColors(colors, o.spot).filter((c) => c === from).length;
+      const named = n > 1 && sure && o.faces.size === 1 ? (marks.push({ slot: o.spot, face }), `${its} marked ${COLOR_NAME[from]} sticker`) : n > 1 ? `one of ${its} ${COLOR_NAME[from]} stickers` : `${its} ${COLOR_NAME[from]} sticker`;
+      body = `${named} ${i ? "should" : modal} be ${listColors(COLOR_ORDER.filter((c) => o.to.includes(c)), "or")}`;
+    } else body = clauses(o.spot, o.changes, i ? "should" : modal, sure);
     const text = `${i && where(o.spot) === where(list[i - 1].spot) ? "" : where(o.spot)}${body}`;
     return i ? `Or ${text}` : cap(text);
   });
   const lead = wrong > 1 ? `At least ${numberWord(wrong)} of these have a sticker with the wrong color. ` : "";
-  return lead + sentences.join(". ");
+  return { text: lead + sentences.join(". "), slots: at !== spots ? at : undefined, marks: marks.length ? marks : undefined };
 }
 
 /**
@@ -614,7 +699,7 @@ function fixesText(colors: FaceColors, spots: number[], options: { spot: number;
  * share when that alone leaves so few cubelets ("show green, but only four have green"), and
  * how many of the spots have a sticker with the wrong color.
  */
-function tooFew(shape: State, colors: FaceColors, spots: number[], fit: number): string {
+function tooFew(shape: State, colors: FaceColors, spots: number[], fit: number): [string, Hint | null] {
   const kind = kindOf(shape, spots[0]);
   const [one, many] = KIND_NAME[kind];
   const n = numberWord(spots.length), k = numberWord(fit);
@@ -622,10 +707,11 @@ function tooFew(shape: State, colors: FaceColors, spots: number[], fit: number):
   const fix = `At least ${numberWord(wrong)} of them ${wrong === 1 ? "has" : "have"} a sticker with the wrong color`;
   const shared = COLOR_ORDER.filter((c) => spots.every((t) => shownColors(colors, t).includes(c)));
   const having = CUBELETS.filter((c) => c.kind === kind && shared.every((x) => c.stickers.includes(x))).length;
-  const end = missingColors(shape, colors, spots, wrong) ?? fix;
+  const hint = missingColors(shape, colors, spots, wrong);
+  const end = hint?.text ?? fix;
   if (shared.length && having === fit)
-    return `These ${n} ${many} show ${listColors(shared)}, but only ${k} ${fit === 1 ? "has" : "have"} ${listColors(shared)}. ${end}`;
-  return `Only ${k} ${fit === 1 ? one : many} ${fit === 1 ? "has" : "have"} colors like these ${n} do. ${end}`;
+    return [`These ${n} ${many} show ${listColors(shared)}, but only ${k} ${fit === 1 ? "has" : "have"} ${listColors(shared)}. ${end}`, hint];
+  return [`Only ${k} ${fit === 1 ? one : many} ${fit === 1 ? "has" : "have"} colors like these ${n} do. ${end}`, hint];
 }
 
 export function fitColors(shape: State, colors: FaceColors): Fit {
@@ -643,13 +729,11 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         // White and yellow never point out: that rule needs no knowledge of the cubelet.
         const facing = colors[s * 6 + outwardDir(s)];
         if (facing === "W" || facing === "Y") {
-          const fix = missingColors(shape, colors, [s]);
-          problems.push(problem(`This cubelet's ${COLOR_NAME[facing]} sticker has the wrong color${fix ? `. ${fix}` : ""}`, [s]));
+          problems.push(hinted(`This cubelet's ${COLOR_NAME[facing]} sticker has the wrong color`, [s], missingColors(shape, colors, [s])));
           continue;
         }
         const cs = shownColors(colors, s);
-        const fix = missingColors(shape, colors, [s]);
-        problems.push(problem(`No cubelet has ${listColors(cs)} arranged this way. ${fix ?? "One of its stickers has the wrong color"}`, [s]));
+        problems.push(hinted(`No cubelet has ${listColors(cs)} arranged this way`, [s], missingColors(shape, colors, [s]), "One of its stickers has the wrong color"));
       }
     // Every spot fits a cubelet turned a way the rule allows, but some compete for too few.
     if (!problems.length)
@@ -659,13 +743,14 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
         const shown = new Set(spots.map((t) => listColors(shownColors(colors, t))));
         const [o] = out;
         const n = numberWord(spots.length), k = numberWord(g.ids.size);
-        const fix = missingColors(shape, colors, spots, spots.length - g.ids.size) ?? "One of them has a sticker with the wrong color";
         problems.push(
-          problem(
+          hinted(
             out.size === 1 && o && o !== UNPAINTED && shown.size === 1
-              ? `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} look the same, but the puzzle has only ${k} like that. ${fix}`
-              : `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be right at once. ${fix}`,
+              ? `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} look the same, but the puzzle has only ${k} like that`
+              : `These ${n} ${KIND_NAME[kindOf(shape, spots[0])][1]} can't all be right at once`,
             spots,
+            missingColors(shape, colors, spots, spots.length - g.ids.size),
+            "One of them has a sticker with the wrong color",
           ),
         );
       }
@@ -675,8 +760,7 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
   for (const s of loose.slots)
     if (loose.cand.get(s)!.length === 0) {
       const cs = shownColors(colors, s);
-      const fix = missingColors(shape, colors, [s]);
-      problems.push(problem(noCubelet(CUBELETS[shape.occ[s]].kind, cs) + (fix ? `. ${fix}` : ""), [s]));
+      problems.push(hinted(noCubelet(CUBELETS[shape.occ[s]].kind, cs), [s], missingColors(shape, colors, [s])));
     }
   if (!problems.length) {
     // Every slot has candidates, but some spots compete for too few cubelets.
@@ -685,14 +769,12 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
       const spots = [...g.slots];
       const shown = new Set(spots.map((t) => listColors(shownColors(colors, t))));
       const n = numberWord(spots.length), k = numberWord(g.ids.size);
-      problems.push(
-        problem(
-          shown.size === 1
-            ? `${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k} like that${((m) => (m ? `. ${m}` : ""))(missingColors(shape, colors, spots, spots.length - g.ids.size))}`
-            : tooFew(shape, colors, spots, g.ids.size),
-          spots,
-        ),
-      );
+      if (shown.size === 1)
+        problems.push(hinted(`${cap(n)} ${KIND_NAME[kindOf(shape, spots[0])][1]} are ${[...shown][0]}, but there can be only ${k} like that`, spots, missingColors(shape, colors, spots, spots.length - g.ids.size)));
+      else {
+        const [text, hint] = tooFew(shape, colors, spots, g.ids.size);
+        problems.push({ ...hinted(text, spots, null), slots: hint?.slots ?? spots, ...(hint?.marks ? { marks: hint.marks } : {}) });
+      }
     }
   }
   return { level: null, state: null, problems };

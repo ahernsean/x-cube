@@ -66,7 +66,10 @@ view", not "Layers don't turn while editing".
 Say what the user can do about it. A problem message names the problem and, where it
 can, what to fix, not how the Lab found it. Best is which sticker should be which color
 ("Its red sticker should probably be orange"); when the Lab can't tell, "One of them has a
-sticker with the wrong color". A sticker is named by its color, never by its place. Two stickers in each other's spots "trade places", not colors: a sticker
+sticker with the wrong color". A sticker is named by its color, never by its place; where its color doesn't say which
+sticker (two of one color on a cubelet), the Lab frames it and calls it "marked": "Its
+marked orange sticker should probably be green". A center is named by its color too ("The
+red center"), since no two centers show one color. Two stickers in each other's spots "trade places", not colors: a sticker
 is the thing that is wrong, and the user moves it.
 
 Point rather than place. A problem names what is wrong, not where; the purple halo shows

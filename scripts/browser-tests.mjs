@@ -1539,6 +1539,20 @@ labTest("color editing: the halo's outline is bold whatever is around the cubele
   }
 });
 
+labTest("color editing: a hint marks the sticker it means when its color can't say which", async ({ page, check, probe, settle }) => {
+  // A front extension corner painted with two orange stickers: the hint means the one that
+  // should be green, and frames it in the view.
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.2,0.3,0.05,0.93],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","removed":[],"added":[],"colors":".O.Y.B.O.Y...O.YG..O...B.O.....O..G..OW..B.OW....OW.G....................O.Y.B...Y.....Y.....Y...O.YG..O...B...................O..G..OW..B..W.....W.....W....OW.O........................................Y.B...Y.....Y.....Y.....YG......B................G...W..B..W.....W.....W.....W.G.....................................R..Y.B...Y.....Y.....Y..R..YG.R....B..................R...G.R.W..B..W.....W.....W...R.W.G...................R..Y.BR..Y..R..YG.R....BR.....R...G.R.W..BR.W...R.W.G.","tool":"W","problems":[],"selected":"","hidden":null}}));
+  await settle();
+  const line = await page.$eval("#edit-status", (e) => e.textContent);
+  const marks = await probe("marks");
+  check(/Its marked orange sticker should probably be green/.test(line) && marks.list.length === 1 && marks.list[0].slot === "Fx.UL" && marks.list[0].face === "F" && marks.px > 40, `the marked sticker is framed (${JSON.stringify({ line, marks })})`);
+  await page.click('[data-halo="hide"]');
+  await settle();
+  const hidden = await probe("marks");
+  check(hidden.list.length === 0 && hidden.px === 0, `Hide takes the frame away with the halo (${JSON.stringify(hidden)})`);
+});
+
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {
   // Valid means turns can reach some position showing the paint. Center colors arranged
   // as no turns arrange them are refused; a swap that look-alike cubelets can absorb is not.
@@ -1557,8 +1571,8 @@ labTest("color editing: colors that turns can't reach", async ({ page, check, pr
   await paint("G", "Rx", "R"); // the red and green centers traded: red is now opposite blue
   const centers = { line: await editLine(), off: await doneOff(), lit: (await probe("highlighted")).sort().join(), level: (await probe("editing")).level };
   check(
-    /^Not valid: Opposite centers must be red and orange, green and blue, or white and yellow\. Show Hide$/.test(centers.line) && centers.off && centers.lit === "Bx,Fx,Lx,Rx" && centers.level === "possible",
-    `center colors no turns arrange are not valid, with a halo on the centers and Done off ("${centers.line}", halo ${centers.lit})`,
+    /^Not valid: Opposite centers must be red and orange, green and blue, or white and yellow\. The green and red centers should probably trade places\. Show Hide$/.test(centers.line) && centers.off && centers.lit === "Fx,Rx" && centers.level === "possible",
+    `center colors no turns arrange are not valid, with a halo on the two centers to trade and Done off ("${centers.line}", halo ${centers.lit})`,
   );
   await paint("G", "Fx", "F");
   await paint("R", "Rx", "R");

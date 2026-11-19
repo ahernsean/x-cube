@@ -132,7 +132,11 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
     return fitColors(st, colors).problems[0];
   };
   assert.deepEqual(say(1, -1, -2, 5, "O"), { text: "Red and orange can never be on the same cubelet. Its orange sticker should probably be blue", slots: [at(1, -1, -2)] });
-  assert.equal(say(-1, 1, 2, F, "O").text, "No cubelet has two orange stickers. One of its orange stickers should probably be green");
+  // Two orange stickers can't be told apart by color, so the hint marks the one it means:
+  // the one painted over the green.
+  const twoOrange = say(-1, 1, 2, F, "O");
+  assert.equal(twoOrange.text, "No cubelet has two orange stickers. Its marked orange sticker should probably be green");
+  assert.deepEqual(twoOrange.marks, [{ slot: at(-1, 1, 2), face: F }]);
   // A color no cubelet of that kind has: core corners are only white or yellow.
   assert.equal(say(1, -1, 1, 3, "B").text, "A core corner must be white or yellow, never blue. It should be yellow");
   // Two stickers of a corner swapped: its colors exist, but go around it the other way.
@@ -147,7 +151,9 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
   // Outer cubelets with the same colors are not look-alikes, but the count works the same.
   const threeGreenOrange = say(-1, 0, -2, 5, "G");
   assert.equal(threeGreenOrange.text, "Three extension edges are green and orange, but there can be only two like that. On one of these, the green sticker should probably be blue");
-  assert.deepEqual([...threeGreenOrange.slots].sort(), [at(-1, 0, 2), at(-2, 0, 1), at(-1, 0, -2)].sort());
+  // The halo marks only the spots the hint can mean: on the third, blue would point out
+  // where green must.
+  assert.deepEqual([...threeGreenOrange.slots].sort(), [at(-1, 0, 2), at(-1, 0, -2)].sort());
 });
 
 test("edit: two spots wanting the one cubelet with a color pointing out are named together", () => {
@@ -231,7 +237,8 @@ test("edit: center colors arranged as no turns arrange them can't be reached", (
   assert.equal(fit.level, "possible");
   assert.deepEqual(visibleColors(fit.state!), mirrored, "still shows a state with the paint");
   assert.equal(fit.problems.length, 1);
-  assert.equal(fit.problems[0].text, "Wrong center color order");
+  // Any two opposite centers trading places turns the order back, so the hint offers each.
+  assert.equal(fit.problems[0].text, "Wrong center color order. The white and yellow centers should maybe trade places. Or the green and blue centers should trade places. Or the red and orange centers should trade places");
   assert.deepEqual([...fit.problems[0].slots].sort(), [fx, bx, rx, lx, at(0, 1, 0), at(0, -1, 0)].sort(), "names every center that shows");
   // Red and green traded: red ends up opposite blue.
   const apart = visibleColors(st);
@@ -239,8 +246,9 @@ test("edit: center colors arranged as no turns arrange them can't be reached", (
   apart[fx * 6 + F] = "R";
   fit = fitColors(st, apart);
   assert.equal(fit.level, "possible");
-  assert.equal(fit.problems[0].text, "Opposite centers must be red and orange, green and blue, or white and yellow");
-  assert.deepEqual([...fit.problems[0].slots].sort(), [fx, bx, rx, lx].sort());
+  // Of every arrangement turns can make, one trade puts them back: the halo marks those two.
+  assert.equal(fit.problems[0].text, "Opposite centers must be red and orange, green and blue, or white and yellow. The green and red centers should probably trade places");
+  assert.deepEqual([...fit.problems[0].slots].sort(), [fx, rx].sort());
   // Slices move the centers, and that arrangement is fine.
   const sliced = after("M S' H2 R");
   assert.equal(fitColors(sliced, visibleColors(sliced)).level, "reachable");
@@ -251,7 +259,7 @@ test("edit: center colors arranged as no turns arrange them can't be reached", (
   [colors[up * 6 + U], colors[down * 6 + 3]] = [colors[down * 6 + 3], colors[up * 6 + U]];
   fit = fitColors(turned, colors);
   assert.equal(fit.level, "possible");
-  assert.equal(fit.problems[0].text, "Wrong center color order");
+  assert.match(fit.problems[0].text, /^Wrong center color order\. The white and yellow centers should maybe trade places\./);
 });
 
 test("edit: core corners twisted as no turns twist them are refused, naming none", () => {
