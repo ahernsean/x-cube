@@ -95,7 +95,8 @@ extensions leave their sides, and left and right depend on how the puzzle is hel
 
 A cubelet in its place and oriented as solved is **solved**, not "home": Home is a view.
 
-In help text, a button's name is drawn as a control (`<span class="ui-name">Show</span>`),
-so it reads as the button and not as a verb.
+In help text and messages, a button's name is drawn as a control (`<span class="ui-name">Show</span>`;
+a message names its controls with `setMessage`'s `controls`), so it reads as the button and
+not as a verb: "To add or remove an extension, pick **Shape** first".
 
 Lists of three colors use the serial comma: "white, blue, and orange".

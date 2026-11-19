@@ -2005,11 +2005,14 @@ function flushAnimations() {
 // Messages float over the page near the bottom (they never move the layout) and fade
 // after a few seconds, longer for errors; tapping one dismisses it.
 let messageSeq = 0;
+let messageControls: string[] = [];
 let messageShown = 0;
 let messageTimer: ReturnType<typeof setTimeout> | undefined;
-function setMessage(text: string, kind: "info" | "error" | "ok" = "info") {
+/** Shows a message; `controls` are names of buttons in it, drawn as controls (as help text draws them). */
+function setMessage(text: string, kind: "info" | "error" | "ok" = "info", controls: string[] = []) {
   app.message = text;
   app.messageKind = kind;
+  messageControls = controls;
   messageSeq++;
 }
 function dismissMessage() {
@@ -2500,7 +2503,18 @@ function render() {
 
   // message
   const msg = $("message");
-  msg.textContent = app.message;
+  msg.replaceChildren();
+  const names = messageControls.filter((n) => app.message.includes(n));
+  const parts = names.length ? app.message.split(new RegExp(`(${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`)) : [app.message];
+  for (const part of parts) {
+    if (!names.includes(part)) msg.append(part);
+    else {
+      const b = document.createElement("span");
+      b.className = "ui-name";
+      b.textContent = part;
+      msg.append(b);
+    }
+  }
   msg.className = `message ${app.messageKind}`;
   msg.hidden = !app.message;
   if (app.message && messageShown !== messageSeq) {
@@ -3611,7 +3625,7 @@ function shapeFirst(el: HTMLElement, clientX: number, clientY: number, h: CubeHi
   if (!taps?.length) return false;
   const slot = pickMarker(el, clientX, clientY, h, hintGhosts) ?? (h ? slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]) : -1);
   if (!taps.includes(slot)) return false;
-  setMessage("To add or remove an extension, pick Shape first", "info");
+  setMessage("To add or remove an extension, pick Shape first", "info", ["Shape"]);
   render();
   const b = document.querySelector('[data-paint="shape"]') as HTMLElement;
   stopShapeFlash();

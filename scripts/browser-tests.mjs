@@ -1591,8 +1591,8 @@ labTest("shape editing: a shape problem halos the glass box where an extension s
   const at = await probe("spot", "Rx.UF");
   await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
   await page.waitForFunction(() => /pick Shape first/.test(document.getElementById("message").textContent), null, { timeout: 3000 }).catch(() => {});
-  const tapped = { message: await page.$eval("#message", (e) => e.textContent), flash: await page.$eval('[data-paint="shape"]', (b) => b.classList.contains("flash")), removed: (await probe("shapeEdit")).removed.join() };
-  check(/To add or remove an extension, pick Shape first/.test(tapped.message) && tapped.flash && tapped.removed === before.removed.join(), `a tap on the box with a color picked says to pick Shape (${JSON.stringify(tapped)})`);
+  const tapped = { message: await page.$eval("#message", (e) => e.textContent), control: await page.$eval("#message", (e) => [...e.querySelectorAll(".ui-name")].map((n) => [n.textContent, getComputedStyle(n).fontWeight]).join()), flash: await page.$eval('[data-paint="shape"]', (b) => b.classList.contains("flash")), removed: (await probe("shapeEdit")).removed.join() };
+  check(/To add or remove an extension, pick Shape first/.test(tapped.message) && tapped.control === "Shape,700" && tapped.flash && tapped.removed === before.removed.join(), `a tap on the box with a color picked says to pick Shape (${JSON.stringify(tapped)})`);
   // It keeps pulsing while the message is read, and stops once Shape is picked.
   await page.waitForTimeout(2500);
   const still = await page.$eval('[data-paint="shape"]', (b) => b.classList.contains("flash"));
