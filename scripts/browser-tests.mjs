@@ -1332,6 +1332,75 @@ labTest("shape editing: Show and the arrow reach a cubelet bared by taking an ex
   check(after.seen >= 1 && after.arrow.behind.length === 0 && after.arrow.opacity === 0, `Show turns the view to it, and the arrow goes (${JSON.stringify(after)})`);
 });
 
+labTest(
+  "info: Copy debug info saves a copy for Claude, and Paste debug info offers it back",
+  async ({ page, check, probe, settle, gesture }) => {
+    // With the shared database (a stand-in here), a copy goes into its "debug" collection,
+    // where Claude reads it; only the newest 20 are kept.
+    await page.click("#edit-start");
+    await page.click('[data-paint="shape"]');
+    const at = await probe("sticker", "Fx.U", "F");
+    await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+    await settle();
+    await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.resolve(), readText: () => Promise.reject(new Error("denied")) }, configurable: true }));
+    for (let k = 0; k < 22; k++) {
+      await page.evaluate(() => (document.getElementById("message").textContent = ""));
+      if (await page.$eval("#info-pop", (e) => e.hidden)) await page.click("#info-btn");
+      await page.click("#copy-debug");
+      await page.waitForFunction(() => /saved for Claude/.test(document.getElementById("message").textContent), null, { timeout: 5000 });
+    }
+    const kept = await page.evaluate(() => [...window.__fakeDb.debug.values()].map((d) => ({ edit: JSON.parse(d.json).edit?.removed?.join(), source: d.source, at: typeof d.savedAt })));
+    check(kept.length === 20 && kept.every((d) => d.edit === "Fx.U" && d.source === "page" && d.at === "number"), `copies are saved for Claude, the newest 20 kept (${kept.length}, ${JSON.stringify(kept[0])})`);
+    await page.click("#edit-cancel");
+    await settle();
+    // Where the clipboard can't be read, Paste debug info offers the last copy saved.
+    if (await page.$eval("#info-pop", (e) => e.hidden)) await page.click("#info-btn");
+    await page.click("#paste-debug");
+    await page.waitForSelector("#debug-saved:not([hidden])", { timeout: 5000 });
+    const offer = await page.$eval("#debug-saved", (b) => b.textContent);
+    await page.click("#debug-saved");
+    await settle();
+    const back = (await probe("shapeEdit"))?.removed.join();
+    check(/^Put back the one saved /.test(offer) && back === "Fx.U", `Paste debug info offers the last saved copy, and puts it back (${JSON.stringify({ offer, back })})`);
+  },
+  {
+    // A stand-in for the shared database: collections of documents in memory.
+    initScript: () => {
+      const cols = {};
+      let n = 0;
+      const col = (name) => (cols[name] ??= new Map());
+      const snapOf = (entries) => ({ docs: entries.map(([id, data]) => ({ id, data: () => data })), metadata: { fromCache: false } });
+      const query = (name, ord, lim) => ({
+        orderBy: (f, dir = "asc") => query(name, [f, dir], lim),
+        limit: (k) => query(name, ord, k),
+        get: async () => {
+          const e = [...col(name)].map(([id, d], i) => [id, d, i]);
+          if (ord) e.sort((a, b) => (((a[1][ord[0]] ?? 0) - (b[1][ord[0]] ?? 0)) || a[2] - b[2]) * (ord[1] === "desc" ? -1 : 1));
+          const out = e.map(([id, d]) => [id, d]);
+          return snapOf(lim ? out.slice(0, lim) : out);
+        },
+        onSnapshot: (next) => {
+          next(snapOf([...col(name)]));
+          return () => {};
+        },
+      });
+      const db = {
+        collection: (name) => ({
+          ...query(name),
+          add: async (data) => {
+            const id = `d${++n}`;
+            col(name).set(id, data);
+            return { id };
+          },
+          doc: (id) => ({ delete: async () => void col(name).delete(id) }),
+        }),
+      };
+      window.__fakeDb = cols;
+      window.claude = { use: async (x) => (x === "db" ? db : null) };
+    },
+  },
+);
+
 labTest("info: Paste debug info puts back an edit that isn't valid", async ({ page, check, probe, settle, gesture }) => {
   // An edit whose shape isn't valid has no state code; its debug info is the way back to it.
   await page.click("#edit-start");

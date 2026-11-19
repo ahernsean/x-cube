@@ -289,9 +289,14 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   its shape (a state code, X1 when turns can't reach it), cubelets taken off and put in,
   paint and problems; where the browser won't let it write the clipboard, the text shows selected under the link, to copy by hand. It is for the owner to hand to a developer when something looks
   wrong, including an edit whose shape isn't valid, which has no state code of its own.
+  With the shared database it also keeps a copy there, in the `debug` collection (`json`,
+  `savedAt`, `source`; the newest 20, `DEBUG_KEEP`), where an agent reads it with the
+  artifact's database tools: the owner can say "look at the latest debug info" instead of
+  pasting it ("Debug info copied, and saved for Claude").
   **Paste debug info**, beside it, puts the position, the view and the edit back (the
   probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
-  won't read it, from text pasted into the field that opens; words around the debug info
+  won't read it, from text pasted into the field that opens, or the copy last saved in the
+  shared database, offered under the field ("Put back the one saved Nov 19, 3:42 PM"); words around the debug info
   are left out (the first span from a "{" to the "}" closing it that parses), so a whole
   message holding it can be pasted; text that isn't debug info is
   refused ("That isn't debug info"), and during a solve it asks first, as setting a new

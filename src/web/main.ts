@@ -3031,30 +3031,64 @@ function debugInfo(): string {
   );
 }
 
+/** How many copies of debug info the shared database keeps, newest first. */
+const DEBUG_KEEP = 20;
+
+/**
+ * Keeps a copy of debug info in the shared database (collection `debug`: `json`, `savedAt`,
+ * `source`), where Claude reads it, so the owner needn't paste it into a message; the
+ * newest DEBUG_KEEP are kept. False where there is no shared database or it refused.
+ */
+async function keepDebug(text: string): Promise<boolean> {
+  if (storeKind !== "shared" || !db) return false;
+  try {
+    await db.collection("debug").add({ json: text, savedAt: Date.now(), source: "page" });
+    const snap = await db.collection("debug").orderBy("savedAt", "desc").get();
+    for (const d of snap.docs.slice(DEBUG_KEEP)) await db.collection("debug").doc(d.id).delete();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The newest copy of debug info the shared database keeps, or null. */
+async function lastKeptDebug(): Promise<{ json: string; savedAt: number } | null> {
+  if (storeKind !== "shared" || !db) return null;
+  try {
+    const snap = await db.collection("debug").orderBy("savedAt", "desc").limit(1).get();
+    const d = snap.docs[0]?.data();
+    return d && typeof d.json === "string" ? { json: d.json, savedAt: d.savedAt } : null;
+  } catch {
+    return null;
+  }
+}
+
 async function copyDebug() {
   const text = debugInfo();
   const field = $("debug-text") as HTMLTextAreaElement;
   field.hidden = true;
   field.readOnly = true;
+  $("debug-saved").hidden = true;
+  // Copying first: Safari writes the clipboard only straight from the tap.
+  let copied = false;
   try {
     await navigator.clipboard.writeText(text);
-    setMessage("Debug info copied", "ok");
+    copied = true;
   } catch {
     // Without clipboard access, the text is shown selected, to copy by hand if the browser won't.
     field.value = text;
     field.hidden = false;
     field.select();
-    let copied = false;
     try {
       copied = document.execCommand?.("copy") ?? false;
     } catch {
       copied = false;
     }
-    if (copied) {
-      field.hidden = true;
-      setMessage("Debug info copied", "ok");
-    } else setMessage("Select and copy the debug info", "info");
+    if (copied) field.hidden = true;
   }
+  const kept = await keepDebug(text);
+  if (copied) setMessage(kept ? "Debug info copied, and saved for Claude" : "Debug info copied", "ok");
+  else setMessage(kept ? "Debug info saved for Claude. Select and copy it to paste it too" : "Select and copy the debug info", kept ? "ok" : "info");
   render();
 }
 
@@ -3112,6 +3146,7 @@ function putBackDebug(text: string) {
   endingSolve(() => {
     restoreDebug(jsonIn(text));
     $("debug-text").hidden = true;
+    $("debug-saved").hidden = true;
     $("info-pop").hidden = true;
     $("info-btn").setAttribute("aria-expanded", "false");
     setMessage("Debug info put back", "ok");
@@ -3137,6 +3172,14 @@ async function pasteDebug() {
   field.placeholder = "Paste the debug info here";
   field.hidden = false;
   field.focus();
+  // Or the copy last saved for Claude.
+  const kept = await lastKeptDebug();
+  const b = $("debug-saved") as HTMLButtonElement;
+  b.hidden = !kept;
+  if (kept) {
+    b.textContent = `Put back the one saved ${new Date(kept.savedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
+    b.onclick = () => putBackDebug(kept.json);
+  }
 }
 
 function slotByName(name: string): number {
@@ -3189,6 +3232,7 @@ function bindViewTools() {
       const open = $(p).hidden;
       close(p);
       $("debug-text").hidden = true;
+      $("debug-saved").hidden = true;
       $(p).hidden = !open;
       $(b).setAttribute("aria-expanded", String(open));
     });
