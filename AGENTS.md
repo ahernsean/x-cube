@@ -464,7 +464,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   for certain which sticker is wrong, so it is told first, before any other problem, and
   other problems on that cubelet wait for it: a play-tester recolored the other sticker of
   an edge with yellow facing down through all six colors, told each time about the pair or
-  a count), "No cubelet has green and red
+  a count; where the counts can't say what it should be, the hint names the side colors
+  some cubelet could show there beside its other stickers, "Its yellow sticker must be
+  green, blue, red, or orange" when that is all of them (`sideHint`), and circles the
+  sticker, which Show turns to: the halo outlines the whole cubelet, and a play-tester
+  saw only its uncolored other sticker), "No cubelet has green and red
   arranged this way. One of its stickers has the wrong color", or "Two X-face corners
   look the same, but the puzzle has only one like that. One of them has a sticker with the
   wrong color"; none of them says "outward" or which color points out, which the owner

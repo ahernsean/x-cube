@@ -124,8 +124,15 @@ test("edit: a white or yellow sticker facing away from the core is told first", 
     paint[spot * 6 + 5] = c;
     const problems = fitColors(st, draftColors({ shape: st, removed: new Set(), added: new Set() }, paint)).problems;
     const mine = problems.filter((p) => p.slots.includes(spot));
-    assert.deepEqual(mine.map((p) => p.text), ["This cubelet's yellow sticker has the wrong color"], c);
+    assert.equal(mine.length, 1, c);
+    assert.match(mine[0].text, /^This cubelet's yellow sticker has the wrong color\. Its yellow sticker (must|should)/, c);
+    // The sticker it means is circled: the cubelet's other one may be all the view shows.
+    assert.deepEqual(mine[0].marks, [{ slot: spot, face: 3 }], c);
   }
+  // With its other sticker without a color, any side color will do, and the hint says so.
+  paint[spot * 6 + 5] = undefined;
+  const blank = fitColors(st, draftColors({ shape: st, removed: new Set(), added: new Set() }, paint)).problems.find((p) => p.slots.includes(spot))!;
+  assert.equal(blank.text, "This cubelet's yellow sticker has the wrong color. Its yellow sticker must be green, blue, red, or orange");
 });
 
 test("edit: two corners painted alike are named as looking the same, without saying which sticker is wrong", () => {

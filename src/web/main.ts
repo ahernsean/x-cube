@@ -5573,7 +5573,9 @@ function showHighlighted() {
     goToView([q.x, q.y, q.z, q.w]);
     return;
   }
-  for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && (shape || edit.view[s * 6 + d])) faces.push([s, d]);
+  // The stickers the hint circles are the ones it is about.
+  for (const m of edit.marks) if (bareFace(st, m.slot, m.face)) faces.push([m.slot, m.face]);
+  if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && (shape || edit.view[s * 6 + d])) faces.push([s, d]);
   if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d)) faces.push([s, d]);
   showFaces(st, faces, shape);
 }

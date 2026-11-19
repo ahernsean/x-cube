@@ -722,7 +722,13 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
     const id = shape.occ[s], out = outwardDir(s);
     if (id < 0 || out < 0 || !["outerCorner", "outerEdge"].includes(CUBELETS[id].kind)) continue;
     const c = colors[s * 6 + out];
-    if (c === "W" || c === "Y") facing.push(hinted(`This cubelet's ${COLOR_NAME[c]} sticker has the wrong color`, [s], missingColors(shape, colors, [s])));
+    if (c !== "W" && c !== "Y") continue;
+    const counted = missingColors(shape, colors, [s]);
+    const p = hinted(`This cubelet's ${COLOR_NAME[c]} sticker has the wrong color`, [s], counted ?? sideHint(shape, colors, s, out, c));
+    // Where the counts can't say, the sticker it means is circled: the halo outlines the
+    // whole cubelet, whose other stickers may be all the view shows of it.
+    if (!counted) p.marks = [{ slot: s, face: out }];
+    facing.push(p);
   }
   const fit = fitAll(shape, colors);
   if (!facing.length) return fit;
@@ -730,6 +736,25 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
   const wrong = new Set(facing.flatMap((p) => p.slots));
   const rest = fit.problems.filter((p) => !named.has(p.slots.join()) && !p.slots.some((t) => wrong.has(t)));
   return { level: fit.level, state: fit.state, problems: [...facing, ...rest] };
+}
+
+/**
+ * What a white or yellow sticker facing away from the core should be, from its cubelet's
+ * other stickers alone, for when the counts can't say (a sticker of that kind has no color
+ * yet): the side colors some cubelet of that kind could show there, turned as the rule
+ * allows, beside them. Every side color is no narrowing, and is said as the rule.
+ */
+function sideHint(shape: State, colors: FaceColors, s: number, out: number, c: Color): Hint {
+  const sides: Color[] = ["G", "B", "R", "O"];
+  const can = sides.filter((x) => {
+    const tried = colors.slice();
+    tried[s * 6 + out] = x;
+    return candidates(shape, tried, s, "outward").length > 0;
+  });
+  const its = `Its ${COLOR_NAME[c]} sticker`;
+  const names = can.map((x) => COLOR_NAME[x]);
+  if (can.length === sides.length || !can.length) return { text: `${its} must be ${listColors(sides, "or")}` };
+  return { text: can.length === 1 ? `${its} should probably be ${names[0]}` : `${its} should maybe be ${listColors(can, "or")}` };
 }
 
 function fitAll(shape: State, colors: FaceColors): Fit {
