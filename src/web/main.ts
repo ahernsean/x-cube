@@ -5607,7 +5607,7 @@ let haloClearer: any = null;
 const HALO_VIEWS = [0, 1, 2, 3, 4, 5].map((d) => FLAT_HALO_LAYER + d);
 
 /**
- * What a hint circles: a white ring with a dark casing, as Lost? marks the
+ * What a hint circles: a ring in the halo's purple with a dark casing, as Lost? marks the
  * sticker it asks about, drawn over everything so neighbors don't cut it.
  * - A sticker (one its colors can't tell from another of the same color on its cubelet):
  *   the ring lies on it. In the 3D view it shows only while the sticker faces the viewer, so
@@ -5623,9 +5623,9 @@ const markRings: { view: any; flats: any[] }[] = [];
 const MARK_RADIUS = 0.42, MARK_TUBE = 0.075;
 function markRing() {
   const group = new THREE.Group();
-  for (const [w, c] of [[MARK_TUBE, 0x111111], [0.045, 0xffffff]] as const) {
+  for (const [w, c] of [[MARK_TUBE, 0x111111], [0.045, HALO.color]] as const) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(MARK_RADIUS, w, 10, 48), new THREE.MeshBasicMaterial({ color: c, depthTest: false, transparent: true, toneMapped: false }));
-    ring.renderOrder = 10 + (c === 0xffffff ? 1 : 0);
+    ring.renderOrder = 10 + (c === HALO.color ? 1 : 0);
     group.add(ring);
   }
   return group;
