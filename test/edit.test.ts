@@ -135,6 +135,16 @@ test("edit: a white or yellow sticker facing away from the core is told first", 
   assert.equal(blank.text, "This cubelet's yellow sticker has the wrong color. Its yellow sticker must be green, blue, red, or orange");
 });
 
+test("edit: a one-sticker cubelet's wrong color names its sticker, circled", () => {
+  // The halo outlines the whole cubelet; its one sticker is what is wrong, so it is circled.
+  const st = State.solved();
+  const colors = visibleColors(st);
+  colors[at(1, 1, 1) * 6 + U] = "R"; // the UFR core corner's white, now red
+  const p = fitColors(st, colors).problems.find((q) => q.slots.includes(at(1, 1, 1)))!;
+  assert.match(p.text, /^This core corner's sticker must be white or yellow, never red/);
+  assert.deepEqual(p.marks, [{ slot: at(1, 1, 1), face: U }]);
+});
+
 test("edit: two corners painted alike are named as looking the same, without saying which sticker is wrong", () => {
   const st = State.solved();
   const colors = visibleColors(st);
@@ -171,7 +181,7 @@ test("edit: problems say what's wrong, and which slots they are about", () => {
   assert.equal(twoOrange.text, "No cubelet has two orange stickers. Its circled orange sticker should probably be green");
   assert.deepEqual(twoOrange.marks, [{ slot: at(-1, 1, 2), face: F }]);
   // A color no cubelet of that kind has: core corners are only white or yellow.
-  assert.equal(say(1, -1, 1, 3, "B").text, "A core corner must be white or yellow, never blue. This sticker should be yellow");
+  assert.equal(say(1, -1, 1, 3, "B").text, "This core corner's sticker must be white or yellow, never blue. This sticker should be yellow");
   // Two stickers of a corner swapped: its colors exist, but go around it the other way.
   const swapped = visibleColors(st);
   swapped[at(-1, -1, -2) * 6 + 5] = "O";
@@ -497,7 +507,7 @@ test("edit: a one-sticker hint is said plainly, and left out when it names every
   // yellow, which the problem already says.
   colors[at(1, -1, 1) * 6 + 3] = "B";
   colors[at(1, 1, 1) * 6 + 2] = "G";
-  assert.deepEqual(fitColors(st, colors).problems.map((p) => p.text).sort(), ["A core corner must be white or yellow, never blue", "A core corner must be white or yellow, never green"]);
+  assert.deepEqual(fitColors(st, colors).problems.map((p) => p.text).sort(), ["This core corner's sticker must be white or yellow, never blue", "This core corner's sticker must be white or yellow, never green"]);
 });
 
 test("edit: a hint offers only the fixes that fit the likeliest fix of every spot of its kind", () => {
@@ -530,8 +540,8 @@ test("edit: a center's hint names only a color its kind of center can have", () 
   const st = decodeState("ENXT MPGI RKFS LMAK NOZS GBQQ CXFR GDCZ LLFV QQCA IFKP");
   const colors = [...".R.B.Y.O.G...R.BW........G.....O..Y..GW..O.OG....BO.Y....................Y.O.G...Y.....W.....Y...W.BO..B...O.Y.................R..B..YG..O..W...........Y....RW.B........WB............O.Y...R...................Y.........W.....YO............R....W..................Y..............G.W...R..B..Y.....O.W.W..B.RR..G........G..W.YO..............W..O..WB.O....BW...............W..................R..Y...Y.....B.Y.O.Y.G..R......W.B.O.......O..W..G..BR.......O.....R...W.O.Y..BB.B........."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
   const texts = fitColors(st, colors).problems.map((p) => p.text);
-  assert.ok(texts.includes("A core center must be white or yellow, never red. This sticker should be yellow"), texts.join("\n"));
-  assert.ok(texts.includes("An extension center must be green, blue, red, or orange, never yellow. This sticker should be blue"), texts.join("\n"));
+  assert.ok(texts.includes("This core center's sticker must be white or yellow, never red. This sticker should be yellow"), texts.join("\n"));
+  assert.ok(texts.includes("This extension center's sticker must be green, blue, red, or orange, never yellow. This sticker should be blue"), texts.join("\n"));
 });
 
 test("edit: several wrong centers are each given a different missing color", () => {

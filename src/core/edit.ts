@@ -116,10 +116,15 @@ function shownColors(colors: FaceColors, s: number): Color[] {
 }
 
 /** Why no cubelet of this kind can show these colors, as the problem's text. */
+/** Whether every cubelet of this kind shows at most one sticker (core corners and single edges, centers). */
+const oneSticker = (kind: Kind) => CUBELETS.filter((c) => c.kind === kind).every((c) => c.stickers.filter(Boolean).length <= 1);
+
 function noCubelet(kind: Kind, cs: Color[]): string {
   const sameKind = CUBELETS.filter((c) => c.kind === kind);
   const can = new Set(sameKind.flatMap((c) => c.stickers.filter((x): x is Color => !!x)));
   const cannot = [...new Set(cs)].filter((c) => !can.has(c));
+  // A cubelet with one sticker: the problem is that sticker, named as such (and circled).
+  if (cannot.length && oneSticker(kind)) return `This ${KIND_NAME[kind][0]}'s sticker must be ${listColors(COLOR_ORDER.filter((c) => can.has(c)), "or")}, never ${listColors(cannot, "or")}`;
   if (cannot.length)
     return `${/^[aeiouX]/.test(KIND_NAME[kind][0]) ? "An" : "A"} ${KIND_NAME[kind][0]} must be ${listColors(COLOR_ORDER.filter((c) => can.has(c)), "or")}, never ${listColors(cannot, "or")}`;
   const dup = cs.find((c, i) => cs.indexOf(c) !== i);
@@ -803,7 +808,13 @@ function fitAll(shape: State, colors: FaceColors): Fit {
   for (const s of loose.slots)
     if (loose.cand.get(s)!.length === 0) {
       const cs = shownColors(colors, s);
-      problems.push(hinted(noCubelet(CUBELETS[shape.occ[s]].kind, cs), [s], missingColors(shape, colors, [s])));
+      const kind = CUBELETS[shape.occ[s]].kind;
+      const p = hinted(noCubelet(kind, cs), [s], missingColors(shape, colors, [s]));
+      // A cubelet with one sticker: that sticker is the one the problem is about. Circled,
+      // since the halo outlines the whole cubelet; Show turns to it.
+      const face = [0, 1, 2, 3, 4, 5].find((d) => { const c = colors[s * 6 + d]; return !!c && c !== UNPAINTED; });
+      if (oneSticker(kind) && cs.length === 1 && face !== undefined) p.marks ??= [{ slot: s, face }];
+      problems.push(p);
     }
   if (!problems.length) {
     // Every slot has candidates, but some spots compete for too few cubelets.
