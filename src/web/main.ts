@@ -1383,11 +1383,18 @@ function frame() {
   stepShapeAnim();
   placeHidePill();
   placeHaloArrow();
+  showMarks();
   const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
   if (showTarget) updateShowButton();
   if (view3dOpen) updateCompass();
   renderNetAnimation();
-  if (view3dOpen) renderer.render(scene, camera);
+  if (view3dOpen) {
+    renderer.render(scene, camera);
+    if (edit?.highlight) {
+      const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+      drawOutline(camera, null, size.x, size.y, renderer.getPixelRatio());
+    }
+  }
   requestAnimationFrame(frame);
 }
 
@@ -1797,7 +1804,7 @@ function bindOrbit(el: HTMLElement) {
       else if (isTap && edit) {
         const h = pickCube(el, e.clientX, e.clientY);
         if (edit.paint === "shape") tapShape(el, e.clientX, e.clientY, h);
-        else if (h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
+        else if (!shapeFirst(el, e.clientX, e.clientY, h) && h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
       } else if (isTap) {
         if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DOUBLE_TAP_PX) {
           lastTap = null;
@@ -1998,11 +2005,18 @@ function flushAnimations() {
 // Messages float over the page near the bottom (they never move the layout) and fade
 // after a few seconds, longer for errors; tapping one dismisses it.
 let messageSeq = 0;
+let messageControls: string[] = [];
 let messageShown = 0;
 let messageTimer: ReturnType<typeof setTimeout> | undefined;
-function setMessage(text: string, kind: "info" | "error" | "ok" = "info") {
-  app.message = text;
+/**
+ * Shows a message; `controls` are names of buttons in it, drawn as controls (as help text
+ * draws them). Every message ends as a sentence does: a period is added unless it ends in
+ * punctuation already ("Shuffling…").
+ */
+function setMessage(text: string, kind: "info" | "error" | "ok" = "info", controls: string[] = []) {
+  app.message = text && !/[.!?…:]$/.test(text) ? `${text}.` : text;
   app.messageKind = kind;
+  messageControls = controls;
   messageSeq++;
 }
 function dismissMessage() {
@@ -2222,6 +2236,7 @@ async function initStore() {
   }
   db = ns;
   storeKind = "shared";
+  $("debug-history").hidden = false;
   watchAlgorithms();
   const timer = setTimeout(() => {
     if (!saved.length) setMessage("Saved states can't be reached yet.", "info");
@@ -2493,7 +2508,18 @@ function render() {
 
   // message
   const msg = $("message");
-  msg.textContent = app.message;
+  msg.replaceChildren();
+  const names = messageControls.filter((n) => app.message.includes(n));
+  const parts = names.length ? app.message.split(new RegExp(`(${names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`)) : [app.message];
+  for (const part of parts) {
+    if (!names.includes(part)) msg.append(part);
+    else {
+      const b = document.createElement("span");
+      b.className = "ui-name";
+      b.textContent = part;
+      msg.append(b);
+    }
+  }
   msg.className = `message ${app.messageKind}`;
   msg.hidden = !app.message;
   if (app.message && messageShown !== messageSeq) {
@@ -2949,10 +2975,10 @@ function infoHelp(): string[] {
     const tool =
       edit.paint === "shape"
         ? "Tap a cubelet to remove it, or tap a gray box to add one."
-        : "Tap a sticker to give it the picked color.";
+        : "Tap a sticker to give it the picked color. Tap one that already has that color to clear it.";
     return [
       `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it.`,
-      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
+      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple, and a sticker the message calls circled has a white ring around it. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
     ];
   }
   const gestures = "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn.";
@@ -2984,7 +3010,7 @@ function debugInfo(): string {
     {
       lab: "x-cube debug 1",
       at: new Date().toISOString(),
-      device: { agent: navigator.userAgent, width: innerWidth, height: innerHeight, ratio: devicePixelRatio },
+      device: { agent: navigator.userAgent, touch: navigator.maxTouchPoints, width: innerWidth, height: innerHeight, ratio: devicePixelRatio },
       base: encodeState(app.base),
       turns: formatAlg(app.history),
       cursor: app.cursor,
@@ -3010,30 +3036,207 @@ function debugInfo(): string {
   );
 }
 
+/** How many copies of debug info the shared database keeps, newest first. */
+const DEBUG_KEEP = 20;
+
+/**
+ * Keeps a copy of debug info in the shared database (collection `debug`: `json`, `savedAt`,
+ * `source`), where Claude reads it, so the owner needn't paste it into a message; the
+ * newest DEBUG_KEEP are kept. When it was saved, or null where there is no shared database or
+ * it refused.
+ */
+async function keepDebug(text: string): Promise<number | null> {
+  if (storeKind !== "shared" || !db) return null;
+  try {
+    const savedAt = Date.now();
+    await db.collection("debug").add({ json: text, savedAt, source: "page" });
+    const snap = await db.collection("debug").orderBy("savedAt", "desc").get();
+    for (const d of snap.docs.slice(DEBUG_KEEP)) await db.collection("debug").doc(d.id).delete();
+    return savedAt;
+  } catch {
+    return null;
+  }
+}
+
+/** A saved copy's time, to the second with the date, as the list and the messages give it. */
+const keptTime = (savedAt: number) => new Date(savedAt).toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
+
+/** The copies of debug info the shared database keeps, newest first (none without it). */
+async function keptDebug(): Promise<{ json: string; savedAt: number }[]> {
+  if (storeKind !== "shared" || !db) return [];
+  try {
+    const snap = await db.collection("debug").orderBy("savedAt", "desc").limit(DEBUG_KEEP).get();
+    return snap.docs.map((d: any) => d.data()).filter((d: any) => typeof d?.json === "string").map((d: any) => ({ json: d.json, savedAt: d.savedAt }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The kind of device a user agent names. An iPad's Safari, and the apps built on it, name a
+ * Mac ("Macintosh; Intel Mac OS X"), asking for sites' desktop pages; it is told apart by its
+ * touch points (`navigator.maxTouchPoints`), which a Mac without a touch screen doesn't have.
+ * Copies saved before the count was kept say "Mac".
+ */
+function deviceName(agent: string, touch?: number): string {
+  if (/iPhone/.test(agent)) return "iPhone";
+  if (/iPad/.test(agent) || (/Macintosh/.test(agent) && (touch ?? 0) > 1)) return "iPad";
+  if (/Macintosh/.test(agent)) return "Mac";
+  return /Android/.test(agent) ? "Android" : "";
+}
+
+/** A saved copy's line in the list: when it was saved, to the second with the date, and on what. */
+function keptLabel(k: { json: string; savedAt: number }): string {
+  const when = keptTime(k.savedAt);
+  let on = "";
+  try {
+    const device = JSON.parse(k.json).device ?? {};
+    on = deviceName(device.agent ?? "", device.touch);
+  } catch {
+    on = "";
+  }
+  return on ? `${when} · ${on}` : when;
+}
+
+/** The clock beside Paste debug info: opens the list of saved copies, one tap to put one back. */
+async function toggleKeptDebug() {
+  const list = $("debug-list"), b = $("debug-history");
+  if (!list.hidden) {
+    list.hidden = true;
+    b.setAttribute("aria-expanded", "false");
+    return;
+  }
+  $("debug-text").hidden = true;
+  const kept = await keptDebug();
+  list.replaceChildren();
+  if (!kept.length) {
+    const none = document.createElement("div");
+    none.className = "muted";
+    none.textContent = "No saved debug info yet";
+    list.append(none);
+  }
+  for (const k of kept) {
+    const item = document.createElement("button");
+    item.setAttribute("role", "menuitem");
+    item.textContent = keptLabel(k);
+    item.addEventListener("click", () => putBackDebug(k.json));
+    list.append(item);
+  }
+  list.hidden = false;
+  b.setAttribute("aria-expanded", "true");
+}
+
 async function copyDebug() {
   const text = debugInfo();
   const field = $("debug-text") as HTMLTextAreaElement;
   field.hidden = true;
+  field.readOnly = true;
+  $("debug-list").hidden = true;
+  // Copying first: Safari writes the clipboard only straight from the tap.
+  let copied = false;
   try {
     await navigator.clipboard.writeText(text);
-    setMessage("Debug info copied", "ok");
+    copied = true;
   } catch {
     // Without clipboard access, the text is shown selected, to copy by hand if the browser won't.
     field.value = text;
     field.hidden = false;
     field.select();
-    let copied = false;
     try {
       copied = document.execCommand?.("copy") ?? false;
     } catch {
       copied = false;
     }
-    if (copied) {
-      field.hidden = true;
-      setMessage("Debug info copied", "ok");
-    } else setMessage("Select and copy the debug info", "info");
+    if (copied) field.hidden = true;
   }
+  const kept = await keepDebug(text);
+  const at = kept === null ? "" : keptTime(kept);
+  if (copied) setMessage(kept !== null ? `Debug info copied, and saved for Claude at ${at}` : "Debug info copied", "ok");
+  else setMessage(kept !== null ? `Debug info saved for Claude at ${at}. Select and copy it to paste it too` : "Select and copy the debug info", kept !== null ? "ok" : "info");
   render();
+}
+
+/**
+ * The JSON in pasted text: from a "{" to the "}" that closes it (braces inside strings
+ * don't count), so debug info pasted with words around it, as in a message to a developer,
+ * still reads. The first such span that parses as JSON, trying each "{" in turn (the words
+ * may hold braces of their own); the whole text when none does.
+ */
+function jsonIn(text: string): string {
+  for (let start = text.indexOf("{"); start >= 0; start = text.indexOf("{", start + 1)) {
+    let depth = 0, quoted = false;
+    for (let i = start; i < text.length; i++) {
+      const c = text[i];
+      if (quoted) {
+        if (c === "\\") i++;
+        else if (c === '"') quoted = false;
+      } else if (c === '"') quoted = true;
+      else if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) {
+        const span = text.slice(start, i + 1);
+        try {
+          JSON.parse(span);
+          return span;
+        } catch {
+          break;
+        }
+      }
+    }
+  }
+  return text;
+}
+
+/** Whether text is debug info the Lab can put back: its start, its turns and its edit's shape all read. */
+function isDebugInfo(text: string): boolean {
+  try {
+    const d = JSON.parse(jsonIn(text));
+    if (d?.lab !== "x-cube debug 1") return false;
+    decodeState(d.base);
+    parseAlg(d.turns ?? "");
+    if (d.edit) decodeState(d.edit.shape);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Puts back pasted debug info (during a solve, after asking), and closes the ⓘ panel. */
+function putBackDebug(text: string) {
+  if (!isDebugInfo(text)) {
+    setMessage("That isn't debug info", "error");
+    render();
+    return;
+  }
+  endingSolve(() => {
+    restoreDebug(jsonIn(text));
+    $("debug-text").hidden = true;
+    $("debug-list").hidden = true;
+    $("info-pop").hidden = true;
+    $("info-btn").setAttribute("aria-expanded", "false");
+    setMessage("Debug info put back", "ok");
+    render();
+  });
+}
+
+/**
+ * Paste debug info: what Copy debug info copied goes back into the Lab, so what it showed can
+ * be seen again, even an edit that isn't valid, which has no state code. From the clipboard;
+ * where the browser won't read it, the text field takes it, pasted by hand.
+ */
+async function pasteDebug() {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (isDebugInfo(text)) return putBackDebug(text);
+  } catch {
+    // No clipboard access: the field below takes it.
+  }
+  const field = $("debug-text") as HTMLTextAreaElement;
+  field.readOnly = false;
+  field.value = "";
+  field.placeholder = "Paste the debug info here";
+  field.hidden = false;
+  field.focus();
+  $("debug-list").hidden = true;
 }
 
 function slotByName(name: string): number {
@@ -3086,6 +3289,7 @@ function bindViewTools() {
       const open = $(p).hidden;
       close(p);
       $("debug-text").hidden = true;
+      $("debug-list").hidden = true;
       $(p).hidden = !open;
       $(b).setAttribute("aria-expanded", String(open));
     });
@@ -3104,6 +3308,12 @@ function bindUI() {
   bindAlgorithms();
   $("next-step").addEventListener("click", () => nextStep());
   $("copy-debug").addEventListener("click", () => void copyDebug());
+  $("paste-debug").addEventListener("click", () => void pasteDebug());
+  $("debug-history").addEventListener("click", () => void toggleKeptDebug());
+  $("debug-text").addEventListener("input", () => {
+    const field = $("debug-text") as HTMLTextAreaElement;
+    if (!field.readOnly && field.value.trim()) putBackDebug(field.value);
+  });
   $("strip-next").addEventListener("click", () => nextStep());
   $("guide-stop").addEventListener("click", () => stopGuide());
   $("guide-colors").addEventListener("click", () => setGuideFullColor(!guideFullColor));
@@ -3141,6 +3351,7 @@ function bindUI() {
     b.addEventListener("click", () => {
       if (!edit) return;
       edit.paint = b.dataset.paint as Color | "shape";
+      if (edit.paint === "shape") stopShapeFlash();
       renderEdit();
     });
   }
@@ -3396,6 +3607,7 @@ interface Edit {
   added: Set<number>;
   painted: any[]; // meshes currently drawn in a color other than their own
   highlight: number[] | null; // slots shown with a halo: the first problem's, unless hidden
+  marks: { slot: number; face: number }[]; // stickers the shown problem's hint circles
   hidden: string | null; // the slots (joined) whose halo was hidden with Hide
   selected: string; // the problem the line shows (problemKey), kept across paints
 }
@@ -3408,7 +3620,7 @@ function startEdit() {
   const st = app.current.clone();
   const view = visibleColors(st);
   const colors = view.map((c) => (c && c !== UNPAINTED ? c : undefined));
-  edit = { shape: st, colors, view, fit: fitColors(st, view), shown: st.clone(), paint: "W", removed: new Set(), added: new Set(), painted: [], highlight: null, hidden: null, selected: "" };
+  edit = { shape: st, colors, view, fit: fitColors(st, view), shown: st.clone(), paint: "W", removed: new Set(), added: new Set(), painted: [], highlight: null, marks: [], hidden: null, selected: "" };
   document.body.classList.add("editing");
   for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = true;
   renderEdit();
@@ -3419,8 +3631,8 @@ function paintSticker(slot: number, dir: number) {
   if (!edit || edit.paint === "shape") return;
   const i = slot * 6 + dir;
   if (!edit.view[i]) return; // hidden, or bare plastic
-  if (edit.colors[i] === edit.paint) return;
-  edit.colors[i] = edit.paint;
+  // A tap with the color a sticker already has takes its color off.
+  edit.colors[i] = edit.view[i] === edit.paint ? undefined : edit.paint;
   refitEdit();
   renderEdit();
 }
@@ -3478,14 +3690,30 @@ function placeMarkers(pool: any[], slots: number[], make: () => any) {
   });
 }
 
-function placeGhosts() {
+/** The glass box that marks an empty spot where an extension can go (the Shape tool's, and a shape hint's). */
+const GHOST_SIZE = 0.62;
+function ghostBox() {
   ghostMaterial ??= new THREE.MeshBasicMaterial({ map: borderedFill(), transparent: true, depthWrite: false });
-  placeMarkers(ghosts, edit?.paint === "shape" ? draftSpots(edit) : [], () => {
-    const g = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.62), ghostMaterial);
-    g.layers.set(HALO_LAYER);
-    g.renderOrder = 2;
-    return g;
-  });
+  const g = new THREE.Mesh(new THREE.BoxGeometry(GHOST_SIZE, GHOST_SIZE, GHOST_SIZE), ghostMaterial);
+  g.layers.set(HALO_LAYER);
+  g.renderOrder = 2;
+  return g;
+}
+
+/** How much fainter the Shape tool's other glass boxes are drawn while the halo marks some of them. */
+const GHOST_DIM = 0.35;
+let ghostDimMaterial: any = null;
+
+function placeGhosts() {
+  placeMarkers(ghosts, edit?.paint === "shape" ? draftSpots(edit) : [], ghostBox);
+  // While the halo marks a box, the others are fainter, so the marked one stands out from
+  // the empty spots around it; they can still be tapped.
+  const placed = ghosts.filter((g) => g.parent);
+  const marked = new Set(placed.filter((g) => edit?.highlight?.includes(g.userData.slot) && !draftFilled(edit, g.userData.slot)));
+  if (ghostMaterial) {
+    ghostDimMaterial ??= Object.assign(ghostMaterial.clone(), { opacity: GHOST_DIM });
+    for (const g of placed) g.material = marked.size && !marked.has(g) ? ghostDimMaterial : ghostMaterial;
+  }
   placeMarkers(blanks, edit ? [...edit.added] : [], () => {
     const g = new THREE.Group();
     const body = new THREE.Mesh(withAoColors(copyLook!.body), copyLook!.bodyMat);
@@ -3552,6 +3780,7 @@ function placeOverlays(list: [number, number, Color | typeof UNPAINTED][]) {
       overlays.push(g);
     }
     const g = overlays[n];
+    g.userData.slot = t;
     const [sticker, outline, tile, flatOutline] = g.children;
     const painted = color !== UNPAINTED;
     g.position.set(SLOT_POS[t][0], SLOT_POS[t][1], SLOT_POS[t][2]);
@@ -3568,16 +3797,44 @@ function placeOverlays(list: [number, number, Color | typeof UNPAINTED][]) {
 }
 
 /** The ghost under a point of the 3D view, unless a cubelet (hit `h`) is in front of it. */
-function pickMarker(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null): number | null {
+function pickMarker(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null, pool = ghosts): number | null {
   pivot.updateMatrixWorld(true); // markers placed since the last frame are where they are now
   const rect = el.getBoundingClientRect();
   const ray = new THREE.Raycaster();
   ray.layers.set(HALO_LAYER);
   ray.setFromCamera(new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1), camera);
-  const [g] = ray.intersectObjects(ghosts.filter((x) => x.parent), false);
+  const [g] = ray.intersectObjects(pool.filter((x) => x.parent), false);
   if (!g) return null;
   if (h && pivot.localToWorld(h.point.clone()).distanceTo(camera.position) < g.distance) return null;
   return g.object.userData.slot;
+}
+
+/**
+ * With a color picked, a tap on what a shape hint says to tap (a glass box in a spot to
+ * fill, or an extension to take away) means a shape edit, which only the Shape tool makes:
+ * the tap colors nothing, a message says to pick Shape, and the Shape button pulses until
+ * Shape is picked or for `SHAPE_FLASH_MS`, long enough to read the message and look for it.
+ */
+const SHAPE_FLASH_MS = 8000;
+let shapeFlashTimer: ReturnType<typeof setTimeout> | undefined;
+function stopShapeFlash() {
+  clearTimeout(shapeFlashTimer);
+  document.querySelector('[data-paint="shape"]')?.classList.remove("flash");
+}
+function shapeFirst(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null): boolean {
+  if (!edit?.highlight) return false;
+  const taps = edit.fit.problems[shownProblem().i]?.taps;
+  if (!taps?.length) return false;
+  const slot = pickMarker(el, clientX, clientY, h, hintGhosts) ?? (h ? slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]) : -1);
+  if (!taps.includes(slot)) return false;
+  setMessage("To add or remove an extension, pick Shape first", "info", ["Shape"]);
+  render();
+  const b = document.querySelector('[data-paint="shape"]') as HTMLElement;
+  stopShapeFlash();
+  void b.offsetWidth; // restart the pulse
+  b.classList.add("flash");
+  shapeFlashTimer = setTimeout(stopShapeFlash, SHAPE_FLASH_MS);
+  return true;
 }
 
 function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null) {
@@ -4857,30 +5114,31 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
 
 // ------------------------------------------------------------------ highlight halo
 
-// Purple around a whole cubelet, outside its body, to point out the spot a color-editing
-// problem names. Drawn on a box shell around the cubelet: each pixel finds how close its
-// view ray passes to the cubelet's rounded body (the distance along the ray is convex, so
-// a ternary search finds the closest point) and is purple by how near that is. Rays that
-// hit the body draw nothing, so the cubelet itself keeps its look.
-// In the 3D view it is a thin rim (HALO.rim), hidden by whatever is in front of it like
-// any other part of the puzzle: it marks only a cubelet that can be seen, and never lies
-// over the cubelets in front of one that can't. A cubelet that can't be seen has the
-// arrow instead (placeHaloArrow).
+// Purple around a whole cubelet, outside it, to point out the spot a color-editing problem
+// names.
+// In the 3D view it is an outline (HALO.outline): a band a few pixels wide on screen, just
+// outside the part of the cubelet the view shows, the same width whatever is around it. A
+// mask holds the pixels where a haloed cubelet is the nearest thing drawn, and the band is
+// drawn over the view where the mask is empty but near it. A cubelet hidden behind the
+// puzzle has no outline; the arrow points to it instead (placeHaloArrow).
 // In the flat view it is a soft glow (HALO.glow), one for each face the cubelet shows, each
 // seen only by that face's camera (layer FLAT_HALO_LAYER + direction), so it never marks a
-// face where the cubelet is buried. Halos sit in the cubelet's group, so they follow turns,
-// and on their own layers, so the probe's passes don't see them.
-const HALO = { color: 0xa63dff, glow: { reach: 0.5, shape: 1.5 }, rim: { reach: 0.21, shape: 0.45 } };
+// face where the cubelet is buried. It is drawn on a box shell around the cubelet: each
+// pixel finds how close its view ray passes to the cubelet's rounded body (the distance
+// along the ray is convex, so a ternary search finds the closest point) and is purple by
+// how near that is. Glows sit in the cubelet's group, so they follow turns, and on their
+// own layers, so the probe's passes don't see them.
+const HALO = { color: 0xa63dff, glow: { reach: 0.5, shape: 1.5 }, outline: { width: 5, soft: 2 } }; // outline in CSS pixels
 const haloMaterials: Record<string, any> = {};
 const halos: any[] = [];
 
-function haloMesh(kind: "glow" | "rim") {
+function haloMesh(kind: "glow") {
   const { reach, shape } = HALO[kind];
   haloMaterials[kind] ??= new THREE.ShaderMaterial({
     uniforms: { color: { value: new THREE.Color(HALO.color) }, size: { value: 0.985 / 2 }, round: { value: BODY_RADIUS }, reach: { value: reach }, shape: { value: shape } },
     transparent: true,
     depthWrite: false,
-    // The glow: against the haloed cubelets only (placeHalos clears the rest first). The rim: against the puzzle.
+    // Against the haloed cubelets only (placeHalos clears the rest first).
     depthTest: true,
     vertexShader: `
       varying vec3 vOrigin;
@@ -4901,6 +5159,8 @@ function haloMesh(kind: "glow" | "rim") {
       uniform float round;
       uniform float reach;
       uniform float shape;
+      uniform mat4 modelViewMatrix;
+      uniform mat4 projectionMatrix;
       varying vec3 vOrigin;
       varying vec3 vDir;
       float body(vec3 p) {
@@ -4921,8 +5181,12 @@ function haloMesh(kind: "glow" | "rim") {
           float m1 = a + (b - a) / 3.0, m2 = b - (b - a) / 3.0;
           if (body(o + d * m1) < body(o + d * m2)) b = m2; else a = m1;
         }
-        float dist = body(o + d * (0.5 * (a + b)));
+        vec3 near = o + d * (0.5 * (a + b));
+        float dist = body(near);
         if (dist <= 0.0) discard;
+        // Tested at the depth of the purple itself, beside the cubelet, not at the shell's face.
+        vec4 clip = projectionMatrix * modelViewMatrix * vec4(near, 1.0);
+        gl_FragDepth = 0.5 + 0.5 * clip.z / clip.w;
         float k = 1.0 - clamp(dist / reach, 0.0, 1.0);
         gl_FragColor = vec4(color, pow(k, shape));
       }`,
@@ -4934,11 +5198,153 @@ function haloMesh(kind: "glow" | "rim") {
   return m;
 }
 
-/** What the 3D view draws in slot s of the shown position: its cubelet, or while editing the blank put in there; null if nothing. */
+/** The drawn cubelets (or blanks) the 3D view outlines now. */
+function outlined(): any[] {
+  if (!edit?.highlight) return [];
+  return haloSlots().map((s) => drawnAt(edit!.shown, s)).filter((o) => o);
+}
+
+const outlineMask = { black: null as any, white: null as any };
+/**
+ * Draws into `target` the mask of the haloed cubelets as `cam` sees them: white where one
+ * is the nearest thing drawn, black or clear elsewhere. The puzzle (and any blanks) goes
+ * into the depth first, then the haloed cubelets where they are frontmost.
+ */
+function drawOutlineMask(target: any, cam: any, roots: any[]) {
+  outlineMask.black ??= new THREE.MeshBasicMaterial({ color: 0x000000 });
+  outlineMask.white ??= new THREE.MeshBasicMaterial({ color: 0xffffff, depthWrite: false, depthFunc: THREE.LessEqualDepth });
+  const mask = cam.layers.mask, auto = renderer.autoClear, shadows = renderer.shadowMap.autoUpdate;
+  const clear = renderer.getClearColor(new THREE.Color()), alpha = renderer.getClearAlpha();
+  const shown: [any, boolean][] = [];
+  const hide = (o: any, v: boolean) => { shown.push([o, o.visible]); o.visible = v; };
+  for (const g of [...ghosts.filter((g) => !roots.includes(g)), ...markRings.map((r) => r.view)]) hide(g, false);
+  try {
+    renderer.shadowMap.autoUpdate = false;
+    cam.layers.set(0);
+    cam.layers.enable(HALO_LAYER);
+    renderer.setRenderTarget(target);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+    scene.overrideMaterial = outlineMask.black;
+    renderer.render(scene, cam);
+    const inRoot = (o: any) => { for (let p = o; p; p = p.parent) if (roots.includes(p)) return true; return false; };
+    pivot.traverse((o: any) => { if (o.isMesh && o.visible) hide(o, inRoot(o)); });
+    renderer.autoClear = false;
+    scene.overrideMaterial = outlineMask.white;
+    renderer.render(scene, cam);
+  } finally {
+    scene.overrideMaterial = null;
+    renderer.autoClear = auto;
+    renderer.shadowMap.autoUpdate = shadows;
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(clear, alpha);
+    cam.layers.mask = mask;
+    for (const [o, v] of shown.reverse()) o.visible = v;
+  }
+}
+
+/** The band drawn over the view around the mask: a full-screen triangle that reads the mask. */
+let outlineQuad: { scene: any; cam: any; mat: any; mask: any } | null = null;
+const OUTLINE_REACH = 8; // the most mask pixels the band reaches, for the shader's loop
+function outlinePass() {
+  if (outlineQuad) return outlineQuad;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { mask: { value: null }, texel: { value: new THREE.Vector2() }, width: { value: 4 }, soft: { value: 1 }, color: { value: new THREE.Color(HALO.color) } },
+    transparent: true,
+    depthTest: false,
+    depthWrite: false,
+    vertexShader: `
+      varying vec2 vUv;
+      void main() { vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+    fragmentShader: `
+      uniform sampler2D mask;
+      uniform vec2 texel;
+      uniform float width;
+      uniform float soft;
+      uniform vec3 color;
+      varying vec2 vUv;
+      void main() {
+        if (texture2D(mask, vUv).r > 0.5) discard;
+        float best = 1e9;
+        for (int i = -${OUTLINE_REACH}; i <= ${OUTLINE_REACH}; i++)
+          for (int j = -${OUTLINE_REACH}; j <= ${OUTLINE_REACH}; j++) {
+            vec2 o = vec2(float(i), float(j));
+            float d = length(o);
+            if (d > width || d >= best) continue;
+            if (texture2D(mask, vUv + o * texel).r > 0.5) best = d;
+          }
+        if (best > width) discard;
+        gl_FragColor = vec4(color, 1.0 - smoothstep(width - soft, width, best));
+      }`,
+  });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
+  const tri = new THREE.Mesh(geo, mat);
+  tri.frustumCulled = false;
+  const scene2 = new THREE.Scene();
+  scene2.add(tri);
+  const mask = new THREE.WebGLRenderTarget(1, 1, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+  outlineQuad = { scene: scene2, cam: new THREE.Camera(), mat, mask };
+  return outlineQuad;
+}
+
+/**
+ * Draws the halo's outline over what `cam` has drawn into `target` (null: the screen), at
+ * w by h pixels, `scale` of them to a CSS pixel. The mask is half that size, read with
+ * smoothing, which keeps the band's work small on a phone.
+ */
+function drawOutline(cam: any, target: any, w: number, h: number, scale: number) {
+  const drawn = outlined();
+  if (!drawn.length) return;
+  // A sticker drawn over a cubelet (a color it doesn't have, or a dashed outline for none)
+  // is part of it: else the mask has a hole there, and the band rings the sticker too.
+  const lit = new Set(haloSlots());
+  const roots = [...drawn, ...overlays.filter((g) => g.parent && lit.has(g.userData.slot))];
+  const q = outlinePass();
+  const mw = Math.max(1, Math.round(w / 2)), mh = Math.max(1, Math.round(h / 2));
+  if (q.mask.width !== mw || q.mask.height !== mh) q.mask.setSize(mw, mh);
+  drawOutlineMask(q.mask, cam, roots);
+  const u = q.mat.uniforms;
+  u.mask.value = q.mask.texture;
+  u.texel.value.set(1 / mw, 1 / mh);
+  // In mask pixels: half the screen's.
+  u.width.value = Math.min(OUTLINE_REACH, Math.max(1.5, (HALO.outline.width * scale) / 2));
+  u.soft.value = Math.min(u.width.value, (HALO.outline.soft * scale) / 2);
+  const auto = renderer.autoClear;
+  renderer.autoClear = false;
+  renderer.setRenderTarget(target);
+  renderer.render(q.scene, q.cam);
+  renderer.setRenderTarget(null);
+  renderer.autoClear = auto;
+}
+
+/**
+ * What the 3D view draws in slot s of the shown position: its cubelet, or while editing the
+ * blank put in there, or a shape hint's glass box (first: a cubelet taken off is only hidden,
+ * so its own cubelet is still in the slot); null if nothing.
+ */
 function drawnAt(st: State, s: number): any {
+  const ghost = markedGhost(s);
+  if (ghost) return ghost;
   if (st.occ[s] >= 0) return meshes[st.occ[s]];
   return (edit && blanks.find((b) => b.parent && b.userData.slot === s)) ?? null;
 }
+
+/**
+ * An empty spot a shape hint says to fill gets the halo on the Shape tool's glass box there,
+ * the control a tap fills it with; with another tool picked, the hint draws that one box
+ * itself (`hintGhosts`). So the halo marks where the cubelet should go (3D, as a halo always
+ * is; a ring marks a sticker). The arrow, Show and the view's checks treat the box as what
+ * is in that spot.
+ */
+const hintGhosts: any[] = [];
+function markedGhost(s: number): any {
+  if (!edit?.highlight) return undefined;
+  const own = hintGhosts.find((g) => g.parent && g.userData.slot === s);
+  if (own) return own;
+  return !draftFilled(edit, s) && edit.highlight.includes(s) ? ghosts.find((g) => g.parent && g.userData.slot === s) : undefined;
+}
+const hintGhostAt = (s: number) => !!markedGhost(s);
 
 /** Whether the 3D view shows any face of the cubelet in slot s now: one turned at all toward the viewer, its middle unblocked. */
 function slotSeen(st: State, s: number): boolean {
@@ -5146,9 +5552,23 @@ function hitsHaloArrow(el: HTMLElement, clientX: number, clientY: number): boole
   return ray.intersectObject(haloArrow.userData.hit, false).length > 0;
 }
 
-/** The arrow's tap: turns the 3D view to show the haloed cubelets it can't show now. */
+/**
+ * The arrow's tap: the view Show turns to, so the two agree. Where that view still leaves a
+ * haloed cubelet out of sight (a halo spread around the puzzle), the arrow would stay and a
+ * second tap do nothing new, so then it turns to the cubelets it can't show now instead.
+ */
 function showHiddenHalos() {
   if (!edit) return;
+  const shown = highlightView();
+  if (shown) {
+    const own = pivot.quaternion.clone();
+    pivot.quaternion.copy(shown);
+    pivot.updateMatrixWorld(true);
+    const left = haloSlots().filter((s) => drawnAt(edit!.shown, s) && !slotSeen(edit!.shown, s));
+    pivot.quaternion.copy(own);
+    pivot.updateMatrixWorld(true);
+    if (!left.length) return goToView([shown.x, shown.y, shown.z, shown.w]);
+  }
   const st = edit.shown, hidden = hiddenHalos();
   const faces: [number, number][] = [];
   for (const s of hidden) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
@@ -5204,13 +5624,120 @@ const haloBodies: any[] = [];
 let haloClearer: any = null;
 const HALO_VIEWS = [0, 1, 2, 3, 4, 5].map((d) => FLAT_HALO_LAYER + d);
 
+/**
+ * What a hint circles: a ring in the halo's purple with a dark casing, as Lost? marks the
+ * sticker it asks about, drawn over everything so neighbors don't cut it.
+ * - A sticker (one its colors can't tell from another of the same color on its cubelet):
+ *   the ring lies on it. In the 3D view it shows only while the sticker faces the viewer, so
+ *   it never shows through the puzzle; the flat view has its own copy on the sticker's face.
+ * - A whole cubelet (face -1; one the halo can't tell from others it marks): in the 3D view
+ *   the ring stands at the cubelet's middle, turned to the viewer every frame, as big as the
+ *   largest circle around the cubelet's middle inside its outline on screen (the convex hull
+ *   of its eight corners as drawn); it shows while some face of the cubelet is seen. The flat
+ *   view rings each of the cubelet's faces it shows.
+ */
+const markRings: { view: any; flats: any[] }[] = [];
+/** The ring's size: its outer edge (radius plus tube) is the inscribed sphere of a cubelet. */
+const MARK_RADIUS = 0.42, MARK_TUBE = 0.075;
+function markRing() {
+  const group = new THREE.Group();
+  for (const [w, c] of [[MARK_TUBE, 0x111111], [0.045, HALO.color]] as const) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(MARK_RADIUS, w, 10, 48), new THREE.MeshBasicMaterial({ color: c, depthTest: false, transparent: true, toneMapped: false }));
+    ring.renderOrder = 10 + (c === HALO.color ? 1 : 0);
+    group.add(ring);
+  }
+  return group;
+}
+/**
+ * The radius, in world units at the cubelet's middle, of the largest circle around its
+ * middle that fits inside its outline as the 3D view draws it: its eight corners projected,
+ * their convex hull, and the nearest of the hull's sides to the projected middle.
+ */
+function insetRadius(slot: number): number {
+  const w = renderer.domElement.clientWidth || 1, h = renderer.domElement.clientHeight || 1;
+  const px = (p: readonly number[]) => {
+    const v = pivot.localToWorld(new THREE.Vector3(p[0], p[1], p[2])).project(camera);
+    return [(v.x * w) / 2, (v.y * h) / 2];
+  };
+  const c = SLOT_POS[slot], a = 0.985 / 2;
+  const pts = [-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => px([c[0] + x * a, c[1] + y * a, c[2] + z * a])))).sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  // Andrew's monotone chain.
+  const cross = (o: number[], p: number[], q: number[]) => (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+  const half = (list: number[][]) => {
+    const out: number[][] = [];
+    for (const p of list) {
+      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop();
+      out.push(p);
+    }
+    out.pop();
+    return out;
+  };
+  const hull = [...half(pts), ...half([...pts].reverse())];
+  const m = px(c);
+  let r = Infinity;
+  hull.forEach((p, i) => {
+    const q = hull[(i + 1) % hull.length], len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+    r = Math.min(r, Math.abs(cross(p, q, m)) / len);
+  });
+  // Pixels to world units at the middle's depth.
+  const depth = pivot.localToWorld(new THREE.Vector3(...c)).applyMatrix4(camera.matrixWorldInverse).z;
+  const perPx = (2 * Math.abs(depth) * Math.tan((camera.fov * Math.PI) / 360)) / h;
+  return Number.isFinite(r) ? r * perPx : MARK_RADIUS + MARK_TUBE;
+}
+
+/** Shows each 3D-view ring only while what it marks faces the viewer, a cubelet's turned to the viewer and sized. */
+function showMarks() {
+  if (!edit) return;
+  edit.marks.forEach((m, i) => {
+    const r = markRings[i];
+    if (!r?.view.parent) return;
+    if (m.face >= 0) {
+      r.view.visible = faceView(edit!.shown, m.slot, m.face, 0.2) > 0;
+      return;
+    }
+    r.view.visible = [0, 1, 2, 3, 4, 5].some((d) => faceView(edit!.shown, m.slot, d, 0.2) > 0);
+    pivot.updateMatrixWorld(true);
+    r.view.quaternion.copy(pivot.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(camera.quaternion));
+    r.view.scale.setScalar(insetRadius(m.slot) / (MARK_RADIUS + MARK_TUBE));
+  });
+}
+
+
 /** Puts halos on the cubelet in each highlighted slot of the shown state, and removes the rest. */
 function placeHalos() {
-  for (const h of [...halos, ...haloBodies]) h.parent?.remove(h);
+  for (const h of [...halos, ...haloBodies, ...hintGhosts, ...markRings.flatMap((r) => [r.view, ...r.flats])]) h.parent?.remove(h);
   haloClearer?.parent?.remove(haloClearer);
   haloStamp++;
   const marked = edit?.highlight ? haloSlots() : null;
   if (!edit || !marked) return;
+  marked.filter((t) => !draftFilled(edit!, t) && !ghosts.some((g) => g.parent && g.userData.slot === t)).forEach((t, i) => {
+    const g = (hintGhosts[i] ??= ghostBox());
+    g.userData.slot = t;
+    g.position.set(...SLOT_POS[t]);
+    pivot.add(g);
+  });
+  edit.marks.forEach((m, i) => {
+    const r = (markRings[i] ??= { view: markRing(), flats: [] });
+    // A sticker's face, or each face a whole cubelet shows.
+    const faces = m.face >= 0 ? [m.face] : [0, 1, 2, 3, 4, 5].filter((d) => bareFace(edit!.shown, m.slot, d));
+    while (r.flats.length < faces.length) r.flats.push(markRing());
+    const place = (g: any, layer: number, face: number) => {
+      const n = new THREE.Vector3(...DIRS[face]);
+      g.position.set(...SLOT_POS[m.slot]).addScaledVector(n, 0.53);
+      g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+      g.scale.setScalar(1);
+      g.traverse((o: any) => o.layers.set(layer));
+      pivot.add(g);
+    };
+    faces.forEach((f, k) => place(r.flats[k], FLAT_HALO_LAYER + f, f));
+    if (m.face >= 0) place(r.view, HALO_LAYER, m.face);
+    else {
+      r.view.position.set(...SLOT_POS[m.slot]);
+      r.view.traverse((o: any) => o.layers.set(HALO_LAYER));
+      pivot.add(r.view);
+    }
+  });
+  showMarks();
   if (!haloClearer) {
     haloClearer = new THREE.Mesh(new THREE.PlaneGeometry(1e-3, 1e-3), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true }));
     haloClearer.frustumCulled = false;
@@ -5223,10 +5750,8 @@ function placeHalos() {
   let b = 0;
   const free = halos.filter((h) => !h.parent);
   const add = (on: any, layer: number) => {
-    const kind = layer === HALO_LAYER ? "rim" : "glow";
-    const at = free.findIndex((h) => h.userData.kind === kind);
-    const h = at >= 0 ? free.splice(at, 1)[0] : haloMesh(kind);
-    if (at < 0) halos.push(h);
+    const h = free.length ? free.pop() : haloMesh("glow");
+    if (!halos.includes(h)) halos.push(h);
     h.layers.set(layer);
     on.add(h);
   };
@@ -5242,7 +5767,6 @@ function placeHalos() {
       haloBodies.push(body);
     }
     on.add(haloBodies[b++]);
-    add(on, HALO_LAYER);
     for (let d = 0; d < 6; d++) if (bareFace(edit.shown, s, d)) add(on, FLAT_HALO_LAYER + d);
   }
 }
@@ -5252,28 +5776,32 @@ function placeHalos() {
 function bareFace(st: State, s: number, d: number): boolean {
   if (!edit) return isExposed(st, s, d);
   const n = SLOT_NEIGHBOR[s * 6 + d];
-  return draftFilled(edit, s) && n !== -2 && !(n >= 0 && draftFilled(edit, n));
+  return (draftFilled(edit, s) || hintGhostAt(s)) && n !== -2 && !(n >= 0 && draftFilled(edit, n));
 }
 
 function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   const drawn = drawnAt(st, s);
   // While editing, the shape being edited decides what is there: a cubelet taken off is
   // not, and one put in is (as a blank).
-  const there = (t: number) => (edit ? draftFilled(edit, t) : st.occ[t] >= 0);
+  // A glass box stands for what is in its own spot; it doesn't cover the face behind it.
+  const there = (t: number) => (edit ? draftFilled(edit, t) || (t === s && hintGhostAt(t)) : st.occ[t] >= 0);
   const n = SLOT_NEIGHBOR[s * 6 + d];
   if (!drawn || !there(s) || n === -2 || (n >= 0 && there(n))) return -1;
   pivot.updateMatrixWorld(true);
   const p = SLOT_POS[s], v = DIRS[d];
-  const target = pivot.localToWorld(new THREE.Vector3(p[0] + v[0] * 0.45, p[1] + v[1] * 0.45, p[2] + v[2] * 0.45));
+  // A glass box is smaller than a cubelet: look at its own face.
+  const out = drawn.geometry?.parameters?.width === GHOST_SIZE ? GHOST_SIZE / 2 - 0.02 : 0.45;
+  const target = pivot.localToWorld(new THREE.Vector3(p[0] + v[0] * out, p[1] + v[1] * out, p[2] + v[2] * out));
   const cos = new THREE.Vector3(...v).applyQuaternion(pivot.quaternion).dot(camera.position.clone().sub(target).normalize());
   if (cos < minCos) return -1;
   const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize());
   ray.layers.set(0);
+  ray.layers.enable(HALO_LAYER); // where a shape hint's glass box is
   // The first cubelet the ray meets that is drawn: one taken off in the editor is hidden, not gone.
   for (const h of ray.intersectObjects(pivot.children, true)) {
     let o = h.object;
     while (o.parent && o.parent !== pivot) o = o.parent;
-    if ((!meshes.includes(o) && !blanks.includes(o)) || !o.visible) continue;
+    if ((!meshes.includes(o) && !blanks.includes(o) && o !== drawn) || !o.visible) continue;
     return o === drawn ? cos : -1;
   }
   return -1;
@@ -5296,33 +5824,198 @@ function lookFrom(v: any): any {
 }
 
 /**
- * Turns the 3D view to show the highlighted cubelets' stickers best: the most of them
- * unblocked, then each as squarely as possible. Tries the preset views and looking from
+ * Turns the 3D view to show the highlighted cubelets' stickers best (for a shape problem,
+ * all their faces): the most of them unblocked, then each as squarely as possible. Tries the preset views and looking from
  * between the stickers' directions. Only on the owner's tap: a halo appearing never moves the view.
  */
 function showHighlighted() {
-  if (!edit?.highlight) return;
+  const q = highlightView();
+  if (q) goToView([q.x, q.y, q.z, q.w]);
+}
+
+/** The view Show turns to (see showHighlighted), or null with nothing haloed. A turn of the view under way ends first. */
+function highlightView(): any {
+  if (!edit?.highlight) return null;
+  if (tween) (pivot.quaternion.copy(tween.to), (tween = null));
   const st = edit.shown;
   const faces: [number, number][] = [];
   const slots = haloSlots();
-  for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
+  // A shape problem is about how a core cubelet and the extensions or spots on it fit
+  // together, so every face of them counts: seeing the most of them takes a view from an
+  // angle, not one straight at the core cubelet's own sticker.
+  const shape = edit.removed.size > 0 || edit.added.size > 0;
+  // A problem about one core cubelet: a view of it at the angle that suits it.
+  const cores = edit.highlight.filter((s) => SLOT_POS[s].every((c) => Math.abs(c) <= 1) && SLOT_POS[s].filter((c) => c !== 0).length >= 2);
+  if (shape && cores.length === 1) return lookFrom(coreView(st, cores[0], slots));
+  // The stickers the hint circles are the ones it is about.
+  for (const m of edit.marks) for (let d = 0; d < 6; d++) if ((m.face < 0 || d === m.face) && bareFace(st, m.slot, d)) faces.push([m.slot, d]);
+  if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && (shape || edit.view[s * 6 + d])) faces.push([s, d]);
   if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d)) faces.push([s, d]);
-  showFaces(st, faces);
+  return faces.length ? bestView(st, faces, shape) : null;
+}
+
+/** Half the width of a cubelet, as a box for `haloShare`. */
+const CUBELET_HALF = 0.49;
+
+/**
+ * The share of the haloed cubelets and spots the view from direction v shows: of points
+ * spread over each (its corners and face middles, drawn in a little), those where the first
+ * thing a ray from the camera meets is one of them. Everything is taken as a box: each
+ * filled spot a cubelet's width, each glass box its own size. A glass box in front counts
+ * as covering, though it is see-through: other boxes in the way are what make a view hard
+ * to read. Boxes, not the drawn cubelets (some 300,000 triangles), keep Show quick: a
+ * corner's 25 views took most of a second with the drawn ones, and froze the page.
+ */
+function haloShare(st: State, slots: number[], v: any): number {
+  const eye = eyeFrom(v);
+  const boxes = sceneBoxes(st);
+  const half = new Map(boxes.map((b) => [b.slot, b.half]));
+  const lit = new Set(slots);
+  let seen = 0, n = 0;
+  for (const s of slots) {
+    const h = half.get(s);
+    if (h === undefined) continue;
+    const r = h * 2 * 0.42 * (h === CUBELET_HALF ? 0.9 / 0.98 : 1);
+    for (const o of [...[-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => [x, y, z]))), ...DIRS]) {
+      n++;
+      const first = firstBox(eye, [SLOT_POS[s][0] + o[0] * r, SLOT_POS[s][1] + o[1] * r, SLOT_POS[s][2] + o[2] * r], boxes);
+      if (first < 0 || lit.has(first)) seen++;
+    }
+  }
+  return n ? seen / n : 0;
+}
+
+/** Where the camera is, in the puzzle's frame, when the view looks from direction v. */
+function eyeFrom(v: any): number[] {
+  const own = pivot.quaternion.clone();
+  pivot.quaternion.copy(v.isQuaternion ? v : lookFrom(v));
+  pivot.updateMatrixWorld(true);
+  const local = pivot.worldToLocal(camera.position.clone());
+  pivot.quaternion.copy(own);
+  pivot.updateMatrixWorld(true);
+  return [local.x, local.y, local.z];
+}
+
+/** What the puzzle is as drawn, as boxes: each filled spot a cubelet's width, each glass box its own size. */
+function sceneBoxes(st: State): { slot: number; half: number }[] {
+  const ghostAt = new Set([...ghosts, ...hintGhosts].filter((g) => g.parent).map((g) => g.userData.slot as number));
+  const boxes: { slot: number; half: number }[] = [];
+  for (let t = 0; t < NUM_SLOTS; t++) {
+    if (edit ? draftFilled(edit, t) : st.occ[t] >= 0) boxes.push({ slot: t, half: CUBELET_HALF });
+    else if (ghostAt.has(t)) boxes.push({ slot: t, half: GHOST_SIZE / 2 });
+  }
+  return boxes;
+}
+
+/** The slot of the first box a ray from the eye meets before it reaches point p, or -1. */
+function firstBox(eye: number[], p: readonly number[], boxes: { slot: number; half: number }[]): number {
+  const d = [p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]];
+  let first = -1, nearest = 1 - 1e-4;
+  for (const b of boxes) {
+    const c = SLOT_POS[b.slot];
+    let t0 = 0, t1 = nearest;
+    for (let a = 0; a < 3 && t0 <= t1; a++) {
+      if (Math.abs(d[a]) < 1e-9) {
+        if (Math.abs(eye[a] - c[a]) > b.half) t0 = Infinity;
+        continue;
+      }
+      let lo = (c[a] - b.half - eye[a]) / d[a], hi = (c[a] + b.half - eye[a]) / d[a];
+      if (lo > hi) [lo, hi] = [hi, lo];
+      t0 = Math.max(t0, lo);
+      t1 = Math.min(t1, hi);
+    }
+    if (t0 <= t1 && t0 < nearest) (nearest = t0), (first = b.slot);
+  }
+  return first;
+}
+
+/**
+ * faceView taken on boxes (sceneBoxes), for weighing many views at once: how squarely the
+ * view from `eye` sees face d of slot s, or -1 if it faces away or something is in front of
+ * its middle.
+ */
+function boxFaceView(st: State, eye: number[], boxes: { slot: number; half: number }[], half: Map<number, number>, s: number, d: number): number {
+  const h = half.get(s);
+  if (h === undefined || !bareFace(st, s, d)) return -1;
+  const v = DIRS[d], out = h - 0.02;
+  const p = [SLOT_POS[s][0] + v[0] * out, SLOT_POS[s][1] + v[1] * out, SLOT_POS[s][2] + v[2] * out];
+  const to = [eye[0] - p[0], eye[1] - p[1], eye[2] - p[2]], len = Math.hypot(to[0], to[1], to[2]);
+  const cos = (to[0] * v[0] + to[1] * v[1] + to[2] * v[2]) / len;
+  if (cos < 0.2) return -1;
+  return firstBox(eye, p, boxes) === s ? cos : -1;
+}
+
+/** Degrees from straight at a core edge that Show aims for: enough to show the spots on it in depth. */
+const EDGE_TILT = 20;
+
+/**
+ * The direction Show looks at a core cubelet from, for a problem about it alone. A view
+ * straight at an edge shows the spots on it edge-on, and a tilt along it shows how they sit
+ * on it, but too far and other cubelets and glass boxes crowd in; a play-tester liked a slight
+ * angle best. So of the views `coreViews` gives, the one aiming for `EDGE_TILT` (none for a
+ * corner, whose own view shows its three sides) that shows the most of the halo, each degree
+ * away from the aim costing 1% of it; then from above, then nearest the view now.
+ */
+function coreView(st: State, core: number, slots: number[]): any {
+  const aim = SLOT_POS[core].includes(0) ? EDGE_TILT : 0;
+  const now = new THREE.Vector3(0, 0, 1).applyQuaternion(pivot.quaternion.clone().invert());
+  let best: any = null, bestScore = -Infinity;
+  for (const { v, tilt } of coreViews(core)) {
+    const score = haloShare(st, slots, v) - Math.abs(tilt - aim) * 0.01 + v.y * 0.005 + v.dot(now) * 0.002;
+    if (score > bestScore) (best = v), (bestScore = score);
+  }
+  return best;
+}
+
+/**
+ * Views of a core cubelet for Show: from its own direction (straight at an edge, the corner
+ * view for a corner), and tilted from it by up to 40 degrees: along an edge's length, or
+ * toward and away from each of a corner's sides.
+ */
+function coreViews(core: number): { v: any; tilt: number }[] {
+  const p = SLOT_POS[core], c = new THREE.Vector3(...p).normalize();
+  const axes = p.some((x) => x === 0) ? [0, 1, 2].filter((a) => p[a] === 0).flatMap((a) => [1, -1].map((g) => DIRS[2 * a].map((x) => x * g))) : DIRS;
+  const out = [{ v: c.clone(), tilt: 0 }];
+  for (const e of axes) {
+    const t = new THREE.Vector3(...e);
+    t.sub(c.clone().multiplyScalar(t.dot(c)));
+    if (t.lengthSq() < 1e-6) continue;
+    t.normalize();
+    for (const deg of [10, 20, 30, 40]) {
+      const a = (deg * Math.PI) / 180;
+      out.push({ v: c.clone().multiplyScalar(Math.cos(a)).add(t.clone().multiplyScalar(Math.sin(a))), tilt: deg });
+    }
+  }
+  return out;
 }
 
 /** Tumbles the 3D view to the direction that shows these faces (slot, direction) of st best: the most unblocked, then each as squarely as possible. */
-function showFaces(st: State, faces: [number, number][]) {
+function showFaces(st: State, faces: [number, number][], sides = false) {
   if (!faces.length) return;
   if (tween) (pivot.quaternion.copy(tween.to), (tween = null));
-  const best = bestView(st, faces);
+  const best = bestView(st, faces, sides);
   goToView([best.x, best.y, best.z, best.w]);
 }
-/** The view that shows the given sticker faces best (see showFaces). */
-function bestView(st: State, faces: [number, number][]): any {
+/**
+ * The view that shows the given faces best (see showFaces). With `sides`, first the one
+ * showing faces on the most sides of the puzzle, so the cubelets show in depth (a view
+ * straight at a core edge shows the spots on it edge-on); then, of views alike, the one
+ * nearest the view now.
+ */
+function bestView(st: State, faces: [number, number][], sides = false): any {
   if (!faces.length) return pivot.quaternion.clone();
+  const now = new THREE.Vector3(0, 0, 1).applyQuaternion(pivot.quaternion.clone().invert());
+  // Faces are weighed on boxes (boxFaceView): rays against the drawn cubelets, some 300,000
+  // triangles, took over a second for a halo on many cubelets.
+  const boxes = sceneBoxes(st), half = new Map(boxes.map((b) => [b.slot, b.half]));
   const score = () => {
-    const seen = faces.map(([s, d]) => faceView(st, s, d)).filter((c) => c > 0);
-    return seen.length * 10 + seen.reduce((a, b) => a + b, 0) / faces.length;
+    const eye = eyeFrom(pivot.quaternion);
+    const views = faces.map(([s, d]) => boxFaceView(st, eye, boxes, half, s, d));
+    const seen = faces.filter((_, i) => views[i] > 0);
+    const cos = views.reduce((a, c) => a + Math.max(0, c), 0) / faces.length;
+    if (!sides) return seen.length * 10 + cos;
+    const from = new THREE.Vector3(0, 0, 1).applyQuaternion(pivot.quaternion.clone().invert());
+    return new Set(seen.map(([, d]) => d)).size * 1000 + seen.length * 10 + cos + from.dot(now) * 0.01;
   };
   const dirs = [...new Set(faces.map(([, d]) => d))];
   const candidates: any[] = Object.values(VIEWS).map((q) => new THREE.Quaternion(q[0], q[1], q[2], q[3]));
@@ -5368,6 +6061,7 @@ function updateHighlight() {
   if (edit.hidden !== slots.join()) edit.hidden = null; // Hide lasts until other cubelets are named
   // No halo while the Shape tool is in hand: it would cover the cubelets and spots to tap.
   edit.highlight = slots.length && edit.hidden === null ? [...slots] : null;
+  edit.marks = edit.highlight ? (problem?.marks ?? []) : [];
 }
 
 /** Returns every glow band to its own sticker's color. */
@@ -5391,7 +6085,7 @@ function renderEdit() {
   $("edit-hint").textContent =
     edit.paint === "shape"
       ? "Tap an extension cubelet to remove it, or a gray box to add one. Drag to tumble the view."
-      : "Pick a color, then tap stickers to color them. Drag to tumble the view.";
+      : "Pick a color, then tap stickers to color them; tap one again to clear it. Drag to tumble the view.";
   if (level === "reachable") {
     st.className = "edit-status good";
     st.textContent = "Valid";
@@ -5525,6 +6219,17 @@ function probeImage(cam: any, layer: number, w: number, h: number, mode: "id" | 
   return out;
 }
 
+/** The 3D view drawn at w by h without and with the halo's outline, as probeImage gives them. */
+function outlineImages(w: number, h: number): [Uint8Array, Uint8Array] {
+  const plain = probeImage(camera, 0, w, h, "drawn");
+  const ringed = probeImage(camera, 0, w, h, "drawn");
+  const cssWidth = (renderer.domElement as HTMLCanvasElement).getBoundingClientRect().width || w;
+  drawOutline(camera, probeTarget, w, h, w / cssWidth);
+  renderer.readRenderTargetPixels(probeTarget, 0, 0, w, h, ringed);
+  renderer.setRenderTarget(null);
+  return [plain, ringed];
+}
+
 type ProbeHit = { slot: string; face: string; color: string; cubelet: number; modelCubelet: number } | { plastic: true; slot: string; cubelet: number } | null;
 
 
@@ -5573,6 +6278,8 @@ function installProbe() {
     /** The debug info Copy debug info copies, and putting it back (for reproducing what a person saw). */
     debugInfo: () => debugInfo(),
     restoreDebug: (json: string) => restoreDebug(json),
+    /** For each view Show weighs for a core cubelet (slot name): its direction, tilt and the share of the halo it shows. */
+    coreViewShares: (name: string) => coreViews(slotByName(name)).map(({ v, tilt }) => ({ v: v.toArray().map((x: number) => +x.toFixed(2)), tilt, share: +haloShare(edit!.shown, haloSlots(), v).toFixed(2) })),
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
     /** The turns of the last shuffle (the page doesn't show them). */
@@ -5675,16 +6382,54 @@ function installProbe() {
     highlighted: () => (edit?.highlight ?? []).map(slotName),
     /** The cubelets the halo marks: those named, or for one nothing shows, those around it. */
     haloed: () => haloSlots().map(slotName).sort(),
-    /** The slots whose drawn cubelet (or blank) carries a rim now. */
-    rimmed: () => haloSlots().filter((s) => edit && drawnAt(edit.shown, s)?.children.some((c: any) => halos.includes(c) && c.userData.kind === "rim")).map(slotName).sort(),
+    /**
+     * The pixels of the 3D view the halo's outline changes ("changed"), how many of them
+     * it turns the halo's own purple ("purple"), and how many are on each sticker
+     * ("slot/face") of each cubelet the halo doesn't mark.
+     */
+    outlineOver: () => {
+      const w = 192, h = 192;
+      const [plain, ringed] = outlineImages(w, h);
+      const ids = probeImage(camera, 0, w, h, "id"), colors = probeImage(camera, 0, w, h, "color");
+      const marked = new Set(haloSlots().map(slotName));
+      const over: Record<string, number> = {};
+      const c = new THREE.Color(HALO.color);
+      const [pr, pg, pb] = [c.r, c.g, c.b].map((v) => v * 255);
+      let changed = 0, purple = 0, inside = 0;
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          const i = ((h - 1 - y) * w + x) * 4;
+          if (Math.abs(plain[i] - ringed[i]) + Math.abs(plain[i + 1] - ringed[i + 1]) + Math.abs(plain[i + 2] - ringed[i + 2]) <= 24) continue;
+          changed++;
+          if (Math.abs(ringed[i] - pr) + Math.abs(ringed[i + 1] - pg) + Math.abs(ringed[i + 2] - pb) < 90) purple++;
+          const hit = probeDecode(ids, colors, w, h, x, y);
+          if (hit && !("plastic" in hit) && !marked.has(hit.slot)) over[`${hit.slot}/${hit.face}`] = (over[`${hit.slot}/${hit.face}`] ?? 0) + 1;
+          if (hit && marked.has(hit.slot)) inside++; // the band over a haloed cubelet itself
+        }
+      return { changed, purple, over, inside };
+    },
+    /** The stickers the shown problem's hint circles, and how many pixels of the 3D view their rings cover. */
+    marks: () => {
+      const list = (edit?.marks ?? []).map((m) => ({ slot: slotName(m.slot), face: m.face < 0 ? "cubelet" : COMPASS_FACES[m.face] }));
+      const plain = probeImage(camera, 0, 192, 192, "drawn"), framed = probeImage(camera, 0, 192, 192, "drawn", HALO_LAYER);
+      let px = 0;
+      for (let i = 0; i < plain.length; i += 4) if (Math.abs(plain[i] - framed[i]) + Math.abs(plain[i + 1] - framed[i + 1]) + Math.abs(plain[i + 2] - framed[i + 2]) > 24) px++;
+      return { list, px };
+    },
+    /** The glass boxes a shape hint draws itself (none while the Shape tool's own boxes show). */
+    hintBoxes: () => hintGhosts.filter((g) => g.parent).length,
+    /** The Shape tool's glass boxes now: each one's spot (slot name) and whether it is drawn fainter. */
+    ghostBoxes: () => ghosts.filter((g) => g.parent).map((g) => ({ slot: slotName(g.userData.slot), dim: g.material === ghostDimMaterial })),
+    /** The slots whose drawn cubelet (or blank) the 3D view outlines now. */
+    outlined: () => (edit?.highlight ? haloSlots().filter((s) => drawnAt(edit!.shown, s)).map(slotName).sort() : []),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),
     // `hiding` false draws them as if no haloed cubelet hid the halos behind it, to compare.
     haloPixels: (view: string, hiding = true) => {
       const nc = netCams.find((c) => c.face === view);
       if (!nc) {
-        const plain = probeImage(camera, 0, 96, 96, "drawn"), rimmed = probeImage(camera, 0, 96, 96, "drawn", HALO_LAYER);
+        const [plain, ringed] = outlineImages(192, 192);
         let px = 0;
-        for (let i = 0; i < plain.length; i += 4) if (Math.abs(plain[i] - rimmed[i]) + Math.abs(plain[i + 1] - rimmed[i + 1]) + Math.abs(plain[i + 2] - rimmed[i + 2]) > 24) px++;
+        for (let i = 0; i < plain.length; i += 4) if (Math.abs(plain[i] - ringed[i]) + Math.abs(plain[i + 1] - ringed[i + 1]) + Math.abs(plain[i + 2] - ringed[i + 2]) > 24) px++;
         return px;
       }
       const bodies = haloBodies.filter((b) => b.parent);

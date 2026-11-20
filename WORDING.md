@@ -41,7 +41,7 @@ puzzle: it suggests continuous motion.
 
 A cubelet's **orientation** is which way it faces in its spot, and to **orient** one is to
 change that. A cubelet may also be **rotated**: a problem with the core corners says "The
-core corners can't all have these orientations at once. One of them needs to be
+core corners can't all be oriented as they are now. One of them needs to be
 rotated", not that one "needs another turn".
 
 The view **rotates** too ("Show rotates the view to them", "Drag to rotate the view");
@@ -55,7 +55,7 @@ known or saved sequence of turns, as in the Algorithms panel.
 Some ideas are how the Lab works something out, not something a user can see or act on,
 so they don't appear at all. The outward-color rule is one: a message never says which
 color points "outward" or "straight out from the core". It says what is wrong in terms
-the user can check against the puzzle in hand: "These two X-face corners look the same,
+the user can check against the puzzle in hand: "Two X-face corners look the same,
 but the puzzle has only one like that. One of them has a sticker with the wrong color."
 
 ## How to say it
@@ -64,8 +64,30 @@ Say what is, and what happens now, not what doesn't happen: "Drag anywhere to tu
 view", not "Layers don't turn while editing".
 
 Say what the user can do about it. A problem message names the problem and, where it
-can, what to fix ("One of them has a sticker with the wrong color"), not how the Lab
-found it.
+can, what to fix, not how the Lab found it. Best is which sticker should be which color
+("Its red sticker should probably be orange"); when the Lab can't tell, "One of them has a
+sticker with the wrong color". A sticker is named by its color, never by its place; where its color doesn't say which
+sticker (two of one color on a cubelet), the Lab circles it and calls it "circled": "Its
+circled orange sticker should probably be green". A center is named by its color too ("The
+red center"), since no two centers show one color.
+
+A halo marks a cubelet, or the spot where one should go (the Shape tool's glass box
+there); a ring marks a sticker. So a shape hint points with the halo and says "this" or "here".
+Say what is certain plainly and what is a guess with "probably", in the same sentence
+if need be: a core corner with one extension must get another, on that corner and nowhere
+else, but which of its spots is a guess ("Add an extension to this corner, probably
+here"). When the halo marks every spot that could be, nothing is guessed ("Add an
+extension to this edge in one of these spots"). Which of several cubelets to change is a
+guess too ("This extension should probably be removed"). In shape messages an extension cubelet is "an extension"; a center's is "an
+extension center". Two stickers in each other's spots "trade places", not colors: a sticker
+is the thing that is wrong, and the user moves it.
+
+"This", "these" and "here" point: whatever they refer to is marked, with the halo (a
+cubelet, or the spot for one) or a ring (a sticker), so the user can see what is meant.
+"This core corner has three extensions, but it can have only two. This extension should
+probably be removed" halos both the corner and the extension. A message that names spots
+the halo doesn't mark says how many, without "these" ("Two X-face corners look the same,
+but the puzzle has only one like that").
 
 Point rather than place. A problem names what is wrong, not where; the purple halo shows
 where. Words for a spot have proved unreliable: center colors move with slices,
@@ -73,7 +95,12 @@ extensions leave their sides, and left and right depend on how the puzzle is hel
 
 A cubelet in its place and oriented as solved is **solved**, not "home": Home is a view.
 
-In help text, a button's name is drawn as a control (`<span class="ui-name">Show</span>`),
-so it reads as the button and not as a verb.
+In help text and messages, a button's name is drawn as a control (`<span class="ui-name">Show</span>`;
+a message names its controls with `setMessage`'s `controls`), so it reads as the button and
+not as a verb: "To add or remove an extension, pick **Shape** first".
 
 Lists of three colors use the serial comma: "white, blue, and orange".
+
+Every message the Lab shows ends as a sentence does, with a period ("Debug info put back.",
+"Turns cleared. This position is now the start."); `setMessage` adds it. The problem line
+adds its own after the problem ("Not valid: ... spots.").

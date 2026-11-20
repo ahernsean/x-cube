@@ -835,7 +835,7 @@ labTest("shuffle: plays 30 legal turns, and the result becomes the new start", a
   await page.waitForFunction(() => /^Shuffled/.test(document.getElementById("message")?.textContent ?? ""), null, { timeout: 60000 });
   await settle();
   const shuffled = await page.evaluate(() => ({ msg: document.getElementById("message").textContent, state: window.xcubeProbe.state(), turns: window.xcubeProbe.turns() }));
-  check(shuffled.msg === "Shuffled", `the message doesn't give the turns away ("${shuffled.msg}")`);
+  check(shuffled.msg === "Shuffled.", `the message doesn't give the turns away ("${shuffled.msg}")`);
   const scramble = await page.evaluate(() => window.xcubeProbe.shuffleTurns());
   await startFresh();
   await page.fill("#alg", scramble);
@@ -1026,7 +1026,7 @@ labTest("state codes: one field shows the current position's code and takes a co
   await page.fill("#code", "  " + ruState + "\n");
   await page.click("#import");
   const imported = { state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent), counter: await counter() };
-  check(imported.state === ruState && imported.msg === "Imported" && imported.counter === "0/0", `importing a state code makes it the start (${imported.msg})`);
+  check(imported.state === ruState && imported.msg === "Imported." && imported.counter === "0/0", `importing a state code makes it the start (${imported.msg})`);
   await page.fill("#code", "X1:not a code");
   await page.keyboard.press("Enter");
   const refused = { state: await probe("state"), off: await page.$eval("#import", (b) => b.disabled), bad: await page.$eval("#code", (t) => t.classList.contains("invalid")) };
@@ -1204,19 +1204,19 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   check(/^Valid/.test(entered.line) && entered.done && entered.inert, `edit mode starts valid, with the other controls set aside ("${entered.line}")`);
   await paint("R", "Fx.U", "F");
   const half = { line: await editLine(), off: await doneOff(), drawn: (await probe("at3d", ...Object.values(await probe("sticker", "Fx.U", "F"))))?.color };
-  check(/^Not valid: Two extension edges are white and red, but there can be only one\. Show Hide$/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
+  check(/^Not valid: Two extension edges are white and red, but there can be only one like that\. On one of these, the red sticker should probably be green\. Show Hide$/.test(half.line) && half.off && half.drawn === "R", `painting one edge like another is not valid, Done is off, and the paint shows ("${half.line}")`);
   // The edge glow around a painted sticker shows the paint too (the glow is the only sign
   // of a sticker's color where that face is hidden).
   const paintedGlow = (await probe("glowColors", "Fx.U", "F")).join();
   check(paintedGlow === "R", `the edge glow of a painted sticker takes the paint (${paintedGlow})`);
   // A problem puts a purple halo on the cubelets it names by itself, in the 3D view and
   // on the flat view's faces where they show, without moving the view. In the 3D view it
-  // is a rim around a cubelet that can be seen; one behind the puzzle draws nothing over
-  // what is in front of it, and an arrow points around to it instead, which a tap follows.
+  // is an outline around a cubelet that can be seen; one behind the puzzle draws nothing
+  // over what is in front of it, and an arrow points around to it instead, which a tap follows.
   // Show (or tapping the line) tumbles the 3D view to show all their stickers, again
   // after any tumble; Hide removes the halo.
   const front = { px3d: await probe("haloPixels", "3d"), arrow: await probe("haloArrow") };
-  check(front.px3d > 0 && front.arrow.at === null && front.arrow.behind.length === 0, `cubelets that can be seen have a rim and no arrow (${JSON.stringify(front)})`);
+  check(front.px3d > 0 && front.arrow.at === null && front.arrow.behind.length === 0, `cubelets that can be seen have an outline and no arrow (${JSON.stringify(front)})`);
   const seenBoth = async () => `${await probe("facesSeen", "Fx.U")},${await probe("facesSeen", "Rx.U")}`;
   await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await settle();
@@ -1280,10 +1280,12 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await paint("R", "Fx.U", "U"); // flip the white-red edge now at Fx.U in place
   await paint("W", "Fx.U", "F");
   const flipped = await editLine();
-  check(/^Not valid: This cubelet's white sticker has the wrong color\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  check(/^Not valid: This cubelet's white sticker has the wrong color\. Its white and red stickers should probably trade places\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
   // With several problems, ‹ and › step through them, and the halo moves with the line
-  // without turning the view.
+  // without turning the view. Yellow facing away from the core on Rx.U and Fx.UR is wrong
+  // too; the line stays on the problem it shows (Rx.U's) when Fx.UR's sorts ahead of it.
   await paint("Y", "Rx.U", "R");
+  await page.click('[data-halo="next"]');
   await paint("Y", "Fx.UR", "F");
   const navLine = await editLine();
   const firstLit = (await probe("highlighted")).join();
@@ -1291,10 +1293,10 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await page.click('[data-halo="next"]');
   const stepped = { line: await editLine(), lit: (await probe("highlighted")).join(), still: JSON.stringify(await probe("view")) === viewBefore };
   await page.click('[data-halo="next"]');
+  await page.click('[data-halo="next"]');
   const wrapped = (await probe("highlighted")).join();
-  // The line stays on the problem it showed (Rx.U's) when the new one sorts ahead of it.
   const at = (line) => line.match(/‹(\d)\/(\d)›/)?.slice(1).join("/");
-  check(firstLit === "Rx.U" && at(navLine) === "2/2" && at(stepped.line) === "1/2" && stepped.lit === "Fx.UR" && stepped.still && wrapped === firstLit, `the line stays on its problem when another appears; ‹ and › step through them, moving the halo, not the view (${at(navLine)} ${firstLit}, then ${at(stepped.line)} ${stepped.lit}, then ${wrapped})`);
+  check(firstLit === "Rx.U" && at(navLine) === "3/3" && at(stepped.line) === "1/3" && stepped.lit === "Fx.U" && stepped.still && wrapped === firstLit, `the line stays on its problem when another appears; ‹ and › step through them, moving the halo, not the view (${at(navLine)} ${firstLit}, then ${at(stepped.line)} ${stepped.lit}, then ${wrapped})`);
   await page.click("#edit-cancel");
   sw = await sweep3d();
   const cancelGlow = [(await probe("glowColors", "Fx.U", "U")).join(), (await probe("glowColors", "Fx.U", "F")).join()].join(" ");
@@ -1302,8 +1304,9 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
 });
 
 labTest("shape editing: Show and the arrow reach a cubelet bared by taking an extension cubelet off", async ({ page, check, probe, gesture, settle }) => {
-  // The owner's case: a core edge left with no extensions. The cubelet taken off is hidden,
-  // not gone, and must neither cover the core edge's face nor block the view of it.
+  // The owner's case: a core edge left with no extensions. The hint halos a glass box in
+  // each spot an extension could go; the cubelet taken off is hidden, not gone, and must not
+  // block the view of the box in its spot.
   const tapAt = async ({ x, y }) => {
     await gesture([["pointerdown", x, y], ["pointerup", x, y]]);
     await page.waitForFunction(() => window.xcubeProbe.idle());
@@ -1312,20 +1315,139 @@ labTest("shape editing: Show and the arrow reach a cubelet bared by taking an ex
   await page.click('[data-paint="shape"]');
   await tapAt(await probe("sticker", "Fx.U", "F"));
   const line = await page.$eval("#edit-status", (e) => e.textContent);
-  check(/This core edge has no extensions/.test(line) && (await probe("haloed")).join() === "UF", `taking the edge's only extension off names the core edge (${line})`);
-  // From the front, its front shows where the cubelet taken off was: the hidden cubelet
-  // neither covers that face nor blocks the view of it.
+  const haloed = (await probe("haloed")).sort().join();
+  check(/This core edge has no extensions, but it has to have one or two\. Add an extension to this edge/.test(line) && haloed === "Fx.U,UF,Ux.F", `taking the edge's only extension off halos the edge and the spots to fill (${line}, ${haloed})`);
+  // From the front, the box where the cubelet taken off was shows: the hidden cubelet
+  // doesn't block the view of it.
   await page.evaluate(() => document.querySelector('[data-view="front"]').click());
   await settle();
-  check((await probe("facesSeen", "UF")) === 1, `the face the cubelet taken off bared counts as seen (${await probe("facesSeen", "UF")} faces)`);
+  check((await probe("facesSeen", "Fx.U")) >= 1, `the box in the spot it was taken from counts as seen (${await probe("facesSeen", "Fx.U")} faces)`);
   await page.evaluate(() => document.querySelector('[data-view="back"]').click());
   await settle();
   await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 1);
   await page.click('[data-halo="show"]');
   await settle();
   await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 0, null, { timeout: 5000 }).catch(() => {});
-  const after = { seen: await probe("facesSeen", "UF"), arrow: await probe("haloArrow") };
+  const after = { seen: (await probe("facesSeen", "Fx.U")) + (await probe("facesSeen", "Ux.F")), arrow: await probe("haloArrow") };
   check(after.seen >= 1 && after.arrow.behind.length === 0 && after.arrow.opacity === 0, `Show turns the view to it, and the arrow goes (${JSON.stringify(after)})`);
+});
+
+labTest(
+  "info: Copy debug info saves a copy for Claude, and the clock beside Paste lists them back",
+  async ({ page, check, probe, settle, gesture }) => {
+    // With the shared database (a stand-in here), a copy goes into its "debug" collection,
+    // where Claude reads it; only the newest 20 are kept.
+    await page.click("#edit-start");
+    await page.click('[data-paint="shape"]');
+    const at = await probe("sticker", "Fx.U", "F");
+    await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+    await settle();
+    await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.resolve(), readText: () => Promise.reject(new Error("denied")) }, configurable: true }));
+    for (let k = 0; k < 22; k++) {
+      await page.evaluate(() => (document.getElementById("message").textContent = ""));
+      if (await page.$eval("#info-pop", (e) => e.hidden)) await page.click("#info-btn");
+      await page.click("#copy-debug");
+      await page.waitForFunction(() => /saved for Claude at \w{3} \d+, \d{4}, \d+:\d\d:\d\d/.test(document.getElementById("message").textContent), null, { timeout: 5000 });
+    }
+    const kept = await page.evaluate(() => [...window.__fakeDb.debug.values()].map((d) => ({ edit: JSON.parse(d.json).edit?.removed?.join(), source: d.source, at: typeof d.savedAt })));
+    check(kept.length === 20 && kept.every((d) => d.edit === "Fx.U" && d.source === "page" && d.at === "number"), `copies are saved for Claude, the newest 20 kept (${kept.length}, ${JSON.stringify(kept[0])})`);
+    await page.click("#edit-cancel");
+    await settle();
+    // The clock beside Paste debug info lists the saved copies by time, and one tap puts one back.
+    if (await page.$eval("#info-pop", (e) => e.hidden)) await page.click("#info-btn");
+    await page.click("#debug-history");
+    await page.waitForSelector("#debug-list:not([hidden]) button", { timeout: 5000 });
+    const items = await page.$$eval("#debug-list button", (bs) => bs.map((b) => b.textContent));
+    await page.click("#debug-list button");
+    await settle();
+    const back = { removed: (await probe("shapeEdit"))?.removed.join(), open: !(await page.$eval("#info-pop", (e) => e.hidden)) };
+    check(items.length === 20 && items.every((t) => /\d{4}/.test(t) && /\d:\d\d:\d\d/.test(t)) && back.removed === "Fx.U" && !back.open, `the clock lists the saved copies by date and time to the second, and a tap puts one back (${JSON.stringify({ items: items.length, first: items[0], back })})`);
+    // An iPad names itself a Mac; its touch points, kept with the debug info, tell it apart.
+    const touch = JSON.parse(await probe("debugInfo")).device.touch;
+    await page.evaluate(() => {
+      const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
+      const add = (touch, at) => window.__fakeDb.debug.set(`t${at}`, { json: JSON.stringify({ lab: "x-cube debug 1", device: { agent: mac, touch } }), savedAt: at, source: "page" });
+      add(5, Date.now() + 2000);
+      add(0, Date.now() + 1000);
+    });
+    await page.click("#info-btn");
+    await page.click("#debug-history");
+    await page.waitForSelector("#debug-list:not([hidden]) button", { timeout: 5000 });
+    const named = await page.$$eval("#debug-list button", (bs) => bs.slice(0, 2).map((b) => b.textContent.split(" · ")[1]));
+    check(typeof touch === "number" && named.join() === "iPad,Mac", `debug info keeps the touch points, and a Mac with them is listed as an iPad (${JSON.stringify({ touch, named })})`);
+  },
+  {
+    // A stand-in for the shared database: collections of documents in memory.
+    initScript: () => {
+      const cols = {};
+      let n = 0;
+      const col = (name) => (cols[name] ??= new Map());
+      const snapOf = (entries) => ({ docs: entries.map(([id, data]) => ({ id, data: () => data })), metadata: { fromCache: false } });
+      const query = (name, ord, lim) => ({
+        orderBy: (f, dir = "asc") => query(name, [f, dir], lim),
+        limit: (k) => query(name, ord, k),
+        get: async () => {
+          const e = [...col(name)].map(([id, d], i) => [id, d, i]);
+          if (ord) e.sort((a, b) => (((a[1][ord[0]] ?? 0) - (b[1][ord[0]] ?? 0)) || a[2] - b[2]) * (ord[1] === "desc" ? -1 : 1));
+          const out = e.map(([id, d]) => [id, d]);
+          return snapOf(lim ? out.slice(0, lim) : out);
+        },
+        onSnapshot: (next) => {
+          next(snapOf([...col(name)]));
+          return () => {};
+        },
+      });
+      const db = {
+        collection: (name) => ({
+          ...query(name),
+          add: async (data) => {
+            const id = `d${++n}`;
+            col(name).set(id, data);
+            return { id };
+          },
+          doc: (id) => ({ delete: async () => void col(name).delete(id) }),
+        }),
+      };
+      window.__fakeDb = cols;
+      window.claude = { use: async (x) => (x === "db" ? db : null) };
+    },
+  },
+);
+
+labTest("info: Paste debug info puts back an edit that isn't valid", async ({ page, check, probe, settle, gesture }) => {
+  // An edit whose shape isn't valid has no state code; its debug info is the way back to it.
+  await page.click("#edit-start");
+  await page.click('[data-paint="shape"]');
+  const at = await probe("sticker", "Fx.U", "F");
+  await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+  await settle();
+  const json = await probe("debugInfo");
+  const line = await page.$eval("#edit-status", (e) => e.textContent);
+  await page.click("#edit-cancel");
+  await settle();
+  const message = () => page.$eval("#message", (e) => e.textContent);
+  const putBack = async () => ({ removed: (await probe("shapeEdit"))?.removed.join(), line: await page.$eval("#edit-status", (e) => e.textContent), message: await message(), open: !(await page.$eval("#info-pop", (e) => e.hidden)) });
+  // From the clipboard.
+  await page.evaluate((j) => Object.defineProperty(navigator, "clipboard", { value: { readText: () => Promise.resolve(j), writeText: () => Promise.resolve() }, configurable: true }), json);
+  await page.click("#info-btn");
+  await page.click("#paste-debug");
+  await settle();
+  const read = await putBack();
+  check(read.removed === "Fx.U" && read.line === line && /Debug info put back/.test(read.message) && !read.open, `Paste debug info puts the edit back from the clipboard, and closes the panel (${JSON.stringify(read)})`);
+  await page.click("#edit-cancel");
+  await settle();
+  // Where the clipboard can't be read, the field takes it, and refuses what isn't debug info.
+  await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { value: { readText: () => Promise.reject(new Error("denied")) }, configurable: true }));
+  await page.click("#info-btn");
+  await page.click("#paste-debug");
+  const field = await page.$eval("#debug-text", (f) => ({ shown: !f.hidden, editable: !f.readOnly }));
+  await page.fill("#debug-text", "not debug info");
+  const refused = await message();
+  // Words around it, as in a message to a developer, are left out.
+  await page.fill("#debug-text", `Here is what I saw {see below}:\n${json}\nWhat do you think?`);
+  await settle();
+  const typed = await putBack();
+  check(field.shown && field.editable && /That isn't debug info/.test(refused) && typed.removed === "Fx.U" && typed.line === line, `without the clipboard the field takes it, refusing other text (${JSON.stringify({ field, refused, typed })})`);
 });
 
 labTest("info: the help says what taps and drags do in each mode, and Copy debug info puts an edit back", async ({ page, check, probe, play, settle, gesture }) => {
@@ -1425,41 +1547,42 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     steps[0] !== steps[1] && steps.slice(0, 2).every((t) => /^Not valid: Five (core edges|centers) .*‹[12]\/2›( Show Hide)?$/.test(t)) && steps[2] === steps[0],
     `› steps through problems that name no cubelets (${steps.join(" | ")})`,
   );
-  // The core edges with two extensions each: one enclosed on every side (UF, with the
-  // cubelet just put over it) can't be seen, so the cubelets around it carry its halo.
+  // Five core edges with two extensions each: the hint names the extension cubelets one of
+  // which should come off, the two over UF (enclosed on every side, with the cubelet just
+  // put over it) among them, and halos them, never the core edge nothing shows.
   if (!/Five core edges/.test(await editLine())) await page.click('[data-halo="next"]');
-  const edges = { named: await probe("highlighted"), haloed: await probe("haloed") };
+  const edges = { named: await probe("highlighted"), haloed: await probe("haloed"), line: await editLine() };
   check(
-    edges.named.includes("UF") && !edges.haloed.includes("UF") && ["Fx.U", "Ux.F"].every((t) => edges.haloed.includes(t)),
-    `a named cubelet nothing shows is haloed by the cubelets around it (${JSON.stringify(edges)})`,
+    /One of these extensions should probably be removed/.test(edges.line) && !edges.haloed.includes("UF") && ["Fx.U", "Ux.F"].every((t) => edges.haloed.includes(t)),
+    `the extension cubelets to take off are haloed, not the core edge they hide (${JSON.stringify(edges)})`,
   );
-  // The cubelet put in is a blank until the shape is right: it carries a rim too, and from
+  // The cubelet put in is a blank until the shape is right: it is outlined too, and from
   // below, where it can't be seen, the arrow counts it.
-  const rimmed = await probe("rimmed");
+  const rimmed = await probe("outlined");
   await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await page.waitForFunction(() => window.xcubeProbe.idle());
   const below = (await probe("haloArrow")).behind;
-  check(rimmed.includes("Ux.F") && below.includes("Ux.F"), `the blank put in has a rim, and the arrow points to it when it can't be seen (${JSON.stringify({ rimmed, below })})`);
+  check(rimmed.includes("Ux.F") && below.includes("Ux.F"), `the blank put in is outlined, and the arrow points to it when it can't be seen (${JSON.stringify({ rimmed, below })})`);
   await page.evaluate(() => document.querySelector('[data-view="home"]').click());
   await page.waitForFunction(() => window.xcubeProbe.idle());
   await tapAt(await probe("spot", "Ux.F"));
   await tapAt(await probe("spot", "Ux"));
   check((await probe("shapeEdit")).added.length === 0, "a tap on each blank takes it away again");
   // One of two extension cubelets on a core edge goes away alone, keeping the other's paint;
-  // its outward color falls onto the core edge it bares.
+  // its color away from the core stays with its spot, and the core edge it bares shows its
+  // own color, none here (no core cubelet shows green).
   await tapSticker("Fx.R", "F");
   const one = { e: await probe("shapeEdit"), line: await editLine(), kept: await probe("painted", "Rx.F", "R"), gone: await probe("painted", "Fx.R", "F"), fell: await probe("painted", "FR", "F") };
   check(
-    one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line === "Not valid: Only three core edges have two extensions, but there must be four." && one.kept === "R" && one.gone === null && one.fell === "G",
-    `a tap takes one cubelet away, its color falls onto the core edge it bares, and the line says what the shape lacks (${JSON.stringify(one)})`,
+    one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line.startsWith("Not valid: Only three core edges have two extensions, but there must be four. An extension should probably be added in one of these spots.") && one.kept === "R" && one.gone === "G" && one.fell === null,
+    `a tap takes one cubelet away, its color stays with its spot, the core edge it bares shows its own (none), and the line says what the shape lacks (${JSON.stringify(one)})`,
   );
   // A tap on an empty spot puts a cubelet there; the shape is right again, made of real cubelets, with stickers to paint.
-  // (Fx.R's green, fallen onto the FR core edge, is a color no core edge has, so the line names that first.)
   await tapAt(await probe("spot", "Ux.F"));
   const two = { e: await probe("shapeEdit"), line: await editLine(), done: await page.$eval("#edit-done", (b) => b.disabled), filled: [await probe("filled", "Ux.F"), await probe("filled", "Fx.R")].join(), took: await probe("painted", "Ux.F", "U") };
   check(
-    two.e.removed.length + two.e.added.length === 0 && two.filled === "true,false" && two.took === "W" && /^Not valid: /.test(two.line) && two.e.unpainted > 0 && two.e.outlines === two.e.unpainted && two.done,
-    `filling a spot makes the shape right, the cubelet put in takes the color of the sticker it covers; each sticker not painted yet is a dashed outline, and Done waits for them (${JSON.stringify(two)})`,
+    two.e.removed.length + two.e.added.length === 0 && two.filled === "true,false" && two.took === null && /^Not valid: /.test(two.line) && two.e.unpainted > 0 && two.e.outlines === two.e.unpainted && two.done,
+    `filling a spot makes the shape right, the cubelet put in has no color yet facing away from the core (not the white it covers); each sticker not painted yet is a dashed outline, and Done waits for them (${JSON.stringify(two)})`,
   );
   // An extension cubelet on a core corner comes and goes alone too; the line names the corner.
   await tapSticker("Fx.UR", "F");
@@ -1471,28 +1594,28 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   );
   // A sticker can be painted while the shape is wrong.
   await tapSticker("Fx.L", "F");
-  await tool("W");
+  await tool("R");
   await tapSticker("Ux.F", "U");
   const wrong = { e: await probe("shapeEdit"), painted: await probe("painted", "Ux.F", "U"), line: await editLine() };
-  check(wrong.e.removed.join() === "Fx.L" && wrong.painted === "W" && /^Not valid: Only three core edges/.test(wrong.line), `a sticker takes paint while the shape is wrong (${JSON.stringify(wrong)})`);
+  check(wrong.e.removed.join() === "Fx.L" && wrong.painted === "R" && /^Not valid: Only three core edges/.test(wrong.line), `a sticker takes paint while the shape is wrong (${JSON.stringify(wrong)})`);
   // The flat view shows what the editor draws over the puzzle too: a cubelet put in while
   // the shape is wrong, with its stickers.
 
   await page.click("#edit-cancel");
   await idle();
   check((await probe("state")) === start && (await probe("filled", "Fx.R")), "Cancel leaves the position as it was");
-  // Taken away and put back, a cubelet gets all its colors back: they fell onto what it
-  // bared, and it takes them from what it covers.
+  // Taken away and put back, a cubelet gets all its colors back: its side colors fell onto
+  // what it bared and it takes them from what it covers, and its color away from the core
+  // stayed with its spot; the core corner's face it bared shows its own color, none here.
   await page.click("#edit-start");
   await tool("shape");
   await tapSticker("Fx.UR", "F");
   const fell = [await probe("painted", "UFR", "F"), await probe("painted", "Fx.R", "U"), await probe("painted", "Fx.U", "R")].join();
   await tapAt(await probe("spot", "Fx.UR"));
   const back = { fell, line: await editLine(), colors: [await probe("painted", "Fx.UR", "F"), await probe("painted", "Fx.UR", "U"), await probe("painted", "Fx.UR", "R")].join() };
-  check(back.fell === "G,W,R" && back.colors === "G,W,R" && back.line === "Valid", `a cubelet's colors fall onto every face it bares, and come back when it is put back (${JSON.stringify(back)})`);
-  // Moved from the front of a core edge to its top, a cubelet takes the white it covers;
-  // its other stickers are to paint, and the green that fell onto the core edge is a
-  // problem, with a halo and a Hide pill in the 3D view.
+  check(back.fell === ",W,R" && back.colors === "G,W,R" && back.line === "Valid", `a cubelet's side colors fall onto the faces it bares, and all its colors come back when it is put back (${JSON.stringify(back)})`);
+  // Moved from the front of a core edge to its top, a cubelet has stickers to color, and so
+  // has the core edge's front it bared: they have a halo and a Hide pill in the 3D view.
   const move = async (from, face, to) => {
     await tapSticker(from, face);
     await tapAt(await probe("spot", to));
@@ -1502,8 +1625,8 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   const box = await page.$eval("#scene", (c) => { const r = c.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom }; });
   const few = { line: await editLine(), halo: (await probe("highlighted")).join(), pill: (await probe("shapeEdit")).pill, took: await probe("painted", "Ux.F", "U") };
   check(
-    /^Not valid: A core single edge must be white or yellow, never green\./.test(few.line) && few.halo === "UF" && few.took === "W" && few.pill && few.pill.x > box.l && few.pill.x < box.r && few.pill.y > box.t && few.pill.y < box.b,
-    `a cubelet moved onto a core edge's bare side takes the white it covers, and the green left on the core edge has a halo, with a Hide pill inside the 3D view (${JSON.stringify(few)})`,
+    /^Not valid: \d+ stickers have no color yet\./.test(few.line) && few.halo.split(",").includes("UF") && few.halo.split(",").includes("Ux.F") && few.took === null && few.pill && few.pill.x > box.l && few.pill.x < box.r && few.pill.y > box.t && few.pill.y < box.b,
+    `a cubelet moved onto a core edge's bare side, and the core edge's front it bared, have stickers to color, with a halo and a Hide pill inside the 3D view (${JSON.stringify(few)})`,
   );
   // The pill sits clear of the puzzle as drawn, not on it.
   const under = await probe("at3d", few.pill.x, few.pill.y);
@@ -1511,7 +1634,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await page.click("#halo-hide");
   const hidden = { halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill, wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(hidden.halo === 0 && hidden.pill === null && hidden.wide <= 0, `the pill hides the halo, and itself (${JSON.stringify(hidden)})`);
-  // Many cubelets with stickers to paint get halos.
+  // Many cubelets with stickers to paint get halos: the three moved, and the core faces they bared.
   await tool("shape");
   await move("Rx.U", "R", "Ux.R");
   await move("Fx.UR", "F", "Ux.FR");
@@ -1520,11 +1643,207 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   for (let k = 0; k < 12 && !/stickers have no color yet/.test(await editLine()); k++) await page.click('[data-halo="next"]');
   const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: !!(await probe("shapeEdit")).pill, px: await probe("haloPixels", "3d") };
   check(
-    /^Not valid: \d+ stickers have no color yet\./.test(many.line) && many.halo === 4 && many.pill && many.px > 0,
+    /^Not valid: \d+ stickers have no color yet\./.test(many.line) && many.halo >= 4 && many.pill && many.px > 0,
     `many cubelets with stickers to paint get halos (${JSON.stringify(many)})`,
   );
   await page.click("#edit-cancel");
   await idle();
+});
+
+labTest("color editing: the halo's outline is bold whatever is around the cubelet", async ({ page, check, probe, settle }) => {
+  // Two play-testers' edits: a core corner set back between extension cubelets standing in
+  // front of it, and a core edge flush with its neighbors, where only seams lie beside it.
+  // The outline is a band on screen around the part the view shows, so both get a full one.
+  for (const [name, debug] of [["set back", {"lab":"x-cube debug 1","base":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","turns":"","cursor":0,"current":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","view":[0.19084,-0.80226,0.45429,-0.33702],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","removed":[],"added":[],"colors":".O.W.G.......R.WG..G...R.......G..O........GY....OG.Y........W.O.........B.Y.R...O...W.......R...R.YG..G...O.......Y...........B..R..YG..O.W......W.......W........YO..B.......BO.W..........G.....OB....Y.B...Y.................WY......G................G............Y........Y.....R.B...R..O..R.........B..R.GY..O........W..R.BG..............Y..Y..GR.W....YW.....W.........Y.......O.Y..B..G.....W.....Y...O.Y.O.........................R..G..B..RR.............G...W.B.R..OB.O...R.W.G.","tool":"R","problems":[],"selected":"A core corner must be white or yellow, never orange. This sticker should maybe be yellow or white|13","hidden":null}}], ["flush", {"lab":"x-cube debug 1","base":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","turns":"","cursor":0,"current":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","view":[0.35003,-0.51635,-0.24334,0.74273],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","removed":[],"added":[],"colors":".R.W.G.......W.WG..G...O.......R..Y........GY....OB.R........W.O.........W.R.G...W...W.......Y...R.WG..G...B.......R...........B..W..YG..O.W......W.......W........YO..G.......BR.W..........O.....OB....Y.G...R.................WG......O................G............Y........O.....R.B...G..O..G.........B..R.YW..R........B..R.BW..............Y..Y..GG.W....BG.....W.........G.......O.Y..B..O.....G.....G...O.Y.G.........................R..G..B..YR.............G...R.B.W..OB.O...G.W.G.","tool":"B","problems":[],"selected":"x|65","hidden":null}}]]) {
+    await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
+    await settle();
+    const ring = await probe("outlineOver");
+    check(ring.purple >= 120, `a cubelet ${name} among its neighbors has a bold outline (${JSON.stringify(ring)})`);
+  }
+});
+
+labTest("color editing: a hint circles the sticker it means when its color can't say which", async ({ page, check, probe, settle }) => {
+  // A front extension corner painted with two orange stickers: the hint means the one that
+  // should be green, and circles it in the view.
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.2,0.3,0.05,0.93],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","removed":[],"added":[],"colors":".O.Y.B.O.Y...O.YG..O...B.O.....O..G..OW..B.OW....OW.G....................O.Y.B...Y.....Y.....Y...O.YG..O...B...................O..G..OW..B..W.....W.....W....OW.O........................................Y.B...Y.....Y.....Y.....YG......B................G...W..B..W.....W.....W.....W.G.....................................R..Y.B...Y.....Y.....Y..R..YG.R....B..................R...G.R.W..B..W.....W.....W...R.W.G...................R..Y.BR..Y..R..YG.R....BR.....R...G.R.W..BR.W...R.W.G.","tool":"W","problems":[],"selected":"","hidden":null}}));
+  await settle();
+  const line = await page.$eval("#edit-status", (e) => e.textContent);
+  const marks = await probe("marks");
+  check(/Its circled orange sticker should probably be green/.test(line) && marks.list.length === 1 && marks.list[0].slot === "Fx.UL" && marks.list[0].face === "F" && marks.px > 40, `the circled sticker has a ring (${JSON.stringify({ line, marks })})`);
+  await page.click('[data-halo="hide"]');
+  await settle();
+  const hidden = await probe("marks");
+  check(hidden.list.length === 0 && hidden.px === 0, `Hide takes the ring away with the halo (${JSON.stringify(hidden)})`);
+});
+
+labTest("shape editing: Show looks at a core edge and its spots at a slight angle", async ({ page, check, probe, settle }) => {
+  // From play-testers' edits: a core edge with no extensions, at the top right and at the
+  // bottom left among other empty spots. Straight at its sticker showed the spots on it
+  // edge-on, and a corner view from below crowded them with other glass boxes; a slight
+  // tilt along the edge shows how they sit on it.
+  for (const [debug, sign] of [[{"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.13223,0.8614,0.28584,-0.3985],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:AaBaCaDaEaFaGaHaIa......JaKaLaMaNaOaPaQaRaSaTaUaVaWaXa..........coYaZaaabo..daeafagahaiajaudla....vv......manaoapaqarasatakg..waxayaza0a......1a2a3a4a5a6a7a8a9a","removed":["Rx.U","Rx.D","Bx.R","Lx.DB","Bx.DL","Lx.UF"],"added":["Ux.L"],"colors":".......O.Y.B.O.YG..O.Y.B.O.....OW.G..OW..B.OW.G................................O.Y.B...Y.....Y...O.YG..O.Y.B...................O..G..OW..B..W..........OW....OW.G.........W............................O.Y.B...Y.....Y..............R....B............R...G...W..B..W.....W...........W.G...............W.....................R..Y.B...Y..R..Y.....Y..R..YG............B..........G.......R.W..B..W...R.W.....W...R.W.G...................R..Y.B......R..YG.R....BR.WY..R...G.R.W..B......R.W.G.","tool":"shape","problems":[],"selected":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots|65,69,78","hidden":null}}, 1], [{"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.27985,0.36471,-0.11592,0.88048],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:AaBaCaDaEaFaGaHaIa......JaKaLaMaNaOaPaQaRaSaTaUaVaWaXa............YaZaaabacadaeafagahaiajakala..........3wmanaoapw..rasatauavawaxayaza0a......1a2aqw4a5a6a7a8a9a","removed":["Fx.R","Rx","Fx.L","Lx.UB","Lx.D","Bx","Bx.DL","Rx.DF"],"added":["Dx.R","Fx.DR","Dx.BL","Ux.BL"],"colors":".O.Y.B.......O.YG..OW..B.O.Y...O..G........OW..B.OW.G....Y.........................B.O.Y.....Y...O.YG..O.Y.B................G........OW..B.O......W.....W....OW.G...W..................................O.Y.B...Y.....Y.....Y.....YG............B......RO..G...W..B..W.....W.....W.....W.G............................Y........R..Y.B...Y....................R....B......R.........G.......R.W..B..W.....W.....W...R.W.G...................R..Y.BR..Y........R....B......R...G.R.W..BR.W...R.W.G.","tool":"shape","problems":[],"selected":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots|14,1,10","hidden":null}}, -1]]) {
+    await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
+    await settle();
+    const line = await page.$eval("#edit-status", (e) => e.textContent);
+    await page.click("#edit-status");
+    await settle();
+    const [x, y, z, w] = JSON.parse(await probe("debugInfo")).view;
+    // The direction the view looks from, in the puzzle's frame: the camera's axis turned back by the view.
+    const v = [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)];
+    const tilt = (Math.asin(Math.min(1, Math.abs(v[2]))) * 180) / Math.PI;
+    check(/This core edge has no extensions/.test(line) && v[0] * sign > 0.5 && v[1] * sign > 0.5 && tilt > 5 && tilt < 30, `Show looks at the edge at a slight angle (${JSON.stringify({ line, from: v.map((c) => +c.toFixed(2)), tilt: Math.round(tilt) })})`);
+  }
+});
+
+labTest("shape editing: Show weighs a core corner's views quickly", async ({ page, check, settle }) => {
+  // From a play-tester's edit: a core corner short an extension. Show weighs 25 views of
+  // it; tested against the drawn cubelets (some 300,000 triangles) that froze the page for
+  // most of a second, against a box for each spot it takes a few milliseconds.
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","at":"2026-11-20T01:19:52.795Z","device":{"agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Claude/1.261116.19","width":557,"height":1024,"ratio":2},"base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.11592,-0.88048,0.27985,0.36471],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:JgBaCaDaEaFaGaHaIaAg......KgLaMaNaOaPaQaRaSaTaUaVaWaXa............YaZaaabacadaeafagahaiajakala............manaoapaqarasatauavawaxayaza0a......1a2a3a4a5a6a7a8a9a","removed":["Fx.R","Rx.U","Fx.DR","Bx.UR","Rx.D","Fx.DL","Bx.DR","Lx.UF","Bx.UL","Fx.U"],"added":["Ux.FR","Dx.R","Dx.FR","Dx.FL","Ux.BL","Ux.FL"],"colors":".......O.Y...O.YG..O...B.O.....OW.G..OW..B.OW.G..O.....................................Y.....Y......G..OW..B...................O.YG......B..W.....W.....W....OW.G.....................................R..Y.B...Y.....Y.....Y..RO.YG......B............R.W.G.ROW..B..W.....W.....W.......G..........................................B...Y.....Y.....Y......G.R.WY.B......................G......B..W.....W.....W...R.W.G...................R..Y.BR.....R..YG.R....BR.WY..R...G.R.W..BR.....R.W.G.","tool":"shape","problems":[{"text":"This core corner has only one extension, but it has to have two. Add an extension to this corner in one of these spots","slots":["DBR","Dx.BR","Bx.DR"]},{"text":"This core corner has only one extension, but it has to have two. Add an extension to this corner in one of these spots","slots":["UBR","Bx.UR","Ux.BR"]},{"text":"This core corner has three extensions, but it can have only two. Remove an extension from this corner","slots":["UFR","Fx.UR","Ux.FR","Rx.UF"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UF","Fx.U","Ux.F"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UR","Ux.R","Rx.U"]},{"text":"Only three core edges have two extensions, but there must be four. An extension should probably be added in one of these spots","slots":["Dx.L","Ux.L","Dx.B","Dx.F","Fx.U","Ux.B","Ux.F","Fx.R","Ux.R","Rx.D","Rx.U"]}],"selected":"This core corner has only one extension, but it has to have two. Add an extension to this corner in one of these spots|54,50,53","hidden":null}}));
+  await settle();
+  const ms = await page.evaluate(() => {
+    const t = performance.now();
+    for (let i = 0; i < 5; i++) window.xcubeProbe.coreViewShares("DBR");
+    return (performance.now() - t) / 5;
+  });
+  check(ms < 150, `a corner's 25 views are weighed in well under the time a frozen page shows (${ms.toFixed(1)} ms)`);
+});
+
+labTest("shape editing: the extension a hint means, among a hidden corner's three, is circled", async ({ page, check, probe, settle }) => {
+  // From a play-tester's edit: a core corner with three extensions is hidden on every side,
+  // so its halo is on all three; the one the hint means to take away is circled, the ring
+  // standing at its middle, turned to the viewer, inside its outline.
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","at":"2026-11-20T01:38:55.199Z","device":{"agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Claude/1.261116.19","touch":5,"width":557,"height":938,"ratio":2},"base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.11592,-0.88048,-0.27985,-0.36471],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","removed":["Fx.UR","Rx.DF","Rx.U","Fx.DL","Lx.B","Bx.D","Fx.UL","Rx.B","Bx.UR","Bx.U","Lx.U"],"added":["Ux.BL","Ux","Dx.B","Ux.BR","Dx.FR","Dx.FL","Ux.FL","Ux.FR"],"colors":".O...B.O.Y...O.YG..O.....OW..B.O..G..OWY.B.O.....OW.G....................O.Y.B...Y.....Y.....Y......G..O...B...................OWYG.ROW..B..W.....W.....W.......G..........................................B...Y.....Y.....Y...O.YG...WY.B................G......B..W.....W.....W...ROW.G.....................................R..Y.B...Y.....Y.....Y..R..YG.R.W..B..................R.W.G......B..W.....W.....W.......G...................R..Y.BR..YG.R.....R.....R.W..BR..YG.R.W..BR.....R.W.G.","tool":"shape","problems":[{"text":"This core corner has three extensions, but it can have only two. Remove an extension from this corner, probably this one","slots":["UBL","Lx.UB"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UL","Lx.U","Ux.L"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UB","Bx.U","Ux.B"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UR","Ux.R","Rx.U"]},{"text":"Only two core edges have two extensions, but there must be four. An extension should probably be added in one of these spots","slots":["Lx.B","Lx.U","Dx.L","Ux.L","Dx.F","Bx.D","Bx.U","Ux.B","Ux.F","Dx.R","Ux.R","Rx.B","Rx.U"]},{"text":"Five centers have an extension center, but there can be only four. This extension center should probably be removed","slots":["Ux"]}],"selected":"This core corner has three extensions, but it can have only two. Remove an extension from this corner, probably this one|23,6","hidden":null}}));
+  await settle();
+  const line = await page.$eval("#edit-status", (e) => e.textContent);
+  const marks = await probe("marks");
+  // The ring is drawn over the extension it means: its middle shows that cubelet.
+  const at = await probe("spot", "Lx.UB");
+  const under = at && (await probe("at3d", at.x, at.y));
+  check(/Remove an extension from this corner, probably the circled one\./.test(line) && marks.list.map((m) => m.slot + "/" + m.face).join() === "Lx.UB/cubelet" && marks.px > 0 && under?.slot === "Lx.UB", `the extension the hint means is circled, as a whole cubelet (${JSON.stringify({ line, marks, under })})`);
+});
+
+labTest("shape editing: a tap on the arrow turns to the view Show turns to", async ({ page, check, probe, settle }) => {
+  // From a play-tester's edit, its core edge with no extensions (the second problem), its
+  // spots behind the puzzle as it is turned. The arrow's tap and Show went to different
+  // views; they agree now.
+  const debug = {"lab":"x-cube debug 1","at":"2026-11-20T01:38:55.199Z","device":{"agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Claude/1.261116.19","touch":5,"width":557,"height":938,"ratio":2},"base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.11592,-0.88048,-0.27985,-0.36471],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","removed":["Fx.UR","Rx.DF","Rx.U","Fx.DL","Lx.B","Bx.D","Fx.UL","Rx.B","Bx.UR","Bx.U","Lx.U"],"added":["Ux.BL","Ux","Dx.B","Ux.BR","Dx.FR","Dx.FL","Ux.FL","Ux.FR"],"colors":".O...B.O.Y...O.YG..O.....OW..B.O..G..OWY.B.O.....OW.G....................O.Y.B...Y.....Y.....Y......G..O...B...................OWYG.ROW..B..W.....W.....W.......G..........................................B...Y.....Y.....Y...O.YG...WY.B................G......B..W.....W.....W...ROW.G.....................................R..Y.B...Y.....Y.....Y..R..YG.R.W..B..................R.W.G......B..W.....W.....W.......G...................R..Y.BR..YG.R.....R.....R.W..BR..YG.R.W..BR.....R.W.G.","tool":"shape","problems":[{"text":"This core corner has three extensions, but it can have only two. Remove an extension from this corner, probably this one","slots":["UBL","Lx.UB"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UL","Lx.U","Ux.L"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UB","Bx.U","Ux.B"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UR","Ux.R","Rx.U"]},{"text":"Only two core edges have two extensions, but there must be four. An extension should probably be added in one of these spots","slots":["Lx.B","Lx.U","Dx.L","Ux.L","Dx.F","Bx.D","Bx.U","Ux.B","Ux.F","Dx.R","Ux.R","Rx.B","Rx.U"]},{"text":"Five centers have an extension center, but there can be only four. This extension center should probably be removed","slots":["Ux"]}],"selected":"This core corner has three extensions, but it can have only two. Remove an extension from this corner, probably this one|23,6","hidden":null}};
+  debug.edit.selected = "";
+  const view = async () => JSON.parse(await probe("debugInfo")).view;
+  const open = async () => {
+    await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
+    await settle();
+    await page.click('[data-halo="next"]');
+    await settle();
+  };
+  await open();
+  check(/This core edge has no extensions/.test(await page.$eval("#edit-status", (e) => e.textContent)), "the second problem is a core edge's");
+  await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 1);
+  const mid = (await probe("haloArrow")).mid;
+  await page.mouse.click(mid.x, mid.y);
+  await settle();
+  const byArrow = await view();
+  await open();
+  await page.click("#edit-status");
+  await settle();
+  const byShow = await view();
+  const dot = Math.abs(byArrow.reduce((a, v, i) => a + v * byShow[i], 0));
+  check(dot > 0.999, `the arrow's tap and Show end at the same view (${JSON.stringify({ byArrow, byShow })})`);
+});
+
+labTest("shape editing: a shape problem halos the glass box where an extension should go", async ({ page, check, probe, settle, gesture }) => {
+  // An extension taken off a corner: either bare spot gives the corner two again, but only
+  // the one it came from keeps the corners' twists whole. A glass box fills that spot, with
+  // the halo on it and on the corner the line names, and Show turns the view to them.
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.28,0.36,0.12,0.88],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","removed":["Rx.UF"],"added":[],"colors":".O.Y.B.O.Y...O.YG..O...B.O.....O..G..OW..B.OW....OW.G....................O.Y.B...Y.....Y.....Y...O.YG..O...B...................O..G..OW..B..W.....W.....W....OW.G........................................Y.B...Y.....Y.....Y.....YG......B................G...W..B..W.....W.....W.....W.G.....................................R..Y.B...Y.....Y.....Y..R..YG.R....B..................R...G.R.W..B..W.....W.....W...R.W.G...................R..Y.BR..Y..R..YG.R....BR.....R...G.R.W..BR.W...R.W.G.","tool":"W","problems":[],"selected":"","hidden":null}}));
+  await settle();
+  await page.click('[data-halo="show"]');
+  await settle();
+  const seen = { line: await page.$eval("#edit-status", (e) => e.textContent), outlined: await probe("outlined"), px3d: await probe("haloPixels", "3d"), behind: (await probe("haloArrow")).behind, faces: await probe("facesSeen", "Rx.UF") };
+  check(/This core corner has only one extension, but it has to have two\. Add an extension to this corner/.test(seen.line) && seen.outlined.join() === "Rx.UF,UFR" && seen.px3d > 0 && seen.behind.length === 0 && seen.faces > 0 && (await probe("hintBoxes")) === 1, `the spot to fill has a haloed glass box, in view after Show (${JSON.stringify(seen)})`);
+  // With a color picked, a tap on the box means a shape edit: it colors nothing, says to
+  // pick Shape, and the Shape button flashes.
+  const before = await probe("shapeEdit");
+  const at = await probe("spot", "Rx.UF");
+  await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+  await page.waitForFunction(() => /pick Shape first/.test(document.getElementById("message").textContent), null, { timeout: 3000 }).catch(() => {});
+  const tapped = { message: await page.$eval("#message", (e) => e.textContent), control: await page.$eval("#message", (e) => [...e.querySelectorAll(".ui-name")].map((n) => [n.textContent, getComputedStyle(n).fontWeight]).join()), flash: await page.$eval('[data-paint="shape"]', (b) => b.classList.contains("flash")), removed: (await probe("shapeEdit")).removed.join() };
+  check(/To add or remove an extension, pick Shape first/.test(tapped.message) && tapped.control === "Shape,700" && tapped.flash && tapped.removed === before.removed.join(), `a tap on the box with a color picked says to pick Shape (${JSON.stringify(tapped)})`);
+  // It keeps pulsing while the message is read, and stops once Shape is picked.
+  await page.waitForTimeout(2500);
+  const still = await page.$eval('[data-paint="shape"]', (b) => b.classList.contains("flash"));
+  await page.click('[data-paint="shape"]');
+  const stopped = !(await page.$eval('[data-paint="shape"]', (b) => b.classList.contains("flash")));
+  check(still && stopped, `the Shape button pulses for a while, and stops when Shape is picked (${JSON.stringify({ still, stopped })})`);
+  await page.click('[data-paint="W"]');
+  await settle();
+  // With the Shape tool, its own box in that spot carries the halo: no second box.
+  await page.click('[data-paint="shape"]');
+  await settle();
+  const shape = { outlined: await probe("outlined"), boxes: await probe("hintBoxes"), px3d: await probe("haloPixels", "3d") };
+  check(shape.outlined.join() === "Rx.UF,UFR" && shape.boxes === 0 && shape.px3d > 0, `with the Shape tool the halo is on its own box there (${JSON.stringify(shape)})`);
+  // The other boxes are fainter while the halo marks one, and all are alike once it is hidden.
+  const boxes = await probe("ghostBoxes");
+  const lit = boxes.filter((b) => !b.dim).map((b) => b.slot);
+  await page.click('[data-halo="hide"]');
+  await settle();
+  const hidden = await probe("ghostBoxes");
+  check(boxes.length > 1 && lit.join() === "Rx.UF" && hidden.length === boxes.length && hidden.every((b) => !b.dim), `the other glass boxes are fainter while the halo marks one (${JSON.stringify({ boxes: boxes.length, lit, dimAfterHide: hidden.filter((b) => b.dim).length })})`);
+});
+
+labTest("color editing: a tap with a sticker's own color clears it", async ({ page, check, probe, gesture }) => {
+  const idle = () => page.waitForFunction(() => window.xcubeProbe.idle());
+  const tap = async (slot, face) => {
+    await page.locator("#scene").scrollIntoViewIfNeeded();
+    const at = await probe("sticker", slot, face);
+    await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+    await idle();
+  };
+  const line = () => page.$eval("#edit-status", (e) => e.textContent);
+  await page.click("#edit-start");
+  await page.click('[data-paint="W"]');
+  await tap("Fx.U", "U");
+  const cleared = { painted: await probe("painted", "Fx.U", "U"), line: await line() };
+  await tap("Fx.U", "U");
+  const back = { painted: await probe("painted", "Fx.U", "U"), line: await line() };
+  check(cleared.painted === null && /One sticker has no color yet/.test(cleared.line) && back.painted === "W" && back.line === "Valid", `tapping a white sticker with white clears it, and again colors it (${JSON.stringify({ cleared, back })})`);
+});
+
+labTest("color editing: Show turns a white or yellow sticker facing away from the core into view, circled", async ({ page, check, probe, settle }) => {
+  // From a play-tester's edit: an extension edge below the puzzle with yellow facing down
+  // and its other sticker without a color. The halo outlines the cubelet, whose uncolored
+  // sticker was all the view showed of it; the yellow one is circled, and Show turns to it.
+  const debug = {"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.30345,0.48673,-0.18509,0.79797],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:Aa..CaDaEaFaGaHa....Bn..JaKaLnMaNa..VlQaZw..TaUaPbWiIi..ObXiSj......ilaabacadaeafagahaRsjakalaYb....mi..3w1inioapw..rasatauava..xuyaza0a7u......2aqw4a5a6awu8a9a","removed":[],"added":[],"colors":".O.Y.B.......O.YG..O...B.O.Y...OW.G..OW..B.OW.G................Y.........O.Y.B...Y...O.......Y...O.YG............B..........G........OW..B..W..........O.....OW.G.........W.....W......Y.........................B...Y.....Y..R..YG..O.Y.B.............O..G...W..B........W.....W.....W.G...W..................Y...........Y..R..Y.BR........Y......G.......R....B..................R..YG...............W.....W...R.W.G.........................R..Y.BR..YG.R..Y.BR.....R...G.......R.W...R.W.G.","tool":"shape","problems":[],"selected":"","hidden":null}};
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
+  await settle();
+  const line = await page.$eval("#edit-status", (e) => e.textContent);
+  await page.click("#edit-status");
+  await settle();
+  const at = await probe("sticker", "Dx.L", "D");
+  const drawn = at && (await probe("at3d", at.x, at.y));
+  check(/^Not valid: This cubelet's yellow sticker has the wrong color\. Its yellow sticker must be green, blue, red, or orange\./.test(line) && drawn?.slot === "Dx.L" && drawn?.face === "D", `Show turns the circled yellow sticker into view (${JSON.stringify({ line, drawn })})`);
+  // In the view the play-tester had, the cubelet's uncolored sticker, drawn as a dashed
+  // outline over it, faces the viewer: it is part of the cubelet, not a hole in it for the
+  // outline to ring too (a ring around it drew about 140 band pixels over the cubelet; its
+  // own outline's soft inner edge draws about 20).
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
+  await settle();
+  const ring = await probe("outlineOver");
+  check(ring.purple > 0 && ring.inside < 60, `the outline doesn't ring a sticker drawn over the cubelet (${JSON.stringify({ purple: ring.purple, inside: ring.inside })})`);
+});
+
+labTest("color editing: Show weighs its views quickly for a halo on many cubelets", async ({ page, check, settle }) => {
+  // From a play-tester's edit: 43 stickers with no color yet, on many cubelets. Show weighs
+  // some 70 views; with rays against the drawn cubelets that froze the page for over a
+  // second, against a box for each spot it takes well under a tenth of one.
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","at":"2026-11-20T02:14:22.174Z","device":{"agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Claude/1.261116.19","touch":5,"width":557,"height":938,"ratio":2},"base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.11592,-0.88048,-0.27985,-0.36471],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:AaBaNu..EaFa....Xx..DgCuJaKaPgMu..OaLvQaRaSaGjUjVsWx..TjHsIxYq......Zqaabacadaeafaga..iojakalaho......4xqjmanaslpj3jraoitauava..xuynzg..7u8n9g1a2a....5a6awu..0g","removed":[],"added":[],"colors":".O...B.O.Y...O.YG..O.....OW..B.O..G..O.....O.....OW.G....................O.Y.B...Y.....Y.....Y......G..O...B...................OWYG.ROW..B..W.....W.....W.......G..........................................B...Y.....Y.....Y...O.YG...WY.B................G......B..W.....W.....W...ROW.G.....................................R..Y.B...Y.....Y.....Y..R..YG.R.W..B..................R.W.G......B..W.....W.....W.......G...................R..Y.BR..YG.R.....R.....R.W..BR..YG.R.W..BR.....R.W.G.","tool":"shape","problems":[{"text":"43 stickers have no color yet","slots":["Lx.DB","Dx.L","Dx.FL","DFL","BL","UBL","UL","UFL","Ux.BL","Ux.L","Ux.FL","Dx.B","DB","UB","Ux.B","Dx.R","Dx.FR","DFR","BR","UBR","UR","UFR","Ux.BR","Ux.R","Ux.FR"]}],"selected":"43 stickers have no color yet|0,10,11,15,18,23,24,25,27,28,29,30,34,43,47,51,52,56,59,64,65,66,68,69,70","hidden":null}}));
+  await settle();
+  const ms = await page.evaluate(() => {
+    const t = performance.now();
+    document.getElementById("edit-status").click();
+    return performance.now() - t;
+  });
+  check(ms < 400, `Show on a halo over many cubelets is quick (${Math.round(ms)} ms)`);
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {
@@ -1545,8 +1864,8 @@ labTest("color editing: colors that turns can't reach", async ({ page, check, pr
   await paint("G", "Rx", "R"); // the red and green centers traded: red is now opposite blue
   const centers = { line: await editLine(), off: await doneOff(), lit: (await probe("highlighted")).sort().join(), level: (await probe("editing")).level };
   check(
-    /^Not valid: Opposite centers must be red and orange, green and blue, or white and yellow\. Show Hide$/.test(centers.line) && centers.off && centers.lit === "Bx,Fx,Lx,Rx" && centers.level === "possible",
-    `center colors no turns arrange are not valid, with a halo on the centers and Done off ("${centers.line}", halo ${centers.lit})`,
+    /^Not valid: Opposite centers must be red and orange, green and blue, or white and yellow\. The green and red centers should probably trade places\. Show Hide$/.test(centers.line) && centers.off && centers.lit === "Fx,Rx" && centers.level === "possible",
+    `center colors no turns arrange are not valid, with a halo on the two centers to trade and Done off ("${centers.line}", halo ${centers.lit})`,
   );
   await paint("G", "Fx", "F");
   await paint("R", "Rx", "R");

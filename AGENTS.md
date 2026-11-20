@@ -285,11 +285,29 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   and how to read a step's grays and paths), and Edit puzzle (what a tap does with the
   color or the Shape tool picked; drags only tumble). Under the help, **Copy debug info**
   copies, as JSON, what the Lab is showing and doing (`debugInfo`): the start, the turns
-  and the cursor, the view, the solve's steps, the device, and an edit in progress with
+  and the cursor, the view, the solve's steps, the device (user agent, touch points, size),
+  and an edit in progress with
   its shape (a state code, X1 when turns can't reach it), cubelets taken off and put in,
   paint and problems; where the browser won't let it write the clipboard, the text shows selected under the link, to copy by hand. It is for the owner to hand to a developer when something looks
-  wrong, including an edit whose shape isn't valid, which has no state code of its own;
-  the probe's `restoreDebug` puts the position, the view and the edit back.
+  wrong, including an edit whose shape isn't valid, which has no state code of its own.
+  With the shared database it also keeps a copy there, in the `debug` collection (`json`,
+  `savedAt`, `source`; the newest 20, `DEBUG_KEEP`), where an agent reads it with the
+  artifact's database tools: the owner can say "look at the latest debug info" instead of
+  pasting it ("Debug info copied, and saved for Claude at Nov 20, 2026, 1:19:52 AM", the
+  time as the saved copies' list gives it).
+  **Paste debug info**, beside it, puts the position, the view and the edit back (the
+  probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
+  won't read it, from text pasted into the field that opens. Beside it, a clock (shown
+  with the shared database) opens a list of the saved copies, newest first, each by the
+  date and time it was saved, to the second, in small type, and the device ("Nov 20, 2026,
+  12:31:05 AM · iPhone"; an iPad's user agent names a Mac, so the debug info keeps
+  `navigator.maxTouchPoints` as `device.touch`, and a Mac with touch points is listed as an
+  iPad, `deviceName`); a
+  tap on one puts it back, as an agent can with the database tools. Words around the debug info
+  are left out (the first span from a "{" to the "}" closing it that parses), so a whole
+  message holding it can be pasted; text that isn't debug info is
+  refused ("That isn't debug info"), and during a solve it asks first, as setting a new
+  start does. So the owner can come back to an invalid edit after the Lab is republished.
 - **Display panel:** the ◐ in the 3D view's corner opens the Edge glow, Shading, Shadows
   and Gloss switches, over the view and over the edge labels.
 - **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. The
@@ -394,55 +412,121 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     a stack of cubelets rather than of the rules behind it: an extension cubelet goes away,
     and an empty spot gets a cubelet. Every empty spot next to the core is marked while
     Shape is selected: small gray glass boxes with white edges, unlit, so they show over
-    white, over black and in shadow. Nothing turns or swings: a tap only takes an
+    white, over black and in shadow. While the halo marks some of them, the others are
+    drawn fainter (`GHOST_DIM`), so the marked ones stand out; they can still be tapped. Nothing turns or swings: a tap only takes an
     extension cubelet away or puts one in.
   - **A wrong shape for a while:** as paint may be wrong, so may the shape. The line names
     what keeps it from being one the puzzle can have ("This core corner has only one
-    extension, but it has to have two", "These two core corners have three extensions
-    each, but each can have only two", "This core edge has no extensions, but it has to
-    have one or two", each with a halo on the core cubelets; "Only three core edges have
+    extension, but it has to have two" or "has no extensions", "This core corner has three
+    extensions, but it can have only two", "This core edge has no extensions, but it has to
+    have one or two": one problem for each core cubelet, since each is fixed on its own; "Only three core edges have
     two extensions, but there must be four", "Five ... but there can be only four",
     "Only three centers have an extension center", "The two centers without an extension
-    center must be opposite each other"); a cubelet put in is a blank body meanwhile (drawn
+    center must be opposite each other"). Each says what to tap (`shapeTaps`, `shapeHint`):
+    the nearest shape the puzzle can have, by fewest taps, with the core corners' twists
+    adding up to whole turns (so of a corner's two bare spots, the one that keeps them whole
+    is the one to fill), and of the spots some such fewest taps change, those on the core
+    cubelets the problem names (or of its kind, when it names none), taking one away before
+    putting one in, the halo on the core cubelet the problem names as well as on what the
+    hint names ("this" always points at something marked; `WORDING.md`). A problem about one core
+    corner or edge is fixed on that cubelet and nowhere else, so its hint says what to do
+    plainly, with "probably" only for which of its spots, and only when the halo marks
+    fewer than all the spots that could be ("Add an extension to this corner, probably
+    here", "Remove an extension from this corner, probably the circled one": a corner with three
+    extensions is hidden on every side, so its halo is on all three, and the one meant is
+    circled as a whole cubelet, a ring standing at its middle, turned to the viewer, as big as
+    the largest circle around its middle inside its outline on screen (`insetRadius`; the flat
+    view rings each face of it that shows), "Add an extension to
+    this edge in one of these spots", "Add two extensions to this corner, probably in these
+    spots"); the count
+    problems, where which cubelet to change is a guess, say "This extension should probably
+    be removed" (the halo on it), "An
+    extension should probably be added here" (the halo on the Shape tool's glass box in the
+    empty spot, the control a tap fills it with; with another tool picked, the hint draws
+    that one box itself, the same size: `hintGhosts`, `ghostBox`; the arrow, Show and the
+    view's checks take the box for what is in that spot), or "One of these extensions ..." / "in
+    one of these spots" when the taps tie; a core corner with none must get two ("Add two
+    extensions to this corner"). With a
+    color picked, a tap on what the hint says to tap (`Problem.taps`: a glass box, or an
+    extension to take away) colors nothing: "To add or remove an extension, pick Shape
+    first", and the Shape button pulses until Shape is picked or for 8 seconds (`shapeFirst`,
+    `SHAPE_FLASH_MS`; a play-tester missed a one-second flash while reading the message). A halo marks a cubelet or a spot for one (3D); a
+    ring marks a sticker (2D), so shape hints have no rings. In the shape messages an
+    extension cubelet is "an extension", as in "This core corner has only one extension". One tap at a time; the next problem goes on from there. Over 200 simulated
+    edits of 2 to 6 random taps followed hint by hint, every one reached a valid shape in at
+    most 6 taps (49 before), never back to a shape seen before (240 times before), and "needs
+    to be rotated" came up 12 times (171). A cubelet put in is a blank body meanwhile (drawn
     in the flat view too, with its stickers, as is every dashed outline). Once
     the shape is one the puzzle can have, real cubelets take the blanks' places at once.
     The core corners' twists can still be wrong, as no turns leave them: "The core corners
-    can't all have these orientations at once. One of them needs to be rotated" (no halo: any
+    can't all be oriented as they are now. One of them needs to be rotated" (no halo: any
     of them may be the one).
   - **Paint stays on its spot**, not on a cubelet: what a tap turns (a core cubelet with
     the extension cubelets on it) loses its paint. A cubelet that only comes or goes changes only its own spot
     and the faces it covers or bares: one put in takes, on each of its faces, the color of
-    the face it covers behind it, seen from that side (the core cubelet's, and any
-    neighbor's), and one taken away leaves each of its colors on the face it bares behind
-    it (`repaint`); a face with nothing behind it starts unpainted. A sticker not painted yet (`UNPAINTED`) fits any color
+    the face it covers behind it, seen from that side (a neighbor's), and one taken away
+    leaves each of its colors on the face it bares behind it (`repaint`); a face with
+    nothing behind it starts unpainted. Not between its face away from the core and the
+    core cubelet's face behind it: the core's sticker there is white or yellow, which an
+    extension cubelet never shows facing out, and its own is a side color, which a core
+    cubelet never shows. Each keeps its own color, unseen while covered or empty, so a
+    core face bared again shows the color it had, and a cubelet put back the color it had
+    (the owner's choice, after the white and yellow carried out made a play-tester's edit
+    unfixable). A sticker not painted yet (`UNPAINTED`) fits any color
     and is drawn as a dashed outline on the plastic, with no edge glow; the line counts
     them ("6 stickers have no color yet", with a halo on their cubelets), and Done waits
     for them. Where a cubelet's stickers are follows from the shape around it alone
     (`draftColors`), so a sticker can be painted while the shape is still wrong. Until
     every center is painted, the center arrangement isn't checked.
-  - **Painting:** pick a color, then tap stickers. A painted sticker's edge glow takes the
+  - **Painting:** pick a color, then tap stickers; a tap on a sticker that already shows the
+    picked color clears it (no color yet). A painted sticker's edge glow takes the
     paint too. Each paint is refit to cubelets
   (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
-  wrong: no cubelet of that kind can have a color ("A core corner must be white or
-  yellow, never blue"), two stickers of one color or opposite colors, a corner's colors going around it
-  in mirrored order ("Wrong color order"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two"; with different colors showing, "These six extension edges show white, but only four have white. At least two of them have a sticker with the wrong color", or "Only two X-face corners have colors like these three do. At least one of them …" when the colors they share don't explain it; the halo marks every competing spot), or an outer
+  wrong: no cubelet of that kind can have a color ("An X-face corner must be ...", or, on a
+  cubelet with one sticker, about that sticker, circled, which Show turns to: "This core
+  corner's sticker must be white or yellow, never blue"; a play-tester expected the
+  sticker meant to be circled), two stickers of one color or opposite colors, a corner's colors going around it
+  in mirrored order ("No cubelet has white, green, and red arranged this way", followed, where
+  the counts can't say, by the trades of two of its stickers that make a real cubelet,
+  `swapHint`: "Its white and red stickers should probably trade places"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two like that"; found among the spots whose stickers all have a color, since a spot still being colored fits many cubelets and a group that takes one in can spread over most of a kind: a play-tester saw 13 X-face corners haloed, where two unfinished corners each needed the last red, white, and blue one; the halo marks every competing spot), or an outer
   cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
   physical cube can't do that). Outward-rule problems name only what the owner can check on
   the cube: "This cubelet's white sticker has the wrong color" (no
-  extension cubelet's outward sticker is white or yellow), "No cubelet has green and red
-  arranged this way. One of its stickers has the wrong color", or "These two X-face corners
+  extension cubelet's outward sticker is white or yellow; that needs no counting and says
+  for certain which sticker is wrong, so it is told first, before any other problem, and
+  other problems on that cubelet wait for it: a play-tester recolored the other sticker of
+  an edge with yellow facing down through all six colors, told each time about the pair or
+  a count; where the counts can't say what it should be, the hint names the side colors
+  some cubelet could show there beside its other stickers, "Its yellow sticker must be
+  green, blue, red, or orange" when that is all of them (`sideHint`); where none fits beside
+  them, the white or yellow belongs on another side, and the hint offers the trades that make
+  a real cubelet ("Its yellow and orange stickers should probably trade places. Or its yellow
+  and blue stickers should", `swapHint`; a play-tester tried every color on the sticker), and
+  where no trade fits either, another sticker is certainly wrong too, and the problem names
+  the ones some fix recolors ("This cubelet's yellow sticker has the wrong color, and so does
+  either its orange or blue sticker", `twoHint`; a sentence naming no sticker was no help,
+  and spelling out each fix's colors, four sentences, was overwhelming); and circles the
+  sticker, which Show turns to: the halo outlines the whole cubelet, and a play-tester
+  saw only its uncolored other sticker), "No cubelet has green and red
+  arranged this way. One of its stickers has the wrong color", or "Two X-face corners
   look the same, but the puzzle has only one like that. One of them has a sticker with the
   wrong color"; none of them says "outward" or which color points out, which the owner
-  can't act on. Each names the problem
+  can't act on. Every problem that colors cause also says, where counting can tell, what a wrong spot should probably be (`missingColors`): once every sticker on the cubelets of that kind has a color, the colors they show, cubelet by cubelet, must be exactly the puzzle's cubelets of that kind, so a cubelet no spot shows is what a wrong one should be. The hint says which stickers to recolor to make a spot one of those cubelets, turned as the outward-color rule allows (`fitAt`). Every spot of the kind must be a different cubelet of the kind, so the likeliest fixes are those that recolor the fewest stickers over all those spots together (two stickers trading places counts as one change), found as a least-cost assignment of spots to cubelets (`assignCost`); a fix for the problem's spot is offered only if some such assignment uses it, so one that suits the spot alone but leaves another spot without the cubelet it needs is not: "Its red sticker should probably be orange", "Its blue and orange stickers should probably trade places", "Its white sticker should probably be yellow, and the green sticker should be blue". Options for one sticker merge ("should maybe be white or yellow"); other options get a sentence each, starting "Or". The halo marks only the spots the hint's options are for (`Hint.slots`): a fix that works on one look-alike spot may not on another, and a play-tester sim that picked any haloed spot went in circles. With one such spot it is "Its ..."; with several, "On one of these, ..." or, where they differ, "On the one that is blue and red, ...". Stickers of one color can't be told apart by color, so when the hint is sure which one it means it is "its circled yellow sticker", and the Lab circles that sticker as Lost? marks the sticker it asks about: a ring in the halo's purple with a dark casing (white was a color the puzzle has), drawn over everything, in the 3D view only while the sticker faces the viewer (so it never shows through the puzzle) and on its face in the flat view (`Problem.marks`, `markRing`); else "one of its yellow stickers" (or "its yellow stickers should be white and blue, one each"). A cubelet with one sticker (a core cubelet or a center) gets its color named, plainly when the counts leave one ("This sticker should be white", "One of these should be green"), and no hint when they leave every color its kind can have, which the problem already says ("must be white or yellow"). With nothing missing, a spot's own colors are right and only a swap is offered. A hint stays short: at most two stickers to recolor, and at most two ways, or three when each recolors one sticker (`HINT_STICKERS`, `HINT_OPTIONS`, `HINT_ONE_STICKER_OPTIONS`); a fix past that is more a guess than help, and the problem goes without one. Centers count by kind, each color on exactly one center: of the colors the spot's kind can have (white or yellow on a core center, a side color on an extension center), the ones no center of that kind shows, narrowed, when one center is wrong, to the one opposite the color across from a haloed center; when several are, each needs a different one, so all are named ("Three of these should be green, blue, and orange, one each") if the counts leave exactly that many ("This core center's sticker must be white or yellow, never red. This sticker should be yellow"; a play-tester was once told blue, a color only an extension center has). "Probably": the counts give the fewest stickers to change, and more may be wrong. No hint while a sticker of that kind has no color yet. Each names the problem
   itself ("Red and orange can never be on the same cubelet"), not "a cubelet" (the halo
   marks it), and says what, not where: words for a spot proved unreliable (center colors move with
   slices, extensions leave their sides, left depends on the viewpoint), so the Lab points
   the spot out instead. Lists of three colors use the serial comma. The line shows one
   problem at a time; with several, tiny ‹ and › buttons step through them ("‹2/4›"), and the
   choice is kept across paints while that problem remains. The shown problem's
-  cubelets get a **halo** by themselves, in purple. In the 3D view it is a thin rim around
-  the cubelet, off its stickers, hidden by whatever is in front of it like any other part
-  of the puzzle: a play-tester found a glow drawn through the puzzle covered the cubelet he
+  cubelets get a **halo** by themselves, in purple. In the 3D view it is an outline: a band
+  5 CSS pixels wide on screen, just outside the part of the cubelet the view shows, off its
+  stickers (a mask of the pixels where a haloed cubelet is the nearest thing drawn, and
+  the band drawn over the view around it). A sticker drawn over a cubelet (a color it
+  doesn't have, or the dashed outline of one with no color yet) counts as part of it, or
+  the band would ring that sticker too, as a play-tester saw. It is as bold beside a cubelet flush with its
+  neighbors or set back among them as beside one standing out: a rim in the space around
+  the cubelet was only a hairline in the seams there. A cubelet hidden behind the puzzle
+  has none: a play-tester found a glow drawn through the puzzle covered the cubelet he
   was painting in front. In every frame in which a haloed cubelet isn't turned well toward the
   viewer (no face at least 0.4 toward the viewer with its middle unblocked; `hiddenHalos`),
   a purple **arrow** in the scene points to it, even while other haloed cubelets can be
@@ -453,9 +537,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   so the way to follow it is plain even when the head is behind the puzzle (drawn faintly
   there); it casts a shadow, which shows its depth. It is rebuilt as the view turns, so it
   always starts on the near side; it fades out once every haloed cubelet is turned well
-  toward the viewer and back in when one isn't; a tap on it turns the view to them. The
+  toward the viewer and back in when one isn't; a tap on it turns the view to the one
+  Show turns to (`highlightView`), so the two agree, unless that view still leaves a haloed
+  cubelet out of sight (a halo spread around the puzzle), when it turns to those instead. The
   Hide pill keeps off it. The halo, Show, Hide and the arrow are there whichever tool is
-  selected, Shape included (the rim doesn't cover what to tap). A named cubelet enclosed on every side (a
+  selected, Shape included (the outline doesn't cover what to tap). A named cubelet enclosed on every side (a
   core edge with extension cubelets on both sides, which nothing shows) is haloed through
   the extension cubelets around it (`haloSlots`), which can be seen, turned to with Show
   and pointed at; a cubelet put in that is still a blank carries the halo, and is pointed at and shown, like any other (`drawnAt`). The arrow points at one hidden cubelet at a time, the one nearest to
@@ -464,7 +550,19 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   up over each other's stickers). A halo appearing never moves the view. **Show**
   (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
   most unblocked, then each as squarely as possible, from the preset views and the
-  directions between the stickers), again each time it is tapped. **Hide** removes the
+  directions between the stickers; weighed on a box for each spot, `boxFaceView`, since
+  rays against the drawn cubelets took over a second for a halo on many cubelets), again each time it is tapped. For a shape problem about
+  one core cubelet it looks at that cubelet from its own direction, tilted along an edge
+  by about 20 degrees (`EDGE_TILT`; a corner's own view shows its three sides): straight
+  at its sticker showed the spots on it edge-on, and a corner view from below crowded them
+  with other glass boxes, where a play-tester liked a slight angle best. Of the tilts up to
+  40 degrees (`coreViews`), it takes the one showing the most of the halo (`haloShare`: of
+  points over each haloed cubelet and spot, those a ray from the camera reaches first, a
+  glass box in front counting as covering; each filled spot and glass box taken as a box,
+  which weighs a corner's 25 views in a few milliseconds, where the drawn cubelets, some
+  300,000 triangles, froze the page for most of a second), each degree from the aim costing 1% of it; then
+  from above, then nearest the view now. For other shape problems it counts every face of
+  the cubelets and spots, and first takes the view showing faces on the most sides. **Hide** removes the
   halo until the shown problem names other cubelets; while the halo shows, a **Hide** pill in
   the halo's color in the 3D view does the same, placed clear of the puzzle as drawn, just past
   its edge on the haloed cubelets' side (above it if they are at the middle; a play-tester
@@ -479,7 +577,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   unreachable in only one way: the center colors arranged as no turns arrange them, either
   "Opposite centers must be red and orange, green and blue, or white and yellow" (halo on
   the centers that should be opposite) or "Wrong center color order"
-  (halo on all six centers that show). A cube painted as the real one shows is always
+  (halo on all six centers that show). Each has a hint (`centerHint`): a real puzzle's
+  center colors are some rotation of solved's, with white and yellow on the two core centers
+  that show, so the hint names the centers to change for the rotations that change fewest,
+  each center by its color, which is its own ("The green and red centers should probably
+  trade places", "The red center should probably be blue"), up to three ways, and the halo
+  narrows to those centers. A cube painted as the real one shows is always
   valid, so any problem means a sticker painted wrong.
 - **Step guide:** the Solve panel, in two modes. Between solves it shows **Order** and
   **Start solving**; during a solve (from Start solving until **Stop solving**, across the
