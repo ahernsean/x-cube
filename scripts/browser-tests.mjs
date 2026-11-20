@@ -1333,7 +1333,7 @@ labTest("shape editing: Show and the arrow reach a cubelet bared by taking an ex
 });
 
 labTest(
-  "info: Copy debug info saves a copy for Claude, and Paste debug info offers it back",
+  "info: Copy debug info saves a copy for Claude, and the clock beside Paste lists them back",
   async ({ page, check, probe, settle, gesture }) => {
     // With the shared database (a stand-in here), a copy goes into its "debug" collection,
     // where Claude reads it; only the newest 20 are kept.
@@ -1353,15 +1353,15 @@ labTest(
     check(kept.length === 20 && kept.every((d) => d.edit === "Fx.U" && d.source === "page" && d.at === "number"), `copies are saved for Claude, the newest 20 kept (${kept.length}, ${JSON.stringify(kept[0])})`);
     await page.click("#edit-cancel");
     await settle();
-    // Where the clipboard can't be read, Paste debug info offers the last copy saved.
+    // The clock beside Paste debug info lists the saved copies by time, and one tap puts one back.
     if (await page.$eval("#info-pop", (e) => e.hidden)) await page.click("#info-btn");
-    await page.click("#paste-debug");
-    await page.waitForSelector("#debug-saved:not([hidden])", { timeout: 5000 });
-    const offer = await page.$eval("#debug-saved", (b) => b.textContent);
-    await page.click("#debug-saved");
+    await page.click("#debug-history");
+    await page.waitForSelector("#debug-list:not([hidden]) button", { timeout: 5000 });
+    const items = await page.$$eval("#debug-list button", (bs) => bs.map((b) => b.textContent));
+    await page.click("#debug-list button");
     await settle();
-    const back = (await probe("shapeEdit"))?.removed.join();
-    check(/^Put back the one saved /.test(offer) && back === "Fx.U", `Paste debug info offers the last saved copy, and puts it back (${JSON.stringify({ offer, back })})`);
+    const back = { removed: (await probe("shapeEdit"))?.removed.join(), open: !(await page.$eval("#info-pop", (e) => e.hidden)) };
+    check(items.length === 20 && items.every((t) => /\d:\d\d/.test(t)) && back.removed === "Fx.U" && !back.open, `the clock lists the saved copies by time, and a tap puts one back (${JSON.stringify({ items: items.length, first: items[0], back })})`);
   },
   {
     // A stand-in for the shared database: collections of documents in memory.

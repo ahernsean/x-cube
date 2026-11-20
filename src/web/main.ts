@@ -2232,6 +2232,7 @@ async function initStore() {
   }
   db = ns;
   storeKind = "shared";
+  $("debug-history").hidden = false;
   watchAlgorithms();
   const timer = setTimeout(() => {
     if (!saved.length) setMessage("Saved states can't be reached yet.", "info");
@@ -3051,16 +3052,57 @@ async function keepDebug(text: string): Promise<boolean> {
   }
 }
 
-/** The newest copy of debug info the shared database keeps, or null. */
-async function lastKeptDebug(): Promise<{ json: string; savedAt: number } | null> {
-  if (storeKind !== "shared" || !db) return null;
+/** The copies of debug info the shared database keeps, newest first (none without it). */
+async function keptDebug(): Promise<{ json: string; savedAt: number }[]> {
+  if (storeKind !== "shared" || !db) return [];
   try {
-    const snap = await db.collection("debug").orderBy("savedAt", "desc").limit(1).get();
-    const d = snap.docs[0]?.data();
-    return d && typeof d.json === "string" ? { json: d.json, savedAt: d.savedAt } : null;
+    const snap = await db.collection("debug").orderBy("savedAt", "desc").limit(DEBUG_KEEP).get();
+    return snap.docs.map((d: any) => d.data()).filter((d: any) => typeof d?.json === "string").map((d: any) => ({ json: d.json, savedAt: d.savedAt }));
   } catch {
-    return null;
+    return [];
   }
+}
+
+/** A saved copy's line in the list: when it was saved (the day too, if not today), and on what. */
+function keptLabel(k: { json: string; savedAt: number }): string {
+  const at = new Date(k.savedAt), today = at.toDateString() === new Date().toDateString();
+  const when = at.toLocaleString([], today ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  let on = "";
+  try {
+    const agent: string = JSON.parse(k.json).device?.agent ?? "";
+    on = /iPhone/.test(agent) ? "iPhone" : /iPad/.test(agent) ? "iPad" : /Macintosh/.test(agent) ? "Mac" : /Android/.test(agent) ? "Android" : "";
+  } catch {
+    on = "";
+  }
+  return on ? `${when} · ${on}` : when;
+}
+
+/** The clock beside Paste debug info: opens the list of saved copies, one tap to put one back. */
+async function toggleKeptDebug() {
+  const list = $("debug-list"), b = $("debug-history");
+  if (!list.hidden) {
+    list.hidden = true;
+    b.setAttribute("aria-expanded", "false");
+    return;
+  }
+  $("debug-text").hidden = true;
+  const kept = await keptDebug();
+  list.replaceChildren();
+  if (!kept.length) {
+    const none = document.createElement("div");
+    none.className = "muted";
+    none.textContent = "No saved debug info yet";
+    list.append(none);
+  }
+  for (const k of kept) {
+    const item = document.createElement("button");
+    item.setAttribute("role", "menuitem");
+    item.textContent = keptLabel(k);
+    item.addEventListener("click", () => putBackDebug(k.json));
+    list.append(item);
+  }
+  list.hidden = false;
+  b.setAttribute("aria-expanded", "true");
 }
 
 async function copyDebug() {
@@ -3068,7 +3110,7 @@ async function copyDebug() {
   const field = $("debug-text") as HTMLTextAreaElement;
   field.hidden = true;
   field.readOnly = true;
-  $("debug-saved").hidden = true;
+  $("debug-list").hidden = true;
   // Copying first: Safari writes the clipboard only straight from the tap.
   let copied = false;
   try {
@@ -3146,7 +3188,7 @@ function putBackDebug(text: string) {
   endingSolve(() => {
     restoreDebug(jsonIn(text));
     $("debug-text").hidden = true;
-    $("debug-saved").hidden = true;
+    $("debug-list").hidden = true;
     $("info-pop").hidden = true;
     $("info-btn").setAttribute("aria-expanded", "false");
     setMessage("Debug info put back", "ok");
@@ -3172,14 +3214,7 @@ async function pasteDebug() {
   field.placeholder = "Paste the debug info here";
   field.hidden = false;
   field.focus();
-  // Or the copy last saved for Claude.
-  const kept = await lastKeptDebug();
-  const b = $("debug-saved") as HTMLButtonElement;
-  b.hidden = !kept;
-  if (kept) {
-    b.textContent = `Put back the one saved ${new Date(kept.savedAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`;
-    b.onclick = () => putBackDebug(kept.json);
-  }
+  $("debug-list").hidden = true;
 }
 
 function slotByName(name: string): number {
@@ -3232,7 +3267,7 @@ function bindViewTools() {
       const open = $(p).hidden;
       close(p);
       $("debug-text").hidden = true;
-      $("debug-saved").hidden = true;
+      $("debug-list").hidden = true;
       $(p).hidden = !open;
       $(b).setAttribute("aria-expanded", String(open));
     });
@@ -3252,6 +3287,7 @@ function bindUI() {
   $("next-step").addEventListener("click", () => nextStep());
   $("copy-debug").addEventListener("click", () => void copyDebug());
   $("paste-debug").addEventListener("click", () => void pasteDebug());
+  $("debug-history").addEventListener("click", () => void toggleKeptDebug());
   $("debug-text").addEventListener("input", () => {
     const field = $("debug-text") as HTMLTextAreaElement;
     if (!field.readOnly && field.value.trim()) putBackDebug(field.value);

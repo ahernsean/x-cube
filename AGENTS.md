@@ -295,8 +295,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   pasting it ("Debug info copied, and saved for Claude").
   **Paste debug info**, beside it, puts the position, the view and the edit back (the
   probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
-  won't read it, from text pasted into the field that opens, or the copy last saved in the
-  shared database, offered under the field ("Put back the one saved Nov 19, 3:42 PM"); words around the debug info
+  won't read it, from text pasted into the field that opens. Beside it, a clock (shown
+  with the shared database) opens a list of the saved copies, newest first, each by the
+  time it was saved (the day too, if not today) and the device ("12:31 AM · iPhone"); a
+  tap on one puts it back, as an agent can with the database tools. Words around the debug info
   are left out (the first span from a "{" to the "}" closing it that parses), so a whole
   message holding it can be pasted; text that isn't debug info is
   refused ("That isn't debug info"), and during a solve it asks first, as setting a new
