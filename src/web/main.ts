@@ -3006,7 +3006,7 @@ function debugInfo(): string {
     {
       lab: "x-cube debug 1",
       at: new Date().toISOString(),
-      device: { agent: navigator.userAgent, width: innerWidth, height: innerHeight, ratio: devicePixelRatio },
+      device: { agent: navigator.userAgent, touch: navigator.maxTouchPoints, width: innerWidth, height: innerHeight, ratio: devicePixelRatio },
       base: encodeState(app.base),
       turns: formatAlg(app.history),
       cursor: app.cursor,
@@ -3068,13 +3068,26 @@ async function keptDebug(): Promise<{ json: string; savedAt: number }[]> {
   }
 }
 
+/**
+ * The kind of device a user agent names. An iPad's Safari, and the apps built on it, name a
+ * Mac ("Macintosh; Intel Mac OS X"), asking for sites' desktop pages; it is told apart by its
+ * touch points (`navigator.maxTouchPoints`), which a Mac without a touch screen doesn't have.
+ * Copies saved before the count was kept say "Mac".
+ */
+function deviceName(agent: string, touch?: number): string {
+  if (/iPhone/.test(agent)) return "iPhone";
+  if (/iPad/.test(agent) || (/Macintosh/.test(agent) && (touch ?? 0) > 1)) return "iPad";
+  if (/Macintosh/.test(agent)) return "Mac";
+  return /Android/.test(agent) ? "Android" : "";
+}
+
 /** A saved copy's line in the list: when it was saved, to the second with the date, and on what. */
 function keptLabel(k: { json: string; savedAt: number }): string {
   const when = keptTime(k.savedAt);
   let on = "";
   try {
-    const agent: string = JSON.parse(k.json).device?.agent ?? "";
-    on = /iPhone/.test(agent) ? "iPhone" : /iPad/.test(agent) ? "iPad" : /Macintosh/.test(agent) ? "Mac" : /Android/.test(agent) ? "Android" : "";
+    const device = JSON.parse(k.json).device ?? {};
+    on = deviceName(device.agent ?? "", device.touch);
   } catch {
     on = "";
   }

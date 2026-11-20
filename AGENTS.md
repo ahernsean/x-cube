@@ -285,7 +285,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   and how to read a step's grays and paths), and Edit puzzle (what a tap does with the
   color or the Shape tool picked; drags only tumble). Under the help, **Copy debug info**
   copies, as JSON, what the Lab is showing and doing (`debugInfo`): the start, the turns
-  and the cursor, the view, the solve's steps, the device, and an edit in progress with
+  and the cursor, the view, the solve's steps, the device (user agent, touch points, size),
+  and an edit in progress with
   its shape (a state code, X1 when turns can't reach it), cubelets taken off and put in,
   paint and problems; where the browser won't let it write the clipboard, the text shows selected under the link, to copy by hand. It is for the owner to hand to a developer when something looks
   wrong, including an edit whose shape isn't valid, which has no state code of its own.
@@ -299,7 +300,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   won't read it, from text pasted into the field that opens. Beside it, a clock (shown
   with the shared database) opens a list of the saved copies, newest first, each by the
   date and time it was saved, to the second, in small type, and the device ("Nov 20, 2026,
-  12:31:05 AM · iPhone"); a
+  12:31:05 AM · iPhone"; an iPad's user agent names a Mac, so the debug info keeps
+  `navigator.maxTouchPoints` as `device.touch`, and a Mac with touch points is listed as an
+  iPad, `deviceName`); a
   tap on one puts it back, as an agent can with the database tools. Words around the debug info
   are left out (the first span from a "{" to the "}" closing it that parses), so a whole
   message holding it can be pasted; text that isn't debug info is

@@ -1362,6 +1362,19 @@ labTest(
     await settle();
     const back = { removed: (await probe("shapeEdit"))?.removed.join(), open: !(await page.$eval("#info-pop", (e) => e.hidden)) };
     check(items.length === 20 && items.every((t) => /\d{4}/.test(t) && /\d:\d\d:\d\d/.test(t)) && back.removed === "Fx.U" && !back.open, `the clock lists the saved copies by date and time to the second, and a tap puts one back (${JSON.stringify({ items: items.length, first: items[0], back })})`);
+    // An iPad names itself a Mac; its touch points, kept with the debug info, tell it apart.
+    const touch = JSON.parse(await probe("debugInfo")).device.touch;
+    await page.evaluate(() => {
+      const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
+      const add = (touch, at) => window.__fakeDb.debug.set(`t${at}`, { json: JSON.stringify({ lab: "x-cube debug 1", device: { agent: mac, touch } }), savedAt: at, source: "page" });
+      add(5, Date.now() + 2000);
+      add(0, Date.now() + 1000);
+    });
+    await page.click("#info-btn");
+    await page.click("#debug-history");
+    await page.waitForSelector("#debug-list:not([hidden]) button", { timeout: 5000 });
+    const named = await page.$$eval("#debug-list button", (bs) => bs.slice(0, 2).map((b) => b.textContent.split(" · ")[1]));
+    check(typeof touch === "number" && named.join() === "iPad,Mac", `debug info keeps the touch points, and a Mac with them is listed as an iPad (${JSON.stringify({ touch, named })})`);
   },
   {
     // A stand-in for the shared database: collections of documents in memory.
