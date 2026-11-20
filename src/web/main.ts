@@ -5863,20 +5863,8 @@ const CUBELET_HALF = 0.49;
  * corner's 25 views took most of a second with the drawn ones, and froze the page.
  */
 function haloShare(st: State, slots: number[], v: any): number {
-  // The camera in the puzzle's frame, looking from v.
-  const own = pivot.quaternion.clone();
-  pivot.quaternion.copy(lookFrom(v));
-  pivot.updateMatrixWorld(true);
-  const local = pivot.worldToLocal(camera.position.clone());
-  const eye = [local.x, local.y, local.z];
-  pivot.quaternion.copy(own);
-  pivot.updateMatrixWorld(true);
-  const ghostAt = new Set([...ghosts, ...hintGhosts].filter((g) => g.parent).map((g) => g.userData.slot as number));
-  const boxes: { slot: number; half: number }[] = [];
-  for (let t = 0; t < NUM_SLOTS; t++) {
-    if (edit ? draftFilled(edit, t) : st.occ[t] >= 0) boxes.push({ slot: t, half: CUBELET_HALF });
-    else if (ghostAt.has(t)) boxes.push({ slot: t, half: GHOST_SIZE / 2 });
-  }
+  const eye = eyeFrom(v);
+  const boxes = sceneBoxes(st);
   const half = new Map(boxes.map((b) => [b.slot, b.half]));
   const lit = new Set(slots);
   let seen = 0, n = 0;
@@ -5885,31 +5873,72 @@ function haloShare(st: State, slots: number[], v: any): number {
     if (h === undefined) continue;
     const r = h * 2 * 0.42 * (h === CUBELET_HALF ? 0.9 / 0.98 : 1);
     for (const o of [...[-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => [x, y, z]))), ...DIRS]) {
-      const p = [SLOT_POS[s][0] + o[0] * r, SLOT_POS[s][1] + o[1] * r, SLOT_POS[s][2] + o[2] * r];
-      const d = [p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]];
       n++;
-      // The nearest box the ray enters before it reaches the point (at t = 1).
-      let first = -1, nearest = 1 - 1e-4;
-      for (const b of boxes) {
-        const c = SLOT_POS[b.slot];
-        let t0 = 0, t1 = nearest;
-        for (let a = 0; a < 3 && t0 <= t1; a++) {
-          const e = eye[a];
-          if (Math.abs(d[a]) < 1e-9) {
-            if (Math.abs(e - c[a]) > b.half) t0 = Infinity;
-            continue;
-          }
-          let lo = (c[a] - b.half - e) / d[a], hi = (c[a] + b.half - e) / d[a];
-          if (lo > hi) [lo, hi] = [hi, lo];
-          t0 = Math.max(t0, lo);
-          t1 = Math.min(t1, hi);
-        }
-        if (t0 <= t1 && t0 < nearest) (nearest = t0), (first = b.slot);
-      }
+      const first = firstBox(eye, [SLOT_POS[s][0] + o[0] * r, SLOT_POS[s][1] + o[1] * r, SLOT_POS[s][2] + o[2] * r], boxes);
       if (first < 0 || lit.has(first)) seen++;
     }
   }
   return n ? seen / n : 0;
+}
+
+/** Where the camera is, in the puzzle's frame, when the view looks from direction v. */
+function eyeFrom(v: any): number[] {
+  const own = pivot.quaternion.clone();
+  pivot.quaternion.copy(v.isQuaternion ? v : lookFrom(v));
+  pivot.updateMatrixWorld(true);
+  const local = pivot.worldToLocal(camera.position.clone());
+  pivot.quaternion.copy(own);
+  pivot.updateMatrixWorld(true);
+  return [local.x, local.y, local.z];
+}
+
+/** What the puzzle is as drawn, as boxes: each filled spot a cubelet's width, each glass box its own size. */
+function sceneBoxes(st: State): { slot: number; half: number }[] {
+  const ghostAt = new Set([...ghosts, ...hintGhosts].filter((g) => g.parent).map((g) => g.userData.slot as number));
+  const boxes: { slot: number; half: number }[] = [];
+  for (let t = 0; t < NUM_SLOTS; t++) {
+    if (edit ? draftFilled(edit, t) : st.occ[t] >= 0) boxes.push({ slot: t, half: CUBELET_HALF });
+    else if (ghostAt.has(t)) boxes.push({ slot: t, half: GHOST_SIZE / 2 });
+  }
+  return boxes;
+}
+
+/** The slot of the first box a ray from the eye meets before it reaches point p, or -1. */
+function firstBox(eye: number[], p: readonly number[], boxes: { slot: number; half: number }[]): number {
+  const d = [p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]];
+  let first = -1, nearest = 1 - 1e-4;
+  for (const b of boxes) {
+    const c = SLOT_POS[b.slot];
+    let t0 = 0, t1 = nearest;
+    for (let a = 0; a < 3 && t0 <= t1; a++) {
+      if (Math.abs(d[a]) < 1e-9) {
+        if (Math.abs(eye[a] - c[a]) > b.half) t0 = Infinity;
+        continue;
+      }
+      let lo = (c[a] - b.half - eye[a]) / d[a], hi = (c[a] + b.half - eye[a]) / d[a];
+      if (lo > hi) [lo, hi] = [hi, lo];
+      t0 = Math.max(t0, lo);
+      t1 = Math.min(t1, hi);
+    }
+    if (t0 <= t1 && t0 < nearest) (nearest = t0), (first = b.slot);
+  }
+  return first;
+}
+
+/**
+ * faceView taken on boxes (sceneBoxes), for weighing many views at once: how squarely the
+ * view from `eye` sees face d of slot s, or -1 if it faces away or something is in front of
+ * its middle.
+ */
+function boxFaceView(st: State, eye: number[], boxes: { slot: number; half: number }[], half: Map<number, number>, s: number, d: number): number {
+  const h = half.get(s);
+  if (h === undefined || !bareFace(st, s, d)) return -1;
+  const v = DIRS[d], out = h - 0.02;
+  const p = [SLOT_POS[s][0] + v[0] * out, SLOT_POS[s][1] + v[1] * out, SLOT_POS[s][2] + v[2] * out];
+  const to = [eye[0] - p[0], eye[1] - p[1], eye[2] - p[2]], len = Math.hypot(to[0], to[1], to[2]);
+  const cos = (to[0] * v[0] + to[1] * v[1] + to[2] * v[2]) / len;
+  if (cos < 0.2) return -1;
+  return firstBox(eye, p, boxes) === s ? cos : -1;
 }
 
 /** Degrees from straight at a core edge that Show aims for: enough to show the spots on it in depth. */
@@ -5972,9 +6001,14 @@ function showFaces(st: State, faces: [number, number][], sides = false) {
 function bestView(st: State, faces: [number, number][], sides = false): any {
   if (!faces.length) return pivot.quaternion.clone();
   const now = new THREE.Vector3(0, 0, 1).applyQuaternion(pivot.quaternion.clone().invert());
+  // Faces are weighed on boxes (boxFaceView): rays against the drawn cubelets, some 300,000
+  // triangles, took over a second for a halo on many cubelets.
+  const boxes = sceneBoxes(st), half = new Map(boxes.map((b) => [b.slot, b.half]));
   const score = () => {
-    const seen = faces.filter(([s, d]) => faceView(st, s, d) > 0);
-    const cos = seen.reduce((a, [s, d]) => a + faceView(st, s, d), 0) / faces.length;
+    const eye = eyeFrom(pivot.quaternion);
+    const views = faces.map(([s, d]) => boxFaceView(st, eye, boxes, half, s, d));
+    const seen = faces.filter((_, i) => views[i] > 0);
+    const cos = views.reduce((a, c) => a + Math.max(0, c), 0) / faces.length;
     if (!sides) return seen.length * 10 + cos;
     const from = new THREE.Vector3(0, 0, 1).applyQuaternion(pivot.quaternion.clone().invert());
     return new Set(seen.map(([, d]) => d)).size * 1000 + seen.length * 10 + cos + from.dot(now) * 0.01;

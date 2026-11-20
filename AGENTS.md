@@ -541,7 +541,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   up over each other's stickers). A halo appearing never moves the view. **Show**
   (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
   most unblocked, then each as squarely as possible, from the preset views and the
-  directions between the stickers), again each time it is tapped. For a shape problem about
+  directions between the stickers; weighed on a box for each spot, `boxFaceView`, since
+  rays against the drawn cubelets took over a second for a halo on many cubelets), again each time it is tapped. For a shape problem about
   one core cubelet it looks at that cubelet from its own direction, tilted along an edge
   by about 20 degrees (`EDGE_TILT`; a corner's own view shows its three sides): straight
   at its sticker showed the spots on it edge-on, and a corner view from below crowded them
