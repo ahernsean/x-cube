@@ -330,7 +330,8 @@ test("edit: an extension cubelet on a core corner comes and goes alone, and the 
   assert.deepEqual(tap.carries, [], "nothing turns");
   const paint = repaint(visibleColors(State.solved()) as (Color | undefined)[], tap);
   assert.equal(paint[at(1, 1, 1) * 6 + U], "W", "the corner's own sticker keeps its paint");
-  assert.equal(paint[at(1, 1, 1) * 6 + R], "R", "and the side it bares takes the color that was over it");
+  assert.equal(paint[at(1, 1, 1) * 6 + R], undefined, "the side it bares shows its own color, none here: its red, away from the core, is no core cubelet's");
+  assert.equal(paint[at(2, 1, 1) * 6 + R], "R", "the red stays with its spot");
   assert.equal(paint[at(2, 0, 1) * 6 + U], "W", "its top's white falls onto the cubelet below it");
   assert.equal(paint[at(2, 1, 0) * 6 + F], "G", "its front's green onto the cubelet behind it");
   assert.ok(!draftFilled(d, at(2, 1, 1)) && draftFilled(d, at(1, 1, 2)), "only the tapped cubelet goes");
@@ -384,24 +385,42 @@ test("edit: tapping a core corner turns it through its three ways, and a core si
   assert.equal(draftTap(d, at(0, 0, 1)), null, "a tap on a center does nothing");
 });
 
+test("edit: an extension taken off and put back shows its colors again, and the core face it covered its own", () => {
+  const d = draft();
+  const start = visibleColors(d.shape) as (Color | undefined)[];
+  const spot = at(2, 0, 1); // Rx.F
+  let paint = repaint(start, draftTap(d, spot)!); // off
+  paint = repaint(paint, draftTap(d, spot)!); // and back
+  assert.deepEqual(paint.slice(spot * 6, spot * 6 + 6), start.slice(spot * 6, spot * 6 + 6));
+  assert.equal(fitColors(d.shape, draftColors(d, paint)).level, "reachable");
+  // A core face's color comes back when the extension put on it is taken off again.
+  const e = draft();
+  let p2 = visibleColors(e.shape) as (Color | undefined)[];
+  const top = at(0, 2, 1); // the bare top of the UF core edge, white
+  p2 = repaint(p2, draftTap(e, top)!); // an extension on it
+  assert.equal(p2[top * 6 + U], undefined, "the extension doesn't take the white");
+  p2 = repaint(p2, draftTap(e, top)!); // and off again
+  assert.equal(draftColors(e, p2)[at(0, 1, 1) * 6 + U], "W", "the core edge shows its white again");
+});
+
 test("edit: a cubelet comes or goes alone, and the shape may be wrong meanwhile", () => {
   const d = draft();
   let paint = visibleColors(d.shape) as (Color | undefined)[];
   const tap = draftTap(d, at(2, 0, 1))!; // Rx.F, one of two on the FR double edge
   assert.deepEqual(tap.carries, [], "nothing moves");
-  assert.deepEqual(tap.unpaint.filter((f) => Math.floor(f / 6) === at(1, 0, 1)), [at(1, 0, 1) * 6 + R], "of the core edge, only the face it bares");
+  assert.deepEqual(tap.unpaint.filter((f) => Math.floor(f / 6) === at(1, 0, 1)), [], "the core edge keeps its own colors, the face it bares too");
   paint = repaint(paint, tap);
-  assert.equal(paint[at(1, 0, 1) * 6 + R], "R", "its outward color falls onto the core edge it bared");
+  assert.equal(paint[at(1, 0, 1) * 6 + R], undefined, "the core edge it bared shows its own color, none here: no core cubelet shows red");
   assert.equal(paint[at(2, 0, 0) * 6 + F], "G", "and its front's green onto the extension center behind it");
-  assert.equal(paint[at(2, 0, 1) * 6 + R], undefined);
+  assert.equal(paint[at(2, 0, 1) * 6 + R], "R", "its red stays with its spot, unseen");
   assert.equal(paint[at(0, 1, 2) * 6 + F], "G", "the others keep their paint");
-  assert.equal(draftColors(d, paint)[at(1, 0, 1) * 6 + R], "R", "and the core edge shows it");
+  assert.equal(draftColors(d, paint)[at(1, 0, 1) * 6 + R], UNPAINTED, "and the core edge shows a sticker to color");
   assert.deepEqual([...d.removed], [at(2, 0, 1)]);
   assert.deepEqual(texts(d), ["Only three core edges have two extensions, but there must be four. An extension should probably be added in one of these spots"]);
   assert.ok(draftSpots(d).includes(at(2, 0, 1)), "its spot is one a tap can fill again");
   paint = repaint(paint, draftTap(d, at(0, 2, 1))!); // the bare top of the UF single edge gets a cubelet
-  assert.equal(paint[at(0, 2, 1) * 6 + U], "W", "a cubelet that comes takes the color of the sticker it covers");
-  assert.equal(paint[at(0, 1, 1) * 6 + U], undefined);
+  assert.equal(paint[at(0, 2, 1) * 6 + U], undefined, "a cubelet that comes doesn't take the white it covers: none shows white facing up there");
+  assert.equal(paint[at(0, 1, 1) * 6 + U], "W", "the core edge keeps its white, unseen");
   assert.equal(paint[at(0, 2, 1) * 6 + F], undefined, "its other stickers are not painted yet");
   assert.deepEqual(texts(d), [], "four double edges again");
   assert.equal(d.removed.size + d.added.size, 0, "a shape the puzzle can have is made of real cubelets at once");

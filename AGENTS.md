@@ -455,9 +455,15 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   - **Paint stays on its spot**, not on a cubelet: what a tap turns (a core cubelet with
     the extension cubelets on it) loses its paint. A cubelet that only comes or goes changes only its own spot
     and the faces it covers or bares: one put in takes, on each of its faces, the color of
-    the face it covers behind it, seen from that side (the core cubelet's, and any
-    neighbor's), and one taken away leaves each of its colors on the face it bares behind
-    it (`repaint`); a face with nothing behind it starts unpainted. A sticker not painted yet (`UNPAINTED`) fits any color
+    the face it covers behind it, seen from that side (a neighbor's), and one taken away
+    leaves each of its colors on the face it bares behind it (`repaint`); a face with
+    nothing behind it starts unpainted. Not between its face away from the core and the
+    core cubelet's face behind it: the core's sticker there is white or yellow, which an
+    extension cubelet never shows facing out, and its own is a side color, which a core
+    cubelet never shows. Each keeps its own color, unseen while covered or empty, so a
+    core face bared again shows the color it had, and a cubelet put back the color it had
+    (the owner's choice, after the white and yellow carried out made a play-tester's edit
+    unfixable). A sticker not painted yet (`UNPAINTED`) fits any color
     and is drawn as a dashed outline on the plastic, with no edge glow; the line counts
     them ("6 stickers have no color yet", with a halo on their cubelets), and Done waits
     for them. Where a cubelet's stickers are follows from the shape around it alone

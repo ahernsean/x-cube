@@ -1132,18 +1132,23 @@ export function draftTap(d: Draft, s: number): TapResult | null {
   };
   // Each face of a cubelet that comes covers the face of whatever is behind it, seen from
   // that side, and takes that face's color; a cubelet that goes leaves each of its colors
-  // on the face it bares behind it.
+  // on the face it bares behind it. But not on the face away from the core: the core
+  // cubelet's sticker it covers is white or yellow, which an extension cubelet never shows
+  // there, and its own color there is a side color, which a core cubelet never shows. Each
+  // of the two keeps its own color, unseen while covered or empty: the core face bared
+  // again shows the color it had, and a cubelet put back shows the color it had.
   const comes = !draftFilled(d, s);
+  const out = outwardDir(s);
   const pairs: [number, number][] = [];
   for (let k = 0; k < 6; k++) {
     const n = SLOT_NEIGHBOR[s * 6 + (k ^ 1)];
-    if (n >= 0 && draftFilled(d, n)) pairs.push([n * 6 + k, s * 6 + k]);
+    if (n >= 0 && draftFilled(d, n) && k !== out) pairs.push([n * 6 + k, s * 6 + k]);
   }
   set(s, comes);
   settle(d);
   return {
     carries: [],
-    unpaint: [...faces(s), ...pairs.map(([behind]) => behind)],
+    unpaint: [...faces(s).filter((f) => f !== s * 6 + out), ...pairs.map(([behind]) => behind)],
     move: pairs.map(([behind, own]) => (comes ? [behind, own] : [own, behind])),
   };
 }
@@ -1151,10 +1156,12 @@ export function draftTap(d: Draft, s: number): TapResult | null {
 /**
  * What a Shape tool tap does: the real cubelets it moved (to animate), the faces (slot * 6
  * + direction) whose stickers are no longer the ones painted (`unpaint`: the whole unit when
- * it turns; when a cubelet only comes or goes, its own spot and every face it covers or
- * bares, on the core cubelet and on neighbors alike), and the paint that moves from face
- * to face (`move`, by slot * 6 + direction: from each face a cubelet that comes covers to
- * its own face over it, seen from the same side, and back when it goes).
+ * it turns; when a cubelet only comes or goes, its own spot but for its face away from
+ * the core, and every other face it covers or bares, on neighbors alike), and the paint
+ * that moves from face to face (`move`, by slot * 6 + direction: from each face a cubelet
+ * that comes covers to its own face over it, seen from the same side, and back when it
+ * goes; never between its face away from the core and the core cubelet's face behind it,
+ * which each keep their own).
  */
 export interface TapResult {
   carries: Carry[];
