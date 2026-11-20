@@ -528,7 +528,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   so the way to follow it is plain even when the head is behind the puzzle (drawn faintly
   there); it casts a shadow, which shows its depth. It is rebuilt as the view turns, so it
   always starts on the near side; it fades out once every haloed cubelet is turned well
-  toward the viewer and back in when one isn't; a tap on it turns the view to them. The
+  toward the viewer and back in when one isn't; a tap on it turns the view to the one
+  Show turns to (`highlightView`), so the two agree, unless that view still leaves a haloed
+  cubelet out of sight (a halo spread around the puzzle), when it turns to those instead. The
   Hide pill keeps off it. The halo, Show, Hide and the arrow are there whichever tool is
   selected, Shape included (the outline doesn't cover what to tap). A named cubelet enclosed on every side (a
   core edge with extension cubelets on both sides, which nothing shows) is haloed through

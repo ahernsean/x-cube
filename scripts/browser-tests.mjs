@@ -1723,6 +1723,34 @@ labTest("shape editing: the extension a hint means, among a hidden corner's thre
   check(/Remove an extension from this corner, probably the circled one\./.test(line) && marks.list.map((m) => m.slot + "/" + m.face).join() === "Lx.UB/cubelet" && marks.px > 0 && under?.slot === "Lx.UB", `the extension the hint means is circled, as a whole cubelet (${JSON.stringify({ line, marks, under })})`);
 });
 
+labTest("shape editing: a tap on the arrow turns to the view Show turns to", async ({ page, check, probe, settle }) => {
+  // From a play-tester's edit, its core edge with no extensions (the second problem), its
+  // spots behind the puzzle as it is turned. The arrow's tap and Show went to different
+  // views; they agree now.
+  const debug = {"lab":"x-cube debug 1","at":"2026-11-20T01:38:55.199Z","device":{"agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Claude/1.261116.19","touch":5,"width":557,"height":938,"ratio":2},"base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.11592,-0.88048,-0.27985,-0.36471],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","removed":["Fx.UR","Rx.DF","Rx.U","Fx.DL","Lx.B","Bx.D","Fx.UL","Rx.B","Bx.UR","Bx.U","Lx.U"],"added":["Ux.BL","Ux","Dx.B","Ux.BR","Dx.FR","Dx.FL","Ux.FL","Ux.FR"],"colors":".O...B.O.Y...O.YG..O.....OW..B.O..G..OWY.B.O.....OW.G....................O.Y.B...Y.....Y.....Y......G..O...B...................OWYG.ROW..B..W.....W.....W.......G..........................................B...Y.....Y.....Y...O.YG...WY.B................G......B..W.....W.....W...ROW.G.....................................R..Y.B...Y.....Y.....Y..R..YG.R.W..B..................R.W.G......B..W.....W.....W.......G...................R..Y.BR..YG.R.....R.....R.W..BR..YG.R.W..BR.....R.W.G.","tool":"shape","problems":[{"text":"This core corner has three extensions, but it can have only two. Remove an extension from this corner, probably this one","slots":["UBL","Lx.UB"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UL","Lx.U","Ux.L"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UB","Bx.U","Ux.B"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UR","Ux.R","Rx.U"]},{"text":"Only two core edges have two extensions, but there must be four. An extension should probably be added in one of these spots","slots":["Lx.B","Lx.U","Dx.L","Ux.L","Dx.F","Bx.D","Bx.U","Ux.B","Ux.F","Dx.R","Ux.R","Rx.B","Rx.U"]},{"text":"Five centers have an extension center, but there can be only four. This extension center should probably be removed","slots":["Ux"]}],"selected":"This core corner has three extensions, but it can have only two. Remove an extension from this corner, probably this one|23,6","hidden":null}};
+  debug.edit.selected = "";
+  const view = async () => JSON.parse(await probe("debugInfo")).view;
+  const open = async () => {
+    await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
+    await settle();
+    await page.click('[data-halo="next"]');
+    await settle();
+  };
+  await open();
+  check(/This core edge has no extensions/.test(await page.$eval("#edit-status", (e) => e.textContent)), "the second problem is a core edge's");
+  await page.waitForFunction(() => window.xcubeProbe.haloArrow().opacity === 1);
+  const mid = (await probe("haloArrow")).mid;
+  await page.mouse.click(mid.x, mid.y);
+  await settle();
+  const byArrow = await view();
+  await open();
+  await page.click("#edit-status");
+  await settle();
+  const byShow = await view();
+  const dot = Math.abs(byArrow.reduce((a, v, i) => a + v * byShow[i], 0));
+  check(dot > 0.999, `the arrow's tap and Show end at the same view (${JSON.stringify({ byArrow, byShow })})`);
+});
+
 labTest("shape editing: a shape problem halos the glass box where an extension should go", async ({ page, check, probe, settle, gesture }) => {
   // An extension taken off a corner: either bare spot gives the corner two again, but only
   // the one it came from keeps the corners' twists whole. A glass box fills that spot, with

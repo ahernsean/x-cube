@@ -5548,9 +5548,23 @@ function hitsHaloArrow(el: HTMLElement, clientX: number, clientY: number): boole
   return ray.intersectObject(haloArrow.userData.hit, false).length > 0;
 }
 
-/** The arrow's tap: turns the 3D view to show the haloed cubelets it can't show now. */
+/**
+ * The arrow's tap: the view Show turns to, so the two agree. Where that view still leaves a
+ * haloed cubelet out of sight (a halo spread around the puzzle), the arrow would stay and a
+ * second tap do nothing new, so then it turns to the cubelets it can't show now instead.
+ */
 function showHiddenHalos() {
   if (!edit) return;
+  const shown = highlightView();
+  if (shown) {
+    const own = pivot.quaternion.clone();
+    pivot.quaternion.copy(shown);
+    pivot.updateMatrixWorld(true);
+    const left = haloSlots().filter((s) => drawnAt(edit!.shown, s) && !slotSeen(edit!.shown, s));
+    pivot.quaternion.copy(own);
+    pivot.updateMatrixWorld(true);
+    if (!left.length) return goToView([shown.x, shown.y, shown.z, shown.w]);
+  }
   const st = edit.shown, hidden = hiddenHalos();
   const faces: [number, number][] = [];
   for (const s of hidden) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && edit.view[s * 6 + d]) faces.push([s, d]);
@@ -5811,7 +5825,14 @@ function lookFrom(v: any): any {
  * between the stickers' directions. Only on the owner's tap: a halo appearing never moves the view.
  */
 function showHighlighted() {
-  if (!edit?.highlight) return;
+  const q = highlightView();
+  if (q) goToView([q.x, q.y, q.z, q.w]);
+}
+
+/** The view Show turns to (see showHighlighted), or null with nothing haloed. A turn of the view under way ends first. */
+function highlightView(): any {
+  if (!edit?.highlight) return null;
+  if (tween) (pivot.quaternion.copy(tween.to), (tween = null));
   const st = edit.shown;
   const faces: [number, number][] = [];
   const slots = haloSlots();
@@ -5821,17 +5842,12 @@ function showHighlighted() {
   const shape = edit.removed.size > 0 || edit.added.size > 0;
   // A problem about one core cubelet: a view of it at the angle that suits it.
   const cores = edit.highlight.filter((s) => SLOT_POS[s].every((c) => Math.abs(c) <= 1) && SLOT_POS[s].filter((c) => c !== 0).length >= 2);
-  if (shape && cores.length === 1) {
-    if (tween) (pivot.quaternion.copy(tween.to), (tween = null));
-    const q = lookFrom(coreView(st, cores[0], slots));
-    goToView([q.x, q.y, q.z, q.w]);
-    return;
-  }
+  if (shape && cores.length === 1) return lookFrom(coreView(st, cores[0], slots));
   // The stickers the hint circles are the ones it is about.
   for (const m of edit.marks) for (let d = 0; d < 6; d++) if ((m.face < 0 || d === m.face) && bareFace(st, m.slot, d)) faces.push([m.slot, d]);
   if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && (shape || edit.view[s * 6 + d])) faces.push([s, d]);
   if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d)) faces.push([s, d]);
-  showFaces(st, faces, shape);
+  return faces.length ? bestView(st, faces, shape) : null;
 }
 
 /** Half the width of a cubelet, as a box for `haloShare`. */
