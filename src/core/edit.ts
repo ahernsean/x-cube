@@ -761,8 +761,33 @@ function sideHint(shape: State, colors: FaceColors, s: number, out: number, c: C
   });
   const its = `Its ${COLOR_NAME[c]} sticker`;
   const names = can.map((x) => COLOR_NAME[x]);
-  if (can.length === sides.length || !can.length) return { text: `${its} must be ${listColors(sides, "or")}` };
+  // No color fits there beside the others: the white or yellow belongs on another of its
+  // sides, so the colors trade places (a play-tester tried every color on the sticker).
+  if (!can.length) return swapHint(shape, colors, s, out) ?? { text: "One of its other stickers has the wrong color too" };
+  if (can.length === sides.length) return { text: `${its} must be ${listColors(sides, "or")}` };
   return { text: can.length === 1 ? `${its} should probably be ${names[0]}` : `${its} should maybe be ${listColors(can, "or")}` };
+}
+
+/**
+ * Two of a cubelet's stickers trading places, where that makes it a cubelet of its kind
+ * turned as the rule allows: for colors on the wrong sides of it, as a corner whose colors go
+ * around it the wrong way, which "no cubelet has them arranged this way" leaves a mystery.
+ * With `with`, only trades with that face. Null if no trade fits.
+ */
+function swapHint(shape: State, colors: FaceColors, s: number, withFace = -1): Hint | null {
+  const faces = [0, 1, 2, 3, 4, 5].filter((d) => { const c = colors[s * 6 + d]; return !!c && c !== UNPAINTED; });
+  const trades: [Color, Color][] = [];
+  for (const a of faces)
+    for (const b of faces) {
+      if (b <= a || (withFace >= 0 && a !== withFace && b !== withFace)) continue;
+      const tried = colors.slice();
+      [tried[s * 6 + a], tried[s * 6 + b]] = [tried[s * 6 + b], tried[s * 6 + a]];
+      if (candidates(shape, tried, s, "outward").length) trades.push([colors[s * 6 + a] as Color, colors[s * 6 + b] as Color]);
+    }
+  if (!trades.length || trades.length > HINT_OPTIONS) return null;
+  const pair = ([x, y]: [Color, Color]) => listColors(COLOR_ORDER.filter((c) => c === x || c === y));
+  const [first, ...more] = trades;
+  return { text: [`Its ${pair(first)} stickers should probably trade places`, ...more.map((t) => `Or its ${pair(t)} stickers should`)].join(". ") };
 }
 
 function fitAll(shape: State, colors: FaceColors): Fit {
@@ -784,7 +809,7 @@ function fitAll(shape: State, colors: FaceColors): Fit {
           continue;
         }
         const cs = shownColors(colors, s);
-        problems.push(hinted(`No cubelet has ${listColors(cs)} arranged this way`, [s], missingColors(shape, colors, [s]), "One of its stickers has the wrong color"));
+        problems.push(hinted(`No cubelet has ${listColors(cs)} arranged this way`, [s], missingColors(shape, colors, [s]) ?? swapHint(shape, colors, s), "One of its stickers has the wrong color"));
       }
     // Every spot fits a cubelet turned a way the rule allows, but some compete for too few.
     if (!problems.length)
@@ -812,7 +837,7 @@ function fitAll(shape: State, colors: FaceColors): Fit {
     if (loose.cand.get(s)!.length === 0) {
       const cs = shownColors(colors, s);
       const kind = CUBELETS[shape.occ[s]].kind;
-      const p = hinted(noCubelet(kind, cs), [s], missingColors(shape, colors, [s]));
+      const p = hinted(noCubelet(kind, cs), [s], missingColors(shape, colors, [s]) ?? swapHint(shape, colors, s));
       // A cubelet with one sticker: that sticker is the one the problem is about. Circled,
       // since the halo outlines the whole cubelet; Show turns to it.
       const face = [0, 1, 2, 3, 4, 5].find((d) => { const c = colors[s * 6 + d]; return !!c && c !== UNPAINTED; });

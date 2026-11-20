@@ -145,6 +145,27 @@ test("edit: a one-sticker cubelet's wrong color names its sticker, circled", () 
   assert.deepEqual(p.marks, [{ slot: at(1, 1, 1), face: U }]);
 });
 
+test("edit: where no color fits a sticker, or a corner's colors go around it the wrong way, two stickers trade places", () => {
+  // From a play-tester's edit: an X-face corner with yellow facing away from the core and
+  // orange and blue on its sides. No color there fits beside orange and blue: the yellow
+  // belongs on a side. Trading it with either is a real cubelet, and the counts can't choose
+  // yet (stickers without a color), so both are offered.
+  const st = decodeState("X1:Aa..CaDaEa....Ha....Bn..JaKaLnMaNa..ZgQaViSaGjUjRlWiIiTjFxXiOv..Yl..bbaaPncadaeafagahasdjakq..4d..lq..2s3wmanaospw..raittauava..xuyazv9v7u..0v1a..qw..5a6awu8a..");
+  const paint = [...".O.Y.B.......G.WO..RW..B.B..G..O.....O.....OW....O.............G.........O.B.Y...Y...........W...O.YG......B.............Y.....O..G..YG..O.YW.....W.....Y.....W.G..RG..Y.YB....YG......R...........OG......B...Y.....W.....Y.....GO..O.Y.O................G...W..B..W.....Y.....W.......G...O..Y..R.....R.G..........O..R..OG.R..Y.B...W............Y.......R....B..................R...G......B..R.....W...Y.W...W.O.G.O.B..W......G.R.W.R..Y.B......G..RY.R.....R....BR.W.Y.B.W..OR.W.G.R....."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
+  const corner = at(-1, -1, -2); // Bx.DL
+  const p = fitColors(st, draftColors({ shape: st, removed: new Set(), added: new Set() }, paint)).problems.find((q) => q.slots.includes(corner))!;
+  assert.equal(p.text, "This cubelet's yellow sticker has the wrong color. Its yellow and orange stickers should probably trade places. Or its yellow and blue stickers should");
+  // A corner whose colors go around it the wrong way: a trade, not a mystery. With another
+  // X-face corner's sticker not colored yet, both trades that make a real cubelet are offered.
+  const solved = State.solved();
+  const c = visibleColors(solved);
+  const s = at(1, 1, 2); // Fx.UR
+  [c[s * 6 + R], c[s * 6 + U]] = [c[s * 6 + U], c[s * 6 + R]];
+  c[at(-1, 1, 2) * 6 + U] = UNPAINTED;
+  const mirrored = fitColors(solved, c).problems.find((q) => q.slots.includes(s))!;
+  assert.equal(mirrored.text, "No cubelet has white, green, and red arranged this way. Its white and red stickers should probably trade places. Or its green and red stickers should");
+});
+
 test("edit: two corners painted alike are named as looking the same, without saying which sticker is wrong", () => {
   const st = State.solved();
   const colors = visibleColors(st);

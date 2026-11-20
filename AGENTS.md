@@ -486,7 +486,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   cubelet with one sticker, about that sticker, circled, which Show turns to: "This core
   corner's sticker must be white or yellow, never blue"; a play-tester expected the
   sticker meant to be circled), two stickers of one color or opposite colors, a corner's colors going around it
-  in mirrored order ("No cubelet has white, green, and red arranged this way"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two like that"; found among the spots whose stickers all have a color, since a spot still being colored fits many cubelets and a group that takes one in can spread over most of a kind: a play-tester saw 13 X-face corners haloed, where two unfinished corners each needed the last red, white, and blue one; the halo marks every competing spot), or an outer
+  in mirrored order ("No cubelet has white, green, and red arranged this way", followed, where
+  the counts can't say, by the trades of two of its stickers that make a real cubelet,
+  `swapHint`: "Its white and red stickers should probably trade places"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two like that"; found among the spots whose stickers all have a color, since a spot still being colored fits many cubelets and a group that takes one in can spread over most of a kind: a play-tester saw 13 X-face corners haloed, where two unfinished corners each needed the last red, white, and blue one; the halo marks every competing spot), or an outer
   cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
   physical cube can't do that). Outward-rule problems name only what the owner can check on
   the cube: "This cubelet's white sticker has the wrong color" (no
@@ -496,7 +498,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   an edge with yellow facing down through all six colors, told each time about the pair or
   a count; where the counts can't say what it should be, the hint names the side colors
   some cubelet could show there beside its other stickers, "Its yellow sticker must be
-  green, blue, red, or orange" when that is all of them (`sideHint`), and circles the
+  green, blue, red, or orange" when that is all of them (`sideHint`); where none fits beside
+  them, the white or yellow belongs on another side, and the hint offers the trades that make
+  a real cubelet ("Its yellow and orange stickers should probably trade places. Or its yellow
+  and blue stickers should", `swapHint`; a play-tester tried every color on the sticker); and circles the
   sticker, which Show turns to: the halo outlines the whole cubelet, and a play-tester
   saw only its uncolored other sticker), "No cubelet has green and red
   arranged this way. One of its stickers has the wrong color", or "Two X-face corners
