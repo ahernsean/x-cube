@@ -3063,10 +3063,9 @@ async function keptDebug(): Promise<{ json: string; savedAt: number }[]> {
   }
 }
 
-/** A saved copy's line in the list: when it was saved (the day too, if not today), and on what. */
+/** A saved copy's line in the list: when it was saved, to the second with the date, and on what. */
 function keptLabel(k: { json: string; savedAt: number }): string {
-  const at = new Date(k.savedAt), today = at.toDateString() === new Date().toDateString();
-  const when = at.toLocaleString([], today ? { hour: "numeric", minute: "2-digit" } : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const when = new Date(k.savedAt).toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
   let on = "";
   try {
     const agent: string = JSON.parse(k.json).device?.agent ?? "";

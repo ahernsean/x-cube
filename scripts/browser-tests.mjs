@@ -1361,7 +1361,7 @@ labTest(
     await page.click("#debug-list button");
     await settle();
     const back = { removed: (await probe("shapeEdit"))?.removed.join(), open: !(await page.$eval("#info-pop", (e) => e.hidden)) };
-    check(items.length === 20 && items.every((t) => /\d:\d\d/.test(t)) && back.removed === "Fx.U" && !back.open, `the clock lists the saved copies by time, and a tap puts one back (${JSON.stringify({ items: items.length, first: items[0], back })})`);
+    check(items.length === 20 && items.every((t) => /\d{4}/.test(t) && /\d:\d\d:\d\d/.test(t)) && back.removed === "Fx.U" && !back.open, `the clock lists the saved copies by date and time to the second, and a tap puts one back (${JSON.stringify({ items: items.length, first: items[0], back })})`);
   },
   {
     // A stand-in for the shared database: collections of documents in memory.
