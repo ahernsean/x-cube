@@ -75,7 +75,10 @@ export interface Problem {
   text: string;
   /** The slots it is about. */
   slots: number[];
-  /** Stickers its hint calls "circled" (slot, face direction): ones its colors can't tell apart. */
+  /**
+   * What its hint calls "circled": stickers (slot, face direction) its colors can't tell
+   * apart, or whole cubelets (face -1) its halo can't tell apart.
+   */
   marks?: { slot: number; face: number }[];
   /** For a shape problem, the spots its hint says to tap: extensions to take away or empty spots to fill. */
   taps?: number[];
@@ -1056,7 +1059,7 @@ function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
   const two = !off.length && own === "corner" && !filledOn(d, p.slots[0]).length;
   const could = own ? outerOf(p.slots[0]).filter((t) => draftFilled(d, t) === !!off.length).length : 0;
   const which = pick.length >= could ? (pick.length > 1 && !two ? " in one of these spots" : "") : off.length
-    ? pick.length === 1 ? ", probably this one" : ", probably one of these"
+    ? pick.length === 1 ? ", probably the circled one" : ", probably one of the circled ones"
     : pick.length === 1 ? ", probably here" : two && pick.length === 2 ? ", probably in these spots" : ", probably in one of these spots";
   const text = own
     ? off.length
@@ -1070,7 +1073,10 @@ function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
   // The halo marks the extensions to take away, or the empty spots to fill (the Lab draws a
   // glass box in each, haloed).
   // "This core corner" and "this extension" (or "here") are both pointed at.
-  return { text: `${p.text}. ${text}`, slots: [...new Set([...p.slots, ...pick])], taps: pick };
+  // A core corner with three extensions is hidden on every side, so the halo marks it by
+  // all three: the ones the hint means to take away are circled.
+  const marks = own && off.length && which.includes("circled") ? pick.map((slot) => ({ slot, face: -1 })) : undefined;
+  return { text: `${p.text}. ${text}`, slots: [...new Set([...p.slots, ...pick])], taps: pick, ...(marks ? { marks } : {}) };
 }
 
 /** Makes the draft's changes by moving real cubelets, if its shape is one the puzzle can have. */

@@ -432,7 +432,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     corner or edge is fixed on that cubelet and nowhere else, so its hint says what to do
     plainly, with "probably" only for which of its spots, and only when the halo marks
     fewer than all the spots that could be ("Add an extension to this corner, probably
-    here", "Remove an extension from this corner, probably this one", "Add an extension to
+    here", "Remove an extension from this corner, probably the circled one": a corner with three
+    extensions is hidden on every side, so its halo is on all three, and the one meant is
+    circled as a whole cubelet, a ring standing at its middle, turned to the viewer, as big as
+    the largest circle around its middle inside its outline on screen (`insetRadius`; the flat
+    view rings each face of it that shows), "Add an extension to
     this edge in one of these spots", "Add two extensions to this corner, probably in these
     spots"); the count
     problems, where which cubelet to change is a guess, say "This extension should probably

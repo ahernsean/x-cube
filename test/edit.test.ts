@@ -352,7 +352,11 @@ test("edit: an extension cubelet on a core corner comes and goes alone, and the 
   const e = draft();
   draftTap(e, at(1, 2, 1)); // UFR's bare top
   draftTap(e, at(0, 1, 2)); // UF's one extension
-  assert.deepEqual(draftProblems(e).map((p) => p.text).slice(0, 2), ["This core corner has three extensions, but it can have only two. Remove an extension from this corner, probably this one", "This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots"]);
+  // The corner is hidden on every side, so its halo is on all three extensions: the one to
+  // take away is circled as a whole cubelet.
+  const three = draftProblems(e)[0];
+  assert.deepEqual(three.marks, three.taps!.map((slot) => ({ slot, face: -1 })));
+  assert.deepEqual(draftProblems(e).map((p) => p.text).slice(0, 2), ["This core corner has three extensions, but it can have only two. Remove an extension from this corner, probably the circled one", "This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots"]);
   const f = draft();
   draftTap(f, at(2, 1, 1));
   draftTap(f, at(-2, 1, 1)); // UFR and UFL down to one each

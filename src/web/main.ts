@@ -5607,35 +5607,87 @@ let haloClearer: any = null;
 const HALO_VIEWS = [0, 1, 2, 3, 4, 5].map((d) => FLAT_HALO_LAYER + d);
 
 /**
- * A sticker a hint circles (one its colors can't tell from another of the same color on
- * its cubelet): a white ring with a dark casing on the sticker, as Lost? marks the sticker
- * it asks about, drawn over everything so neighbors don't cut it. In the 3D view it shows
- * only while the sticker faces the viewer, so it never shows through the puzzle; the flat
- * view has its own copy on the sticker's face.
+ * What a hint circles: a white ring with a dark casing, as Lost? marks the
+ * sticker it asks about, drawn over everything so neighbors don't cut it.
+ * - A sticker (one its colors can't tell from another of the same color on its cubelet):
+ *   the ring lies on it. In the 3D view it shows only while the sticker faces the viewer, so
+ *   it never shows through the puzzle; the flat view has its own copy on the sticker's face.
+ * - A whole cubelet (face -1; one the halo can't tell from others it marks): in the 3D view
+ *   the ring stands at the cubelet's middle, turned to the viewer every frame, as big as the
+ *   largest circle around the cubelet's middle inside its outline on screen (the convex hull
+ *   of its eight corners as drawn); it shows while some face of the cubelet is seen. The flat
+ *   view rings each of the cubelet's faces it shows.
  */
-const markRings: { view: any; flat: any }[] = [];
+const markRings: { view: any; flats: any[] }[] = [];
+/** The ring's size: its outer edge (radius plus tube) is the inscribed sphere of a cubelet. */
+const MARK_RADIUS = 0.42, MARK_TUBE = 0.075;
 function markRing() {
   const group = new THREE.Group();
-  for (const [r, w, c] of [[0.42, 0.075, 0x111111], [0.42, 0.045, 0xffffff]] as const) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, w, 10, 48), new THREE.MeshBasicMaterial({ color: c, depthTest: false, transparent: true, toneMapped: false }));
+  for (const [w, c] of [[MARK_TUBE, 0x111111], [0.045, 0xffffff]] as const) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(MARK_RADIUS, w, 10, 48), new THREE.MeshBasicMaterial({ color: c, depthTest: false, transparent: true, toneMapped: false }));
     ring.renderOrder = 10 + (c === 0xffffff ? 1 : 0);
     group.add(ring);
   }
   return group;
 }
-/** Shows each 3D-view ring only while its sticker faces the viewer. */
+/**
+ * The radius, in world units at the cubelet's middle, of the largest circle around its
+ * middle that fits inside its outline as the 3D view draws it: its eight corners projected,
+ * their convex hull, and the nearest of the hull's sides to the projected middle.
+ */
+function insetRadius(slot: number): number {
+  const w = renderer.domElement.clientWidth || 1, h = renderer.domElement.clientHeight || 1;
+  const px = (p: readonly number[]) => {
+    const v = pivot.localToWorld(new THREE.Vector3(p[0], p[1], p[2])).project(camera);
+    return [(v.x * w) / 2, (v.y * h) / 2];
+  };
+  const c = SLOT_POS[slot], a = 0.985 / 2;
+  const pts = [-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => px([c[0] + x * a, c[1] + y * a, c[2] + z * a])))).sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+  // Andrew's monotone chain.
+  const cross = (o: number[], p: number[], q: number[]) => (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+  const half = (list: number[][]) => {
+    const out: number[][] = [];
+    for (const p of list) {
+      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop();
+      out.push(p);
+    }
+    out.pop();
+    return out;
+  };
+  const hull = [...half(pts), ...half([...pts].reverse())];
+  const m = px(c);
+  let r = Infinity;
+  hull.forEach((p, i) => {
+    const q = hull[(i + 1) % hull.length], len = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1;
+    r = Math.min(r, Math.abs(cross(p, q, m)) / len);
+  });
+  // Pixels to world units at the middle's depth.
+  const depth = pivot.localToWorld(new THREE.Vector3(...c)).applyMatrix4(camera.matrixWorldInverse).z;
+  const perPx = (2 * Math.abs(depth) * Math.tan((camera.fov * Math.PI) / 360)) / h;
+  return Number.isFinite(r) ? r * perPx : MARK_RADIUS + MARK_TUBE;
+}
+
+/** Shows each 3D-view ring only while what it marks faces the viewer, a cubelet's turned to the viewer and sized. */
 function showMarks() {
   if (!edit) return;
   edit.marks.forEach((m, i) => {
     const r = markRings[i];
-    if (r?.view.parent) r.view.visible = faceView(edit!.shown, m.slot, m.face, 0.2) > 0;
+    if (!r?.view.parent) return;
+    if (m.face >= 0) {
+      r.view.visible = faceView(edit!.shown, m.slot, m.face, 0.2) > 0;
+      return;
+    }
+    r.view.visible = [0, 1, 2, 3, 4, 5].some((d) => faceView(edit!.shown, m.slot, d, 0.2) > 0);
+    pivot.updateMatrixWorld(true);
+    r.view.quaternion.copy(pivot.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(camera.quaternion));
+    r.view.scale.setScalar(insetRadius(m.slot) / (MARK_RADIUS + MARK_TUBE));
   });
 }
 
 
 /** Puts halos on the cubelet in each highlighted slot of the shown state, and removes the rest. */
 function placeHalos() {
-  for (const h of [...halos, ...haloBodies, ...hintGhosts, ...markRings.flatMap((r) => [r.view, r.flat])]) h.parent?.remove(h);
+  for (const h of [...halos, ...haloBodies, ...hintGhosts, ...markRings.flatMap((r) => [r.view, ...r.flats])]) h.parent?.remove(h);
   haloClearer?.parent?.remove(haloClearer);
   haloStamp++;
   const marked = edit?.highlight ? haloSlots() : null;
@@ -5647,15 +5699,27 @@ function placeHalos() {
     pivot.add(g);
   });
   edit.marks.forEach((m, i) => {
-    const r = (markRings[i] ??= { view: markRing(), flat: markRing() });
-    const n = new THREE.Vector3(...DIRS[m.face]);
-    for (const [g, layer] of [[r.view, HALO_LAYER], [r.flat, FLAT_HALO_LAYER + m.face]] as const) {
+    const r = (markRings[i] ??= { view: markRing(), flats: [] });
+    // A sticker's face, or each face a whole cubelet shows.
+    const faces = m.face >= 0 ? [m.face] : [0, 1, 2, 3, 4, 5].filter((d) => bareFace(edit!.shown, m.slot, d));
+    while (r.flats.length < faces.length) r.flats.push(markRing());
+    const place = (g: any, layer: number, face: number) => {
+      const n = new THREE.Vector3(...DIRS[face]);
       g.position.set(...SLOT_POS[m.slot]).addScaledVector(n, 0.53);
       g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+      g.scale.setScalar(1);
       g.traverse((o: any) => o.layers.set(layer));
       pivot.add(g);
+    };
+    faces.forEach((f, k) => place(r.flats[k], FLAT_HALO_LAYER + f, f));
+    if (m.face >= 0) place(r.view, HALO_LAYER, m.face);
+    else {
+      r.view.position.set(...SLOT_POS[m.slot]);
+      r.view.traverse((o: any) => o.layers.set(HALO_LAYER));
+      pivot.add(r.view);
     }
   });
+  showMarks();
   if (!haloClearer) {
     haloClearer = new THREE.Mesh(new THREE.PlaneGeometry(1e-3, 1e-3), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, transparent: true }));
     haloClearer.frustumCulled = false;
@@ -5764,7 +5828,7 @@ function showHighlighted() {
     return;
   }
   // The stickers the hint circles are the ones it is about.
-  for (const m of edit.marks) if (bareFace(st, m.slot, m.face)) faces.push([m.slot, m.face]);
+  for (const m of edit.marks) for (let d = 0; d < 6; d++) if ((m.face < 0 || d === m.face) && bareFace(st, m.slot, d)) faces.push([m.slot, d]);
   if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d) && (shape || edit.view[s * 6 + d])) faces.push([s, d]);
   if (!faces.length) for (const s of slots) for (let d = 0; d < 6; d++) if (bareFace(st, s, d)) faces.push([s, d]);
   showFaces(st, faces, shape);
@@ -6292,7 +6356,7 @@ function installProbe() {
     },
     /** The stickers the shown problem's hint circles, and how many pixels of the 3D view their rings cover. */
     marks: () => {
-      const list = (edit?.marks ?? []).map((m) => ({ slot: slotName(m.slot), face: COMPASS_FACES[m.face] }));
+      const list = (edit?.marks ?? []).map((m) => ({ slot: slotName(m.slot), face: m.face < 0 ? "cubelet" : COMPASS_FACES[m.face] }));
       const plain = probeImage(camera, 0, 192, 192, "drawn"), framed = probeImage(camera, 0, 192, 192, "drawn", HALO_LAYER);
       let px = 0;
       for (let i = 0; i < plain.length; i += 4) if (Math.abs(plain[i] - framed[i]) + Math.abs(plain[i + 1] - framed[i + 1]) + Math.abs(plain[i + 2] - framed[i + 2]) > 24) px++;
