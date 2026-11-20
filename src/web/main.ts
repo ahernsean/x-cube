@@ -5757,45 +5757,65 @@ function showHighlighted() {
   showFaces(st, faces, shape);
 }
 
+/** Half the width of a cubelet, as a box for `haloShare`. */
+const CUBELET_HALF = 0.49;
+
 /**
  * The share of the haloed cubelets and spots the view from direction v shows: of points
  * spread over each (its corners and face middles, drawn in a little), those where the first
- * thing a ray from the camera meets is one of them. A glass box in front counts as covering,
- * though it is see-through: other boxes in the way are what make a view hard to read.
+ * thing a ray from the camera meets is one of them. Everything is taken as a box: each
+ * filled spot a cubelet's width, each glass box its own size. A glass box in front counts
+ * as covering, though it is see-through: other boxes in the way are what make a view hard
+ * to read. Boxes, not the drawn cubelets (some 300,000 triangles), keep Show quick: a
+ * corner's 25 views took most of a second with the drawn ones, and froze the page.
  */
 function haloShare(st: State, slots: number[], v: any): number {
+  // The camera in the puzzle's frame, looking from v.
   const own = pivot.quaternion.clone();
   pivot.quaternion.copy(lookFrom(v));
   pivot.updateMatrixWorld(true);
-  const targets = new Set(slots.map((s) => drawnAt(st, s)).filter(Boolean));
-  const ray = new THREE.Raycaster();
-  ray.layers.set(0);
-  ray.layers.enable(HALO_LAYER);
-  let seen = 0, n = 0;
-  for (const s of slots) {
-    const t = drawnAt(st, s);
-    if (!t) continue;
-    const r = (t.geometry?.parameters?.width === GHOST_SIZE ? GHOST_SIZE : 0.9) * 0.42;
-    for (const o of [...[-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => [x, y, z]))), ...DIRS]) {
-      const at = pivot.localToWorld(new THREE.Vector3(SLOT_POS[s][0] + o[0] * r, SLOT_POS[s][1] + o[1] * r, SLOT_POS[s][2] + o[2] * r));
-      const to = at.clone().sub(camera.position);
-      const far = to.length();
-      ray.set(camera.position, to.normalize());
-      n++;
-      let first: any = null;
-      for (const h of ray.intersectObjects(pivot.children, true)) {
-        if (h.distance > far - 1e-3) break;
-        let obj = h.object;
-        while (obj.parent && obj.parent !== pivot) obj = obj.parent;
-        if (!obj.visible || !(meshes.includes(obj) || blanks.includes(obj) || ghosts.includes(obj) || hintGhosts.includes(obj))) continue;
-        first = obj;
-        break;
-      }
-      if (!first || targets.has(first)) seen++;
-    }
-  }
+  const local = pivot.worldToLocal(camera.position.clone());
+  const eye = [local.x, local.y, local.z];
   pivot.quaternion.copy(own);
   pivot.updateMatrixWorld(true);
+  const ghostAt = new Set([...ghosts, ...hintGhosts].filter((g) => g.parent).map((g) => g.userData.slot as number));
+  const boxes: { slot: number; half: number }[] = [];
+  for (let t = 0; t < NUM_SLOTS; t++) {
+    if (edit ? draftFilled(edit, t) : st.occ[t] >= 0) boxes.push({ slot: t, half: CUBELET_HALF });
+    else if (ghostAt.has(t)) boxes.push({ slot: t, half: GHOST_SIZE / 2 });
+  }
+  const half = new Map(boxes.map((b) => [b.slot, b.half]));
+  const lit = new Set(slots);
+  let seen = 0, n = 0;
+  for (const s of slots) {
+    const h = half.get(s);
+    if (h === undefined) continue;
+    const r = h * 2 * 0.42 * (h === CUBELET_HALF ? 0.9 / 0.98 : 1);
+    for (const o of [...[-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => [x, y, z]))), ...DIRS]) {
+      const p = [SLOT_POS[s][0] + o[0] * r, SLOT_POS[s][1] + o[1] * r, SLOT_POS[s][2] + o[2] * r];
+      const d = [p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]];
+      n++;
+      // The nearest box the ray enters before it reaches the point (at t = 1).
+      let first = -1, nearest = 1 - 1e-4;
+      for (const b of boxes) {
+        const c = SLOT_POS[b.slot];
+        let t0 = 0, t1 = nearest;
+        for (let a = 0; a < 3 && t0 <= t1; a++) {
+          const e = eye[a];
+          if (Math.abs(d[a]) < 1e-9) {
+            if (Math.abs(e - c[a]) > b.half) t0 = Infinity;
+            continue;
+          }
+          let lo = (c[a] - b.half - e) / d[a], hi = (c[a] + b.half - e) / d[a];
+          if (lo > hi) [lo, hi] = [hi, lo];
+          t0 = Math.max(t0, lo);
+          t1 = Math.min(t1, hi);
+        }
+        if (t0 <= t1 && t0 < nearest) (nearest = t0), (first = b.slot);
+      }
+      if (first < 0 || lit.has(first)) seen++;
+    }
+  }
   return n ? seen / n : 0;
 }
 

@@ -1682,6 +1682,20 @@ labTest("shape editing: Show looks at a core edge and its spots at a slight angl
   }
 });
 
+labTest("shape editing: Show weighs a core corner's views quickly", async ({ page, check, settle }) => {
+  // From a play-tester's edit: a core corner short an extension. Show weighs 25 views of
+  // it; tested against the drawn cubelets (some 300,000 triangles) that froze the page for
+  // most of a second, against a box for each spot it takes a few milliseconds.
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","at":"2026-11-20T01:19:52.795Z","device":{"agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Claude/1.261116.19","width":557,"height":1024,"ratio":2},"base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.11592,-0.88048,0.27985,0.36471],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:JgBaCaDaEaFaGaHaIaAg......KgLaMaNaOaPaQaRaSaTaUaVaWaXa............YaZaaabacadaeafagahaiajakala............manaoapaqarasatauavawaxayaza0a......1a2a3a4a5a6a7a8a9a","removed":["Fx.R","Rx.U","Fx.DR","Bx.UR","Rx.D","Fx.DL","Bx.DR","Lx.UF","Bx.UL","Fx.U"],"added":["Ux.FR","Dx.R","Dx.FR","Dx.FL","Ux.BL","Ux.FL"],"colors":".......O.Y...O.YG..O...B.O.....OW.G..OW..B.OW.G..O.....................................Y.....Y......G..OW..B...................O.YG......B..W.....W.....W....OW.G.....................................R..Y.B...Y.....Y.....Y..RO.YG......B............R.W.G.ROW..B..W.....W.....W.......G..........................................B...Y.....Y.....Y......G.R.WY.B......................G......B..W.....W.....W...R.W.G...................R..Y.BR.....R..YG.R....BR.WY..R...G.R.W..BR.....R.W.G.","tool":"shape","problems":[{"text":"This core corner has only one extension, but it has to have two. Add an extension to this corner in one of these spots","slots":["DBR","Dx.BR","Bx.DR"]},{"text":"This core corner has only one extension, but it has to have two. Add an extension to this corner in one of these spots","slots":["UBR","Bx.UR","Ux.BR"]},{"text":"This core corner has three extensions, but it can have only two. Remove an extension from this corner","slots":["UFR","Fx.UR","Ux.FR","Rx.UF"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UF","Fx.U","Ux.F"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UR","Ux.R","Rx.U"]},{"text":"Only three core edges have two extensions, but there must be four. An extension should probably be added in one of these spots","slots":["Dx.L","Ux.L","Dx.B","Dx.F","Fx.U","Ux.B","Ux.F","Fx.R","Ux.R","Rx.D","Rx.U"]}],"selected":"This core corner has only one extension, but it has to have two. Add an extension to this corner in one of these spots|54,50,53","hidden":null}}));
+  await settle();
+  const ms = await page.evaluate(() => {
+    const t = performance.now();
+    for (let i = 0; i < 5; i++) window.xcubeProbe.coreViewShares("DBR");
+    return (performance.now() - t) / 5;
+  });
+  check(ms < 150, `a corner's 25 views are weighed in well under the time a frozen page shows (${ms.toFixed(1)} ms)`);
+});
+
 labTest("shape editing: a shape problem halos the glass box where an extension should go", async ({ page, check, probe, settle, gesture }) => {
   // An extension taken off a corner: either bare spot gives the corner two again, but only
   // the one it came from keeps the corners' twists whole. A glass box fills that spot, with

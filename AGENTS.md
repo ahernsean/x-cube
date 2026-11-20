@@ -539,7 +539,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   with other glass boxes, where a play-tester liked a slight angle best. Of the tilts up to
   40 degrees (`coreViews`), it takes the one showing the most of the halo (`haloShare`: of
   points over each haloed cubelet and spot, those a ray from the camera reaches first, a
-  glass box in front counting as covering), each degree from the aim costing 1% of it; then
+  glass box in front counting as covering; each filled spot and glass box taken as a box,
+  which weighs a corner's 25 views in a few milliseconds, where the drawn cubelets, some
+  300,000 triangles, froze the page for most of a second), each degree from the aim costing 1% of it; then
   from above, then nearest the view now. For other shape problems it counts every face of
   the cubelets and spots, and first takes the view showing faces on the most sides. **Hide** removes the
   halo until the shown problem names other cubelets; while the halo shows, a **Hide** pill in
