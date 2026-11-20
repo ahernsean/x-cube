@@ -100,3 +100,7 @@ a message names its controls with `setMessage`'s `controls`), so it reads as the
 not as a verb: "To add or remove an extension, pick **Shape** first".
 
 Lists of three colors use the serial comma: "white, blue, and orange".
+
+Every message the Lab shows ends as a sentence does, with a period ("Debug info put back.",
+"Turns cleared. This position is now the start."); `setMessage` adds it. The problem line
+adds its own after the problem ("Not valid: ... spots.").

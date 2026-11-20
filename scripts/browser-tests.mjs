@@ -835,7 +835,7 @@ labTest("shuffle: plays 30 legal turns, and the result becomes the new start", a
   await page.waitForFunction(() => /^Shuffled/.test(document.getElementById("message")?.textContent ?? ""), null, { timeout: 60000 });
   await settle();
   const shuffled = await page.evaluate(() => ({ msg: document.getElementById("message").textContent, state: window.xcubeProbe.state(), turns: window.xcubeProbe.turns() }));
-  check(shuffled.msg === "Shuffled", `the message doesn't give the turns away ("${shuffled.msg}")`);
+  check(shuffled.msg === "Shuffled.", `the message doesn't give the turns away ("${shuffled.msg}")`);
   const scramble = await page.evaluate(() => window.xcubeProbe.shuffleTurns());
   await startFresh();
   await page.fill("#alg", scramble);
@@ -1026,7 +1026,7 @@ labTest("state codes: one field shows the current position's code and takes a co
   await page.fill("#code", "  " + ruState + "\n");
   await page.click("#import");
   const imported = { state: await probe("state"), msg: await page.$eval("#message", (m) => m.textContent), counter: await counter() };
-  check(imported.state === ruState && imported.msg === "Imported" && imported.counter === "0/0", `importing a state code makes it the start (${imported.msg})`);
+  check(imported.state === ruState && imported.msg === "Imported." && imported.counter === "0/0", `importing a state code makes it the start (${imported.msg})`);
   await page.fill("#code", "X1:not a code");
   await page.keyboard.press("Enter");
   const refused = { state: await probe("state"), off: await page.$eval("#import", (b) => b.disabled), bad: await page.$eval("#code", (t) => t.classList.contains("invalid")) };

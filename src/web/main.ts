@@ -2008,9 +2008,13 @@ let messageSeq = 0;
 let messageControls: string[] = [];
 let messageShown = 0;
 let messageTimer: ReturnType<typeof setTimeout> | undefined;
-/** Shows a message; `controls` are names of buttons in it, drawn as controls (as help text draws them). */
+/**
+ * Shows a message; `controls` are names of buttons in it, drawn as controls (as help text
+ * draws them). Every message ends as a sentence does: a period is added unless it ends in
+ * punctuation already ("Shuffling…").
+ */
 function setMessage(text: string, kind: "info" | "error" | "ok" = "info", controls: string[] = []) {
-  app.message = text;
+  app.message = text && !/[.!?…:]$/.test(text) ? `${text}.` : text;
   app.messageKind = kind;
   messageControls = controls;
   messageSeq++;
