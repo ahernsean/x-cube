@@ -1835,7 +1835,9 @@ labTest("color editing: Show turns a white or yellow sticker facing away from th
 labTest("color editing: Show weighs its views quickly for a halo on many cubelets", async ({ page, check, settle }) => {
   // From a play-tester's edit: 43 stickers with no color yet, on many cubelets. Show weighs
   // some 70 views; with rays against the drawn cubelets that froze the page for over a
-  // second, against a box for each spot it takes well under a tenth of one.
+  // second (1,664 ms on a fast machine), against a box for each spot it takes about a
+  // tenth of one. CI's runners, measuring coverage, take four times as long as that
+  // machine (382 and 405 ms), so the limit sits between the two ways, clear of both.
   await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","at":"2026-11-20T02:14:22.174Z","device":{"agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Claude/1.261116.19","touch":5,"width":557,"height":938,"ratio":2},"base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.11592,-0.88048,-0.27985,-0.36471],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:AaBaNu..EaFa....Xx..DgCuJaKaPgMu..OaLvQaRaSaGjUjVsWx..TjHsIxYq......Zqaabacadaeafaga..iojakalaho......4xqjmanaslpj3jraoitauava..xuynzg..7u8n9g1a2a....5a6awu..0g","removed":[],"added":[],"colors":".O...B.O.Y...O.YG..O.....OW..B.O..G..O.....O.....OW.G....................O.Y.B...Y.....Y.....Y......G..O...B...................OWYG.ROW..B..W.....W.....W.......G..........................................B...Y.....Y.....Y...O.YG...WY.B................G......B..W.....W.....W...ROW.G.....................................R..Y.B...Y.....Y.....Y..R..YG.R.W..B..................R.W.G......B..W.....W.....W.......G...................R..Y.BR..YG.R.....R.....R.W..BR..YG.R.W..BR.....R.W.G.","tool":"shape","problems":[{"text":"43 stickers have no color yet","slots":["Lx.DB","Dx.L","Dx.FL","DFL","BL","UBL","UL","UFL","Ux.BL","Ux.L","Ux.FL","Dx.B","DB","UB","Ux.B","Dx.R","Dx.FR","DFR","BR","UBR","UR","UFR","Ux.BR","Ux.R","Ux.FR"]}],"selected":"43 stickers have no color yet|0,10,11,15,18,23,24,25,27,28,29,30,34,43,47,51,52,56,59,64,65,66,68,69,70","hidden":null}}));
   await settle();
   const ms = await page.evaluate(() => {
@@ -1843,7 +1845,7 @@ labTest("color editing: Show weighs its views quickly for a halo on many cubelet
     document.getElementById("edit-status").click();
     return performance.now() - t;
   });
-  check(ms < 400, `Show on a halo over many cubelets is quick (${Math.round(ms)} ms)`);
+  check(ms < 1000, `Show on a halo over many cubelets is quick (${Math.round(ms)} ms)`);
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {
