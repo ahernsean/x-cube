@@ -145,7 +145,7 @@ test("edit: a one-sticker cubelet's wrong color names its sticker, circled", () 
   assert.deepEqual(p.marks, [{ slot: at(1, 1, 1), face: U }]);
 });
 
-test("edit: where no color fits a sticker, or a corner's colors go around it the wrong way, two stickers trade places", () => {
+test("edit: where no color fits a sticker, or a corner's colors go around it the wrong way, two stickers trade places, or two are recolored", () => {
   // From a play-tester's edit: an X-face corner with yellow facing away from the core and
   // orange and blue on its sides. No color there fits beside orange and blue: the yellow
   // belongs on a side. Trading it with either is a real cubelet, and the counts can't choose
@@ -164,6 +164,17 @@ test("edit: where no color fits a sticker, or a corner's colors go around it the
   c[at(-1, 1, 2) * 6 + U] = UNPAINTED;
   const mirrored = fitColors(solved, c).problems.find((q) => q.slots.includes(s))!;
   assert.equal(mirrored.text, "No cubelet has white, green, and red arranged this way. Its white and red stickers should probably trade places. Or its green and red stickers should");
+  // Where no trade fixes it either, another sticker is wrong too: the fixes that recolor it
+  // as well are each said whole, naming the stickers and their colors.
+  const two = visibleColors(solved);
+  two[s * 6 + F] = "Y"; // yellow facing away from the core
+  two[s * 6 + U] = "B";
+  two[s * 6 + R] = "O"; // blue and orange beside it: neither a color nor a trade fits
+  two[at(-1, 1, 2) * 6 + U] = UNPAINTED;
+  assert.equal(
+    fitColors(solved, two).problems.find((q) => q.slots.includes(s))!.text,
+    "This cubelet's yellow sticker has the wrong color. Its orange sticker should maybe be white, and its yellow sticker orange. Or its orange sticker yellow, and its yellow sticker red. Or its blue sticker white, and its yellow sticker blue. Or its blue sticker yellow, and its yellow sticker green",
+  );
 });
 
 test("edit: two corners painted alike are named as looking the same, without saying which sticker is wrong", () => {

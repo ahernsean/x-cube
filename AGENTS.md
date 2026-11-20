@@ -501,7 +501,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   green, blue, red, or orange" when that is all of them (`sideHint`); where none fits beside
   them, the white or yellow belongs on another side, and the hint offers the trades that make
   a real cubelet ("Its yellow and orange stickers should probably trade places. Or its yellow
-  and blue stickers should", `swapHint`; a play-tester tried every color on the sticker); and circles the
+  and blue stickers should", `swapHint`; a play-tester tried every color on the sticker), and
+  where no trade fits either, the fixes that recolor it and one other sticker, each said
+  whole ("Its orange sticker should maybe be white, and its yellow sticker orange. Or ...",
+  up to four, `twoHint`; a sentence naming no sticker was no help); and circles the
   sticker, which Show turns to: the halo outlines the whole cubelet, and a play-tester
   saw only its uncolored other sticker), "No cubelet has green and red
   arranged this way. One of its stickers has the wrong color", or "Two X-face corners
