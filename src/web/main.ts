@@ -3038,19 +3038,24 @@ const DEBUG_KEEP = 20;
 /**
  * Keeps a copy of debug info in the shared database (collection `debug`: `json`, `savedAt`,
  * `source`), where Claude reads it, so the owner needn't paste it into a message; the
- * newest DEBUG_KEEP are kept. False where there is no shared database or it refused.
+ * newest DEBUG_KEEP are kept. When it was saved, or null where there is no shared database or
+ * it refused.
  */
-async function keepDebug(text: string): Promise<boolean> {
-  if (storeKind !== "shared" || !db) return false;
+async function keepDebug(text: string): Promise<number | null> {
+  if (storeKind !== "shared" || !db) return null;
   try {
-    await db.collection("debug").add({ json: text, savedAt: Date.now(), source: "page" });
+    const savedAt = Date.now();
+    await db.collection("debug").add({ json: text, savedAt, source: "page" });
     const snap = await db.collection("debug").orderBy("savedAt", "desc").get();
     for (const d of snap.docs.slice(DEBUG_KEEP)) await db.collection("debug").doc(d.id).delete();
-    return true;
+    return savedAt;
   } catch {
-    return false;
+    return null;
   }
 }
+
+/** A saved copy's time, to the second with the date, as the list and the messages give it. */
+const keptTime = (savedAt: number) => new Date(savedAt).toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
 
 /** The copies of debug info the shared database keeps, newest first (none without it). */
 async function keptDebug(): Promise<{ json: string; savedAt: number }[]> {
@@ -3065,7 +3070,7 @@ async function keptDebug(): Promise<{ json: string; savedAt: number }[]> {
 
 /** A saved copy's line in the list: when it was saved, to the second with the date, and on what. */
 function keptLabel(k: { json: string; savedAt: number }): string {
-  const when = new Date(k.savedAt).toLocaleString([], { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" });
+  const when = keptTime(k.savedAt);
   let on = "";
   try {
     const agent: string = JSON.parse(k.json).device?.agent ?? "";
@@ -3128,8 +3133,9 @@ async function copyDebug() {
     if (copied) field.hidden = true;
   }
   const kept = await keepDebug(text);
-  if (copied) setMessage(kept ? "Debug info copied, and saved for Claude" : "Debug info copied", "ok");
-  else setMessage(kept ? "Debug info saved for Claude. Select and copy it to paste it too" : "Select and copy the debug info", kept ? "ok" : "info");
+  const at = kept === null ? "" : keptTime(kept);
+  if (copied) setMessage(kept !== null ? `Debug info copied, and saved for Claude at ${at}` : "Debug info copied", "ok");
+  else setMessage(kept !== null ? `Debug info saved for Claude at ${at}. Select and copy it to paste it too` : "Select and copy the debug info", kept !== null ? "ok" : "info");
   render();
 }
 

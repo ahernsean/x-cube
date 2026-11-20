@@ -1347,7 +1347,7 @@ labTest(
       await page.evaluate(() => (document.getElementById("message").textContent = ""));
       if (await page.$eval("#info-pop", (e) => e.hidden)) await page.click("#info-btn");
       await page.click("#copy-debug");
-      await page.waitForFunction(() => /saved for Claude/.test(document.getElementById("message").textContent), null, { timeout: 5000 });
+      await page.waitForFunction(() => /saved for Claude at \w{3} \d+, \d{4}, \d+:\d\d:\d\d/.test(document.getElementById("message").textContent), null, { timeout: 5000 });
     }
     const kept = await page.evaluate(() => [...window.__fakeDb.debug.values()].map((d) => ({ edit: JSON.parse(d.json).edit?.removed?.join(), source: d.source, at: typeof d.savedAt })));
     check(kept.length === 20 && kept.every((d) => d.edit === "Fx.U" && d.source === "page" && d.at === "number"), `copies are saved for Claude, the newest 20 kept (${kept.length}, ${JSON.stringify(kept[0])})`);

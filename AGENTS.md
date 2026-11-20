@@ -292,7 +292,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   With the shared database it also keeps a copy there, in the `debug` collection (`json`,
   `savedAt`, `source`; the newest 20, `DEBUG_KEEP`), where an agent reads it with the
   artifact's database tools: the owner can say "look at the latest debug info" instead of
-  pasting it ("Debug info copied, and saved for Claude").
+  pasting it ("Debug info copied, and saved for Claude at Nov 20, 2026, 1:19:52 AM", the
+  time as the saved copies' list gives it).
   **Paste debug info**, beside it, puts the position, the view and the edit back (the
   probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
   won't read it, from text pasted into the field that opens. Beside it, a clock (shown
