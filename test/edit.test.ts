@@ -145,7 +145,7 @@ test("edit: a one-sticker cubelet's wrong color names its sticker, circled", () 
   assert.deepEqual(p.marks, [{ slot: at(1, 1, 1), face: U }]);
 });
 
-test("edit: where no color fits a sticker, or a corner's colors go around it the wrong way, two stickers trade places, or two are recolored", () => {
+test("edit: where no color fits a sticker, or a corner's colors go around it the wrong way, two stickers trade places, or another is named", () => {
   // From a play-tester's edit: an X-face corner with yellow facing away from the core and
   // orange and blue on its sides. No color there fits beside orange and blue: the yellow
   // belongs on a side. Trading it with either is a real cubelet, and the counts can't choose
@@ -173,7 +173,7 @@ test("edit: where no color fits a sticker, or a corner's colors go around it the
   two[at(-1, 1, 2) * 6 + U] = UNPAINTED;
   assert.equal(
     fitColors(solved, two).problems.find((q) => q.slots.includes(s))!.text,
-    "This cubelet's yellow sticker has the wrong color. Its orange sticker should maybe be white, and its yellow sticker orange. Or its orange sticker yellow, and its yellow sticker red. Or its blue sticker white, and its yellow sticker blue. Or its blue sticker yellow, and its yellow sticker green",
+    "This cubelet's yellow sticker has the wrong color, and so does either its orange or blue sticker",
   );
 });
 

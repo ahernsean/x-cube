@@ -90,6 +90,8 @@ export interface Hint {
   /** The one spot the hint is about, when the problem names several. */
   slots?: number[];
   marks?: { slot: number; face: number }[];
+  /** Said on to the problem's sentence after a comma, not as a sentence of its own. */
+  clause?: boolean;
 }
 
 /** Direction pointing away from the core for an outer (extension) slot, or -1. */
@@ -162,7 +164,7 @@ const problem = (text: string, slots: number[]): Problem => ({ text, slots });
 /** A problem whose text ends in `hint`, if any (else `fallback`), haloing and marking where the hint means. */
 const hinted = (text: string, slots: number[], hint: Hint | null, fallback?: string): Problem => {
   const end = hint?.text ?? fallback;
-  const out: Problem = { text: end ? `${text}. ${end}` : text, slots: hint?.slots ?? slots };
+  const out: Problem = { text: end ? `${text}${hint?.clause ? "," : "."} ${end}` : text, slots: hint?.slots ?? slots };
   if (hint?.marks) out.marks = hint.marks;
   return out;
 };
@@ -763,44 +765,37 @@ function sideHint(shape: State, colors: FaceColors, s: number, out: number, c: C
   const names = can.map((x) => COLOR_NAME[x]);
   // No color fits there beside the others: the white or yellow belongs on another of its
   // sides, so the colors trade places (a play-tester tried every color on the sticker).
-  if (!can.length) return swapHint(shape, colors, s, out) ?? twoHint(shape, colors, s, out, c);
+  if (!can.length) return swapHint(shape, colors, s, out) ?? twoHint(shape, colors, s, out);
   if (can.length === sides.length) return { text: `${its} must be ${listColors(sides, "or")}` };
   return { text: can.length === 1 ? `${its} should probably be ${names[0]}` : `${its} should maybe be ${listColors(can, "or")}` };
 }
 
 /**
  * Where neither a color nor a trade fixes a white or yellow sticker facing away from the
- * core, another of its stickers is wrong too. The fixes that recolor it and one other, as
- * some cubelet of its kind turned as the rule allows, each said whole ("Its orange sticker
- * should maybe be white, and its yellow sticker orange. Or ..."); past TWO_STICKER_OPTIONS,
- * which of its stickers they recolor, by color.
+ * core, another of its stickers is certainly wrong too: the ones some fix recoloring it and
+ * one other makes a cubelet of its kind, turned as the rule allows, by color, said on to the
+ * problem's own sentence ("..., and so does either its orange or blue sticker"). Spelling
+ * out each fix's colors made four sentences a play-tester found overwhelming; the puzzle in
+ * hand shows what the colors should be.
  */
-/** At most this many two-sticker fixes are spelled out: on a corner they come in fours (either side sticker white or yellow). */
-const TWO_STICKER_OPTIONS = 4;
-function twoHint(shape: State, colors: FaceColors, s: number, out: number, c: Color): Hint {
+function twoHint(shape: State, colors: FaceColors, s: number, out: number): Hint {
   const sides: Color[] = ["G", "B", "R", "O"];
   const others = [0, 1, 2, 3, 4, 5].filter((d) => d !== out && !!colors[s * 6 + d] && colors[s * 6 + d] !== UNPAINTED);
-  const fixes: { face: number; to: Color; out: Color }[] = [];
-  for (const d of others)
-    for (const to of COLOR_ORDER)
-      for (const x of sides) {
-        if (to === colors[s * 6 + d]) continue;
-        const tried = colors.slice();
-        tried[s * 6 + d] = to;
-        tried[s * 6 + out] = x;
-        if (candidates(shape, tried, s, "outward").length) fixes.push({ face: d, to, out: x });
-      }
-  const name = (d: number) => COLOR_NAME[colors[s * 6 + d] as Color];
-  if (fixes.length && fixes.length <= TWO_STICKER_OPTIONS) {
-    const say = (f: (typeof fixes)[0]) => `its ${name(f.face)} sticker ${COLOR_NAME[f.to]}, and its ${COLOR_NAME[c]} sticker ${COLOR_NAME[f.out]}`;
-    const [first, ...more] = fixes;
-    const lead = `Its ${name(first.face)} sticker should ${fixes.length === 1 ? "probably" : "maybe"} be ${COLOR_NAME[first.to]}, and its ${COLOR_NAME[c]} sticker ${COLOR_NAME[first.out]}`;
-    return { text: [lead, ...more.map((f) => `Or ${say(f)}`)].join(". ") };
-  }
-  const faces = [...new Set(fixes.map((f) => f.face))];
-  if (faces.length === 1) return { text: `Its ${name(faces[0])} sticker has the wrong color too` };
-  const named = (faces.length ? faces : others).map(name);
-  return { text: named.length === 1 ? `Its ${named[0]} sticker has the wrong color too` : `Its ${named.slice(0, -1).join(", ")} or ${named[named.length - 1]} sticker has the wrong color too` };
+  const wrong = others.filter((d) =>
+    COLOR_ORDER.some(
+      (to) =>
+        to !== colors[s * 6 + d] &&
+        sides.some((x) => {
+          const tried = colors.slice();
+          tried[s * 6 + d] = to;
+          tried[s * 6 + out] = x;
+          return candidates(shape, tried, s, "outward").length > 0;
+        }),
+    ),
+  );
+  const named = (wrong.length ? wrong : others).map((d) => COLOR_NAME[colors[s * 6 + d] as Color]);
+  const list = named.length <= 2 ? named.join(" or ") : `${named.slice(0, -1).join(", ")}, or ${named[named.length - 1]}`;
+  return { text: `and so does ${named.length === 1 ? "" : "either "}its ${list} sticker`, clause: true };
 }
 
 /**
