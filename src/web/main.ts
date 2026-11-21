@@ -3265,22 +3265,21 @@ async function toggleKeptDebug() {
   b.setAttribute("aria-expanded", "true");
 }
 
-/** Puts the clear button back to its resting label, and hides it with no list. */
+/** Puts the clear button back to its resting ✕. */
 let debugClearTimer = 0;
 function disarmDebugClear() {
   clearTimeout(debugClearTimer);
   const c = $("debug-clear");
   c.classList.remove("armed");
-  c.textContent = "Clear saved debug info";
-  if ($("debug-list").hidden) c.hidden = true;
+  c.textContent = "✕";
 }
 
-/** The first tap asks "Clear all?", a second within 3 seconds deletes every saved copy. */
+/** The first tap asks "Clear?", a second within 3 seconds deletes every saved copy. */
 async function clearDebugClick() {
   const c = $("debug-clear");
   if (!c.classList.contains("armed")) {
     c.classList.add("armed");
-    c.textContent = "Clear all saved copies?";
+    c.textContent = "Clear?";
     debugClearTimer = window.setTimeout(disarmDebugClear, 3000);
     return;
   }
