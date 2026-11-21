@@ -259,6 +259,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **3D view:** three.js r186, loaded as ES modules through an import map and a shim that
   exposes a global `THREE`. Color management is off and output is linear, to keep the
   original look; light intensities are scaled by pi for newer three.js light units.
+- **Drawing on demand:** the views are drawn only when something in them may have changed
+  (`requestDraw`): while something moves (a turn, a settle, a gesture, the view turning,
+  the guide's flying cubelets, the halo's arrow), when the view's orientation or size
+  changes, after any input event, and when a function that changes what is shown asks
+  (`render`, `syncMeshes`, `renderEdit`, `drawEdit`, the guide's, `applyShading`, any probe
+  call). At rest nothing is drawn, which spares a phone's battery.
 - **Views:** Home (three-quarter), Front, Back, Left, Right, Up, Down. The side views tip
   the top 16.6 degrees toward the viewer (from the owner's saved view).
 - **Edge labels:** the six face letters, each placed where that face's axis, as projected on

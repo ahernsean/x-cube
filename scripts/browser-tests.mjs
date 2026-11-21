@@ -701,10 +701,61 @@ labTest("drawing: the 3D view draws every sticker in place and in the model's co
   check(aimed.length === 0, `sticker positions point at their stickers${aimed.length ? ": " + aimed.join("; ") : ""}`);
 });
 
+labTest("drawing: the views are drawn only when something in them changes", async ({ page, check, probe, settle }) => {
+  // At rest nothing is drawn; a turn draws until it settles, and the last frame shows it.
+  await settle();
+  const frames = async (ms) => {
+    const a = await probe("drawCount");
+    await page.waitForTimeout(ms);
+    const b = await probe("drawCount");
+    return { view: b.view - a.view, flat: b.flat - a.flat };
+  };
+  const rest = await frames(600);
+  check(rest.view === 0 && rest.flat === 0, `at rest nothing is drawn (${JSON.stringify(rest)} frames in 0.6 s)`);
+  await page.click(`[data-tab="turn"]`);
+  await page.waitForTimeout(500);
+  const before = (await probe("drawCount")).view;
+  await page.click(`.mv[data-move="R"]`);
+  await settle();
+  const turned = (await probe("drawCount")).view - before;
+  check(turned > 0, `a turn is drawn (${turned} frames)`);
+  const after = await frames(600);
+  check(after.view === 0, `once it has settled, nothing more is drawn (${after.view} frames in 0.6 s)`);
+  // What was last drawn is what a fresh frame draws: nothing was left out of date.
+  const shot = async () => (await page.locator("#scene").screenshot()).toString("base64");
+  const last = await shot();
+  await probe("state"); // any probe call asks for a frame
+  await page.waitForTimeout(300);
+  const fresh = await shot();
+  // Compositing the labels over the view can differ by a level or two from one screenshot
+  // to the next; a frame left out of date differs by far more.
+  const differ = await page.evaluate(async ([a, b]) => {
+    const pixels = async (b64) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = img.width;
+      c.height = img.height;
+      const g = c.getContext("2d");
+      g.drawImage(img, 0, 0);
+      return g.getImageData(0, 0, c.width, c.height).data;
+    };
+    const [p, q] = [await pixels(a), await pixels(b)];
+    let n = 0;
+    for (let i = 0; i < p.length; i += 4) if (Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]) > 30) n++;
+    return n;
+  }, [last, fresh]);
+  check(differ === 0, `the last frame drawn after the turn is the same as a fresh one (${differ} pixels differ)`);
+});
+
 labTest("drawing: the flat view is drawn only while it is on screen", async ({ page, check, probe, settle }) => {
   // On a phone the Flat panel sits beside the others in the carousel, keeping its size, so
-  // only whether it is in sight can tell it is hidden.
+  // only whether it is in sight can tell it is hidden. A turn draws the views, so it is
+  // made with the Start panel showing.
   await settle();
+  await page.evaluate(() => document.querySelector(`.mv[data-move="U"]`).click());
+  await page.waitForTimeout(150);
   const flatFrames = async () => {
     const a = (await probe("drawCount")).flat;
     await page.waitForTimeout(500);
@@ -712,10 +763,11 @@ labTest("drawing: the flat view is drawn only while it is on screen", async ({ p
   };
   const hidden = await flatFrames();
   check(hidden === 0, `with the Start panel showing, the flat view isn't drawn (${hidden} frames in half a second)`);
+  const before = (await probe("drawCount")).flat;
   await page.click(`[data-tab="flat"]`);
   await page.waitForTimeout(800);
-  const shown = await flatFrames();
-  check(shown > 0, `with the Flat panel showing, it is (${shown} frames in half a second)`);
+  const shown = (await probe("drawCount")).flat - before;
+  check(shown > 0, `once the Flat panel shows, it is drawn (${shown} frames)`);
   // Each of the six cameras draws only the squares and glow bands facing it. Drawing all
   // 372 squares (62 cubelets, six faces each) for each camera took 2,232 calls by itself.
   const { flatCalls } = await probe("drawCount");

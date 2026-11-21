@@ -543,6 +543,7 @@ function placeMesh(g: any, slot: number, ori: number) {
 }
 
 function syncMeshes(st: State) {
+  requestDraw();
   for (let s = 0; s < NUM_SLOTS; s++) {
     const id = st.occ[s];
     if (id < 0) continue;
@@ -647,6 +648,7 @@ function gridNeighbors(st: State, slot: number, ori: number, d: number): number[
  * tiles (`perFlat`, neighbor darkness).
  */
 function applyToCubelet(id: number, per: (number[] | null)[], perFlat: (number[] | null)[]) {
+  requestDraw();
   for (const f of aoFaces[id] ?? []) {
     const flat = f.view === "flat";
     const c = (flat ? perFlat : per)[f.d];
@@ -897,6 +899,7 @@ function shadeFlat<T>(mat: T): T {
  * (see flatNeighbors), which its material turns into shading pixel by pixel.
  */
 function applyShading(f: AoFace, vals: number[]) {
+  requestDraw();
   f.cur = vals.slice();
   const flat = f.view === "flat";
   if (flat) {
@@ -1301,6 +1304,7 @@ function applyGlowSettings() {
 }
 
 function resize() {
+  requestDraw();
   const canvas = renderer.domElement as HTMLCanvasElement;
   const w = canvas.clientWidth || 300;
   const h = canvas.clientHeight || 300;
@@ -1409,6 +1413,28 @@ function faceCenterColor(st: State, d: number): Color | null {
 let view3dSection: HTMLElement | null = null;
 /** Wide screens show the panels in a column (and sections collapse); phones, a carousel. */
 const WIDE = window.matchMedia("(min-width: 900px)");
+
+/**
+ * The views are drawn only when something in them may have changed: while something moves
+ * (a turn, a settle, a gesture, a view turning, the guide's flying cubelets, the halo's
+ * arrow), when the view's orientation or size changes, and after `requestDraw`, which the
+ * functions that change what is shown call, as does every input event (a backstop). At
+ * rest nothing is drawn, which spares a phone's battery.
+ */
+let drawRequested = true;
+function requestDraw() {
+  drawRequested = true;
+}
+let drawnViewKey = "";
+let arrowWasShown = false;
+for (const type of ["pointerdown", "pointerup", "pointercancel", "click", "keydown", "input", "change", "wheel", "touchstart", "touchend"]) {
+  document.addEventListener(type, requestDraw, { capture: true, passive: true });
+}
+document.addEventListener("pointermove", (e) => (e.buttons || e.pointerType === "touch") && requestDraw(), { capture: true, passive: true });
+for (const type of ["resize", "pageshow", "focus"]) window.addEventListener(type, requestDraw);
+document.addEventListener("visibilitychange", requestDraw);
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", requestDraw);
+
 function frame() {
   view3dSection ??= document.querySelector<HTMLElement>("[data-sec=view3d]");
   if (tween) {
@@ -1436,20 +1462,32 @@ function frame() {
       r.copy.quaternion.copy(r.turns[k]).slerp(r.turns[k + 1], at - k);
     }
   }
+  const moving = !!(tween || anim || queue.length || settle || live || shapeAnim || guideArrows?.visible);
   stepShapeAnim();
-  placeHidePill();
   placeHaloArrow();
-  showMarks();
-  const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
+  // The arrow's chevrons run along it while it shows, and it fades in and out.
+  const arrowShown = !!haloArrow?.visible;
+  const arrowMoving = arrowShown ? !reduceMotionView() || haloArrowFade.value !== haloArrowFade.target : arrowWasShown;
+  arrowWasShown = arrowShown;
   if (showTarget) updateShowButton();
-  if (view3dOpen) updateCompass();
-  renderNetAnimation();
-  if (view3dOpen) {
-    renderer.render(scene, camera);
-    drawCount.view++;
-    if (edit?.highlight) {
-      const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-      drawOutline(camera, null, size.x, size.y, renderer.getPixelRatio());
+  const canvas = renderer.domElement as HTMLCanvasElement;
+  const q = pivot.quaternion;
+  const viewKey = `${q.x},${q.y},${q.z},${q.w}|${canvas.clientWidth}x${canvas.clientHeight}`;
+  if (moving || arrowMoving || drawRequested || viewKey !== drawnViewKey) {
+    drawRequested = false;
+    drawnViewKey = viewKey;
+    placeHidePill();
+    showMarks();
+    const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
+    if (view3dOpen) updateCompass();
+    renderNetAnimation();
+    if (view3dOpen) {
+      renderer.render(scene, camera);
+      drawCount.view++;
+      if (edit?.highlight) {
+        const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+        drawOutline(camera, null, size.x, size.y, renderer.getPixelRatio());
+      }
     }
   }
   requestAnimationFrame(frame);
@@ -1978,6 +2016,7 @@ function initNetAnimation() {
   netRenderer.setClearColor(0x000000, 0);
   new IntersectionObserver((entries) => {
     for (const e of entries) netOnScreen = e.isIntersecting;
+    requestDraw();
   }).observe(canvas);
   // [face, direction toward the viewer, screen-up direction] in the puzzle's own frame
   const faces: [string, Vec3, number[]][] = [
@@ -2561,6 +2600,7 @@ function escapeHtml(s: string) {
 }
 
 function render() {
+  requestDraw();
   const st = app.current;
   refreshGuide();
   renderInfo();
@@ -3998,6 +4038,7 @@ function endShapeAnim() {
 
 /** Draws the shown state, with every face that differs from the paint repainted on top. */
 function drawEdit() {
+  requestDraw();
   if (!edit || !paintMaterial) return;
   for (const m of edit.painted) m.material = m.userData.ownMaterial;
   edit.painted = [];
@@ -4289,6 +4330,7 @@ function guideHolds(g: Guide): boolean {
 }
 
 function clearGuide() {
+  requestDraw();
   guide = null;
   drawGuide();
 }
@@ -4309,6 +4351,7 @@ function guideFaces(g: Guide): [number, number][] {
   return g.arrows.length ? g.arrows.flatMap((p) => [[p.from, p.fromDir], [p.to, p.toDir]] as [number, number][]) : [...g.focus].flatMap((id) => [0, 1, 2, 3, 4, 5].map((d) => [app.current.occ.indexOf(id), d] as [number, number]).filter(([s, d]) => isExposed(app.current, s, d) && app.current.colorAt(s, d)));
 }
 function showGuide() {
+  requestDraw();
   if (!guide) return;
   if (app.cursor !== guide.start) jump(guide.start);
   showFaces(app.current, guideFaces(guide));
@@ -6152,6 +6195,7 @@ function clearGlowPaint() {
 }
 
 function renderEdit() {
+  requestDraw();
   endShapeAnim();
   renderInfo();
   $("edit-bar").hidden = !edit;
@@ -6720,6 +6764,15 @@ function installProbe() {
       return [0, 1, 2, 3, 4].map((row) => [0, 1, 2, 3, 4].map((col) => probeDecode(ids, colors, n, n, toPx(col - 2), toPx(row - 2))));
     },
   };
+  // Tests change what is shown through the probe, with no input event, so every call asks
+  // for a frame to be drawn.
+  const probe = (window as any).xcubeProbe;
+  for (const [k, f] of Object.entries(probe))
+    if (typeof f === "function" && k !== "idle" && k !== "drawCount")
+      probe[k] = function (this: any, ...a: any[]) {
+        requestDraw();
+        return (f as any).apply(this, a);
+      };
 }
 
 function hotBoot() {
