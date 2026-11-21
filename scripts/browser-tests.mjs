@@ -1494,7 +1494,7 @@ labTest(
     await page.click("#debug-clear");
     await page.waitForFunction(() => window.__fakeDb.debug.size === 0 && /cleared/.test(document.getElementById("message").textContent), null, { timeout: 5000 });
     const gone = await page.evaluate(() => ({ list: document.getElementById("debug-list").hidden, btn: document.getElementById("debug-clear").hidden, msg: document.getElementById("message").textContent }));
-    check(asked.armed && /\?$/.test(asked.text) && before > 0 && gone.list && gone.btn && /cleared/.test(gone.msg), `Clear saved debug info asks first, then deletes every saved copy (${JSON.stringify({ asked, before, gone })})`);
+    check(asked.armed && asked.text === "Clear?" && before > 0 && gone.list && gone.btn && /cleared/.test(gone.msg), `Clear saved debug info asks first, then deletes every saved copy (${JSON.stringify({ asked, before, gone })})`);
   },
   {
     // A stand-in for the shared database: collections of documents in memory.

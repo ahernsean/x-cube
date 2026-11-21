@@ -3261,17 +3261,15 @@ async function toggleKeptDebug() {
   }
   list.hidden = false;
   disarmDebugClear();
-  $("debug-clear").hidden = !kept.length;
   b.setAttribute("aria-expanded", "true");
 }
 
-/** Puts the clear button back to its resting ✕. */
+/** Puts the clear button back to its resting icon. */
 let debugClearTimer = 0;
 function disarmDebugClear() {
   clearTimeout(debugClearTimer);
   const c = $("debug-clear");
   c.classList.remove("armed");
-  c.textContent = "✕";
 }
 
 /** The first tap asks "Clear?", a second within 3 seconds deletes every saved copy. */
@@ -3279,7 +3277,6 @@ async function clearDebugClick() {
   const c = $("debug-clear");
   if (!c.classList.contains("armed")) {
     c.classList.add("armed");
-    c.textContent = "Clear?";
     debugClearTimer = window.setTimeout(disarmDebugClear, 3000);
     return;
   }
@@ -3478,6 +3475,13 @@ function bindUI() {
   $("paste-debug").addEventListener("click", () => void pasteDebug());
   $("debug-history").addEventListener("click", () => void toggleKeptDebug());
   $("debug-clear").addEventListener("click", () => void clearDebugClick());
+  // The trash icon beside the clock shows while the list is open and holds copies.
+  const syncDebugClear = () => {
+    const list = $("debug-list");
+    $("debug-clear").hidden = list.hidden || !list.querySelector("[role=menuitem]");
+    if ($("debug-clear").hidden) disarmDebugClear();
+  };
+  new MutationObserver(syncDebugClear).observe($("debug-list"), { attributes: true, attributeFilter: ["hidden"] });
   $("debug-text").addEventListener("input", () => {
     const field = $("debug-text") as HTMLTextAreaElement;
     if (!field.readOnly && field.value.trim()) putBackDebug(field.value);
