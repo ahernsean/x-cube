@@ -1390,6 +1390,7 @@ function frame() {
   renderNetAnimation();
   if (view3dOpen) {
     renderer.render(scene, camera);
+    drawCount.view++;
     if (edit?.highlight) {
       const size = renderer.getDrawingBufferSize(new THREE.Vector2());
       drawOutline(camera, null, size.x, size.y, renderer.getPixelRatio());
@@ -1902,6 +1903,14 @@ function finishAnim() {
 
 const NET_LAYER = 2;
 let netRenderer: any = null;
+/**
+ * Whether any of the flat view is on screen. Off while another panel shows in the phone's
+ * carousel (the Flat panel keeps its size there, scrolled aside), and while it is scrolled
+ * out of sight on a wide screen; the flat view is drawn only while it is on.
+ */
+let netOnScreen = false;
+/** Frames drawn, for the tests: the 3D view's, and the flat view's (all six faces as one). */
+const drawCount = { view: 0, flat: 0 };
 const netCams: { cam: any; face: string; view: Vec3; up: number[] }[] = [];
 
 function initNetAnimation() {
@@ -1911,6 +1920,9 @@ function initNetAnimation() {
   netRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   netRenderer.setScissorTest(true);
   netRenderer.setClearColor(0x000000, 0);
+  new IntersectionObserver((entries) => {
+    for (const e of entries) netOnScreen = e.isIntersecting;
+  }).observe(canvas);
   // [face, direction toward the viewer, screen-up direction] in the puzzle's own frame
   const faces: [string, Vec3, number[]][] = [
     ["U", [0, 1, 0], [0, 0, -1]],
@@ -1949,7 +1961,7 @@ function aimNetCam(nc: (typeof netCams)[number], q: any) {
 }
 
 function renderNetAnimation() {
-  if (!netRenderer) return;
+  if (!netRenderer || !netOnScreen) return;
   const net = $("net");
   const canvas = $("net-canvas");
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -1971,6 +1983,7 @@ function renderNetAnimation() {
     netRenderer.setScissor(x, y, fw, el.offsetHeight);
     netRenderer.render(scene, cam);
   }
+  drawCount.flat++;
 }
 
 function tickAnimation() {
@@ -6285,6 +6298,8 @@ function installProbe() {
     /** The turns of the last shuffle (the page doesn't show them). */
     shuffleTurns: () => shuffleAlg,
     /** The step guide: its step, the slots (now) of the cubelets it applies to, how many stickers are drawn gray at each level, and the arrows showing. */
+    /** Frames drawn so far: the 3D view's and the flat view's. */
+    drawCount: () => ({ ...drawCount }),
     /** Geometries the renderer holds right now, to check that the guide frees its own. */
     geometries: () => renderer.info.memory.geometries,
     guide: () => {

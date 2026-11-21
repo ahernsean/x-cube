@@ -701,6 +701,23 @@ labTest("drawing: the 3D view draws every sticker in place and in the model's co
   check(aimed.length === 0, `sticker positions point at their stickers${aimed.length ? ": " + aimed.join("; ") : ""}`);
 });
 
+labTest("drawing: the flat view is drawn only while it is on screen", async ({ page, check, probe, settle }) => {
+  // On a phone the Flat panel sits beside the others in the carousel, keeping its size, so
+  // only whether it is in sight can tell it is hidden.
+  await settle();
+  const flatFrames = async () => {
+    const a = (await probe("drawCount")).flat;
+    await page.waitForTimeout(500);
+    return (await probe("drawCount")).flat - a;
+  };
+  const hidden = await flatFrames();
+  check(hidden === 0, `with the Start panel showing, the flat view isn't drawn (${hidden} frames in half a second)`);
+  await page.click(`[data-tab="flat"]`);
+  await page.waitForTimeout(800);
+  const shown = await flatFrames();
+  check(shown > 0, `with the Flat panel showing, it is (${shown} frames in half a second)`);
+});
+
 labTest("drawing: a misdrawn cubelet is caught in both views", async ({ page, check, sweep3d, sweepFlat }) => {
   // Draw two cubelets in each other's places, and turn another a quarter turn, and both
   // views must report exactly those cubelets.
