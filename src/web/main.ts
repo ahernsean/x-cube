@@ -3201,7 +3201,8 @@ async function clearKeptDebug(): Promise<boolean> {
   if (storeKind !== "shared" || !db) return false;
   try {
     const snap = await db.collection("debug").get();
-    for (const d of snap.docs) await db.collection("debug").doc(d.id).delete();
+    // All at once: one at a time, the wait grows with the number of copies.
+    await Promise.all(snap.docs.map((d: any) => db.collection("debug").doc(d.id).delete()));
     return true;
   } catch {
     return false;
@@ -3244,6 +3245,15 @@ async function toggleKeptDebug() {
     return;
   }
   $("debug-text").hidden = true;
+  await fillKeptDebug();
+  list.hidden = false;
+  disarmDebugClear();
+  b.setAttribute("aria-expanded", "true");
+}
+
+/** Lists the saved copies, newest first, in the clock's list. */
+async function fillKeptDebug() {
+  const list = $("debug-list");
   const kept = await keptDebug();
   list.replaceChildren();
   if (!kept.length) {
@@ -3259,34 +3269,50 @@ async function toggleKeptDebug() {
     item.addEventListener("click", () => putBackDebug(k.json));
     list.append(item);
   }
-  list.hidden = false;
-  disarmDebugClear();
-  b.setAttribute("aria-expanded", "true");
 }
 
-/** Puts the clear button back to its resting icon. */
+/** Puts the clear button back to its resting icon, and the list's rows back in use. */
 let debugClearTimer = 0;
 function disarmDebugClear() {
   clearTimeout(debugClearTimer);
-  const c = $("debug-clear");
-  c.classList.remove("armed");
+  const c = $("debug-clear") as HTMLButtonElement;
+  c.classList.remove("armed", "clearing", "failed");
+  c.disabled = false;
+  $("debug-list").classList.remove("clearing");
 }
 
-/** The first tap asks "Clear?", a second within 3 seconds deletes every saved copy. */
+/** Shows the clear button in one of its states, with its words beside the icon. */
+function debugClearState(state: "armed" | "clearing" | "failed", words: string) {
+  disarmDebugClear();
+  const c = $("debug-clear") as HTMLButtonElement;
+  c.classList.add(state);
+  c.querySelector(".ask")!.textContent = words;
+}
+
+/**
+ * The first tap asks "Clear?"; a second within 3 seconds deletes every saved copy. While
+ * the deletes run it reads "Clearing…" and the list's rows are set aside; the list closing
+ * is the confirmation, and if the database refuses, it says so where it was tapped.
+ */
 async function clearDebugClick() {
-  const c = $("debug-clear");
+  const c = $("debug-clear") as HTMLButtonElement;
   if (!c.classList.contains("armed")) {
-    c.classList.add("armed");
+    debugClearState("armed", "Clear?");
     debugClearTimer = window.setTimeout(disarmDebugClear, 3000);
     return;
   }
-  disarmDebugClear();
+  debugClearState("clearing", "Clearing…");
+  c.disabled = true;
+  $("debug-list").classList.add("clearing");
   const ok = await clearKeptDebug();
-  $("debug-list").hidden = true;
-  c.hidden = true;
-  $("debug-history").setAttribute("aria-expanded", "false");
-  setMessage(ok ? "Saved debug info cleared" : "Couldn't clear the saved debug info", ok ? "ok" : "error");
-  render();
+  if (ok) {
+    $("debug-list").hidden = true;
+    $("debug-history").setAttribute("aria-expanded", "false");
+    return;
+  }
+  await fillKeptDebug();
+  debugClearState("failed", "Not cleared");
+  debugClearTimer = window.setTimeout(disarmDebugClear, 4000);
 }
 
 async function copyDebug() {

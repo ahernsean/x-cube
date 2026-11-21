@@ -109,9 +109,14 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .debug-list .muted { font-size: 12px; padding: 6px 8px; color: var(--muted, gray); }
 .debug-clear { display: inline-flex; align-items: center; background: none; border: 0; padding: 0 2px; color: var(--accent); cursor: pointer; vertical-align: middle; line-height: 0; }
 .debug-clear svg { width: 18px; height: 18px; }
-.debug-clear.armed { color: var(--danger, #c0392b); }
+.debug-clear.armed, .debug-clear.failed { color: var(--bad); }
+.debug-clear.clearing { color: var(--muted); cursor: default; }
+/* Clearing… and Not cleared take the icon's place, so the row stays one line on a phone. */
+.debug-clear.clearing svg, .debug-clear.failed svg { display: none; }
+.debug-clear.clearing .ask, .debug-clear.failed .ask { margin-left: 0; }
 .debug-clear .ask { display: none; font-size: 11px; font-weight: 600; line-height: 1; margin-left: 3px; }
-.debug-clear.armed .ask { display: inline; }
+.debug-clear.armed .ask, .debug-clear.clearing .ask, .debug-clear.failed .ask { display: inline; }
+.debug-list.clearing { opacity: 0.4; pointer-events: none; }
 .debug-clear[hidden] { display: none; }
 .debug-text { display: block; width: 100%; box-sizing: border-box; height: 8em; font: 16px ui-monospace, monospace; }
 .debug-text[hidden] { display: none; }

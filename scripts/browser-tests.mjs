@@ -1489,14 +1489,25 @@ labTest(
     await page.waitForSelector("#debug-list:not([hidden]) button", { timeout: 5000 });
     const named = await page.$$eval("#debug-list button", (bs) => bs.slice(0, 2).map((b) => b.textContent.split(" · ")[1]));
     check(typeof touch === "number" && named.join() === "iPad,Mac", `debug info keeps the touch points, and a Mac with them is listed as an iPad (${JSON.stringify({ touch, named })})`);
-    // Clear saved debug info: the first tap asks, the second deletes every copy.
+    // Clear saved debug info: the first tap asks "Clear?"; the second reads "Clearing…",
+    // with the list set aside, while every copy is deleted at once; the list closing says
+    // it's done. If the database refuses, it says so beside the clock and keeps the list.
     await page.click("#debug-clear");
     const asked = await page.$eval("#debug-clear", (e) => ({ armed: e.classList.contains("armed"), text: e.textContent }));
     const before = await page.evaluate(() => window.__fakeDb.debug.size);
+    await page.evaluate(() => { window.__deleteFail = true; window.__deleteDelay = 300; window.__maxInFlight = 0; });
     await page.click("#debug-clear");
-    await page.waitForFunction(() => window.__fakeDb.debug.size === 0 && /cleared/.test(document.getElementById("message").textContent), null, { timeout: 5000 });
-    const gone = await page.evaluate(() => ({ list: document.getElementById("debug-list").hidden, btn: document.getElementById("debug-clear").hidden, msg: document.getElementById("message").textContent }));
-    check(asked.armed && asked.text === "Clear?" && before > 0 && gone.list && gone.btn && /cleared/.test(gone.msg), `Clear saved debug info asks first, then deletes every saved copy (${JSON.stringify({ asked, before, gone })})`);
+    const during = await page.evaluate(() => ({ text: document.getElementById("debug-clear").textContent, faded: document.getElementById("debug-list").classList.contains("clearing") }));
+    await page.waitForFunction(() => document.getElementById("debug-clear").classList.contains("failed"), null, { timeout: 5000 });
+    const failed = await page.evaluate(() => ({ text: document.getElementById("debug-clear").textContent, list: !document.getElementById("debug-list").hidden, faded: document.getElementById("debug-list").classList.contains("clearing"), left: window.__fakeDb.debug.size }));
+    check(asked.armed && asked.text === "Clear?" && during.text === "Clearing…" && during.faded && failed.text === "Not cleared" && failed.list && !failed.faded && failed.left === before, `if the database refuses, the clear says so beside the clock and keeps the list (${JSON.stringify({ asked, during, failed, before })})`);
+    await page.evaluate(() => { window.__deleteFail = false; window.__maxInFlight = 0; });
+    await page.click("#debug-clear");
+    await page.click("#debug-clear");
+    const clearing = await page.$eval("#debug-clear", (e) => e.textContent);
+    await page.waitForFunction(() => window.__fakeDb.debug.size === 0 && document.getElementById("debug-list").hidden, null, { timeout: 5000 });
+    const gone = await page.evaluate(() => ({ btn: document.getElementById("debug-clear").hidden, msg: document.getElementById("message").textContent, atOnce: window.__maxInFlight }));
+    check(clearing === "Clearing…" && gone.btn && !/clear/i.test(gone.msg) && gone.atOnce === before, `the clear deletes every copy at once, and the list closing is the confirmation (${JSON.stringify({ clearing, gone, before })})`);
   },
   {
     // A stand-in for the shared database: collections of documents in memory.
@@ -1527,7 +1538,21 @@ labTest(
             col(name).set(id, data);
             return { id };
           },
-          doc: (id) => ({ delete: async () => void col(name).delete(id) }),
+          // Deletes can be made slow (__deleteDelay ms) or refused (__deleteFail); __inFlight
+          // and __maxInFlight count how many run at once.
+          doc: (id) => ({
+            delete: async () => {
+              window.__inFlight = (window.__inFlight ?? 0) + 1;
+              window.__maxInFlight = Math.max(window.__maxInFlight ?? 0, window.__inFlight);
+              try {
+                await new Promise((r) => setTimeout(r, window.__deleteDelay ?? 0));
+                if (window.__deleteFail) throw new Error("refused");
+                col(name).delete(id);
+              } finally {
+                window.__inFlight--;
+              }
+            },
+          }),
         }),
       };
       window.__fakeDb = cols;
