@@ -343,8 +343,6 @@ function initScene(canvas: HTMLCanvasElement) {
   const plane = roundedSquare(0.82, 0.07);
   const mats = new Map<Color, any>();
   const dark = getComputedStyle(document.documentElement).getPropertyValue("--unstickered").trim() || "#2b2f2e";
-  // Subdivided so the flat view's narrow shading ramp has vertices to fall across.
-  const netPlane = new THREE.PlaneGeometry(0.92, 0.92, 16, 16);
   // Columns of vertices at the ends and where an open end is cut back to (GLOW_CUT).
   const glowPlane = new THREE.PlaneGeometry(1.0, GLOW_WIDTH, 3, 1);
   const gp = glowPlane.attributes.position;
@@ -367,10 +365,10 @@ function initScene(canvas: HTMLCanvasElement) {
   const netOccluderMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x141617) });
   const netMats = new Map<Color, any>();
   const netMatFor = (c: Color) => {
-    if (!netMats.has(c)) netMats.set(c, new THREE.MeshBasicMaterial({ color: STICKER[c], vertexColors: true }));
+    if (!netMats.has(c)) netMats.set(c, shadeFlat(new THREE.MeshBasicMaterial({ color: STICKER[c], vertexColors: true })));
     return netMats.get(c);
   };
-  const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark), vertexColors: true });
+  const netDarkMat = shadeFlat(new THREE.MeshBasicMaterial({ color: new THREE.Color(dark), vertexColors: true }));
   probeUnstickered = netDarkMat.color.getHex();
   const matFor = (c: Color) => {
     if (!mats.has(c)) {
@@ -394,7 +392,7 @@ function initScene(canvas: HTMLCanvasElement) {
       sticker.color = gray;
       stickerMats.push(sticker);
       applyGloss();
-      grayMats.set(key, { sticker, tile: new THREE.MeshBasicMaterial({ color: gray, vertexColors: true }), glow: [0, 1, 2, 3].map((open) => makeGlowMaterial(glowTex, gray, open)) });
+      grayMats.set(key, { sticker, tile: shadeFlat(new THREE.MeshBasicMaterial({ color: gray, vertexColors: true })), glow: [0, 1, 2, 3].map((open) => makeGlowMaterial(glowTex, gray, open)) });
     }
     return grayMats.get(key)!;
   };
@@ -417,7 +415,7 @@ function initScene(canvas: HTMLCanvasElement) {
         return m;
       },
       tile: (mat) => {
-        const m = new THREE.Mesh(withAoColors(netPlane), mat);
+        const m = new THREE.Mesh(flatSquareGeometry(), mat);
         m.layers.set(NET_LAYER);
         return m;
       },
@@ -473,7 +471,7 @@ function initScene(canvas: HTMLCanvasElement) {
     g.add(occluder);
     for (let d = 0; d < 6; d++) {
       const col = c.stickers[d];
-      const m = new THREE.Mesh(withAoColors(netPlane), col ? netMatFor(col) : netDarkMat);
+      const m = new THREE.Mesh(flatSquareGeometry(), col ? netMatFor(col) : netDarkMat);
       probeInfo.set(m, { id: c.id, d });
       if (col) tileMesh[c.id * 6 + d] = m;
       const [px, py, pz, rx, ry] = faceXform[d];
@@ -840,29 +838,87 @@ function flatBrightness(n: readonly number[], x: number, y: number) {
   return 1 - Math.max(n[0] * l * t, n[1] * r * t, n[2] * l * b, n[3] * r * b, n[4] * l, n[5] * r, n[6] * b, n[7] * t);
 }
 
+/** A flat-view square's width, in a cubelet's frame. */
+const FLAT_SQUARE = 0.92;
+
 /**
- * Write shading onto a face (any vertex layout): for a 3D face, four corner brightness
- * values blended across it; for a flat tile, neighbor darkness (see flatNeighbors).
+ * A flat-view square: two triangles. Its shading is worked out for each pixel from the
+ * eight neighbor darkness values (see flatNeighbors) it carries as attributes, the same at
+ * all four corners, so it needs no vertices inside it (`shadeFlat`).
+ */
+function flatSquareGeometry() {
+  const g = new THREE.PlaneGeometry(FLAT_SQUARE, FLAT_SQUARE, 1, 1);
+  g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(4 * 3).fill(1), 3));
+  g.setAttribute("flatAoA", new THREE.BufferAttribute(new Float32Array(4 * 3), 3));
+  g.setAttribute("flatAoB", new THREE.BufferAttribute(new Float32Array(4 * 3), 3));
+  g.setAttribute("flatAoC", new THREE.BufferAttribute(new Float32Array(4 * 2), 2));
+  return g;
+}
+
+/**
+ * Makes a material shade flat-view squares as `flatBrightness` does, pixel by pixel. On a
+ * geometry without the darkness attributes they read as zero, which leaves it unshaded.
+ */
+function shadeFlat<T>(mat: T): T {
+  const m = mat as any;
+  if (m.userData.shadeFlat) return mat;
+  m.userData.shadeFlat = true;
+  m.customProgramCacheKey = () => "shadeFlat";
+  m.onBeforeCompile = (sh: any) => {
+    const decl = "varying vec3 vFlatAoA;\nvarying vec3 vFlatAoB;\nvarying vec2 vFlatAoC;\nvarying vec2 vFlatXY;\n";
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", `#include <common>\nattribute vec3 flatAoA;\nattribute vec3 flatAoB;\nattribute vec2 flatAoC;\n${decl}`)
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>\nvFlatAoA = flatAoA;\nvFlatAoB = flatAoB;\nvFlatAoC = flatAoC;\nvFlatXY = clamp(position.xy / ${FLAT_SQUARE.toFixed(4)} + 0.5, 0.0, 1.0);`,
+      );
+    sh.fragmentShader = sh.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>\n${decl}float flatFall(float t) { if (t >= ${FLAT_AO_RAMP.toFixed(4)}) return 0.0; float u = t / ${FLAT_AO_RAMP.toFixed(4)}; return 1.0 - u * u * (3.0 - 2.0 * u); }\n`,
+      )
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        {
+          float l = flatFall(vFlatXY.x), r = flatFall(1.0 - vFlatXY.x), b = flatFall(vFlatXY.y), t = flatFall(1.0 - vFlatXY.y);
+          float dark = max(max(max(vFlatAoA.x * l * t, vFlatAoA.y * r * t), max(vFlatAoA.z * l * b, vFlatAoB.x * r * b)),
+                           max(max(vFlatAoB.y * l, vFlatAoB.z * r), max(vFlatAoC.x * b, vFlatAoC.y * t)));
+          diffuseColor.rgb *= 1.0 - dark;
+        }`,
+      );
+  };
+  return mat;
+}
+
+/**
+ * Write shading onto a face: for a 3D face (any vertex layout), four corner brightness
+ * values blended across it as vertex colors; for a flat-view square, its neighbor darkness
+ * (see flatNeighbors), which its material turns into shading pixel by pixel.
  */
 function applyShading(f: AoFace, vals: number[]) {
   f.cur = vals.slice();
   const flat = f.view === "flat";
+  if (flat) {
+    const g = f.mesh.geometry, a = g.attributes.flatAoA, b = g.attributes.flatAoB, c = g.attributes.flatAoC;
+    for (let i = 0; i < 4; i++) {
+      a.setXYZ(i, vals[0], vals[1], vals[2]);
+      b.setXYZ(i, vals[3], vals[4], vals[5]);
+      c.setXY(i, vals[6], vals[7]);
+    }
+    a.needsUpdate = b.needsUpdate = c.needsUpdate = true;
+    return;
+  }
   const col = f.mesh.geometry.attributes.color;
   const arr = col.array as Float32Array;
   const pos = f.mesh.geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const x = Math.max(0, Math.min(1, pos.getX(i) / f.extent + 0.5)); // 0 at -x, 1 at +x
     const y = Math.max(0, Math.min(1, pos.getY(i) / f.extent + 0.5)); // 0 at -y, 1 at +y
-    let v: number;
-    if (flat) {
-      v = flatBrightness(vals, x, y);
-    } else {
-      const u = ease(x), w = ease(y);
-      const top = vals[0] * (1 - u) + vals[1] * u;
-      const bottom = vals[2] * (1 - u) + vals[3] * u;
-      v = bottom * (1 - w) + top * w;
-    }
-    arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = v;
+    const u = ease(x), w = ease(y);
+    const top = vals[0] * (1 - u) + vals[1] * u;
+    const bottom = vals[2] * (1 - u) + vals[3] * u;
+    arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = bottom * (1 - w) + top * w;
   }
   col.needsUpdate = true;
 }
@@ -6577,10 +6633,9 @@ function installProbe() {
           const n = f.cur;
           if (n.some((v) => v > 0)) shaded++;
           if ((n[4] > 0 && n[5] > 0) || (n[6] > 0 && n[7] > 0)) channels++;
-          const a = f.mesh.geometry.attributes.color.array as Float32Array;
-          const pos = f.mesh.geometry.attributes.position;
-          for (let i = 0; i < pos.count; i++) {
-            const x = pos.getX(i) / f.extent + 0.5, y = pos.getY(i) / f.extent + 0.5, v = a[i * 3];
+          // The shading the square's material draws, at points 1/16 of the square apart.
+          for (let i = 0; i < 17 * 17; i++) {
+            const x = (i % 17) / 16, y = Math.floor(i / 17) / 16, v = flatBrightness(n, x, y);
             darkest = Math.min(darkest, v);
             const mid = (t: number) => Math.abs(t - 0.5) < 1e-6, at0 = (t: number) => Math.abs(t) < 1e-6, at1 = (t: number) => Math.abs(t - 1) < 1e-6;
             if (mid(y) && at0(x)) edgeErr = Math.max(edgeErr, Math.abs(v - (1 - n[4])));

@@ -1190,7 +1190,7 @@ labTest("edge glow: follows the cubelets while a layer turns, from where they ar
   check(restError === 0, `the glow at the start of every turn matches the glow at rest (${restError} bands differ)`);
 });
 
-labTest("shading: the flat view's bands come from nearer neighbors, and live shading at a turn's start matches the rest shading", async ({ check, probe, startFresh, play }) => {
+labTest("shading: the flat view's bands come from nearer neighbors, and live shading at a turn's start matches the rest shading", async ({ page, check, probe, startFresh, play, flip }) => {
   // Each nearer neighbor casts a band along the shared edge, at full darkness at the edge
   // and gone past the ramp. Checked in a scrambled position, which has recesses between
   // two walls: those show two bands with a clean middle, and no overlap (an inner corner)
@@ -1198,6 +1198,39 @@ labTest("shading: the flat view's bands come from nearer neighbors, and live sha
   await play("R U' F2 D B' L2 R' H S' M");
   const prof = await probe("flatShadeProfile");
   check(prof.shaded > 0 && prof.channels > 0 && prof.edgeErr < 1e-6 && prof.middle > 1 - 1e-6 && prof.darkest >= prof.oneBand - 1e-6, `flat view shading is bands from nearer neighbors (${prof.shaded} shaded tiles, ${prof.channels} between two walls; edge error ${prof.edgeErr}; lightest-middle check ${prof.middle.toFixed(6)}; darkest ${prof.darkest.toFixed(3)}, one band ${prof.oneBand.toFixed(3)})`);
+  // The squares are two triangles each, so the bands are drawn pixel by pixel by their
+  // material. The flat view as drawn, with Shading on and then off: on, pixels near the
+  // shaded edges are darker; nowhere is it lighter.
+  await page.click(`[data-tab="flat"]`);
+  await page.waitForTimeout(800);
+  const shot = async () => (await page.locator("#net-canvas").screenshot()).toString("base64");
+  const on = await shot();
+  await flip("shade", false);
+  await page.waitForTimeout(300);
+  const off = await shot();
+  await flip("shade", true);
+  const drawn = await page.evaluate(async ([a, b]) => {
+    const pixels = async (b64) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = img.width;
+      c.height = img.height;
+      const g = c.getContext("2d");
+      g.drawImage(img, 0, 0);
+      return g.getImageData(0, 0, c.width, c.height).data;
+    };
+    const [p, q] = [await pixels(a), await pixels(b)];
+    let darker = 0, lighter = 0;
+    for (let i = 0; i < p.length; i += 4) {
+      const d = p[i] + p[i + 1] + p[i + 2] - (q[i] + q[i + 1] + q[i + 2]);
+      if (d < -45) darker++;
+      if (d > 45) lighter++;
+    }
+    return { darker, lighter };
+  }, [on, off]);
+  check(drawn.darker > 500 && drawn.lighter === 0, `the flat view draws the shading (${drawn.darker} pixels darker with Shading on, ${drawn.lighter} lighter)`);
 
   await startFresh();
   const restError = await probe("shadeRestError");

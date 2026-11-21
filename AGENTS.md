@@ -395,7 +395,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   face. Applied to stickers and plastic; recomputed every frame during turns. The flat
   view shades each tile from its neighbors in the view instead: each neighbor standing
   nearer casts a band along the shared edge (a patch, if it touches only a corner), dark
-  at the edge and gone within 30% of the tile; where bands overlap the darker wins. A
+  at the edge and gone within 30% of the tile; where bands overlap the darker wins. Each
+  square is two triangles carrying its eight darkness values, and its material works out the
+  bands pixel by pixel (`shadeFlat`), so it needs no vertices inside it. A
   visible face at depth 0 or below has always been unstickered in sampled positions, so
   every drop seen on a sticker is one step.
 - **Shadows:** soft shadows from the single key light.
