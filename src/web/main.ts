@@ -5863,7 +5863,7 @@ const CUBELET_HALF = 0.49;
  * thing a ray from the camera meets is one of them. Everything is taken as a box: each
  * filled spot a cubelet's width, each glass box its own size. A glass box in front counts
  * as covering, though it is see-through: other boxes in the way are what make a view hard
- * to read. Boxes, not the drawn cubelets (some 300,000 triangles), keep Show quick: a
+ * to read. Boxes, not the drawn cubelets (about 62,000 triangles), keep Show quick: a
  * corner's 25 views took most of a second with the drawn ones, and froze the page.
  */
 function haloShare(st: State, slots: number[], v: any): number {
@@ -6005,7 +6005,7 @@ function showFaces(st: State, faces: [number, number][], sides = false) {
 function bestView(st: State, faces: [number, number][], sides = false): any {
   if (!faces.length) return pivot.quaternion.clone();
   const now = new THREE.Vector3(0, 0, 1).applyQuaternion(pivot.quaternion.clone().invert());
-  // Faces are weighed on boxes (boxFaceView): rays against the drawn cubelets, some 300,000
+  // Faces are weighed on boxes (boxFaceView): rays against the drawn cubelets, about 62,000
   // triangles, took over a second for a halo on many cubelets.
   const boxes = sceneBoxes(st), half = new Map(boxes.map((b) => [b.slot, b.half]));
   const score = () => {
