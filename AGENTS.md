@@ -259,6 +259,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **3D view:** three.js r186, loaded as ES modules through an import map and a shim that
   exposes a global `THREE`. Color management is off and output is linear, to keep the
   original look; light intensities are scaled by pi for newer three.js light units.
+- **Drawing on demand:** the views are drawn only when something in them may have changed
+  (`requestDraw`): while something moves (a turn, a settle, a gesture, the view turning,
+  the guide's flying cubelets, the halo's arrow), when the view's orientation or size
+  changes, after any input event, and when a function that changes what is shown asks
+  (`render`, `syncMeshes`, `renderEdit`, `drawEdit`, the guide's, `applyShading`, any probe
+  call). At rest nothing is drawn, which spares a phone's battery.
 - **Views:** Home (three-quarter), Front, Back, Left, Right, Up, Down. The side views tip
   the top 16.6 degrees toward the viewer (from the owner's saved view).
 - **Edge labels:** the six face letters, each placed where that face's axis, as projected on
@@ -365,6 +371,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   the font, so it is measured, by canvas text metrics, from the font the button draws with.
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
   orthographic cameras, so it animates, centered in its panel. Its ⓘ button explains how to read it.
+  It is drawn only while some of it is on screen (`netOnScreen`, an IntersectionObserver):
+  on a phone the Flat panel keeps its size beside the others in the carousel, and drawing it
+  there was nine tenths of the Lab's drawing. Each of its six cameras draws only the
+  squares and glow bands that face it.
 - **State code** (a disclosure in Saved states): one single-line field, with Copy and Load
   beside the heading. It shows the current position's code as a read-out (no fill), drawn
   over the field at the size that fits it on one line, measured (13px at most, about 9.5px on an iPhone);
@@ -391,9 +401,14 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   face. Applied to stickers and plastic; recomputed every frame during turns. The flat
   view shades each tile from its neighbors in the view instead: each neighbor standing
   nearer casts a band along the shared edge (a patch, if it touches only a corner), dark
-  at the edge and gone within 30% of the tile; where bands overlap the darker wins. A
+  at the edge and gone within 30% of the tile; where bands overlap the darker wins. Each
+  square is two triangles carrying its eight darkness values, and its material works out the
+  bands pixel by pixel (`shadeFlat`), so it needs no vertices inside it. A
   visible face at depth 0 or below has always been unstickered in sampled positions, so
   every drop seen on a sticker is one step.
+- **Plastic:** each cubelet is a box with rounded edges (`roundedBox`), two segments across
+  each rounding, with the normals set at each vertex: 300 triangles. At iPad resolution it
+  looked the same as four segments (972 triangles); one made the corner glints blocky.
 - **Shadows:** soft shadows from the single key light.
 - **Lighting:** a studio-room environment map supplies most of the light; one key light gives
   corner glints and shadows. The plastic has boosted specular reflectance plus a clear coat,
@@ -491,7 +506,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   `swapHint`: "Its white and red stickers should probably trade places"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two like that"; found among the spots whose stickers all have a color, since a spot still being colored fits many cubelets and a group that takes one in can spread over most of a kind: a play-tester saw 13 X-face corners haloed, where two unfinished corners each needed the last red, white, and blue one; the halo marks every competing spot), or an outer
   cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
   physical cube can't do that). Outward-rule problems name only what the owner can check on
-  the cube: "This cubelet's white sticker has the wrong color" (no
+  the cube: "This cubelet's white sticker has the wrong color", or "This cubelet's circled
+  white sticker ..." where another of its stickers is white too, always circled then (no
   extension cubelet's outward sticker is white or yellow; that needs no counting and says
   for certain which sticker is wrong, so it is told first, before any other problem, and
   other problems on that cubelet wait for it: a play-tester recolored the other sticker of

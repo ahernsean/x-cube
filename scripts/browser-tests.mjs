@@ -309,10 +309,13 @@ labTest(
     if (expected) check(renderer.includes(expected), `Chromium draws with ${expected}`);
 
     // The 3D view really draws: sample the canvas right after a frame renders (the
-    // drawing buffer is not preserved, so it must be read in the same frame).
+    // drawing buffer is not preserved, so it must be read in the same frame). At rest no
+    // frame is drawn, so one is asked for (any probe call asks), and the Lab's own frame
+    // callback, asked for first, runs before this one.
     const drawn = await page.evaluate(
       () =>
         new Promise((done) =>
+          window.xcubeProbe.state() &&
           requestAnimationFrame(() => {
             const src = document.querySelector("canvas");
             const c = document.createElement("canvas");
@@ -699,6 +702,82 @@ labTest("drawing: the 3D view draws every sticker in place and in the model's co
     return out;
   });
   check(aimed.length === 0, `sticker positions point at their stickers${aimed.length ? ": " + aimed.join("; ") : ""}`);
+});
+
+labTest("drawing: the views are drawn only when something in them changes", async ({ page, check, probe, settle }) => {
+  // At rest nothing is drawn; a turn draws until it settles, and the last frame shows it.
+  await settle();
+  const frames = async (ms) => {
+    const a = await probe("drawCount");
+    await page.waitForTimeout(ms);
+    const b = await probe("drawCount");
+    return { view: b.view - a.view, flat: b.flat - a.flat };
+  };
+  const rest = await frames(600);
+  check(rest.view === 0 && rest.flat === 0, `at rest nothing is drawn (${JSON.stringify(rest)} frames in 0.6 s)`);
+  await page.click(`[data-tab="turn"]`);
+  await page.waitForTimeout(500);
+  const before = (await probe("drawCount")).view;
+  await page.click(`.mv[data-move="R"]`);
+  await settle();
+  const turned = (await probe("drawCount")).view - before;
+  check(turned > 0, `a turn is drawn (${turned} frames)`);
+  const after = await frames(600);
+  check(after.view === 0, `once it has settled, nothing more is drawn (${after.view} frames in 0.6 s)`);
+  // What was last drawn is what a fresh frame draws: nothing was left out of date.
+  const shot = async () => (await page.locator("#scene").screenshot()).toString("base64");
+  const last = await shot();
+  await probe("state"); // any probe call asks for a frame
+  await page.waitForTimeout(300);
+  const fresh = await shot();
+  // Compositing the labels over the view can differ by a level or two from one screenshot
+  // to the next; a frame left out of date differs by far more.
+  const differ = await page.evaluate(async ([a, b]) => {
+    const pixels = async (b64) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = img.width;
+      c.height = img.height;
+      const g = c.getContext("2d");
+      g.drawImage(img, 0, 0);
+      return g.getImageData(0, 0, c.width, c.height).data;
+    };
+    const [p, q] = [await pixels(a), await pixels(b)];
+    let n = 0;
+    for (let i = 0; i < p.length; i += 4) if (Math.abs(p[i] - q[i]) + Math.abs(p[i + 1] - q[i + 1]) + Math.abs(p[i + 2] - q[i + 2]) > 30) n++;
+    return n;
+  }, [last, fresh]);
+  check(differ === 0, `the last frame drawn after the turn is the same as a fresh one (${differ} pixels differ)`);
+});
+
+labTest("drawing: the flat view is drawn only while it is on screen", async ({ page, check, probe, settle }) => {
+  // On a phone the Flat panel sits beside the others in the carousel, keeping its size, so
+  // only whether it is in sight can tell it is hidden. A turn draws the views, so it is
+  // made with the Start panel showing.
+  await settle();
+  await page.evaluate(() => document.querySelector(`.mv[data-move="U"]`).click());
+  await page.waitForTimeout(150);
+  const flatFrames = async () => {
+    const a = (await probe("drawCount")).flat;
+    await page.waitForTimeout(500);
+    return (await probe("drawCount")).flat - a;
+  };
+  const hidden = await flatFrames();
+  check(hidden === 0, `with the Start panel showing, the flat view isn't drawn (${hidden} frames in half a second)`);
+  const before = (await probe("drawCount")).flat;
+  await page.click(`[data-tab="flat"]`);
+  await page.waitForTimeout(800);
+  const shown = (await probe("drawCount")).flat - before;
+  check(shown > 0, `once the Flat panel shows, it is drawn (${shown} frames)`);
+  // Each of the six cameras draws only the squares and glow bands facing it. Drawing all
+  // 372 squares (62 cubelets, six faces each) for each camera took 2,232 calls by itself.
+  // A cubelet's plastic has two segments across each rounded edge: 5 by 5 on each side.
+  const tris = await probe("bodyTriangles");
+  check(tris === 300, `a cubelet's plastic is 300 triangles (${tris})`);
+  const { flatCalls } = await probe("drawCount");
+  check(flatCalls > 0 && flatCalls < 1200, `each camera draws only what faces it (${flatCalls} draw calls a frame)`);
 });
 
 labTest("drawing: a misdrawn cubelet is caught in both views", async ({ page, check, sweep3d, sweepFlat }) => {
@@ -1169,7 +1248,7 @@ labTest("edge glow: follows the cubelets while a layer turns, from where they ar
   check(restError === 0, `the glow at the start of every turn matches the glow at rest (${restError} bands differ)`);
 });
 
-labTest("shading: the flat view's bands come from nearer neighbors, and live shading at a turn's start matches the rest shading", async ({ check, probe, startFresh, play }) => {
+labTest("shading: the flat view's bands come from nearer neighbors, and live shading at a turn's start matches the rest shading", async ({ page, check, probe, startFresh, play, flip }) => {
   // Each nearer neighbor casts a band along the shared edge, at full darkness at the edge
   // and gone past the ramp. Checked in a scrambled position, which has recesses between
   // two walls: those show two bands with a clean middle, and no overlap (an inner corner)
@@ -1177,6 +1256,39 @@ labTest("shading: the flat view's bands come from nearer neighbors, and live sha
   await play("R U' F2 D B' L2 R' H S' M");
   const prof = await probe("flatShadeProfile");
   check(prof.shaded > 0 && prof.channels > 0 && prof.edgeErr < 1e-6 && prof.middle > 1 - 1e-6 && prof.darkest >= prof.oneBand - 1e-6, `flat view shading is bands from nearer neighbors (${prof.shaded} shaded tiles, ${prof.channels} between two walls; edge error ${prof.edgeErr}; lightest-middle check ${prof.middle.toFixed(6)}; darkest ${prof.darkest.toFixed(3)}, one band ${prof.oneBand.toFixed(3)})`);
+  // The squares are two triangles each, so the bands are drawn pixel by pixel by their
+  // material. The flat view as drawn, with Shading on and then off: on, pixels near the
+  // shaded edges are darker; nowhere is it lighter.
+  await page.click(`[data-tab="flat"]`);
+  await page.waitForTimeout(800);
+  const shot = async () => (await page.locator("#net-canvas").screenshot()).toString("base64");
+  const on = await shot();
+  await flip("shade", false);
+  await page.waitForTimeout(300);
+  const off = await shot();
+  await flip("shade", true);
+  const drawn = await page.evaluate(async ([a, b]) => {
+    const pixels = async (b64) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${b64}`;
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = img.width;
+      c.height = img.height;
+      const g = c.getContext("2d");
+      g.drawImage(img, 0, 0);
+      return g.getImageData(0, 0, c.width, c.height).data;
+    };
+    const [p, q] = [await pixels(a), await pixels(b)];
+    let darker = 0, lighter = 0;
+    for (let i = 0; i < p.length; i += 4) {
+      const d = p[i] + p[i + 1] + p[i + 2] - (q[i] + q[i + 1] + q[i + 2]);
+      if (d < -45) darker++;
+      if (d > 45) lighter++;
+    }
+    return { darker, lighter };
+  }, [on, off]);
+  check(drawn.darker > 500 && drawn.lighter === 0, `the flat view draws the shading (${drawn.darker} pixels darker with Shading on, ${drawn.lighter} lighter)`);
 
   await startFresh();
   const restError = await probe("shadeRestError");

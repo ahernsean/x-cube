@@ -734,10 +734,16 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
     const c = colors[s * 6 + out];
     if (c !== "W" && c !== "Y") continue;
     const counted = missingColors(shape, colors, [s]);
-    const p = hinted(`This cubelet's ${COLOR_NAME[c]} sticker has the wrong color`, [s], counted ?? sideHint(shape, colors, s, out, c));
+    // With another sticker of the same color on the cubelet, "its white sticker" could be
+    // either: the one meant is circled, and called the circled one.
+    const twin = [0, 1, 2, 3, 4, 5].some((d) => d !== out && colors[s * 6 + d] === c);
+    const name = `${twin ? "circled " : ""}${COLOR_NAME[c]} sticker`;
+    const hint = counted ?? sideHint(shape, colors, s, out, c);
+    if (twin && hint) hint.text = hint.text.replace(`Its ${COLOR_NAME[c]} sticker`, `Its ${name}`);
+    const p = hinted(`This cubelet's ${name} has the wrong color`, [s], hint);
     // Where the counts can't say, the sticker it means is circled: the halo outlines the
     // whole cubelet, whose other stickers may be all the view shows of it.
-    if (!counted) p.marks = [{ slot: s, face: out }];
+    if (!counted || twin) p.marks = [{ slot: s, face: out }];
     facing.push(p);
   }
   const fit = fitAll(shape, colors);

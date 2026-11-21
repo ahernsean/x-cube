@@ -317,7 +317,9 @@ function initScene(canvas: HTMLCanvasElement) {
   // Cubelets nearly touch, as on the real puzzle: a hairline gap between them.
   // Rounded like a real cube's plastic. Dark gray, not black, so that inside faces
   // facing different ways can be told apart by their shading.
-  const body = roundedBox(0.985, BODY_RADIUS, 4);
+  // Two segments across each rounded edge: at iPad resolution they looked the same as four,
+  // the edge's normals being set at each vertex, with 300 triangles a cubelet instead of 972.
+  const body = roundedBox(0.985, BODY_RADIUS, 2);
   // Glossy plastic: small, tight highlights that slide along the rounded edges and
   // corners as the cube tumbles (the lights stay put while the puzzle turns).
   // Glossy molded plastic. Physically based plastic reflects only ~4% at its surface,
@@ -343,8 +345,6 @@ function initScene(canvas: HTMLCanvasElement) {
   const plane = roundedSquare(0.82, 0.07);
   const mats = new Map<Color, any>();
   const dark = getComputedStyle(document.documentElement).getPropertyValue("--unstickered").trim() || "#2b2f2e";
-  // Subdivided so the flat view's narrow shading ramp has vertices to fall across.
-  const netPlane = new THREE.PlaneGeometry(0.92, 0.92, 16, 16);
   // Columns of vertices at the ends and where an open end is cut back to (GLOW_CUT).
   const glowPlane = new THREE.PlaneGeometry(1.0, GLOW_WIDTH, 3, 1);
   const gp = glowPlane.attributes.position;
@@ -367,10 +367,10 @@ function initScene(canvas: HTMLCanvasElement) {
   const netOccluderMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x141617) });
   const netMats = new Map<Color, any>();
   const netMatFor = (c: Color) => {
-    if (!netMats.has(c)) netMats.set(c, new THREE.MeshBasicMaterial({ color: STICKER[c], vertexColors: true }));
+    if (!netMats.has(c)) netMats.set(c, shadeFlat(new THREE.MeshBasicMaterial({ color: STICKER[c], vertexColors: true })));
     return netMats.get(c);
   };
-  const netDarkMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(dark), vertexColors: true });
+  const netDarkMat = shadeFlat(new THREE.MeshBasicMaterial({ color: new THREE.Color(dark), vertexColors: true }));
   probeUnstickered = netDarkMat.color.getHex();
   const matFor = (c: Color) => {
     if (!mats.has(c)) {
@@ -394,7 +394,7 @@ function initScene(canvas: HTMLCanvasElement) {
       sticker.color = gray;
       stickerMats.push(sticker);
       applyGloss();
-      grayMats.set(key, { sticker, tile: new THREE.MeshBasicMaterial({ color: gray, vertexColors: true }), glow: [0, 1, 2, 3].map((open) => makeGlowMaterial(glowTex, gray, open)) });
+      grayMats.set(key, { sticker, tile: shadeFlat(new THREE.MeshBasicMaterial({ color: gray, vertexColors: true })), glow: [0, 1, 2, 3].map((open) => makeGlowMaterial(glowTex, gray, open)) });
     }
     return grayMats.get(key)!;
   };
@@ -417,7 +417,7 @@ function initScene(canvas: HTMLCanvasElement) {
         return m;
       },
       tile: (mat) => {
-        const m = new THREE.Mesh(withAoColors(netPlane), mat);
+        const m = new THREE.Mesh(flatSquareGeometry(), mat);
         m.layers.set(NET_LAYER);
         return m;
       },
@@ -473,7 +473,7 @@ function initScene(canvas: HTMLCanvasElement) {
     g.add(occluder);
     for (let d = 0; d < 6; d++) {
       const col = c.stickers[d];
-      const m = new THREE.Mesh(withAoColors(netPlane), col ? netMatFor(col) : netDarkMat);
+      const m = new THREE.Mesh(flatSquareGeometry(), col ? netMatFor(col) : netDarkMat);
       probeInfo.set(m, { id: c.id, d });
       if (col) tileMesh[c.id * 6 + d] = m;
       const [px, py, pz, rx, ry] = faceXform[d];
@@ -545,6 +545,7 @@ function placeMesh(g: any, slot: number, ori: number) {
 }
 
 function syncMeshes(st: State) {
+  requestDraw();
   for (let s = 0; s < NUM_SLOTS; s++) {
     const id = st.occ[s];
     if (id < 0) continue;
@@ -649,6 +650,7 @@ function gridNeighbors(st: State, slot: number, ori: number, d: number): number[
  * tiles (`perFlat`, neighbor darkness).
  */
 function applyToCubelet(id: number, per: (number[] | null)[], perFlat: (number[] | null)[]) {
+  requestDraw();
   for (const f of aoFaces[id] ?? []) {
     const flat = f.view === "flat";
     const c = (flat ? perFlat : per)[f.d];
@@ -840,29 +842,88 @@ function flatBrightness(n: readonly number[], x: number, y: number) {
   return 1 - Math.max(n[0] * l * t, n[1] * r * t, n[2] * l * b, n[3] * r * b, n[4] * l, n[5] * r, n[6] * b, n[7] * t);
 }
 
+/** A flat-view square's width, in a cubelet's frame. */
+const FLAT_SQUARE = 0.92;
+
 /**
- * Write shading onto a face (any vertex layout): for a 3D face, four corner brightness
- * values blended across it; for a flat tile, neighbor darkness (see flatNeighbors).
+ * A flat-view square: two triangles. Its shading is worked out for each pixel from the
+ * eight neighbor darkness values (see flatNeighbors) it carries as attributes, the same at
+ * all four corners, so it needs no vertices inside it (`shadeFlat`).
+ */
+function flatSquareGeometry() {
+  const g = new THREE.PlaneGeometry(FLAT_SQUARE, FLAT_SQUARE, 1, 1);
+  g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(4 * 3).fill(1), 3));
+  g.setAttribute("flatAoA", new THREE.BufferAttribute(new Float32Array(4 * 3), 3));
+  g.setAttribute("flatAoB", new THREE.BufferAttribute(new Float32Array(4 * 3), 3));
+  g.setAttribute("flatAoC", new THREE.BufferAttribute(new Float32Array(4 * 2), 2));
+  return g;
+}
+
+/**
+ * Makes a material shade flat-view squares as `flatBrightness` does, pixel by pixel. On a
+ * geometry without the darkness attributes they read as zero, which leaves it unshaded.
+ */
+function shadeFlat<T>(mat: T): T {
+  const m = mat as any;
+  if (m.userData.shadeFlat) return mat;
+  m.userData.shadeFlat = true;
+  m.customProgramCacheKey = () => "shadeFlat";
+  m.onBeforeCompile = (sh: any) => {
+    const decl = "varying vec3 vFlatAoA;\nvarying vec3 vFlatAoB;\nvarying vec2 vFlatAoC;\nvarying vec2 vFlatXY;\n";
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", `#include <common>\nattribute vec3 flatAoA;\nattribute vec3 flatAoB;\nattribute vec2 flatAoC;\n${decl}`)
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>\nvFlatAoA = flatAoA;\nvFlatAoB = flatAoB;\nvFlatAoC = flatAoC;\nvFlatXY = clamp(position.xy / ${FLAT_SQUARE.toFixed(4)} + 0.5, 0.0, 1.0);`,
+      );
+    sh.fragmentShader = sh.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>\n${decl}float flatFall(float t) { if (t >= ${FLAT_AO_RAMP.toFixed(4)}) return 0.0; float u = t / ${FLAT_AO_RAMP.toFixed(4)}; return 1.0 - u * u * (3.0 - 2.0 * u); }\n`,
+      )
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        {
+          float l = flatFall(vFlatXY.x), r = flatFall(1.0 - vFlatXY.x), b = flatFall(vFlatXY.y), t = flatFall(1.0 - vFlatXY.y);
+          float dark = max(max(max(vFlatAoA.x * l * t, vFlatAoA.y * r * t), max(vFlatAoA.z * l * b, vFlatAoB.x * r * b)),
+                           max(max(vFlatAoB.y * l, vFlatAoB.z * r), max(vFlatAoC.x * b, vFlatAoC.y * t)));
+          diffuseColor.rgb *= 1.0 - dark;
+        }`,
+      );
+  };
+  return mat;
+}
+
+/**
+ * Write shading onto a face: for a 3D face (any vertex layout), four corner brightness
+ * values blended across it as vertex colors; for a flat-view square, its neighbor darkness
+ * (see flatNeighbors), which its material turns into shading pixel by pixel.
  */
 function applyShading(f: AoFace, vals: number[]) {
+  requestDraw();
   f.cur = vals.slice();
   const flat = f.view === "flat";
+  if (flat) {
+    const g = f.mesh.geometry, a = g.attributes.flatAoA, b = g.attributes.flatAoB, c = g.attributes.flatAoC;
+    for (let i = 0; i < 4; i++) {
+      a.setXYZ(i, vals[0], vals[1], vals[2]);
+      b.setXYZ(i, vals[3], vals[4], vals[5]);
+      c.setXY(i, vals[6], vals[7]);
+    }
+    a.needsUpdate = b.needsUpdate = c.needsUpdate = true;
+    return;
+  }
   const col = f.mesh.geometry.attributes.color;
   const arr = col.array as Float32Array;
   const pos = f.mesh.geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const x = Math.max(0, Math.min(1, pos.getX(i) / f.extent + 0.5)); // 0 at -x, 1 at +x
     const y = Math.max(0, Math.min(1, pos.getY(i) / f.extent + 0.5)); // 0 at -y, 1 at +y
-    let v: number;
-    if (flat) {
-      v = flatBrightness(vals, x, y);
-    } else {
-      const u = ease(x), w = ease(y);
-      const top = vals[0] * (1 - u) + vals[1] * u;
-      const bottom = vals[2] * (1 - u) + vals[3] * u;
-      v = bottom * (1 - w) + top * w;
-    }
-    arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = v;
+    const u = ease(x), w = ease(y);
+    const top = vals[0] * (1 - u) + vals[1] * u;
+    const bottom = vals[2] * (1 - u) + vals[3] * u;
+    arr[i * 3] = arr[i * 3 + 1] = arr[i * 3 + 2] = bottom * (1 - w) + top * w;
   }
   col.needsUpdate = true;
 }
@@ -1245,6 +1306,7 @@ function applyGlowSettings() {
 }
 
 function resize() {
+  requestDraw();
   const canvas = renderer.domElement as HTMLCanvasElement;
   const w = canvas.clientWidth || 300;
   const h = canvas.clientHeight || 300;
@@ -1353,6 +1415,28 @@ function faceCenterColor(st: State, d: number): Color | null {
 let view3dSection: HTMLElement | null = null;
 /** Wide screens show the panels in a column (and sections collapse); phones, a carousel. */
 const WIDE = window.matchMedia("(min-width: 900px)");
+
+/**
+ * The views are drawn only when something in them may have changed: while something moves
+ * (a turn, a settle, a gesture, a view turning, the guide's flying cubelets, the halo's
+ * arrow), when the view's orientation or size changes, and after `requestDraw`, which the
+ * functions that change what is shown call, as does every input event (a backstop). At
+ * rest nothing is drawn, which spares a phone's battery.
+ */
+let drawRequested = true;
+function requestDraw() {
+  drawRequested = true;
+}
+let drawnViewKey = "";
+let arrowWasShown = false;
+for (const type of ["pointerdown", "pointerup", "pointercancel", "click", "keydown", "input", "change", "wheel", "touchstart", "touchend"]) {
+  document.addEventListener(type, requestDraw, { capture: true, passive: true });
+}
+document.addEventListener("pointermove", (e) => (e.buttons || e.pointerType === "touch") && requestDraw(), { capture: true, passive: true });
+for (const type of ["resize", "pageshow", "focus"]) window.addEventListener(type, requestDraw);
+document.addEventListener("visibilitychange", requestDraw);
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", requestDraw);
+
 function frame() {
   view3dSection ??= document.querySelector<HTMLElement>("[data-sec=view3d]");
   if (tween) {
@@ -1380,19 +1464,32 @@ function frame() {
       r.copy.quaternion.copy(r.turns[k]).slerp(r.turns[k + 1], at - k);
     }
   }
+  const moving = !!(tween || anim || queue.length || settle || live || shapeAnim || guideArrows?.visible);
   stepShapeAnim();
-  placeHidePill();
   placeHaloArrow();
-  showMarks();
-  const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
+  // The arrow's chevrons run along it while it shows, and it fades in and out.
+  const arrowShown = !!haloArrow?.visible;
+  const arrowMoving = arrowShown ? !reduceMotionView() || haloArrowFade.value !== haloArrowFade.target : arrowWasShown;
+  arrowWasShown = arrowShown;
   if (showTarget) updateShowButton();
-  if (view3dOpen) updateCompass();
-  renderNetAnimation();
-  if (view3dOpen) {
-    renderer.render(scene, camera);
-    if (edit?.highlight) {
-      const size = renderer.getDrawingBufferSize(new THREE.Vector2());
-      drawOutline(camera, null, size.x, size.y, renderer.getPixelRatio());
+  const canvas = renderer.domElement as HTMLCanvasElement;
+  const q = pivot.quaternion;
+  const viewKey = `${q.x},${q.y},${q.z},${q.w}|${canvas.clientWidth}x${canvas.clientHeight}`;
+  if (moving || arrowMoving || drawRequested || viewKey !== drawnViewKey) {
+    drawRequested = false;
+    drawnViewKey = viewKey;
+    placeHidePill();
+    showMarks();
+    const view3dOpen = !view3dSection?.classList.contains("collapsed") || !WIDE.matches;
+    if (view3dOpen) updateCompass();
+    renderNetAnimation();
+    if (view3dOpen) {
+      renderer.render(scene, camera);
+      drawCount.view++;
+      if (edit?.highlight) {
+        const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+        drawOutline(camera, null, size.x, size.y, renderer.getPixelRatio());
+      }
     }
   }
   requestAnimationFrame(frame);
@@ -1902,6 +1999,14 @@ function finishAnim() {
 
 const NET_LAYER = 2;
 let netRenderer: any = null;
+/**
+ * Whether any of the flat view is on screen. Off while another panel shows in the phone's
+ * carousel (the Flat panel keeps its size there, scrolled aside), and while it is scrolled
+ * out of sight on a wide screen; the flat view is drawn only while it is on.
+ */
+let netOnScreen = false;
+/** Frames drawn, for the tests: the 3D view's, and the flat view's (all six faces as one), with the last flat frame's draw calls. */
+const drawCount = { view: 0, flat: 0, flatCalls: 0 };
 const netCams: { cam: any; face: string; view: Vec3; up: number[] }[] = [];
 
 function initNetAnimation() {
@@ -1911,6 +2016,10 @@ function initNetAnimation() {
   netRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   netRenderer.setScissorTest(true);
   netRenderer.setClearColor(0x000000, 0);
+  new IntersectionObserver((entries) => {
+    for (const e of entries) netOnScreen = e.isIntersecting;
+    requestDraw();
+  }).observe(canvas);
   // [face, direction toward the viewer, screen-up direction] in the puzzle's own frame
   const faces: [string, Vec3, number[]][] = [
     ["U", [0, 1, 0], [0, 0, -1]],
@@ -1949,7 +2058,7 @@ function aimNetCam(nc: (typeof netCams)[number], q: any) {
 }
 
 function renderNetAnimation() {
-  if (!netRenderer) return;
+  if (!netRenderer || !netOnScreen) return;
   const net = $("net");
   const canvas = $("net-canvas");
   const w = canvas.clientWidth, h = canvas.clientHeight;
@@ -1960,6 +2069,14 @@ function renderNetAnimation() {
   netRenderer.setViewport(0, 0, w, h);
   netRenderer.clear();
   const q = pivot.quaternion;
+  // Each camera draws only the squares, and the glow bands, that face it: the others face
+  // away from it, and would only be thrown out after the work of drawing them.
+  scene.updateMatrixWorld();
+  const flat: { mesh: any; n: any }[] = [];
+  const consider = (mesh: any) => mesh.visible && flat.push({ mesh, n: mesh.getWorldDirection(new THREE.Vector3()) });
+  for (const list of aoFaces) for (const f of list ?? []) if (f.view === "flat") consider(f.mesh);
+  for (const list of glows) for (const gl of list ?? []) consider(gl.mesh);
+  let calls = 0;
   for (const el of net.querySelectorAll<HTMLElement>(".netface")) {
     const name = el.querySelector(".netlabel")?.textContent ?? "";
     const nc = netCams.find((c) => c.face === name);
@@ -1969,8 +2086,14 @@ function renderNetAnimation() {
     const x = el.offsetLeft, y = h - el.offsetTop - el.offsetHeight;
     netRenderer.setViewport(x, y, fw, el.offsetHeight);
     netRenderer.setScissor(x, y, fw, el.offsetHeight);
+    const toward = cam.position.clone().normalize();
+    for (const f of flat) f.mesh.visible = f.n.dot(toward) > 1e-3;
     netRenderer.render(scene, cam);
+    calls += netRenderer.info.render.calls;
   }
+  for (const f of flat) f.mesh.visible = true;
+  drawCount.flat++;
+  drawCount.flatCalls = calls;
 }
 
 function tickAnimation() {
@@ -2479,6 +2602,7 @@ function escapeHtml(s: string) {
 }
 
 function render() {
+  requestDraw();
   const st = app.current;
   refreshGuide();
   renderInfo();
@@ -3916,6 +4040,7 @@ function endShapeAnim() {
 
 /** Draws the shown state, with every face that differs from the paint repainted on top. */
 function drawEdit() {
+  requestDraw();
   if (!edit || !paintMaterial) return;
   for (const m of edit.painted) m.material = m.userData.ownMaterial;
   edit.painted = [];
@@ -4207,6 +4332,7 @@ function guideHolds(g: Guide): boolean {
 }
 
 function clearGuide() {
+  requestDraw();
   guide = null;
   drawGuide();
 }
@@ -4227,6 +4353,7 @@ function guideFaces(g: Guide): [number, number][] {
   return g.arrows.length ? g.arrows.flatMap((p) => [[p.from, p.fromDir], [p.to, p.toDir]] as [number, number][]) : [...g.focus].flatMap((id) => [0, 1, 2, 3, 4, 5].map((d) => [app.current.occ.indexOf(id), d] as [number, number]).filter(([s, d]) => isExposed(app.current, s, d) && app.current.colorAt(s, d)));
 }
 function showGuide() {
+  requestDraw();
   if (!guide) return;
   if (app.cursor !== guide.start) jump(guide.start);
   showFaces(app.current, guideFaces(guide));
@@ -6070,6 +6197,7 @@ function clearGlowPaint() {
 }
 
 function renderEdit() {
+  requestDraw();
   endShapeAnim();
   renderInfo();
   $("edit-bar").hidden = !edit;
@@ -6285,6 +6413,10 @@ function installProbe() {
     /** The turns of the last shuffle (the page doesn't show them). */
     shuffleTurns: () => shuffleAlg,
     /** The step guide: its step, the slots (now) of the cubelets it applies to, how many stickers are drawn gray at each level, and the arrows showing. */
+    /** Triangles in a cubelet's plastic. */
+    bodyTriangles: () => copyLook!.body.index.count / 3,
+    /** Frames drawn so far: the 3D view's and the flat view's. */
+    drawCount: () => ({ ...drawCount }),
     /** Geometries the renderer holds right now, to check that the guide frees its own. */
     geometries: () => renderer.info.memory.geometries,
     guide: () => {
@@ -6434,7 +6566,7 @@ function installProbe() {
       }
       const bodies = haloBodies.filter((b) => b.parent);
       if (!hiding) for (const b of bodies) b.visible = false;
-      const img = probeImage(nc ? nc.cam : camera, nc ? FLAT_HALO_LAYER + dirIndex(nc.view) : HALO_LAYER, 96, 96, "drawn");
+      const img = probeImage(nc ? aimNetCam(nc, pivot.quaternion) : camera, nc ? FLAT_HALO_LAYER + dirIndex(nc.view) : HALO_LAYER, 96, 96, "drawn");
       for (const b of bodies) b.visible = true;
       let n = 0;
       for (let i = 3; i < img.length; i += 4) n += img[i];
@@ -6549,10 +6681,9 @@ function installProbe() {
           const n = f.cur;
           if (n.some((v) => v > 0)) shaded++;
           if ((n[4] > 0 && n[5] > 0) || (n[6] > 0 && n[7] > 0)) channels++;
-          const a = f.mesh.geometry.attributes.color.array as Float32Array;
-          const pos = f.mesh.geometry.attributes.position;
-          for (let i = 0; i < pos.count; i++) {
-            const x = pos.getX(i) / f.extent + 0.5, y = pos.getY(i) / f.extent + 0.5, v = a[i * 3];
+          // The shading the square's material draws, at points 1/16 of the square apart.
+          for (let i = 0; i < 17 * 17; i++) {
+            const x = (i % 17) / 16, y = Math.floor(i / 17) / 16, v = flatBrightness(n, x, y);
             darkest = Math.min(darkest, v);
             const mid = (t: number) => Math.abs(t - 0.5) < 1e-6, at0 = (t: number) => Math.abs(t) < 1e-6, at1 = (t: number) => Math.abs(t - 1) < 1e-6;
             if (mid(y) && at0(x)) edgeErr = Math.max(edgeErr, Math.abs(v - (1 - n[4])));
@@ -6637,6 +6768,15 @@ function installProbe() {
       return [0, 1, 2, 3, 4].map((row) => [0, 1, 2, 3, 4].map((col) => probeDecode(ids, colors, n, n, toPx(col - 2), toPx(row - 2))));
     },
   };
+  // Tests change what is shown through the probe, with no input event, so every call asks
+  // for a frame to be drawn.
+  const probe = (window as any).xcubeProbe;
+  for (const [k, f] of Object.entries(probe))
+    if (typeof f === "function" && k !== "idle" && k !== "drawCount")
+      probe[k] = function (this: any, ...a: any[]) {
+        requestDraw();
+        return (f as any).apply(this, a);
+      };
 }
 
 function hotBoot() {
