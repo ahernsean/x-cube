@@ -125,7 +125,9 @@ test("edit: a white or yellow sticker facing away from the core is told first", 
     const problems = fitColors(st, draftColors({ shape: st, removed: new Set(), added: new Set() }, paint)).problems;
     const mine = problems.filter((p) => p.slots.includes(spot));
     assert.equal(mine.length, 1, c);
-    assert.match(mine[0].text, /^This cubelet's yellow sticker has the wrong color\. Its yellow sticker (must|should)/, c);
+    // With its other sticker yellow too, the one meant is the circled one.
+    const which = c === "Y" ? "circled yellow" : "yellow";
+    assert.match(mine[0].text, new RegExp(`^This cubelet's ${which} sticker has the wrong color\\. Its ${which} sticker (must|should)`), c);
     // The sticker it means is circled: the cubelet's other one may be all the view shows.
     assert.deepEqual(mine[0].marks, [{ slot: spot, face: 3 }], c);
   }
@@ -133,6 +135,17 @@ test("edit: a white or yellow sticker facing away from the core is told first", 
   paint[spot * 6 + 5] = undefined;
   const blank = fitColors(st, draftColors({ shape: st, removed: new Set(), added: new Set() }, paint)).problems.find((p) => p.slots.includes(spot))!;
   assert.equal(blank.text, "This cubelet's yellow sticker has the wrong color. Its yellow sticker must be green, blue, red, or orange");
+});
+
+test("edit: a white or yellow sticker facing away from the core, beside another of its color, is called the circled one", () => {
+  // From a play-tester's edit: an extension edge in the down extension's back spot with
+  // both stickers white. "Its white sticker" could have been either.
+  const st = decodeState("TGRG UQCB UYCK WHKG FGYC CXWP AIIE ZVZG HHHM QVNA TWUJ");
+  const paint = [...".O.Y.B.......O.YG..G...O.B.....B..R..GW..O.......GW.R........W.G.........O.Y.B...Y...W.......Y...O.YG..G...O...................G..R..GW..O..W....W......W....GW.R........WB............W.W.................B...Y.W...W.....Y.....YG....Y.O................R............W..Y.....Y.Y...R.G......W........R.....................R..Y.B...Y.....W.....Y..R..YG.B....O..................B...R.B.W..O..W.....Y.....W...B.W.R...................R..Y.BR..W..R..YG.B....OG.........O.B.W..OO.Y...B.W.R."].map((c) => (c === "." ? undefined : c)) as (Color | undefined)[];
+  const spot = at(0, -2, -1); // Dx.B
+  const p = fitColors(st, draftColors({ shape: st, removed: new Set(), added: new Set() }, paint)).problems.find((q) => q.slots.includes(spot))!;
+  assert.equal(p.text, "This cubelet's circled white sticker has the wrong color. Its circled white sticker must be green, blue, red, or orange");
+  assert.deepEqual(p.marks, [{ slot: spot, face: 3 }]);
 });
 
 test("edit: a one-sticker cubelet's wrong color names its sticker, circled", () => {

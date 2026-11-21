@@ -506,7 +506,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   `swapHint`: "Its white and red stickers should probably trade places"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two like that"; found among the spots whose stickers all have a color, since a spot still being colored fits many cubelets and a group that takes one in can spread over most of a kind: a play-tester saw 13 X-face corners haloed, where two unfinished corners each needed the last red, white, and blue one; the halo marks every competing spot), or an outer
   cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
   physical cube can't do that). Outward-rule problems name only what the owner can check on
-  the cube: "This cubelet's white sticker has the wrong color" (no
+  the cube: "This cubelet's white sticker has the wrong color", or "This cubelet's circled
+  white sticker ..." where another of its stickers is white too, always circled then (no
   extension cubelet's outward sticker is white or yellow; that needs no counting and says
   for certain which sticker is wrong, so it is told first, before any other problem, and
   other problems on that cubelet wait for it: a play-tester recolored the other sticker of
