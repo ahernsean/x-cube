@@ -3315,6 +3315,12 @@ async function copyDebug() {
   }
   const kept = await keepDebug(text);
   const at = kept === null ? "" : keptTime(kept);
+  // Once copied, the ⓘ panel closes so the message about it shows; it stays open while
+  // its field holds the text to copy by hand.
+  if (copied) {
+    $("info-pop").hidden = true;
+    $("info-btn").setAttribute("aria-expanded", "false");
+  }
   if (copied) setMessage(kept !== null ? `Debug info copied, and saved for Claude at ${at}` : "Debug info copied", "ok");
   else setMessage(kept !== null ? `Debug info saved for Claude at ${at}. Select and copy it to paste it too` : "Select and copy the debug info", kept !== null ? "ok" : "info");
   render();

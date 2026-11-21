@@ -1461,6 +1461,8 @@ labTest(
       await page.click("#copy-debug");
       await page.waitForFunction(() => /saved for Claude at \w{3} \d+, \d{4}, \d+:\d\d:\d\d/.test(document.getElementById("message").textContent), null, { timeout: 5000 });
     }
+    const closed = await page.$eval("#info-pop", (e) => e.hidden);
+    check(closed, "Copy debug info closes the ⓘ panel, so its message shows");
     const kept = await page.evaluate(() => [...window.__fakeDb.debug.values()].map((d) => ({ edit: JSON.parse(d.json).edit?.removed?.join(), source: d.source, at: typeof d.savedAt })));
     check(kept.length === 20 && kept.every((d) => d.edit === "Fx.U" && d.source === "page" && d.at === "number"), `copies are saved for Claude, the newest 20 kept (${kept.length}, ${JSON.stringify(kept[0])})`);
     await page.click("#edit-cancel");
@@ -1616,10 +1618,12 @@ labTest("info: the help says what taps and drags do in each mode, and Copy debug
     Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.reject(new Error("denied")) }, configurable: true });
     document.execCommand = () => false;
   });
+  await page.click("#info-btn");
   await page.click("#copy-debug");
   const shown = await page.waitForFunction(() => /Select and copy the debug info/.test(document.getElementById("message").textContent), null, { timeout: 5000 }).then(() => true, () => false);
   const field = await page.$eval("#debug-text", (f) => ({ hidden: f.hidden, edit: JSON.parse(f.value).edit?.removed?.join(), selected: f.selectionEnd - f.selectionStart === f.value.length }));
-  check(shown && !field.hidden && field.edit === "Fx.U" && field.selected, `without a clipboard the debug info stays shown and selected (${JSON.stringify({ shown, ...field })})`);
+  const open = !(await page.$eval("#info-pop", (p) => p.hidden));
+  check(shown && open && !field.hidden && field.edit === "Fx.U" && field.selected, `without a clipboard the panel stays open and the debug info stays shown and selected (${JSON.stringify({ shown, open, ...field })})`);
 });
 
 labTest("shape editing: a tap changes only what it taps, paint stays on its spot, and the shape may be wrong for a while", async ({ page, check, probe, gesture }) => {

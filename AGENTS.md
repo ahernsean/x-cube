@@ -294,7 +294,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   and the cursor, the view, the solve's steps, the device (user agent, touch points, size),
   and an edit in progress with
   its shape (a state code, X1 when turns can't reach it), cubelets taken off and put in,
-  paint and problems; where the browser won't let it write the clipboard, the text shows selected under the link, to copy by hand. It is for the owner to hand to a developer when something looks
+  paint and problems; once copied, the ⓘ panel closes so the message shows; where the browser won't let it write the clipboard, the text shows selected under the link, to copy by hand, and the panel stays open. It is for the owner to hand to a developer when something looks
   wrong, including an edit whose shape isn't valid, which has no state code of its own.
   With the shared database it also keeps a copy there, in the `debug` collection (`json`,
   `savedAt`, `source`; the newest 20, `DEBUG_KEEP`), where an agent reads it with the
