@@ -406,6 +406,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   bands pixel by pixel (`shadeFlat`), so it needs no vertices inside it. A
   visible face at depth 0 or below has always been unstickered in sampled positions, so
   every drop seen on a sticker is one step.
+- **Plastic:** each cubelet is a box with rounded edges (`roundedBox`), two segments across
+  each rounding, with the normals set at each vertex: 300 triangles. At iPad resolution it
+  looked the same as four segments (972 triangles); one made the corner glints blocky.
 - **Shadows:** soft shadows from the single key light.
 - **Lighting:** a studio-room environment map supplies most of the light; one key light gives
   corner glints and shadows. The plastic has boosted specular reflectance plus a clear coat,

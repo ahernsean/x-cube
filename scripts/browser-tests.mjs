@@ -770,6 +770,9 @@ labTest("drawing: the flat view is drawn only while it is on screen", async ({ p
   check(shown > 0, `once the Flat panel shows, it is drawn (${shown} frames)`);
   // Each of the six cameras draws only the squares and glow bands facing it. Drawing all
   // 372 squares (62 cubelets, six faces each) for each camera took 2,232 calls by itself.
+  // A cubelet's plastic has two segments across each rounded edge: 5 by 5 on each side.
+  const tris = await probe("bodyTriangles");
+  check(tris === 300, `a cubelet's plastic is 300 triangles (${tris})`);
   const { flatCalls } = await probe("drawCount");
   check(flatCalls > 0 && flatCalls < 1200, `each camera draws only what faces it (${flatCalls} draw calls a frame)`);
 });

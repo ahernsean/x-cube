@@ -317,7 +317,9 @@ function initScene(canvas: HTMLCanvasElement) {
   // Cubelets nearly touch, as on the real puzzle: a hairline gap between them.
   // Rounded like a real cube's plastic. Dark gray, not black, so that inside faces
   // facing different ways can be told apart by their shading.
-  const body = roundedBox(0.985, BODY_RADIUS, 4);
+  // Two segments across each rounded edge: at iPad resolution they looked the same as four,
+  // the edge's normals being set at each vertex, with 300 triangles a cubelet instead of 972.
+  const body = roundedBox(0.985, BODY_RADIUS, 2);
   // Glossy plastic: small, tight highlights that slide along the rounded edges and
   // corners as the cube tumbles (the lights stay put while the puzzle turns).
   // Glossy molded plastic. Physically based plastic reflects only ~4% at its surface,
@@ -6411,6 +6413,8 @@ function installProbe() {
     /** The turns of the last shuffle (the page doesn't show them). */
     shuffleTurns: () => shuffleAlg,
     /** The step guide: its step, the slots (now) of the cubelets it applies to, how many stickers are drawn gray at each level, and the arrows showing. */
+    /** Triangles in a cubelet's plastic. */
+    bodyTriangles: () => copyLook!.body.index.count / 3,
     /** Frames drawn so far: the 3D view's and the flat view's. */
     drawCount: () => ({ ...drawCount }),
     /** Geometries the renderer holds right now, to check that the guide frees its own. */
