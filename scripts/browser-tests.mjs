@@ -309,10 +309,13 @@ labTest(
     if (expected) check(renderer.includes(expected), `Chromium draws with ${expected}`);
 
     // The 3D view really draws: sample the canvas right after a frame renders (the
-    // drawing buffer is not preserved, so it must be read in the same frame).
+    // drawing buffer is not preserved, so it must be read in the same frame). At rest no
+    // frame is drawn, so one is asked for (any probe call asks), and the Lab's own frame
+    // callback, asked for first, runs before this one.
     const drawn = await page.evaluate(
       () =>
         new Promise((done) =>
+          window.xcubeProbe.state() &&
           requestAnimationFrame(() => {
             const src = document.querySelector("canvas");
             const c = document.createElement("canvas");

@@ -6566,7 +6566,7 @@ function installProbe() {
       }
       const bodies = haloBodies.filter((b) => b.parent);
       if (!hiding) for (const b of bodies) b.visible = false;
-      const img = probeImage(nc ? nc.cam : camera, nc ? FLAT_HALO_LAYER + dirIndex(nc.view) : HALO_LAYER, 96, 96, "drawn");
+      const img = probeImage(nc ? aimNetCam(nc, pivot.quaternion) : camera, nc ? FLAT_HALO_LAYER + dirIndex(nc.view) : HALO_LAYER, 96, 96, "drawn");
       for (const b of bodies) b.visible = true;
       let n = 0;
       for (let i = 3; i < img.length; i += 4) n += img[i];
