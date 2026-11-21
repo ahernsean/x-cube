@@ -3196,6 +3196,18 @@ async function keptDebug(): Promise<{ json: string; savedAt: number }[]> {
   }
 }
 
+/** Deletes every copy of debug info the shared database keeps; whether it could. */
+async function clearKeptDebug(): Promise<boolean> {
+  if (storeKind !== "shared" || !db) return false;
+  try {
+    const snap = await db.collection("debug").get();
+    for (const d of snap.docs) await db.collection("debug").doc(d.id).delete();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The kind of device a user agent names. An iPad's Safari, and the apps built on it, name a
  * Mac ("Macintosh; Intel Mac OS X"), asking for sites' desktop pages; it is told apart by its
@@ -3227,6 +3239,7 @@ async function toggleKeptDebug() {
   const list = $("debug-list"), b = $("debug-history");
   if (!list.hidden) {
     list.hidden = true;
+    disarmDebugClear();
     b.setAttribute("aria-expanded", "false");
     return;
   }
@@ -3247,7 +3260,37 @@ async function toggleKeptDebug() {
     list.append(item);
   }
   list.hidden = false;
+  disarmDebugClear();
+  $("debug-clear").hidden = !kept.length;
   b.setAttribute("aria-expanded", "true");
+}
+
+/** Puts the clear button back to its resting label, and hides it with no list. */
+let debugClearTimer = 0;
+function disarmDebugClear() {
+  clearTimeout(debugClearTimer);
+  const c = $("debug-clear");
+  c.classList.remove("armed");
+  c.textContent = "Clear saved debug info";
+  if ($("debug-list").hidden) c.hidden = true;
+}
+
+/** The first tap asks "Clear all?", a second within 3 seconds deletes every saved copy. */
+async function clearDebugClick() {
+  const c = $("debug-clear");
+  if (!c.classList.contains("armed")) {
+    c.classList.add("armed");
+    c.textContent = "Clear all saved copies?";
+    debugClearTimer = window.setTimeout(disarmDebugClear, 3000);
+    return;
+  }
+  disarmDebugClear();
+  const ok = await clearKeptDebug();
+  $("debug-list").hidden = true;
+  c.hidden = true;
+  $("debug-history").setAttribute("aria-expanded", "false");
+  setMessage(ok ? "Saved debug info cleared" : "Couldn't clear the saved debug info", ok ? "ok" : "error");
+  render();
 }
 
 async function copyDebug() {
@@ -3256,6 +3299,7 @@ async function copyDebug() {
   field.hidden = true;
   field.readOnly = true;
   $("debug-list").hidden = true;
+  disarmDebugClear();
   // Copying first: Safari writes the clipboard only straight from the tap.
   let copied = false;
   try {
@@ -3434,6 +3478,7 @@ function bindUI() {
   $("copy-debug").addEventListener("click", () => void copyDebug());
   $("paste-debug").addEventListener("click", () => void pasteDebug());
   $("debug-history").addEventListener("click", () => void toggleKeptDebug());
+  $("debug-clear").addEventListener("click", () => void clearDebugClick());
   $("debug-text").addEventListener("input", () => {
     const field = $("debug-text") as HTMLTextAreaElement;
     if (!field.readOnly && field.value.trim()) putBackDebug(field.value);

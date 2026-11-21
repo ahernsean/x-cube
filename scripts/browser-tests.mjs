@@ -1487,6 +1487,14 @@ labTest(
     await page.waitForSelector("#debug-list:not([hidden]) button", { timeout: 5000 });
     const named = await page.$$eval("#debug-list button", (bs) => bs.slice(0, 2).map((b) => b.textContent.split(" · ")[1]));
     check(typeof touch === "number" && named.join() === "iPad,Mac", `debug info keeps the touch points, and a Mac with them is listed as an iPad (${JSON.stringify({ touch, named })})`);
+    // Clear saved debug info: the first tap asks, the second deletes every copy.
+    await page.click("#debug-clear");
+    const asked = await page.$eval("#debug-clear", (e) => ({ armed: e.classList.contains("armed"), text: e.textContent }));
+    const before = await page.evaluate(() => window.__fakeDb.debug.size);
+    await page.click("#debug-clear");
+    await page.waitForFunction(() => window.__fakeDb.debug.size === 0 && /cleared/.test(document.getElementById("message").textContent), null, { timeout: 5000 });
+    const gone = await page.evaluate(() => ({ list: document.getElementById("debug-list").hidden, btn: document.getElementById("debug-clear").hidden, msg: document.getElementById("message").textContent }));
+    check(asked.armed && /\?$/.test(asked.text) && before > 0 && gone.list && gone.btn && /cleared/.test(gone.msg), `Clear saved debug info asks first, then deletes every saved copy (${JSON.stringify({ asked, before, gone })})`);
   },
   {
     // A stand-in for the shared database: collections of documents in memory.
