@@ -1506,8 +1506,8 @@ labTest(
     await page.click("#debug-clear");
     const clearing = await page.$eval("#debug-clear", (e) => e.textContent);
     await page.waitForFunction(() => window.__fakeDb.debug.size === 0 && document.getElementById("debug-list").hidden, null, { timeout: 5000 });
-    const gone = await page.evaluate(() => ({ btn: document.getElementById("debug-clear").hidden, msg: document.getElementById("message").textContent, atOnce: window.__maxInFlight }));
-    check(clearing === "Clearing…" && gone.btn && !/clear/i.test(gone.msg) && gone.atOnce === before, `the clear deletes every copy at once, and the list closing is the confirmation (${JSON.stringify({ clearing, gone, before })})`);
+    const gone = await page.evaluate(() => ({ drawn: getComputedStyle(document.getElementById("debug-list")).display !== "none", btn: document.getElementById("debug-clear").hidden, msg: document.getElementById("message").textContent, atOnce: window.__maxInFlight }));
+    check(clearing === "Clearing…" && !gone.drawn && gone.btn && !/clear/i.test(gone.msg) && gone.atOnce === before, `the clear deletes every copy at once, and the list closing is the confirmation (${JSON.stringify({ clearing, gone, before })})`);
   },
   {
     // A stand-in for the shared database: collections of documents in memory.
