@@ -1909,8 +1909,8 @@ let netRenderer: any = null;
  * out of sight on a wide screen; the flat view is drawn only while it is on.
  */
 let netOnScreen = false;
-/** Frames drawn, for the tests: the 3D view's, and the flat view's (all six faces as one). */
-const drawCount = { view: 0, flat: 0 };
+/** Frames drawn, for the tests: the 3D view's, and the flat view's (all six faces as one), with the last flat frame's draw calls. */
+const drawCount = { view: 0, flat: 0, flatCalls: 0 };
 const netCams: { cam: any; face: string; view: Vec3; up: number[] }[] = [];
 
 function initNetAnimation() {
@@ -1972,6 +1972,14 @@ function renderNetAnimation() {
   netRenderer.setViewport(0, 0, w, h);
   netRenderer.clear();
   const q = pivot.quaternion;
+  // Each camera draws only the squares, and the glow bands, that face it: the others face
+  // away from it, and would only be thrown out after the work of drawing them.
+  scene.updateMatrixWorld();
+  const flat: { mesh: any; n: any }[] = [];
+  const consider = (mesh: any) => mesh.visible && flat.push({ mesh, n: mesh.getWorldDirection(new THREE.Vector3()) });
+  for (const list of aoFaces) for (const f of list ?? []) if (f.view === "flat") consider(f.mesh);
+  for (const list of glows) for (const gl of list ?? []) consider(gl.mesh);
+  let calls = 0;
   for (const el of net.querySelectorAll<HTMLElement>(".netface")) {
     const name = el.querySelector(".netlabel")?.textContent ?? "";
     const nc = netCams.find((c) => c.face === name);
@@ -1981,9 +1989,14 @@ function renderNetAnimation() {
     const x = el.offsetLeft, y = h - el.offsetTop - el.offsetHeight;
     netRenderer.setViewport(x, y, fw, el.offsetHeight);
     netRenderer.setScissor(x, y, fw, el.offsetHeight);
+    const toward = cam.position.clone().normalize();
+    for (const f of flat) f.mesh.visible = f.n.dot(toward) > 1e-3;
     netRenderer.render(scene, cam);
+    calls += netRenderer.info.render.calls;
   }
+  for (const f of flat) f.mesh.visible = true;
   drawCount.flat++;
+  drawCount.flatCalls = calls;
 }
 
 function tickAnimation() {

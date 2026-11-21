@@ -367,7 +367,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   orthographic cameras, so it animates, centered in its panel. Its ⓘ button explains how to read it.
   It is drawn only while some of it is on screen (`netOnScreen`, an IntersectionObserver):
   on a phone the Flat panel keeps its size beside the others in the carousel, and drawing it
-  there was nine tenths of the Lab's drawing.
+  there was nine tenths of the Lab's drawing. Each of its six cameras draws only the
+  squares and glow bands that face it.
 - **State code** (a disclosure in Saved states): one single-line field, with Copy and Load
   beside the heading. It shows the current position's code as a read-out (no fill), drawn
   over the field at the size that fits it on one line, measured (13px at most, about 9.5px on an iPhone);

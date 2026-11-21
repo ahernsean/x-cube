@@ -716,6 +716,10 @@ labTest("drawing: the flat view is drawn only while it is on screen", async ({ p
   await page.waitForTimeout(800);
   const shown = await flatFrames();
   check(shown > 0, `with the Flat panel showing, it is (${shown} frames in half a second)`);
+  // Each of the six cameras draws only the squares and glow bands facing it. Drawing all
+  // 372 squares (62 cubelets, six faces each) for each camera took 2,232 calls by itself.
+  const { flatCalls } = await probe("drawCount");
+  check(flatCalls > 0 && flatCalls < 1200, `each camera draws only what faces it (${flatCalls} draw calls a frame)`);
 });
 
 labTest("drawing: a misdrawn cubelet is caught in both views", async ({ page, check, sweep3d, sweepFlat }) => {
