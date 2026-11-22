@@ -1461,6 +1461,8 @@ labTest(
       await page.click("#copy-debug");
       await page.waitForFunction(() => /saved for Claude at \w{3} \d+, \d{4}, \d+:\d\d:\d\d/.test(document.getElementById("message").textContent), null, { timeout: 5000 });
     }
+    const closed = await page.$eval("#info-pop", (e) => e.hidden);
+    check(closed, "Copy debug info closes the ⓘ panel, so its message shows");
     const kept = await page.evaluate(() => [...window.__fakeDb.debug.values()].map((d) => ({ edit: JSON.parse(d.json).edit?.removed?.join(), source: d.source, at: typeof d.savedAt })));
     check(kept.length === 20 && kept.every((d) => d.edit === "Fx.U" && d.source === "page" && d.at === "number"), `copies are saved for Claude, the newest 20 kept (${kept.length}, ${JSON.stringify(kept[0])})`);
     await page.click("#edit-cancel");
@@ -1487,6 +1489,25 @@ labTest(
     await page.waitForSelector("#debug-list:not([hidden]) button", { timeout: 5000 });
     const named = await page.$$eval("#debug-list button", (bs) => bs.slice(0, 2).map((b) => b.textContent.split(" · ")[1]));
     check(typeof touch === "number" && named.join() === "iPad,Mac", `debug info keeps the touch points, and a Mac with them is listed as an iPad (${JSON.stringify({ touch, named })})`);
+    // Clear saved debug info: the first tap asks "Clear?"; the second reads "Clearing…",
+    // with the list set aside, while every copy is deleted at once; the list closing says
+    // it's done. If the database refuses, it says so beside the clock and keeps the list.
+    await page.click("#debug-clear");
+    const asked = await page.$eval("#debug-clear", (e) => ({ armed: e.classList.contains("armed"), text: e.textContent }));
+    const before = await page.evaluate(() => window.__fakeDb.debug.size);
+    await page.evaluate(() => { window.__deleteFail = true; window.__deleteDelay = 300; window.__maxInFlight = 0; });
+    await page.click("#debug-clear");
+    const during = await page.evaluate(() => ({ text: document.getElementById("debug-clear").textContent, faded: document.getElementById("debug-list").classList.contains("clearing") }));
+    await page.waitForFunction(() => document.getElementById("debug-clear").classList.contains("failed"), null, { timeout: 5000 });
+    const failed = await page.evaluate(() => ({ text: document.getElementById("debug-clear").textContent, list: !document.getElementById("debug-list").hidden, faded: document.getElementById("debug-list").classList.contains("clearing"), left: window.__fakeDb.debug.size }));
+    check(asked.armed && asked.text === "Clear?" && during.text === "Clearing…" && during.faded && failed.text === "Not cleared" && failed.list && !failed.faded && failed.left === before, `if the database refuses, the clear says so beside the clock and keeps the list (${JSON.stringify({ asked, during, failed, before })})`);
+    await page.evaluate(() => { window.__deleteFail = false; window.__maxInFlight = 0; });
+    await page.click("#debug-clear");
+    await page.click("#debug-clear");
+    const clearing = await page.$eval("#debug-clear", (e) => e.textContent);
+    await page.waitForFunction(() => window.__fakeDb.debug.size === 0 && document.getElementById("debug-list").hidden, null, { timeout: 5000 });
+    const gone = await page.evaluate(() => ({ drawn: getComputedStyle(document.getElementById("debug-list")).display !== "none", btn: document.getElementById("debug-clear").hidden, msg: document.getElementById("message").textContent, atOnce: window.__maxInFlight }));
+    check(clearing === "Clearing…" && !gone.drawn && gone.btn && !/clear/i.test(gone.msg) && gone.atOnce === before, `the clear deletes every copy at once, and the list closing is the confirmation (${JSON.stringify({ clearing, gone, before })})`);
   },
   {
     // A stand-in for the shared database: collections of documents in memory.
@@ -1517,7 +1538,21 @@ labTest(
             col(name).set(id, data);
             return { id };
           },
-          doc: (id) => ({ delete: async () => void col(name).delete(id) }),
+          // Deletes can be made slow (__deleteDelay ms) or refused (__deleteFail); __inFlight
+          // and __maxInFlight count how many run at once.
+          doc: (id) => ({
+            delete: async () => {
+              window.__inFlight = (window.__inFlight ?? 0) + 1;
+              window.__maxInFlight = Math.max(window.__maxInFlight ?? 0, window.__inFlight);
+              try {
+                await new Promise((r) => setTimeout(r, window.__deleteDelay ?? 0));
+                if (window.__deleteFail) throw new Error("refused");
+                col(name).delete(id);
+              } finally {
+                window.__inFlight--;
+              }
+            },
+          }),
         }),
       };
       window.__fakeDb = cols;
@@ -1608,10 +1643,12 @@ labTest("info: the help says what taps and drags do in each mode, and Copy debug
     Object.defineProperty(navigator, "clipboard", { value: { writeText: () => Promise.reject(new Error("denied")) }, configurable: true });
     document.execCommand = () => false;
   });
+  await page.click("#info-btn");
   await page.click("#copy-debug");
   const shown = await page.waitForFunction(() => /Select and copy the debug info/.test(document.getElementById("message").textContent), null, { timeout: 5000 }).then(() => true, () => false);
   const field = await page.$eval("#debug-text", (f) => ({ hidden: f.hidden, edit: JSON.parse(f.value).edit?.removed?.join(), selected: f.selectionEnd - f.selectionStart === f.value.length }));
-  check(shown && !field.hidden && field.edit === "Fx.U" && field.selected, `without a clipboard the debug info stays shown and selected (${JSON.stringify({ shown, ...field })})`);
+  const open = !(await page.$eval("#info-pop", (p) => p.hidden));
+  check(shown && open && !field.hidden && field.edit === "Fx.U" && field.selected, `without a clipboard the panel stays open and the debug info stays shown and selected (${JSON.stringify({ shown, open, ...field })})`);
 });
 
 labTest("shape editing: a tap changes only what it taps, paint stays on its spot, and the shape may be wrong for a while", async ({ page, check, probe, gesture }) => {

@@ -3196,6 +3196,19 @@ async function keptDebug(): Promise<{ json: string; savedAt: number }[]> {
   }
 }
 
+/** Deletes every copy of debug info the shared database keeps; whether it could. */
+async function clearKeptDebug(): Promise<boolean> {
+  if (storeKind !== "shared" || !db) return false;
+  try {
+    const snap = await db.collection("debug").get();
+    // All at once: one at a time, the wait grows with the number of copies.
+    await Promise.all(snap.docs.map((d: any) => db.collection("debug").doc(d.id).delete()));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The kind of device a user agent names. An iPad's Safari, and the apps built on it, name a
  * Mac ("Macintosh; Intel Mac OS X"), asking for sites' desktop pages; it is told apart by its
@@ -3227,10 +3240,20 @@ async function toggleKeptDebug() {
   const list = $("debug-list"), b = $("debug-history");
   if (!list.hidden) {
     list.hidden = true;
+    disarmDebugClear();
     b.setAttribute("aria-expanded", "false");
     return;
   }
   $("debug-text").hidden = true;
+  await fillKeptDebug();
+  list.hidden = false;
+  disarmDebugClear();
+  b.setAttribute("aria-expanded", "true");
+}
+
+/** Lists the saved copies, newest first, in the clock's list. */
+async function fillKeptDebug() {
+  const list = $("debug-list");
   const kept = await keptDebug();
   list.replaceChildren();
   if (!kept.length) {
@@ -3246,8 +3269,50 @@ async function toggleKeptDebug() {
     item.addEventListener("click", () => putBackDebug(k.json));
     list.append(item);
   }
-  list.hidden = false;
-  b.setAttribute("aria-expanded", "true");
+}
+
+/** Puts the clear button back to its resting icon, and the list's rows back in use. */
+let debugClearTimer = 0;
+function disarmDebugClear() {
+  clearTimeout(debugClearTimer);
+  const c = $("debug-clear") as HTMLButtonElement;
+  c.classList.remove("armed", "clearing", "failed");
+  c.disabled = false;
+  $("debug-list").classList.remove("clearing");
+}
+
+/** Shows the clear button in one of its states, with its words beside the icon. */
+function debugClearState(state: "armed" | "clearing" | "failed", words: string) {
+  disarmDebugClear();
+  const c = $("debug-clear") as HTMLButtonElement;
+  c.classList.add(state);
+  c.querySelector(".ask")!.textContent = words;
+}
+
+/**
+ * The first tap asks "Clear?"; a second within 3 seconds deletes every saved copy. While
+ * the deletes run it reads "Clearing…" and the list's rows are set aside; the list closing
+ * is the confirmation, and if the database refuses, it says so where it was tapped.
+ */
+async function clearDebugClick() {
+  const c = $("debug-clear") as HTMLButtonElement;
+  if (!c.classList.contains("armed")) {
+    debugClearState("armed", "Clear?");
+    debugClearTimer = window.setTimeout(disarmDebugClear, 3000);
+    return;
+  }
+  debugClearState("clearing", "Clearing…");
+  c.disabled = true;
+  $("debug-list").classList.add("clearing");
+  const ok = await clearKeptDebug();
+  if (ok) {
+    $("debug-list").hidden = true;
+    $("debug-history").setAttribute("aria-expanded", "false");
+    return;
+  }
+  await fillKeptDebug();
+  debugClearState("failed", "Not cleared");
+  debugClearTimer = window.setTimeout(disarmDebugClear, 4000);
 }
 
 async function copyDebug() {
@@ -3256,6 +3321,7 @@ async function copyDebug() {
   field.hidden = true;
   field.readOnly = true;
   $("debug-list").hidden = true;
+  disarmDebugClear();
   // Copying first: Safari writes the clipboard only straight from the tap.
   let copied = false;
   try {
@@ -3275,6 +3341,12 @@ async function copyDebug() {
   }
   const kept = await keepDebug(text);
   const at = kept === null ? "" : keptTime(kept);
+  // Once copied, the ⓘ panel closes so the message about it shows; it stays open while
+  // its field holds the text to copy by hand.
+  if (copied) {
+    $("info-pop").hidden = true;
+    $("info-btn").setAttribute("aria-expanded", "false");
+  }
   if (copied) setMessage(kept !== null ? `Debug info copied, and saved for Claude at ${at}` : "Debug info copied", "ok");
   else setMessage(kept !== null ? `Debug info saved for Claude at ${at}. Select and copy it to paste it too` : "Select and copy the debug info", kept !== null ? "ok" : "info");
   render();
@@ -3434,6 +3506,14 @@ function bindUI() {
   $("copy-debug").addEventListener("click", () => void copyDebug());
   $("paste-debug").addEventListener("click", () => void pasteDebug());
   $("debug-history").addEventListener("click", () => void toggleKeptDebug());
+  $("debug-clear").addEventListener("click", () => void clearDebugClick());
+  // The trash icon beside the clock shows while the list is open and holds copies.
+  const syncDebugClear = () => {
+    const list = $("debug-list");
+    $("debug-clear").hidden = list.hidden || !list.querySelector("[role=menuitem]");
+    if ($("debug-clear").hidden) disarmDebugClear();
+  };
+  new MutationObserver(syncDebugClear).observe($("debug-list"), { attributes: true, attributeFilter: ["hidden"] });
   $("debug-text").addEventListener("input", () => {
     const field = $("debug-text") as HTMLTextAreaElement;
     if (!field.readOnly && field.value.trim()) putBackDebug(field.value);

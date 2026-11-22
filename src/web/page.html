@@ -104,10 +104,21 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .debug-history svg { width: 18px; height: 18px; }
 .debug-history[hidden] { display: none; }
 .debug-list { display: flex; flex-direction: column; max-height: 11em; overflow-y: auto; margin-top: 4px; border: 1px solid var(--line); border-radius: 8px; }
-.debug-list[hidden] { display: none; }
 .debug-list button { font: inherit; font-size: 10px; font-variant-numeric: tabular-nums; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 5px 8px; color: var(--accent); cursor: pointer; }
 .debug-list button:last-child { border-bottom: 0; }
 .debug-list .muted { font-size: 12px; padding: 6px 8px; color: var(--muted, gray); }
+.debug-list[hidden] { display: none; }
+.debug-clear { display: inline-flex; align-items: center; background: none; border: 0; padding: 0 2px; color: var(--accent); cursor: pointer; vertical-align: middle; line-height: 0; }
+.debug-clear svg { width: 18px; height: 18px; }
+.debug-clear.armed, .debug-clear.failed { color: var(--bad); }
+.debug-clear.clearing { color: var(--muted); cursor: default; }
+/* Clearing… and Not cleared take the icon's place, so the row stays one line on a phone. */
+.debug-clear.clearing svg, .debug-clear.failed svg { display: none; }
+.debug-clear.clearing .ask, .debug-clear.failed .ask { margin-left: 0; }
+.debug-clear .ask { display: none; font-size: 11px; font-weight: 600; line-height: 1; margin-left: 3px; }
+.debug-clear.armed .ask, .debug-clear.clearing .ask, .debug-clear.failed .ask { display: inline; }
+.debug-list.clearing { opacity: 0.4; pointer-events: none; }
+.debug-clear[hidden] { display: none; }
 .debug-text { display: block; width: 100%; box-sizing: border-box; height: 8em; font: 16px ui-monospace, monospace; }
 .debug-text[hidden] { display: none; }
 .pop label { display: flex; align-items: center; gap: 8px; font-size: 15px; }
@@ -446,7 +457,7 @@ details[open] summary { margin-bottom: 8px; }
       <button class="halo-hide" id="halo-hide" hidden>Hide</button>
       <div class="pop near-top" id="info-pop" hidden>
         <div class="info-text" id="info-text"></div>
-        <p class="hint info-debug"><button class="link-btn" id="copy-debug" title="Copies what the Lab is showing and doing, as text, to paste for the developer">Copy debug info</button> · <button class="link-btn" id="paste-debug" title="Puts back what copied debug info shows, even an edit that isn't valid">Paste debug info</button> <button class="debug-history" id="debug-history" aria-label="Saved debug info" title="Puts back a copy saved by Copy debug info" aria-expanded="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></p>
+        <p class="hint info-debug"><button class="link-btn" id="copy-debug" title="Copies what the Lab is showing and doing, as text, to paste for the developer">Copy debug info</button> · <button class="link-btn" id="paste-debug" title="Puts back what copied debug info shows, even an edit that isn't valid">Paste debug info</button> <button class="debug-history" id="debug-history" aria-label="Saved debug info" title="Puts back a copy saved by Copy debug info" aria-expanded="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button> <button class="debug-clear" id="debug-clear" aria-label="Clear saved debug info" title="Clear all saved debug info" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10 11v5M14 11v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="ask">Clear?</span></button></p>
         <textarea class="debug-text" id="debug-text" readonly hidden aria-label="Debug info"></textarea>
         <div class="debug-list" id="debug-list" role="menu" aria-label="Saved debug info" hidden></div>
       </div>

@@ -294,7 +294,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   and the cursor, the view, the solve's steps, the device (user agent, touch points, size),
   and an edit in progress with
   its shape (a state code, X1 when turns can't reach it), cubelets taken off and put in,
-  paint and problems; where the browser won't let it write the clipboard, the text shows selected under the link, to copy by hand. It is for the owner to hand to a developer when something looks
+  paint and problems; once copied, the ⓘ panel closes so the message shows; where the browser won't let it write the clipboard, the text shows selected under the link, to copy by hand, and the panel stays open. It is for the owner to hand to a developer when something looks
   wrong, including an edit whose shape isn't valid, which has no state code of its own.
   With the shared database it also keeps a copy there, in the `debug` collection (`json`,
   `savedAt`, `source`; the newest 20, `DEBUG_KEEP`), where an agent reads it with the
@@ -309,7 +309,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   12:31:05 AM · iPhone"; an iPad's user agent names a Mac, so the debug info keeps
   `navigator.maxTouchPoints` as `device.touch`, and a Mac with touch points is listed as an
   iPad, `deviceName`); a
-  tap on one puts it back, as an agent can with the database tools. Words around the debug info
+  tap on one puts it back, as an agent can with the database tools. While the list is open, a trash icon beside the clock turns red with "Clear?" (3 seconds); a second tap reads "Clearing…" (in the icon's place, as "Not cleared" is, so the row stays one line), sets the list aside and deletes every copy at once. The list closing is the confirmation; if the database refuses, "Not cleared" shows beside the clock and the list stays. Words around the debug info
   are left out (the first span from a "{" to the "}" closing it that parses), so a whole
   message holding it can be pasted; text that isn't debug info is
   refused ("That isn't debug info"), and during a solve it asks first, as setting a new
