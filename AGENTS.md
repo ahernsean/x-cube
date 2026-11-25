@@ -304,8 +304,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   artifact's database tools: the owner can say "look at the latest debug info" instead of
   pasting it ("Debug info copied, and saved for Claude at Nov 20, 2026, 1:19:52 AM", the
   time as the saved copies' list gives it).
-  **Paste debug info**, beside it, puts the position, the view and the edit back (the
-  probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
+  **Paste debug info**, beside it, puts the position, the view and the edit back, and a
+  solve in progress with its steps (`restoreSolve`: the solver is deterministic, so each
+  step comes again from a plan made from where it starts, in the order it was solved in;
+  a step Lost? made to undo a slip, which no plan has, keeps its turns without a box; the
+  message says "Solve restored: 10 steps", or how many of them came back), so Next step and
+  Lost? go on from there (the probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
   won't read it, from text pasted into the field that opens. Beside it, a clock (shown
   with the shared database) opens a list of the saved copies, newest first, each by the
   date and time it was saved, to the second, in small type, and the device ("Nov 20, 2026,

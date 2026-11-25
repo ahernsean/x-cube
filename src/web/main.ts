@@ -3451,6 +3451,8 @@ function restoreDebug(json: string) {
   app.history = parseAlg(d.turns ?? "");
   jump(d.cursor ?? app.history.length);
   if (d.view) pivot.quaternion.set(d.view[0], d.view[1], d.view[2], d.view[3]);
+  trail = [];
+  if (d.solving && !d.edit && Array.isArray(d.steps) && d.steps.length) restoreSolve(d.order === "layers" ? "layers" : "kinds", d.steps);
   if (d.edit) {
     startEdit();
     const e = edit!;
@@ -3465,6 +3467,63 @@ function restoreDebug(json: string) {
     refitEdit();
     renderEdit();
   }
+  render();
+}
+
+/** A solve from debug info, being given back a step at a time as plans reach each step's start (`restoreSolve`). */
+type SavedStep = { index: number; stage: string; start: number; alg: string; shown?: boolean };
+let restoring: { steps: SavedStep[]; total: number; got: number; shown: Guide | null; planned: Set<string> } | null = null;
+
+/**
+ * Puts a solve from debug info back: the guide's steps, each in its box in the turn list,
+ * with the one shown. The solver is deterministic, so each step comes again from a plan made
+ * from where it starts, in the order it was solved in; a step that doesn't (one Lost? made
+ * to undo a slip, which no plan has) keeps its turns without a box.
+ */
+function restoreSolve(mode: Mode, steps: SavedStep[]) {
+  if (guideMode !== mode) setGuideMode(mode);
+  solving = true;
+  const fit = steps.filter((s) => Number.isInteger(s.start) && s.start >= 0 && s.start <= app.history.length && typeof s.alg === "string");
+  restoring = { steps: fit, total: steps.length, got: 0, shown: null, planned: new Set() };
+  restoreNext();
+}
+
+function restoreNext() {
+  const r = restoring;
+  if (!r) return;
+  while (r.steps.length) {
+    const s = r.steps[0];
+    const from = app.base.clone();
+    for (let k = 0; k < s.start; k++) applyTurn(from, app.history[k]);
+    const code = encodeState(from);
+    const plan = planner.plan;
+    const i = planner.indexOf(code, guideMode);
+    if (plan && i >= 0 && i < plan.steps.length) {
+      const step = plan.steps[i];
+      const turns = formatAlg(app.history.slice(s.start, s.start + step.turns.length));
+      if (step.alg === s.alg && turns === formatAlg(step.turns)) {
+        const g: Guide = { step, plan, at: i, index: s.index, start: s.start, from: from.clone(), ...stepColors(from, step), arrows: stickerPaths(from, step) };
+        trail.push(g);
+        r.got++;
+        if (s.shown) r.shown = g;
+      }
+      r.steps.shift();
+      continue;
+    }
+    // A plan still being made may reach this step; once it is done, plan from the step itself.
+    if (planner.running) return;
+    if (!r.planned.has(code)) {
+      r.planned.add(code);
+      planner.start(from, guideMode);
+      return;
+    }
+    r.steps.shift();
+  }
+  restoring = null;
+  guide = r.shown && guideHolds(r.shown) ? r.shown : null;
+  scrollToStep = !!guide;
+  drawGuide();
+  setMessage(r.got === r.total ? `Solve restored: ${r.got} ${r.got === 1 ? "step" : "steps"}` : `Solve restored: ${r.got} of ${r.total} steps`, "ok");
   render();
 }
 
@@ -4320,6 +4379,7 @@ function dropWorking(): boolean {
 /** The whole solve, planned off the page's main thread, which Next step takes its steps from. */
 const planner = new Planner();
 planner.onChange = () => {
+  if (restoring) restoreNext();
   if (working) takeStep();
   if (solving) render();
 };
@@ -4745,6 +4805,7 @@ function stopGuide() {
   if (!solving && !guide && !guideLine) return;
   stopWorking();
   planner.stop();
+  restoring = null;
   solving = false;
   clearGuide();
   guideLine = "";

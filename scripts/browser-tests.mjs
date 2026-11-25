@@ -1597,6 +1597,29 @@ labTest("info: Paste debug info puts back an edit that isn't valid", async ({ pa
   check(field.shown && field.editable && /That isn't debug info/.test(refused) && typed.removed === "Fx.U" && typed.line === line, `without the clipboard the field takes it, refusing other text (${JSON.stringify({ field, refused, typed })})`);
 });
 
+labTest("info: Paste debug info puts a solve's steps back, so Next step and Lost? go on from there", async ({ page, check, probe, settle }) => {
+  // A play-tester's solve, ten steps in (corners, then edges), with the last step shown.
+  const debug = {"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null};
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
+  const back = await page.waitForFunction(() => {
+    const steps = JSON.parse(window.xcubeProbe.debugInfo()).steps;
+    return steps.length === 10 && steps;
+  }, null, { timeout: 20000 }).then((h) => h.jsonValue(), () => null);
+  await settle();
+  const info = JSON.parse(await probe("debugInfo"));
+  check(JSON.stringify(back) === JSON.stringify(debug.steps) && info.solving && info.cursor === 66 && info.current === debug.current, `the steps, the turns and the position come back (${JSON.stringify({ steps: back?.length, solving: info.solving, cursor: info.cursor })})`);
+  const said = await page.$eval("#message", (e) => e.textContent);
+  check(/Solve restored: 10 steps/.test(said), `a message says so ("${said}")`);
+  await page.evaluate(() => (document.getElementById("guide").open = true));
+  check(await page.$eval("#lost", (b) => !b.disabled && !b.hidden), "Lost? can be asked from there");
+  await guideHelpers(page, settle).next();
+  const next = await page.waitForFunction(() => {
+    const steps = JSON.parse(window.xcubeProbe.debugInfo()).steps;
+    return steps.length === 11 && steps[10];
+  }, null, { timeout: 20000 }).then((h) => h.jsonValue(), () => null);
+  check(next?.index === 11 && next.start === 66, `Next step goes on with step 11 (${JSON.stringify(next)})`);
+});
+
 labTest("info: the help says what taps and drags do in each mode, and Copy debug info puts an edit back", async ({ page, check, probe, play, settle, gesture }) => {
   const help = async () => {
     if (await page.$eval("#info-pop", (p) => p.hidden)) await page.click("#info-btn");
