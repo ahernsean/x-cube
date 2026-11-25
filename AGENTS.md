@@ -727,12 +727,15 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   layer's turn (r for R, and the reverse); a turn the puzzle won't make is left out, as
   the person couldn't make it either; no slip at all is a candidate too, and candidates
   that look alike are one. It asks which center color is on top and which faces the
-  person, and turns every candidate whole to be held that way; then, one at a time, the
+  person, and turns every candidate whole to be held that way, and the puzzle shown with
+  them (the turns' result with no slip); then, one at a time, the
   question whose answers split the candidates left most evenly (then the spot easiest to
   look at: top, front and right before bottom and back): the color in a ring on one face
-  (answers: the colors some candidate shows there, "No sticker", and Something else), or
-  whether there is a piece in a box at an extension spot. Meanwhile the puzzle shown is
-  where the step should leave it, all gray (so it can't be read for theirs), the view
+  (answers: the colors some candidate shows there, "No sticker", **No piece here** and
+  **None of these**), or whether there is a piece in a box at an extension spot. Meanwhile
+  the puzzle shown is where the step should leave it, all gray (so it can't be read for
+  theirs) except what the person has told: the two centers in the colors named, and each
+  sticker answered in its color, kept as the view turns (`lostKnown`); the view
   turns to each spot, the turn list and the tabs are set aside, and swipes on the cube
   tumble the view instead of turning. Sampled over 476 steps (two steps' slips), the
   right position is found every time, after 3.3 questions about spots on average and 6
@@ -742,10 +745,17 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   regrip to how they hold it), then a **Back on track** step (stage `recover`, numbered
   as the step it goes back to, graying nothing, with no paths) that undoes them, back to
   where the first of those steps began; Next step after it gives that step again with
-  the same number. With no slip, nothing is undone. **No**, or Something else: Edit
-  puzzle, starting from the position found nearest. **Cancel** puts the turn list, the
-  steps and the shown step back as they were. Each candidate's answers come from the
-  model, so Something else means a slip it doesn't list (two slips, for one).
+  the same number. With no slip, nothing is undone. **No**, No piece here or None of these:
+  it **gives up** and says so ("Lost? can't find how your puzzle got this way", why, and
+  what to do), with **Color my puzzle**: Edit puzzle, starting from the position found
+  nearest, while the solve stays (no "End the solve?"; `lostEdit`). There **Done** looks
+  again from the puzzle colored, now known exactly: a way Lost? knows that gives it loads
+  the Back on track step as Yes does; with none, the message says so and the solve starts
+  again from it. **Cancel** there, as in the interview, puts the turn list, the steps and
+  the shown step back as they were. Each candidate's answers come from the model, so None
+  of these means a slip it doesn't list (two slips, for one). Starting Lost? drops a
+  question still waiting ("End the solve in progress?"), and Edit puzzle ends an
+  interview: answered under one, it left the editor gray.
   **Not handled yet (owner, to come back to):** Lost? assumes every turn of the step was
   made, but a person may have stopped partway through. The plan is to ask first which turn
   they made last (a tap in the turn list) and take candidates only up to it; the owner also

@@ -4478,9 +4478,15 @@ interface Lost {
   turns: Turn[];
   /** The steps those turns are: the step before (if any) and the step Lost? was asked from. */
   steps: Guide[];
-  phase: "up" | "front" | "ask" | "confirm";
+  phase: "up" | "front" | "ask" | "confirm" | "giveup";
   up: Color | null;
   front: Color | null;
+  /** What the person told about their puzzle, as held: each answered sticker's color. */
+  known: { slot: number; dir: number; color: Color }[];
+  /** The turns followed with no slip, held as the person holds the puzzle (once known): the puzzle shown while asking. */
+  expected: Candidate;
+  /** Why it gave up, in words (phase "giveup"). */
+  why: string;
   /** The candidates still left, held as the person holds the puzzle once the grip is known. */
   cands: Candidate[];
   question: Question | null;
@@ -4518,6 +4524,9 @@ function startLost() {
     phase: "up",
     up: null,
     front: null,
+    known: [],
+    expected: slipCandidates(steps[0].from, turns)[0],
+    why: "",
     cands: slipCandidates(steps[0].from, turns),
     question: null,
     asked: 0,
@@ -4563,21 +4572,31 @@ function answerLost(a: string) {
   const l = lost;
   if (!l) return;
   if (a === "cancel") return cancelLost();
-  if (a === "other") return lostToEdit(l.cands[0] ?? null);
+  if (a === "color") return lostToEdit(l.cands[0] ?? null);
+  if (a === "empty") return giveUpLost("Your puzzle has no piece there, and every way Lost? looked at has one.");
+  if (a === "none") return giveUpLost("None of the ways Lost? looked at gives your puzzle that color there.");
   if (l.phase === "up") {
     l.up = a as Color;
     l.phase = "front";
   } else if (l.phase === "front") {
     l.front = a as Color;
     l.cands = holdAs(l.cands, l.up!, l.front);
+    // The puzzle shown is the step's, held as the person holds theirs, so the spots asked about are where theirs are.
+    const held = holdAs([l.expected], l.up!, l.front)[0];
+    if (held) {
+      l.expected = held;
+      showCandidate(held);
+    }
     nextLostQuestion();
   } else if (l.phase === "ask" && l.question) {
-    l.cands = narrow(l.cands, l.question, a as Answer);
+    const q = l.question;
+    if (q.kind === "color" && a in NET_COLOR) l.known.push({ slot: q.slot, dir: q.dir, color: a as Color });
+    l.cands = narrow(l.cands, q, a as Answer);
     l.asked++;
     nextLostQuestion();
   } else if (l.phase === "confirm") {
     if (a === "yes") return acceptLost(l.cands[0]);
-    return lostToEdit(l.cands[0]);
+    return giveUpLost("So it isn't the way Lost? found, and that was the only one left that fits your answers.");
   }
   render();
 }
@@ -4589,6 +4608,8 @@ function nextLostQuestion() {
   if (l.question) {
     l.phase = "ask";
     lookAtSpot(l.question);
+  } else if (!l.cands.length) {
+    return giveUpLost("None of the ways Lost? looked at fits your answers.");
   } else {
     l.phase = "confirm";
     showCandidate(l.cands[0]);
@@ -4675,17 +4696,66 @@ function acceptLost(c: Candidate) {
   render();
 }
 
-/** No, or none of the answers fit: Edit puzzle, from the nearest position found, so only what differs needs painting. */
+/** Lost? found no way that fits: it says so, and offers to have the person color the puzzle to match theirs. */
+function giveUpLost(why: string) {
+  const l = lost!;
+  l.phase = "giveup";
+  l.why = why;
+  l.question = null;
+  placeLostMarker();
+  render();
+}
+
+/**
+ * Lost? while the puzzle is colored to match the person's: the interview, set aside. The
+ * solve goes on: Done looks for the way the colored puzzle was reached (`lostFromEdit`),
+ * Cancel puts the turn list and the steps back.
+ */
+let lostEdit: Lost | null = null;
+
+/** Color my puzzle: Edit puzzle, from the nearest position found, so only what differs needs coloring. The solve stays. */
 function lostToEdit(c: Candidate | null) {
   const l = lost!;
-  cancelLost();
-  endingSolve(() => {
-    if (c) {
-      app.history = [...l.saved.history.slice(0, l.start), ...c.made, ...c.grip];
-      jump(app.history.length);
-    }
-    startEdit();
-  });
+  lost = null;
+  placeLostMarker();
+  setLostLock(false);
+  if (c) {
+    app.history = [...l.saved.history.slice(0, l.start), ...c.made, ...c.grip];
+    jump(app.history.length);
+  }
+  lostEdit = l;
+  startEdit();
+  render();
+}
+
+/** Done in Edit puzzle from Lost?: the person's puzzle is known exactly, so look for the way that gives it. */
+function lostFromEdit(l: Lost, target: State) {
+  lostEdit = null;
+  const up = centerColor(target, 2), front = centerColor(target, 4);
+  const key = target.appearanceKey();
+  const found = up && front ? holdAs(slipCandidates(l.from, l.turns), up, front).find((c) => c.state.appearanceKey() === key) : undefined;
+  if (found) {
+    lost = l;
+    return acceptLost(found);
+  }
+  // No way Lost? knows gives it: solve on from the puzzle as it is.
+  trail = [];
+  guide = null;
+  guideLine = "";
+  stopGuide();
+  setBase(target, "Edited");
+  setMessage("Lost? couldn't find how your puzzle got this way, so the solve starts again from it.", "info");
+  nextStep();
+}
+
+/** Cancel in Edit puzzle from Lost?: the turn list, the steps and the step shown, as they were. */
+function lostEditCancel(l: Lost) {
+  lostEdit = null;
+  app.history = l.saved.history;
+  trail = l.saved.trail;
+  guide = l.saved.guide;
+  guideLine = l.saved.guideLine;
+  jump(l.saved.cursor);
 }
 
 /** Turns the 3D view so the spot asked about faces the viewer, tipped a little toward the top and the right. */
@@ -4737,7 +4807,7 @@ function renderLost() {
   box.hidden = !lost;
   if (!lost) return void (lostKey = "");
   const l = lost;
-  const key = `${l.phase}|${l.up}|${l.asked}|${l.cands.length}`;
+  const key = `${l.phase}|${l.up}|${l.asked}|${l.cands.length}|${l.why}`;
   if (key === lostKey) return;
   lostKey = key;
   let text = "";
@@ -4753,16 +4823,21 @@ function renderLost() {
   } else if (l.phase === "ask") {
     const q = l.question!;
     text = q.kind === "color" ? `Look at your puzzle, not this one. What color is the sticker in the ring?` : `Look at your puzzle, not this one. Is there a piece in the box?`;
-    answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? ["other"] : [])];
+    answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? ["empty", "none"] : [])];
+  } else if (l.phase === "giveup") {
+    text = `Lost? can't find how your puzzle got this way. ${l.why} Color the puzzle on the screen to match yours, and it will look again from there.`;
+    answers = ["color"];
   } else {
     text = `${slipWords(l.cands[0])} Does your puzzle look like this one now?`;
     answers = ["yes", "no"];
   }
   $("lost-q").textContent = text;
-  $("lost-count").textContent = l.phase === "ask" ? `Question ${l.asked + 1}` : "";
+  $("lost-count").textContent = l.phase === "ask" ? `Question ${l.asked + 1}` : l.phase === "giveup" ? "Not found" : "";
   $("lost-opts").innerHTML = answers
     .map((a) => {
-      if (a === "other") return `<button class="btn small lost-text" data-lost="other">Something else</button>`;
+      if (a === "empty") return `<button class="btn small lost-text" data-lost="empty">No piece here</button>`;
+      if (a === "none") return `<button class="btn small lost-text" data-lost="none">None of these</button>`;
+      if (a === "color") return `<button class="btn small lost-text primary" data-lost="color">Color my puzzle</button>`;
       if (a in NET_COLOR) return `<button class="lost-swatch" data-lost="${a}" aria-label="${LOST_ANSWER_NAME[a as Answer]}"><i style="background:${NET_COLOR[a]}"></i>${LOST_ANSWER_NAME[a as Answer]}</button>`;
       if (a === "black") return `<button class="lost-swatch" data-lost="black" aria-label="No sticker"><i class="bare"></i>No sticker</button>`;
       const label = l.phase === "confirm" ? (a === "yes" ? "Yes" : "No") : LOST_ANSWER_NAME[a as Answer];
@@ -5010,6 +5085,36 @@ function refreshGuide() {
   } else line.textContent = guideLine;
 }
 
+/**
+ * The stickers of the puzzle shown that Lost? knows the person's colors of (key: piece id × 6
+ * + the piece's own face): the centers up and in front, once told, and each sticker answered.
+ */
+function lostKnown(): Map<number, Color> {
+  const out = new Map<number, Color>();
+  const l = lost;
+  if (!l) return out;
+  const st = app.current;
+  const put = (slot: number, dir: number, color: Color) => {
+    const id = st.occ[slot];
+    if (id < 0) return;
+    const local = ROT_DIR[ROT_INV[st.ori[slot]] * 6 + dir];
+    if (PIECES[id].stickers[local]) out.set(id * 6 + local, color);
+  };
+  for (const [dir, color] of [[2, l.up], [4, l.front]] as const) {
+    if (!color) continue;
+    const v = DIRS[dir];
+    for (const k of [2, 1]) {
+      const s = slotAt([v[0] * k, v[1] * k, v[2] * k]);
+      if (s >= 0 && st.occ[s] >= 0 && isExposed(st, s, dir)) {
+        put(s, dir, color);
+        break;
+      }
+    }
+  }
+  for (const k of l.known) put(k.slot, k.dir, k.color);
+  return out;
+}
+
 function drawGuide() {
   if (!grayMaterial) return;
   const g = guide;
@@ -5019,7 +5124,8 @@ function drawGuide() {
   const within = !lost && !!g && !plainStep(g.step) && at >= g.start && at < g.start + g.step.turns.length;
   // While Lost? asks about the person's puzzle, the screen's is gray, so it can't be read for theirs.
   const grayAll = !!lost && lost.phase !== "confirm";
-  const key = grayAll ? "lost" : within ? `${g!.start}/${g!.step.alg}/${guideFullColor}` : "";
+  const known = grayAll ? lostKnown() : new Map<number, Color>();
+  const key = grayAll ? `lost|${[...known].join()}` : within ? `${g!.start}/${g!.step.alg}/${guideFullColor}` : "";
   if (guideArrows) guideArrows.visible = !lost && !!g && app.cursor === g.start && !anim && !queue.length;
   if (drawGuide.key === key) return;
   drawGuide.key = key;
@@ -5037,6 +5143,19 @@ function drawGuide() {
       const level = within && g!.free.has(c.id) ? 2 : 1;
       c.stickers.forEach((color, d) => {
         if (!color) return;
+        // What the person told about their puzzle shows in its color.
+        const told = known.get(c.id * 6 + d);
+        if (told && paintMaterial) {
+          const look = { sticker: paintMaterial.sticker(told), tile: paintMaterial.tile(told) };
+          for (const [mesh, mat] of [[stickerMesh3d[c.id * 6 + d], look.sticker], [tileMesh[c.id * 6 + d], look.tile]]) {
+            if (!mesh) continue;
+            mesh.userData.ownMaterial ??= mesh.material;
+            mesh.material = mat;
+            guideDimmed.push(mesh);
+          }
+          for (const gl of glows[c.id] ?? []) if (gl.b === d) gl.paint = paintMaterial.glow(told);
+          return;
+        }
         const gray = grayMaterial!(color, level);
         for (const [mesh, mat] of [[stickerMesh3d[c.id * 6 + d], gray.sticker], [tileMesh[c.id * 6 + d], gray.tile]]) {
           if (!mesh) continue;
@@ -6743,7 +6862,11 @@ function endEdit(apply: boolean) {
   placeOverlays([]);
   document.body.classList.remove("editing");
   for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
-  if (apply && e.fit.level === "reachable" && e.fit.state) {
+  const fromLost = lostEdit;
+  if (fromLost) {
+    if (apply && e.fit.level === "reachable" && e.fit.state) lostFromEdit(fromLost, e.fit.state);
+    else lostEditCancel(fromLost);
+  } else if (apply && e.fit.level === "reachable" && e.fit.state) {
     const changed = !e.fit.state.equals(app.current);
     if (changed) setBase(e.fit.state, "Edited");
     setMessage(changed ? "The edited position is now the start" : "Nothing changed", "ok");
@@ -7064,6 +7187,7 @@ function installProbe() {
      */
     /** How many stickers are drawn gray (a step's or Lost?'s). */
     grayStickers: () => guideDimmed.filter((m) => stickerMesh3d.includes(m)).length,
+    lostEdit: () => !!lostEdit,
     lost: () =>
       lost && {
         phase: lost.phase,
@@ -7071,6 +7195,8 @@ function installProbe() {
         question: lost.question && (lost.question.kind === "color" ? `${slotName(lost.question.slot)}/${COMPASS_FACES[lost.question.dir]}` : `${slotName(lost.question.slot)}?`),
         answers: [...document.querySelectorAll<HTMLElement>("#lost-opts [data-lost]")].map((b) => b.dataset.lost),
         marked: !!lostMarker,
+        known: lostKnown().size,
+        text: $("lost-q").textContent,
         gray: guideDimmed.filter((m) => stickerMesh3d.includes(m)).length,
       },
     /** Picks candidate i of those left as the person's puzzle (by the turns made), for lostAnswer to answer as. */
@@ -7085,7 +7211,7 @@ function installProbe() {
       if (l.phase === "up") return centerColor(lostTruth.state, 2);
       if (l.phase === "front") return centerColor(lostTruth.state, 4);
       const held = holdAs([lostTruth], l.up!, l.front!)[0].state;
-      if (l.phase === "ask") return answerOf(held, l.question!) ?? "other";
+      if (l.phase === "ask") return answerOf(held, l.question!) ?? (held.occ[l.question!.slot] < 0 ? "empty" : "none");
       return held.appearanceKey() === l.cands[0].state.appearanceKey() ? "yes" : "no";
     },
     painted: (slot: string, face: string) => edit?.colors[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)] ?? null,

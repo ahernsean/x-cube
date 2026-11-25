@@ -2593,8 +2593,8 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
   check(fits, "the page is no wider than the screen");
 });
 
-labTest("lost: giving up opens Edit puzzle in full color", async ({ page, check, probe, settle }) => {
-  // A play-tester's solve, restored from debug info, then Lost? answered "none of these".
+labTest("lost: giving up says so, and Color my puzzle opens Edit puzzle in full color with the solve kept", async ({ page, check, probe, settle }) => {
+  // A play-tester's solve, restored from debug info, then a sticker with a color no way gives.
   await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
   await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 10, null, { timeout: 20000 });
   await page.click(`[data-tab="solve"]`);
@@ -2602,41 +2602,73 @@ labTest("lost: giving up opens Edit puzzle in full color", async ({ page, check,
   await page.click("#lost");
   await settle();
   await probe("lostPick", 1);
-  const giveUpAt = 3;
-  for (let k = 0; k < 12 && (await probe("lost")); k++) {
-    const opts = (await probe("lost")).answers;
-    const a = k >= giveUpAt && opts.includes("other") ? "other" : (await probe("lostAnswer")) ?? opts[0];
-    await page.click(`#lost-opts [data-lost="${a}"]`);
+  for (let k = 0; k < 2; k++) {
+    await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
     await settle();
-    if (!(await page.$eval("#confirm", (e) => e.hidden))) {
-      await page.click("#confirm-yes");
-      await settle();
-    }
   }
+  const asking = await probe("lost");
+  check(asking.phase === "ask" && asking.answers.includes("empty") && asking.answers.includes("none") && !asking.answers.includes("other"), `a color question offers No piece here and None of these (${asking.answers})`);
+  check(asking.known === 2, `the two centers told show in their colors (${asking.known} stickers known)`);
+  await page.click(`#lost-opts [data-lost="none"]`);
+  await settle();
+  const gave = await probe("lost");
+  check(gave.phase === "giveup" && /^Lost\? can't find how your puzzle got this way/.test(gave.text) && gave.answers.join() === "color", `it says plainly that it gave up, and offers Color my puzzle (${JSON.stringify(gave)})`);
+  await page.click(`#lost-opts [data-lost="color"]`);
+  await settle();
+  const confirm = !(await page.$eval("#confirm", (e) => e.hidden));
   const gray = await page.evaluate(() => window.xcubeProbe.grayStickers());
-  check(!!(await probe("shapeEdit")) && gray === 0, `Edit puzzle is open with no sticker gray (${gray})`);
+  const info = JSON.parse(await probe("debugInfo"));
+  check(!!(await probe("shapeEdit")) && gray === 0 && !confirm && info.solving && (await probe("lostEdit")), `Edit puzzle opens in full color, without ending the solve (${JSON.stringify({ gray, confirm, solving: info.solving })})`);
+  await page.click("#edit-cancel");
+  await settle();
+  const back = JSON.parse(await probe("debugInfo"));
+  check(back.solving && back.steps.length === 10 && back.cursor === 66 && !(await probe("lostEdit")), `Cancel puts the solve back as it was (${back.steps.length} steps, at ${back.cursor})`);
 });
 
-labTest("lost: Lost? asked again while End the solve? waits takes that question away", async ({ page, check, probe, settle, play }) => {
-  // A play-tester gave up (Something else), left "End the solve in progress?" open, tapped
-  // Lost? again, then answered the old question: Edit puzzle opened under a gray interview.
-  await play("R U");
+labTest("lost: after Color my puzzle, Done finds the slip from the puzzle colored and carries on with the solve", async ({ page, check, probe, settle, play }) => {
+  await play("R U R' F");
   await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  await page.click("#guide-start");
+  await page.waitForFunction(() => !document.getElementById("next-step").disabled, null, { timeout: 60000 });
   await page.click("#next-step");
   await settle();
   await page.click("#lost");
   await settle();
-  for (let k = 0; k < 4; k++) {
-    const opts = (await probe("lost")).answers;
-    await page.click(`#lost-opts [data-lost="${opts.includes("other") ? "other" : opts[0]}"]`);
+  const slip = await probe("lostPick", 2);
+  // Answers that lead to the person's puzzle, then No: so Color my puzzle opens on it, as if colored to match.
+  for (let k = 0; k < 14; k++) {
+    const l = await probe("lost");
+    if (l.phase === "confirm") break;
+    await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
     await settle();
-    if (opts.includes("other")) break;
   }
+  await page.click(`#lost-opts [data-lost="no"]`);
+  await settle();
+  check((await probe("lost"))?.phase === "giveup", "No gives up, saying so");
+  await page.click(`#lost-opts [data-lost="color"]`);
+  await settle();
+  await page.click("#edit-done");
+  await settle();
+  const g = await probe("guide");
+  const info = JSON.parse(await probe("debugInfo"));
+  check(info.solving && !(await probe("lostEdit")) && g?.stage === "recover" && g.turns > 0, `Done finds the slip (${slip}) and loads a step back on track, in the same solve (${JSON.stringify({ stage: g?.stage, solving: info.solving, steps: info.steps.length })})`);
+});
+
+labTest("lost: Lost? asked while End the solve? waits takes that question away", async ({ page, check, probe, settle, play }) => {
+  // A question left open ("End the solve in progress?", here from Reset), then Lost?: the
+  // question goes, or answering it later would start something under the interview.
+  await play("R U");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  await page.evaluate(() => document.getElementById("reset").click());
   const asked = !(await page.$eval("#confirm", (e) => e.hidden));
   await page.click("#lost");
   await settle();
   const state = { confirm: !(await page.$eval("#confirm", (e) => e.hidden)), lost: !!(await probe("lost")) };
-  check(asked && !state.confirm && state.lost, `the old question goes away when Lost? starts again (${JSON.stringify({ asked, ...state })})`);
+  check(asked && !state.confirm && state.lost, `the old question goes away when Lost? starts (${JSON.stringify({ asked, ...state })})`);
 });
 
 labTest("lost: Cancel puts the turn list and the step back as they were", async ({ page, check, probe, settle, play, counter }) => {
