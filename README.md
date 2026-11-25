@@ -1,7 +1,7 @@
 # X-Cube simulator
 
 **New here (person or agent)? Start with [AGENTS.md](AGENTS.md)** for the terminology,
-notation, cubelet names and code map. Solving algorithms are in [ALGORITHMS.md](ALGORITHMS.md).
+notation, piece names and code map. Solving algorithms are in [ALGORITHMS.md](ALGORITHMS.md).
 
 A simulator and algorithm-search toolkit for the X-Cube (Moving Parts, 2013): a 3x3x3
 with 3x3 extensions on four sides that turn on their own only when complete.
@@ -22,7 +22,7 @@ red right, orange left and blue back. The colors are set in `FACE_COLOR` in
 | Notation | Meaning |
 |---|---|
 | `R L U D F B` | Inner turns: the 3x3x3 layer plus everything beyond it, including the extension. Clockwise looking at that face. Always allowed. |
-| `r l f b` (`u d`) | Outer turns: the extension alone. Allowed only when all 9 of its cubelets are present. |
+| `r l f b` (`u d`) | Outer turns: the extension alone. Allowed only when all 9 of its pieces are present. |
 | `H` | The horizontal middle layer, turned like `U`. `E` is accepted as `H'`. |
 | `M` | The middle layer between L and R, turned like `L`. |
 | `S` | The middle layer between F and B, turned like `F`. |
@@ -45,7 +45,7 @@ His edge 3-cycle becomes `R' S' R b R' S R b'`, and his corner 3-cycle becomes
 ## Model
 
 - **Slots.** There are 80 slots: every lattice point in -2..2 with at most one coordinate equal to ±2, minus the solid center.
-- **Cubelets.** There are 62:
+- **Pieces.** There are 62:
   - 8 core corners and 8 core single edges, each with one white or yellow sticker;
   - 4 core double edges, with no stickers;
   - 16 outer corners and 16 outer edges;
@@ -53,7 +53,7 @@ His edge 3-cycle becomes `R' S' R b R' S R b'`, and his corner 3-cycle becomes
 - **Solved.** The puzzle is in an X shape, and every exposed face in each direction shows one color.
 
 The tests check these invariants:
-- An outer cubelet's outward color never changes. That's why two outer cubelets with the same three colors are not interchangeable.
+- An outer piece's outward color never changes. That's why two outer pieces with the same three colors are not interchangeable.
 - Outer turns never change the shape.
 - Fused centers never separate.
 
@@ -168,10 +168,10 @@ npm install
 npm test
 node src/cli/xc.ts show   "R' S' R b R' S R b'"   # status, flat view, cycles
 node src/cli/xc.ts steps  "R U R' U'"             # status after every turn
-node src/cli/xc.ts effect "[R' F' R, b]"          # which cubelets moved
+node src/cli/xc.ts effect "[R' F' R, b]"          # which pieces moved
 node src/cli/xc.ts order  "R U"                   # repetitions until it looks the same
 node src/cli/xc.ts solve  "R U F' l"              # steps from that position to solved
-node src/cli/xc.ts solve  "R U F' l" --mode layers   # ... solving the outer cubelets top to bottom
+node src/cli/xc.ts solve  "R U F' l" --mode layers   # ... solving the outer pieces top to bottom
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
 node src/cli/xc.ts show "U" --state "VLTM DWOP ..."        # start from a saved state code
 node scripts/build-web.ts                         # build dist/index.html and dist/x-cube-lab.html
@@ -179,9 +179,9 @@ node --test scripts/browser-tests.mjs             # browser tests of the built L
                                                   # BROWSER=webkit for WebKit)
 ```
 
-In cycle output, `A -> B` means the cubelet that was in slot A is now in slot B. Slot names:
+In cycle output, `A -> B` means the piece that was in slot A is now in slot B. Slot names:
 - Core slots use standard names: `UFR`, `UF`, `U`.
-- Extension slots are named `<face>x.<position>`. For example, `Fx.UR` is the up-right cubelet of the front extension, and `Ux.F` is the front spot of the (normally empty) top extension.
+- Extension slots are named `<face>x.<position>`. For example, `Fx.UR` is the up-right piece of the front extension, and `Ux.F` is the front spot of the (normally empty) top extension.
 
 ## Search
 

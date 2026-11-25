@@ -2,7 +2,7 @@
 //
 // Coordinate system (right-handed, same as three.js):
 //   +x = R (right), +y = U (up), +z = F (front, toward the viewer).
-// Every cubelet position has integer coordinates in -2..2.
+// Every piece position has integer coordinates in -2..2.
 
 export type Vec3 = readonly [number, number, number];
 /** Row-major 3x3 integer matrix. */

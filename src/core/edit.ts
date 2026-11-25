@@ -2,23 +2,23 @@
 //
 // The Lab's editor (Edit puzzle) lets the owner set the shape (shape editing, at the end of
 // this file) and paint the stickers that can be seen. fitColors finds a state with that shape whose
-// visible faces show exactly those colors, using each cubelet once, or says why there is
+// visible faces show exactly those colors, using each piece once, or says why there is
 // none. Faces that can't be seen (pressed against a neighbor) are not constrained, so
-// hidden cubelets and the hidden faces of visible ones are filled in as needed, keeping
+// hidden pieces and the hidden faces of visible ones are filled in as needed, keeping
 // the starting state wherever possible.
 //
 // Three levels of validity:
-// - "cubelets": every slot can hold a real cubelet showing those colors, each cubelet once;
-// - "possible": also obeys the outward-color rule (an outer cubelet always shows the same
+// - "pieces": every slot can hold a real piece showing those colors, each piece once;
+// - "possible": also obeys the outward-color rule (an outer piece always shows the same
 //   color away from the core), which no sequence of turns can break;
 // - "reachable": some state showing those colors can be reached by turning.
 //
-// Reachable. Many states show the same colors: look-alike core cubelets can trade places,
-// and cubelets and faces nobody can see can be anything. The colors are reachable when
+// Reachable. Many states show the same colors: look-alike core pieces can trade places,
+// and pieces and faces nobody can see can be anything. The colors are reachable when
 // any one of those states is. Turns keep six things true (serialize.ts lists them), and
 // the paint settles fewer of them than it seems:
 // - Every sticker of an outer corner or outer edge is on a face nothing can cover, so the
-//   paint settles which outer cubelet is in each spot and how it is turned, and the
+//   paint settles which outer piece is in each spot and how it is turned, and the
 //   outward-color rule is the whole of what turns demand of that.
 // - A core corner or core single edge shows its one sticker on its one bare face, so the
 //   shape settles the corner twists and the single edges' flips. A shape that turns made
@@ -36,7 +36,7 @@
 
 import { axisRotation, DIRS, matVec, NUM_ROT, ROT_DIR, ROT_INV, ROT_MUL, ROTATIONS } from "./geometry.ts";
 import { isExposed } from "./analyze.ts";
-import { COLOR_NAME, CUBELETS, FACE_COLOR, NUM_SLOTS, SLOT_NEIGHBOR, SLOT_POS, State, slotAt, type Color, type Kind } from "./puzzle.ts";
+import { COLOR_NAME, PIECES, FACE_COLOR, NUM_SLOTS, SLOT_NEIGHBOR, SLOT_POS, State, slotAt, type Color, type Kind } from "./puzzle.ts";
 import { rotsTo, unreachableReason } from "./serialize.ts";
 
 /** A sticker that hasn't been painted: it may be any color. */
@@ -59,8 +59,8 @@ export function visibleColors(st: State): FaceColors {
 }
 
 export interface Fit {
-  /** "cubelets", "possible" or "reachable" (see above); null when the colors can't be real cubelets. */
-  level: "cubelets" | "possible" | "reachable" | null;
+  /** "pieces", "possible" or "reachable" (see above); null when the colors can't be real pieces. */
+  level: "pieces" | "possible" | "reachable" | null;
   /**
    * A state with the shape and these colors: one that turns can reach when level is
    * "reachable", one obeying the outward-color rule when it is "possible".
@@ -77,7 +77,7 @@ export interface Problem {
   slots: number[];
   /**
    * What its hint calls "circled": stickers (slot, face direction) its colors can't tell
-   * apart, or whole cubelets (face -1) its halo can't tell apart.
+   * apart, or whole pieces (face -1) its halo can't tell apart.
    */
   marks?: { slot: number; face: number }[];
   /** For a shape problem, the spots its hint says to tap: extensions to take away or empty spots to fill. */
@@ -120,32 +120,32 @@ function shownColors(colors: FaceColors, s: number): Color[] {
   return out.sort((a, b) => COLOR_ORDER.indexOf(a) - COLOR_ORDER.indexOf(b));
 }
 
-/** Why no cubelet of this kind can show these colors, as the problem's text. */
-/** Whether every cubelet of this kind shows at most one sticker (core corners and single edges, centers). */
-const oneSticker = (kind: Kind) => CUBELETS.filter((c) => c.kind === kind).every((c) => c.stickers.filter(Boolean).length <= 1);
+/** Why no piece of this kind can show these colors, as the problem's text. */
+/** Whether every piece of this kind shows at most one sticker (core corners and single edges, centers). */
+const oneSticker = (kind: Kind) => PIECES.filter((c) => c.kind === kind).every((c) => c.stickers.filter(Boolean).length <= 1);
 
-function noCubelet(kind: Kind, cs: Color[]): string {
-  const sameKind = CUBELETS.filter((c) => c.kind === kind);
+function noPiece(kind: Kind, cs: Color[]): string {
+  const sameKind = PIECES.filter((c) => c.kind === kind);
   const can = new Set(sameKind.flatMap((c) => c.stickers.filter((x): x is Color => !!x)));
   const cannot = [...new Set(cs)].filter((c) => !can.has(c));
-  // A cubelet with one sticker: the problem is that sticker, named as such (and circled).
+  // A piece with one sticker: the problem is that sticker, named as such (and circled).
   if (cannot.length && oneSticker(kind)) return `This ${KIND_NAME[kind][0]}'s sticker must be ${listColors(COLOR_ORDER.filter((c) => can.has(c)), "or")}, never ${listColors(cannot, "or")}`;
   if (cannot.length)
     return `${/^[aeiouX]/.test(KIND_NAME[kind][0]) ? "An" : "A"} ${KIND_NAME[kind][0]} must be ${listColors(COLOR_ORDER.filter((c) => can.has(c)), "or")}, never ${listColors(cannot, "or")}`;
   const dup = cs.find((c, i) => cs.indexOf(c) !== i);
-  if (dup) return `No cubelet has two ${COLOR_NAME[dup]} stickers`;
+  if (dup) return `No piece has two ${COLOR_NAME[dup]} stickers`;
   for (let k = 0; k < 6; k += 2)
     if (cs.includes(FACE_COLOR[k]) && cs.includes(FACE_COLOR[k + 1]))
-      return `${cap(COLOR_NAME[FACE_COLOR[k]])} and ${COLOR_NAME[FACE_COLOR[k + 1]]} can never be on the same cubelet`;
-  // The colors are on a cubelet of this kind, but not in this arrangement: on a corner,
+      return `${cap(COLOR_NAME[FACE_COLOR[k]])} and ${COLOR_NAME[FACE_COLOR[k + 1]]} can never be on the same piece`;
+  // The colors are on a piece of this kind, but not in this arrangement: on a corner,
   // the three colors go around it in a fixed order that no turn can mirror.
   const holders = sameKind.filter((c) => cs.every((x) => c.stickers.includes(x))).length;
-  if (holders && cs.length === 3) return `No cubelet has ${listColors(cs)} arranged this way`;
-  if (holders) return `No cubelet in this position can show ${listColors(cs)} this way`;
-  return `No cubelet in this position has ${listColors(cs)}`;
+  if (holders && cs.length === 3) return `No piece has ${listColors(cs)} arranged this way`;
+  if (holders) return `No piece in this position can show ${listColors(cs)} this way`;
+  return `No piece in this position has ${listColors(cs)}`;
 }
 
-/** The owner's names for the kinds of cubelet (AGENTS.md), singular and plural. */
+/** The owner's names for the kinds of piece (AGENTS.md), singular and plural. */
 const KIND_NAME: Record<Kind, [string, string]> = {
   // Plural for counts: each center color shows on exactly one center of either kind.
   center: ["core center", "centers"],
@@ -156,7 +156,7 @@ const KIND_NAME: Record<Kind, [string, string]> = {
   outerCorner: ["X-face corner", "X-face corners"],
   outerEdge: ["extension edge", "extension edges"],
 };
-const kindOf = (shape: State, s: number) => CUBELETS[shape.occ[s]].kind;
+const kindOf = (shape: State, s: number) => PIECES[shape.occ[s]].kind;
 
 const cap = (t: string) => t[0].toUpperCase() + t.slice(1);
 
@@ -174,20 +174,20 @@ const numberWord = (n: number) => NUMBER_WORDS[n] ?? String(n);
 
 /**
  * What a fit must obey besides the colors: nothing, the outward-color rule, or "turned":
- * each cubelet turned as some rotation of the whole puzzle would turn it into its slot,
+ * each piece turned as some rotation of the whole puzzle would turn it into its slot,
  * which every turn keeps true (and which implies the outward-color rule).
  */
 type Rule = "none" | "outward" | "turned";
 
-/** Every (cubelet, orientation) that could sit in slot s and show these colors there. */
+/** Every (piece, orientation) that could sit in slot s and show these colors there. */
 function candidates(shape: State, colors: FaceColors, s: number, rule: Rule): [number, number][] {
-  const kind = CUBELETS[shape.occ[s]].kind;
+  const kind = PIECES[shape.occ[s]].kind;
   const out: [number, number][] = [];
   const outDir = outwardDir(s);
-  // Try the current occupant and orientation first, so an unchanged slot keeps its cubelet.
-  const ids = [shape.occ[s], ...CUBELETS.filter((c) => c.kind === kind && c.id !== shape.occ[s]).map((c) => c.id)];
+  // Try the current occupant and orientation first, so an unchanged slot keeps its piece.
+  const ids = [shape.occ[s], ...PIECES.filter((c) => c.kind === kind && c.id !== shape.occ[s]).map((c) => c.id)];
   for (const id of ids) {
-    const c = CUBELETS[id];
+    const c = PIECES[id];
     const oris = [shape.ori[s], ...[...Array(NUM_ROT).keys()].filter((o) => o !== shape.ori[s])];
     for (const o of oris) {
       if (rule === "outward" && c.outward !== null && ROT_DIR[o * 6 + c.outward] !== outDir) continue;
@@ -206,17 +206,17 @@ function candidates(shape: State, colors: FaceColors, s: number, rule: Rule): [n
 }
 
 /**
- * Whether a spot still has a sticker with no color. Spots competing for too few cubelets
- * are found among finished spots only: an unfinished spot fits many cubelets, so a group
+ * Whether a spot still has a sticker with no color. Spots competing for too few pieces
+ * are found among finished spots only: an unfinished spot fits many pieces, so a group
  * that takes one in can spread over most of a kind (13 X-face corners for 12 in a
  * play-tester's edit, where two unfinished corners each needed the last red, white, and
  * blue one), and no hint can narrow it until its colors are in.
  */
 const unfinished = (colors: FaceColors, spots: number[]) => spots.some((t) => [0, 1, 2, 3, 4, 5].some((d) => colors[t * 6 + d] === UNPAINTED));
 
-/** Assigns each filled slot a distinct cubelet (bipartite matching by augmenting paths). */
+/** Assigns each filled slot a distinct piece (bipartite matching by augmenting paths). */
 function match(slots: number[], cand: Map<number, [number, number][]>) {
-  const slotOf = new Map<number, number>(); // cubelet id -> slot
+  const slotOf = new Map<number, number>(); // piece id -> slot
   const choice = new Map<number, [number, number]>(); // slot -> (id, ori)
   const tryAssign = (s: number, seen: Set<number>): boolean => {
     for (const [id, o] of cand.get(s)!) {
@@ -236,7 +236,7 @@ function match(slots: number[], cand: Map<number, [number, number][]>) {
   return { choice, slotOf, unmatched };
 }
 
-/** A matching of the filled slots to cubelets; with `finished`, of only those whose stickers all have a color. */
+/** A matching of the filled slots to pieces; with `finished`, of only those whose stickers all have a color. */
 function attempt(shape: State, colors: FaceColors, rule: Rule, finished = false) {
   const slots = [...Array(NUM_SLOTS).keys()].filter((s) => shape.occ[s] >= 0 && !(finished && unfinished(colors, [s])));
   const cand = new Map(slots.map((s) => [s, candidates(shape, colors, s, rule)] as const));
@@ -253,9 +253,9 @@ function attempt(shape: State, colors: FaceColors, rule: Rule, finished = false)
 }
 
 /**
- * Spots competing for too few cubelets in a failed attempt. From a spot left without one,
- * the spots reachable by trading cubelets (its candidates, the spots those fill, their
- * candidates, ...) are N spots sharing N - 1 cubelets; spots whose sets overlap are one
+ * Spots competing for too few pieces in a failed attempt. From a spot left without one,
+ * the spots reachable by trading pieces (its candidates, the spots those fill, their
+ * candidates, ...) are N spots sharing N - 1 pieces; spots whose sets overlap are one
  * group. Any of them may be the one painted wrong.
  */
 function competing(a: ReturnType<typeof attempt>) {
@@ -281,15 +281,15 @@ function competing(a: ReturnType<typeof attempt>) {
 
 const SOLVED = State.solved();
 /** The core center each extension center is fused to. */
-const FUSED_TO = new Map(CUBELETS.filter((c) => c.kind === "extCenter").map((c) => [c.id, SOLVED.occ[SLOT_NEIGHBOR[c.home * 6 + (c.outward! ^ 1)]]]));
+const FUSED_TO = new Map(PIECES.filter((c) => c.kind === "extCenter").map((c) => [c.id, SOLVED.occ[SLOT_NEIGHBOR[c.home * 6 + (c.outward! ^ 1)]]]));
 /** The core center slot in each direction. */
 const CENTER_SLOTS = DIRS.map((d) => slotAt(d));
 
-/** Slots of `st` holding cubelets of this kind, optionally only those with this sticker color. */
+/** Slots of `st` holding pieces of this kind, optionally only those with this sticker color. */
 const slotsOf = (st: State, kind: Kind, color?: Color) =>
-  [...Array(NUM_SLOTS).keys()].filter((s) => st.occ[s] >= 0 && CUBELETS[st.occ[s]].kind === kind && (!color || CUBELETS[st.occ[s]].stickers.includes(color)));
+  [...Array(NUM_SLOTS).keys()].filter((s) => st.occ[s] >= 0 && PIECES[st.occ[s]].kind === kind && (!color || PIECES[st.occ[s]].stickers.includes(color)));
 
-/** Trades the cubelets in slots a and b, each turned to show what the other showed. False if they can't. */
+/** Trades the pieces in slots a and b, each turned to show what the other showed. False if they can't. */
 function trade(st: State, a: number, b: number): boolean {
   const look = (s: number) => [0, 1, 2, 3, 4, 5].map((d) => st.colorAt(s, d)).join();
   const [la, lb, ia, ib] = [look(a), look(b), st.occ[a], st.occ[b]];
@@ -304,7 +304,7 @@ function trade(st: State, a: number, b: number): boolean {
   return put(a, ib, la) && put(b, ia, lb);
 }
 
-/** Gives the cubelet in slot s a quarter turn about the axis its slot is on (a center's spin). */
+/** Gives the piece in slot s a quarter turn about the axis its slot is on (a center's spin). */
 function spin(st: State, s: number) {
   const axis = SLOT_POS[s].findIndex((c) => c !== 0);
   st.ori[s] = ROT_MUL[axisRotation(axis, 1) * NUM_ROT + st.ori[s]];
@@ -334,7 +334,7 @@ const UNSEEN_CHANGES: ((st: State) => boolean)[] = [
   }),
   // Spin a white or yellow center, or an extension center: only the face on its axis has a sticker.
   ...(["center", "extCenter"] as const).map((kind) => (st: State) => {
-    const s = slotsOf(st, kind).find((s) => CUBELETS[st.occ[s]].stickers.some((c) => c));
+    const s = slotsOf(st, kind).find((s) => PIECES[st.occ[s]].stickers.some((c) => c));
     if (s === undefined) return false;
     spin(st, s);
     return true;
@@ -349,9 +349,9 @@ function bits(n: number): number {
 /** What's wrong with the arrangement of the center colors of st, or null if turns can arrange them so. */
 function centerProblem(st: State): Problem | null {
   const ids = CENTER_SLOTS.map((s) => st.occ[s]);
-  if (ids.some((id) => id < 0 || CUBELETS[id].kind !== "center")) return null;
-  // The direction each center's cubelet faces when solved.
-  const home = ids.map((id) => CENTER_SLOTS.indexOf(CUBELETS[id].home));
+  if (ids.some((id) => id < 0 || PIECES[id].kind !== "center")) return null;
+  // The direction each center's piece faces when solved.
+  const home = ids.map((id) => CENTER_SLOTS.indexOf(PIECES[id].home));
   const ok = [...Array(NUM_ROT).keys()].some((r) => home.every((h, d) => ROT_DIR[r * 6 + h] === d));
   if (ok) return null;
   // The spot that shows a center's color: its extension center, if it has one.
@@ -422,7 +422,7 @@ function reachableFit(shape: State, colors: FaceColors): { state: State; problem
     const behind = SLOT_NEIGHBOR[s * 6 + (outwardDir(s) ^ 1)];
     const own = FUSED_TO.get(st.occ[s])!;
     const at = st.occ.indexOf(own);
-    if (behind < 0 || st.occ[behind] < 0 || CUBELETS[st.occ[behind]].kind !== "center") return { state: null, problem: problem(start, []) };
+    if (behind < 0 || st.occ[behind] < 0 || PIECES[st.occ[behind]].kind !== "center") return { state: null, problem: problem(start, []) };
     if (at !== behind && !trade(st, at, behind)) return { state: null, problem: problem(start, []) };
   }
   const centers = centerProblem(st);
@@ -438,11 +438,11 @@ function reachableFit(shape: State, colors: FaceColors): { state: State; problem
   return { state: null, problem: problem(`${start} (${unreachableReason(st)})`, []) };
 }
 
-/** Finds real cubelets showing `colors` on the shape of `shape` (see the top of this file). */
+/** Finds real pieces showing `colors` on the shape of `shape` (see the top of this file). */
 /**
  * What the spots should probably show instead, from counting. No sticker is ever covered,
- * so once every sticker on the cubelets of one kind has a color, the colors they show,
- * cubelet by cubelet, are exactly the puzzle's cubelets of that kind. A cubelet no spot
+ * so once every sticker on the pieces of one kind has a color, the colors they show,
+ * piece by piece, are exactly the puzzle's pieces of that kind. A piece no spot
  * shows is what one of the wrong spots should be; of those, the ones sharing the most
  * colors with what these spots show are named ("One of these should probably be yellow,
  * blue, and red"). Every center color shows on exactly one center of either kind, so for
@@ -467,7 +467,7 @@ function hintFor(shape: State, colors: FaceColors, spots: number[], wrong: numbe
         ? [`${lead} should maybe be ${names[0]}`, ...names.slice(1).map((n) => `It could also be ${n}`)].join(". ")
         : `${lead} should maybe be ${names.join(" or ")}`;
   const centers = kind === "center" || kind === "extCenter";
-  const counted = (s: number) => shape.occ[s] >= 0 && (centers ? ["center", "extCenter"].includes(CUBELETS[shape.occ[s]].kind) : CUBELETS[shape.occ[s]].kind === kind);
+  const counted = (s: number) => shape.occ[s] >= 0 && (centers ? ["center", "extCenter"].includes(PIECES[shape.occ[s]].kind) : PIECES[shape.occ[s]].kind === kind);
   const key = (cs: readonly (Color | null)[]) => COLOR_ORDER.filter((c) => cs.includes(c)).join("");
   const shown = new Map<string, number>();
   for (let s = 0; s < NUM_SLOTS; s++) {
@@ -484,10 +484,10 @@ function hintFor(shape: State, colors: FaceColors, spots: number[], wrong: numbe
   if (centers) {
     // The colors a center of these spots' kind can have (white or yellow on a core center,
     // a side color on an extension center) that no center of that kind shows.
-    const kinds = new Set(spots.map((t) => CUBELETS[shape.occ[t]].kind));
-    const can = new Set(CUBELETS.filter((c) => kinds.has(c.kind)).flatMap((c) => c.stickers.filter((x): x is Color => !!x)));
+    const kinds = new Set(spots.map((t) => PIECES[shape.occ[t]].kind));
+    const can = new Set(PIECES.filter((c) => kinds.has(c.kind)).flatMap((c) => c.stickers.filter((x): x is Color => !!x)));
     const there = new Set<Color>();
-    for (let s = 0; s < NUM_SLOTS; s++) if (shape.occ[s] >= 0 && kinds.has(CUBELETS[shape.occ[s]].kind)) for (const c of shownColors(colors, s)) there.add(c);
+    for (let s = 0; s < NUM_SLOTS; s++) if (shape.occ[s] >= 0 && kinds.has(PIECES[shape.occ[s]].kind)) for (const c of shownColors(colors, s)) there.add(c);
     const none = COLOR_ORDER.filter((c) => can.has(c) && !there.has(c));
     // Every color the kind can have is no help: the problem already says so.
     if (!none.length || none.length === can.size) return null;
@@ -510,12 +510,12 @@ function hintFor(shape: State, colors: FaceColors, spots: number[], wrong: numbe
     return left.length === 1 ? `${lead} should be ${COLOR_NAME[left[0]]}` : say(left.map((c) => COLOR_NAME[c]));
   }
   const have = new Map<string, number>();
-  for (const c of CUBELETS) if (c.kind === kind) have.set(key(c.stickers), (have.get(key(c.stickers)) ?? 0) + 1);
+  for (const c of PIECES) if (c.kind === kind) have.set(key(c.stickers), (have.get(key(c.stickers)) ?? 0) + 1);
   let short = new Set([...have].filter(([k, n]) => n > (shown.get(k) ?? 0)).map(([k]) => k));
-  // With no cubelet missing, a spot's own colors are right and only their arrangement is wrong.
+  // With no piece missing, a spot's own colors are right and only their arrangement is wrong.
   if (!short.size) short = new Set(spots.map((t) => key(shownColors(colors, t))).filter((k) => have.has(k)));
   if (!short.size) return null;
-  // A cubelet with one sticker is fixed by naming its color: the one color the counts
+  // A piece with one sticker is fixed by naming its color: the one color the counts
   // leave, said plainly. When they leave every color its kind can have, they add nothing
   // to the problem ("must be white or yellow"), so there is no hint.
   if (spots.every((t) => shownColors(colors, t).length === 1)) {
@@ -525,14 +525,14 @@ function hintFor(shape: State, colors: FaceColors, spots: number[], wrong: numbe
     if (left.length === 1) return `${lead} should be ${listColors([...left[0]] as Color[])}`;
     return say(left.map((k) => listColors([...k] as Color[])));
   }
-  // Otherwise, sticker by sticker. Every spot of this kind is some cubelet of this kind,
+  // Otherwise, sticker by sticker. Every spot of this kind is some piece of this kind,
   // each a different one, turned as the outward-color rule allows. The likeliest ways to
   // make that so recolor the fewest stickers over all those spots together (two trading
   // places is one change), so a fix for one of these spots is offered only if some such
   // way uses it. A fix that suits this spot alone, but leaves another spot without the
-  // cubelet it needs, is not.
+  // piece it needs, is not.
   const all = [...Array(NUM_SLOTS).keys()].filter(counted);
-  const ids = CUBELETS.filter((c) => c.kind === kind).map((c) => c.id);
+  const ids = PIECES.filter((c) => c.kind === kind).map((c) => c.id);
   if (all.length !== ids.length) return null;
   const fits = all.map((t) => ids.map((id) => fitAt(colors, t, id)));
   const cost = fits.map((row) => row.map((f) => f?.cost ?? IMPOSSIBLE));
@@ -563,12 +563,12 @@ const IMPOSSIBLE = 1e6;
 type Change = [Color, Color, number];
 
 /**
- * The fewest stickers of spot t to recolor so that it shows cubelet `id`, turned as the
+ * The fewest stickers of spot t to recolor so that it shows piece `id`, turned as the
  * outward-color rule allows, and which ones (from, to); null if no turn of it fits the spot's
  * shape of stickers. Two stickers trading places, and nothing else, counts as one change.
  */
 function fitAt(colors: FaceColors, t: number, id: number): { cost: number; changes: Change[] } | null {
-  const c = CUBELETS[id];
+  const c = PIECES[id];
   const outDir = outwardDir(t);
   let best: { cost: number; changes: Change[] } | null = null;
   for (let o = 0; o < NUM_ROT; o++) {
@@ -720,9 +720,9 @@ function fixesText(colors: FaceColors, spots: number[], options: { spot: number;
 }
 
 /**
- * Fits the colors to cubelets (see `Fit`). An extension cubelet's sticker facing away from
+ * Fits the colors to pieces (see `Fit`). An extension piece's sticker facing away from
  * the core is never white or yellow, which needs no counting and says for certain which
- * sticker is wrong, so it is told first, and other problems on that cubelet wait for it:
+ * sticker is wrong, so it is told first, and other problems on that piece wait for it:
  * a play-tester recolored the other sticker of an extension edge with yellow facing down
  * through all six colors, told each time about the pair or a count.
  */
@@ -730,19 +730,19 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
   const facing: Problem[] = [];
   for (let s = 0; s < NUM_SLOTS; s++) {
     const id = shape.occ[s], out = outwardDir(s);
-    if (id < 0 || out < 0 || !["outerCorner", "outerEdge"].includes(CUBELETS[id].kind)) continue;
+    if (id < 0 || out < 0 || !["outerCorner", "outerEdge"].includes(PIECES[id].kind)) continue;
     const c = colors[s * 6 + out];
     if (c !== "W" && c !== "Y") continue;
     const counted = missingColors(shape, colors, [s]);
-    // With another sticker of the same color on the cubelet, "its white sticker" could be
+    // With another sticker of the same color on the piece, "its white sticker" could be
     // either: the one meant is circled, and called the circled one.
     const twin = [0, 1, 2, 3, 4, 5].some((d) => d !== out && colors[s * 6 + d] === c);
     const name = `${twin ? "circled " : ""}${COLOR_NAME[c]} sticker`;
     const hint = counted ?? sideHint(shape, colors, s, out, c);
     if (twin && hint) hint.text = hint.text.replace(`Its ${COLOR_NAME[c]} sticker`, `Its ${name}`);
-    const p = hinted(`This cubelet's ${name} has the wrong color`, [s], hint);
+    const p = hinted(`This piece's ${name} has the wrong color`, [s], hint);
     // Where the counts can't say, the sticker it means is circled: the halo outlines the
-    // whole cubelet, whose other stickers may be all the view shows of it.
+    // whole piece, whose other stickers may be all the view shows of it.
     if (!counted || twin) p.marks = [{ slot: s, face: out }];
     facing.push(p);
   }
@@ -755,9 +755,9 @@ export function fitColors(shape: State, colors: FaceColors): Fit {
 }
 
 /**
- * What a white or yellow sticker facing away from the core should be, from its cubelet's
+ * What a white or yellow sticker facing away from the core should be, from its piece's
  * other stickers alone, for when the counts can't say (a sticker of that kind has no color
- * yet): the side colors some cubelet of that kind could show there, turned as the rule
+ * yet): the side colors some piece of that kind could show there, turned as the rule
  * allows, beside them. Every side color is no narrowing, and is said as the rule.
  */
 function sideHint(shape: State, colors: FaceColors, s: number, out: number, c: Color): Hint {
@@ -779,7 +779,7 @@ function sideHint(shape: State, colors: FaceColors, s: number, out: number, c: C
 /**
  * Where neither a color nor a trade fixes a white or yellow sticker facing away from the
  * core, another of its stickers is certainly wrong too: the ones some fix recoloring it and
- * one other makes a cubelet of its kind, turned as the rule allows, by color, said on to the
+ * one other makes a piece of its kind, turned as the rule allows, by color, said on to the
  * problem's own sentence ("..., and so does either its orange or blue sticker"). Spelling
  * out each fix's colors made four sentences a play-tester found overwhelming; the puzzle in
  * hand shows what the colors should be.
@@ -805,9 +805,9 @@ function twoHint(shape: State, colors: FaceColors, s: number, out: number): Hint
 }
 
 /**
- * Two of a cubelet's stickers trading places, where that makes it a cubelet of its kind
+ * Two of a piece's stickers trading places, where that makes it a piece of its kind
  * turned as the rule allows: for colors on the wrong sides of it, as a corner whose colors go
- * around it the wrong way, which "no cubelet has them arranged this way" leaves a mystery.
+ * around it the wrong way, which "no piece has them arranged this way" leaves a mystery.
  * With `with`, only trades with that face. Null if no trade fits.
  */
 function swapHint(shape: State, colors: FaceColors, s: number, withFace = -1): Hint | null {
@@ -838,16 +838,16 @@ function fitAll(shape: State, colors: FaceColors): Fit {
   if (loose.state) {
     for (const s of strict.slots)
       if (strict.cand.get(s)!.length === 0) {
-        // White and yellow never point out: that rule needs no knowledge of the cubelet.
+        // White and yellow never point out: that rule needs no knowledge of the piece.
         const facing = colors[s * 6 + outwardDir(s)];
         if (facing === "W" || facing === "Y") {
-          problems.push(hinted(`This cubelet's ${COLOR_NAME[facing]} sticker has the wrong color`, [s], missingColors(shape, colors, [s])));
+          problems.push(hinted(`This piece's ${COLOR_NAME[facing]} sticker has the wrong color`, [s], missingColors(shape, colors, [s])));
           continue;
         }
         const cs = shownColors(colors, s);
-        problems.push(hinted(`No cubelet has ${listColors(cs)} arranged this way`, [s], missingColors(shape, colors, [s]) ?? swapHint(shape, colors, s), "One of its stickers has the wrong color"));
+        problems.push(hinted(`No piece has ${listColors(cs)} arranged this way`, [s], missingColors(shape, colors, [s]) ?? swapHint(shape, colors, s), "One of its stickers has the wrong color"));
       }
-    // Every spot fits a cubelet turned a way the rule allows, but some compete for too few.
+    // Every spot fits a piece turned a way the rule allows, but some compete for too few.
     if (!problems.length)
       for (const g of competing(attempt(shape, colors, "outward", true))) {
         const spots = [...g.slots];
@@ -867,21 +867,21 @@ function fitAll(shape: State, colors: FaceColors): Fit {
         );
       }
     if (!problems.length && !unfinished(colors, strict.slots)) problems.push({ text: "The colors can't all be right at once. A sticker has the wrong color", slots: [] });
-    return { level: "cubelets", state: loose.state, problems };
+    return { level: "pieces", state: loose.state, problems };
   }
   for (const s of loose.slots)
     if (loose.cand.get(s)!.length === 0) {
       const cs = shownColors(colors, s);
-      const kind = CUBELETS[shape.occ[s]].kind;
-      const p = hinted(noCubelet(kind, cs), [s], missingColors(shape, colors, [s]) ?? swapHint(shape, colors, s));
-      // A cubelet with one sticker: that sticker is the one the problem is about. Circled,
-      // since the halo outlines the whole cubelet; Show turns to it.
+      const kind = PIECES[shape.occ[s]].kind;
+      const p = hinted(noPiece(kind, cs), [s], missingColors(shape, colors, [s]) ?? swapHint(shape, colors, s));
+      // A piece with one sticker: that sticker is the one the problem is about. Circled,
+      // since the halo outlines the whole piece; Show turns to it.
       const face = [0, 1, 2, 3, 4, 5].find((d) => { const c = colors[s * 6 + d]; return !!c && c !== UNPAINTED; });
       if (oneSticker(kind) && cs.length === 1 && face !== undefined) p.marks ??= [{ slot: s, face }];
       problems.push(p);
     }
   if (!problems.length) {
-    // Every slot has candidates, but some spots compete for too few cubelets.
+    // Every slot has candidates, but some spots compete for too few pieces.
     const groups = competing(attempt(shape, colors, "none", true));
     for (const g of groups) {
       const spots = [...g.slots];
@@ -900,14 +900,14 @@ function fitAll(shape: State, colors: FaceColors): Fit {
 // ---------------------------------------------------------------- shape editing
 //
 // The shape is which outer spots are filled, and it follows from the core alone: a core
-// corner has outer cubelets on two of its three sides, a core single edge on one of its
+// corner has outer pieces on two of its three sides, a core single edge on one of its
 // two, a core double edge on both, and the centers of two opposite faces have no
-// extension center. A shape edit moves real cubelets, each as a rotation of the whole
+// extension center. A shape edit moves real pieces, each as a rotation of the whole
 // puzzle would carry it, so the result is always a position that can be drawn and fitted.
 // The one thing such a move can leave wrong is the sum of the core corners' twists, which
 // reachableFit reports.
 
-/** The core slot the cubelet in outer slot s rests against. */
+/** The core slot the piece in outer slot s rests against. */
 const coreOf = (s: number) => SLOT_NEIGHBOR[s * 6 + (outwardDir(s) ^ 1)];
 /** The outer slots against core slot c. */
 const outerOf = (c: number) => [0, 1, 2, 3, 4, 5].map((d) => SLOT_NEIGHBOR[c * 6 + d]).filter((n) => n >= 0 && outwardDir(n) >= 0);
@@ -916,7 +916,7 @@ const span = (s: number) => SLOT_POS[s].filter((c) => c !== 0).length;
 const ALL_ROTS = [...Array(NUM_ROT).keys()];
 const carries = (r: number, from: number, to: number) => slotAt(matVec(ROTATIONS[r], SLOT_POS[from])) === to;
 
-/** One cubelet's part in a shape edit: from a slot to a slot, turned by rotation `rot`. */
+/** One piece's part in a shape edit: from a slot to a slot, turned by rotation `rot`. */
 export interface Carry {
   from: number;
   to: number;
@@ -924,12 +924,12 @@ export interface Carry {
 }
 
 /**
- * How the cubelet in outer slot s can move by itself, as real cubelets move:
+ * How the piece in outer slot s can move by itself, as real pieces move:
  * - "swing": it moves at once (around its core corner or core single edge to the bare
  *   side, or, an extension center, with the one opposite it to the faces that have none);
  * - "lift": it is against a core double edge and can go to any of `targets`, the bare
  *   sides of the core single edges;
- * - null: nothing (an empty slot or a core cubelet).
+ * - null: nothing (an empty slot or a core piece).
  */
 function shapeTap(shape: State, s: number): { kind: "swing" } | { kind: "lift"; targets: number[] } | null {
   if (s < 0 || shape.occ[s] < 0 || outwardDir(s) < 0) return null;
@@ -944,7 +944,7 @@ function shapeTap(shape: State, s: number): { kind: "swing" } | { kind: "lift"; 
   return { kind: "lift", targets };
 }
 
-/** The cubelets a tap on slot s moves (see shapeTap); `target` is where a lifted cubelet goes. */
+/** The pieces a tap on slot s moves (see shapeTap); `target` is where a lifted piece goes. */
 function carriesFor(shape: State, s: number, target?: number): Carry[] | null {
   const tap = shapeTap(shape, s);
   if (!tap) return null;
@@ -967,14 +967,14 @@ function carriesFor(shape: State, s: number, target?: number): Carry[] | null {
     const moved = CENTER_SLOTS.flatMap((x, d) => [x, SLOT_NEIGHBOR[x * 6 + d]]).filter((x) => x >= 0 && shape.occ[x] >= 0);
     return moved.map((from) => ({ from, to: slotAt(matVec(ROTATIONS[rot], SLOT_POS[from])), rot }));
   }
-  // A turn of the core cubelet, with the outer cubelets on it, that leaves side s bare.
+  // A turn of the core piece, with the outer pieces on it, that leaves side s bare.
   const bare = outerOf(c).find((n) => shape.occ[n] < 0);
   if (bare === undefined) return null;
   const rot = ALL_ROTS.find((r) => carries(r, c, c) && carries(r, bare, s))!;
   return [c, ...outerOf(c).filter((n) => shape.occ[n] >= 0)].map((from) => ({ from, to: slotAt(matVec(ROTATIONS[rot], SLOT_POS[from])), rot }));
 }
 
-/** The position after the cubelet in slot s moves (see shapeTap), or null if it can't; `target` is where a lifted cubelet goes. */
+/** The position after the piece in slot s moves (see shapeTap), or null if it can't; `target` is where a lifted piece goes. */
 function editShape(shape: State, s: number, target?: number): { shape: State; carries: Carry[] } | null {
   const list = carriesFor(shape, s, target);
   if (!list) return null;
@@ -988,10 +988,10 @@ function editShape(shape: State, s: number, target?: number): { shape: State; ca
 }
 
 // A shape being edited may be wrong for a while, as paint may. A draft is a real position
-// (`shape`) and the changes tapped since that no moves of real cubelets
-// account for yet: extension cubelets taken away (`removed`) and blank ones put in
+// (`shape`) and the changes tapped since that no moves of real pieces
+// account for yet: extension pieces taken away (`removed`) and blank ones put in
 // (`added`). When the changed shape is one the puzzle can have (draftProblems finds
-// nothing), the changes are made by moving real cubelets and the two sets empty.
+// nothing), the changes are made by moving real pieces and the two sets empty.
 
 export interface Draft {
   shape: State;
@@ -1010,7 +1010,7 @@ function ALL_SLOTS() {
 }
 const filledOn = (d: Draft, c: number) => outerOf(c).filter((n) => draftFilled(d, n));
 
-/** The empty spots a tap can fill: every outer spot without a cubelet (each is against a core cubelet). */
+/** The empty spots a tap can fill: every outer spot without a piece (each is against a core piece). */
 export function draftSpots(d: Draft): number[] {
   return ALL_SLOTS().filter((s) => outwardDir(s) >= 0 && !draftFilled(d, s));
 }
@@ -1022,7 +1022,7 @@ export function draftProblems(d: Draft): Problem[] {
   const out: Problem[] = [];
   const count = (n: number, one: string, many: string, limit: string) =>
     n > 4 ? `${cap(numberWord(n))} ${many}, but there can be only four` : `${n ? `Only ${numberWord(n)}` : "No"} ${n === 1 ? one : many}, but ${limit}`;
-  // Core cubelets with a number of extensions none of them can have: a problem for each,
+  // Core pieces with a number of extensions none of them can have: a problem for each,
   // since each is fixed on its own.
   const wrong = (slots: number[], text: string) => {
     for (const c of slots) out.push(problem(text, [c]));
@@ -1045,7 +1045,7 @@ export function draftProblems(d: Draft): Problem[] {
  * The spots the fewest taps change on the way to a shape the puzzle can have. A shape is
  * one when every core corner has two of its three spots filled, every core edge one or
  * both of its two (both on exactly four of them), and every center its one spot filled but
- * for two opposite ones; so each core cubelet is chosen on its own, but for which four edges
+ * for two opposite ones; so each core piece is chosen on its own, but for which four edges
  * have two, which two centers have none, and the corners' twists, which the bare spots set
  * and which must add up to whole turns (so of a corner's two bare spots, the one that keeps
  * the twists whole is the one to fill). A spot is in the answer when some way with the
@@ -1098,7 +1098,7 @@ function shapeTaps(d: Draft): number[] {
 
 /**
  * A shape problem with what to tap: of the spots the fewest taps change (`taps`), those on
- * the core cubelets the problem names (or of the kind it is about, when it names none),
+ * the core pieces the problem names (or of the kind it is about, when it names none),
  * taking one away before putting one in, each haloed ("This extension should probably be
  * removed", "An extension should probably be added here"). One tap at a time: the next
  * problem's hint goes on from there.
@@ -1112,7 +1112,7 @@ function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
   const off = pool.filter((t) => draftFilled(d, t));
   const pick = off.length ? off : pool;
   const noun = pick.every((t) => span(coreOf(t)) === 1) ? "extension center" : "extension";
-  // A problem about one core corner or edge is fixed on that cubelet and nowhere else, so
+  // A problem about one core corner or edge is fixed on that piece and nowhere else, so
   // what to do is certain and said plainly. Which of its spots is a guess only when the
   // halo marks fewer than all the spots that could be: then "probably". A core corner with
   // none must get two.
@@ -1140,14 +1140,14 @@ function shapeHint(d: Draft, p: Problem, taps: number[]): Problem {
   return { text: `${p.text}. ${text}`, slots: [...new Set([...p.slots, ...pick])], taps: pick, ...(marks ? { marks } : {}) };
 }
 
-/** Makes the draft's changes by moving real cubelets, if its shape is one the puzzle can have. */
+/** Makes the draft's changes by moving real pieces, if its shape is one the puzzle can have. */
 function settle(d: Draft) {
   if (!d.removed.size && !d.added.size) return;
   if (draftProblems(d).length) return;
   const want = ALL_SLOTS().map((s) => draftFilled(d, s));
   let shape = d.shape;
   for (let guard = 0; guard < 64; guard++) {
-    // A cubelet that should not be where it is goes where one is missing.
+    // A piece that should not be where it is goes where one is missing.
     let next: ReturnType<typeof editShape> = null;
     for (const s of ALL_SLOTS()) {
       if (shape.occ[s] < 0 || want[s] || outwardDir(s) < 0) continue;
@@ -1167,17 +1167,17 @@ function settle(d: Draft) {
 
 /**
  * A tap with the Shape tool on slot s, changing only what is tapped:
- * - an extension cubelet goes away;
- * - an empty spot (draftSpots) gets a cubelet;
- * - a core corner or core single edge turns, with the cubelets on it, when they are real
+ * - an extension piece goes away;
+ * - an empty spot (draftSpots) gets a piece;
+ * - a core corner or core single edge turns, with the pieces on it, when they are real
  *   (no change waits on them).
  * Returns null if the tap does nothing; otherwise what it does to the paint (see
- * repaint) and the real cubelets the tap itself moved (`carries`, to animate).
+ * repaint) and the real pieces the tap itself moved (`carries`, to animate).
  */
 export function draftTap(d: Draft, s: number): TapResult | null {
   if (s < 0) return null;
   if (outwardDir(s) < 0) {
-    // A tap on the core cubelet itself turns its unit: a corner clockwise as seen from
+    // A tap on the core piece itself turns its unit: a corner clockwise as seen from
     // outside (a second tap gives the third way it can sit), a single edge over.
     const on = filledOn(d, s);
     if (outerOf(s).some((n) => d.removed.has(n) || d.added.has(n))) return null;
@@ -1197,13 +1197,13 @@ export function draftTap(d: Draft, s: number): TapResult | null {
     const [undo, mark] = on ? [d.removed, d.added] : [d.added, d.removed];
     if (!undo.delete(t)) mark.add(t);
   };
-  // Each face of a cubelet that comes covers the face of whatever is behind it, seen from
-  // that side, and takes that face's color; a cubelet that goes leaves each of its colors
+  // Each face of a piece that comes covers the face of whatever is behind it, seen from
+  // that side, and takes that face's color; a piece that goes leaves each of its colors
   // on the face it bares behind it. But not on the face away from the core: the core
-  // cubelet's sticker it covers is white or yellow, which an extension cubelet never shows
-  // there, and its own color there is a side color, which a core cubelet never shows. Each
+  // piece's sticker it covers is white or yellow, which an extension piece never shows
+  // there, and its own color there is a side color, which a core piece never shows. Each
   // of the two keeps its own color, unseen while covered or empty: the core face bared
-  // again shows the color it had, and a cubelet put back shows the color it had.
+  // again shows the color it had, and a piece put back shows the color it had.
   const comes = !draftFilled(d, s);
   const out = outwardDir(s);
   const pairs: [number, number][] = [];
@@ -1221,13 +1221,13 @@ export function draftTap(d: Draft, s: number): TapResult | null {
 }
 
 /**
- * What a Shape tool tap does: the real cubelets it moved (to animate), the faces (slot * 6
+ * What a Shape tool tap does: the real pieces it moved (to animate), the faces (slot * 6
  * + direction) whose stickers are no longer the ones painted (`unpaint`: the whole unit when
- * it turns; when a cubelet only comes or goes, its own spot but for its face away from
+ * it turns; when a piece only comes or goes, its own spot but for its face away from
  * the core, and every other face it covers or bares, on neighbors alike), and the paint
- * that moves from face to face (`move`, by slot * 6 + direction: from each face a cubelet
+ * that moves from face to face (`move`, by slot * 6 + direction: from each face a piece
  * that comes covers to its own face over it, seen from the same side, and back when it
- * goes; never between its face away from the core and the core cubelet's face behind it,
+ * goes; never between its face away from the core and the core piece's face behind it,
  * which each keep their own).
  */
 export interface TapResult {
@@ -1247,7 +1247,7 @@ export function repaint(paint: readonly (Color | undefined)[], tap: TapResult): 
 /** The six faces of slot s, by slot * 6 + direction. */
 const faces = (s: number) => [0, 1, 2, 3, 4, 5].map((k) => s * 6 + k);
 
-/** The core slot and outer slots of the unit outer slot s belongs to: a core cubelet with the spots against it. */
+/** The core slot and outer slots of the unit outer slot s belongs to: a core piece with the spots against it. */
 function unitOf(s: number): number[] {
   const c = outwardDir(s) < 0 ? s : coreOf(s);
   return [c, ...outerOf(c)];
@@ -1255,12 +1255,12 @@ function unitOf(s: number): number[] {
 
 /**
  * What the draft's shape shows, given the stickers painted so far (`paint`, by slot * 6 +
- * direction). An outer cubelet's stickers are on the faces nothing can touch. A core
- * cubelet's one is where the cubelet in the shape has it, when that face is bare: the
+ * direction). An outer piece's stickers are on the faces nothing can touch. A core
+ * piece's one is where the piece in the shape has it, when that face is bare: the
  * sticker drawn there can always be painted, even while the shape is wrong (a core corner
  * with one extension has two bare sides, and the sticker is on one of them). When that
- * face is covered, it is on the cubelet's bare side, if it has just one (a core edge with
- * cubelets on both sides has none). A sticker without paint is UNPAINTED.
+ * face is covered, it is on the piece's bare side, if it has just one (a core edge with
+ * pieces on both sides has none). A sticker without paint is UNPAINTED.
  */
 export function draftColors(d: Draft, paint: readonly (Color | undefined)[]): FaceColors {
   const out: FaceColors = new Array(NUM_SLOTS * 6).fill(undefined);
@@ -1272,7 +1272,7 @@ export function draftColors(d: Draft, paint: readonly (Color | undefined)[]): Fa
       const n = SLOT_NEIGHBOR[s * 6 + dir];
       return n !== -2 && !(n >= 0 && draftFilled(d, n));
     };
-    // Where the cubelet in the shape has its sticker, if that face is bare.
+    // Where the piece in the shape has its sticker, if that face is bare.
     const drawn = outer || d.shape.occ[s] < 0 ? -1 : [0, 1, 2, 3, 4, 5].find((dir) => d.shape.colorAt(s, dir) !== null && open(dir)) ?? -1;
     for (let dir = 0; dir < 6; dir++) {
       const n = SLOT_NEIGHBOR[s * 6 + dir];

@@ -26,18 +26,20 @@ faces, so the puzzle changes shape.
 ## Coordinates and slots
 
 - Right-handed, same as three.js: **+x = R**, **+y = U**, **+z = F**. Integer coordinates -2..2.
-- **Slot:** a place a cubelet can be. There are 80: every lattice point with at most one
+- **Slot:** a place a piece can be. There are 80: every lattice point with at most one
   coordinate equal to +/-2, minus the solid center (0,0,0).
 - **Slot names** (`slotName` in `src/core/puzzle.ts`):
   - core slots use standard cubie names: `UFR`, `UF`, `U`;
-  - extension slots are `<face>x.<position>`: `Fx.UR` is the up-right cubelet of the
+  - extension slots are `<face>x.<position>`: `Fx.UR` is the up-right piece of the
     front extension, `Fx` its center, `Ux.F` the front spot of the (normally empty) up extension.
-- In cycle output, `A -> B` means the cubelet that was in slot A is now in slot B.
+- In cycle output, `A -> B` means the piece that was in slot A is now in slot B.
 
-## Cubelets
+## Pieces
 
-The owner says **cubelet** (not "piece" or "cubie"). There are 62 in the model; 52 matter
-for solving. Kinds by connectivity (`Kind` in `src/core/puzzle.ts`):
+The owner says **piece**, the twisty-puzzle community's word for one of the movable parts
+(not "cubelet" or "cubie", which fit only cubes). A piece is the unit the model tracks:
+an extension center and the core center behind it are fused, one part in the hand, but two
+pieces here. There are 62 in the model; 52 matter for solving. Kinds by connectivity (`Kind` in `src/core/puzzle.ts`):
 
 | Code name | Count | Owner's name / description | Stickers |
 |---|---|---|---|
@@ -50,11 +52,11 @@ for solving. Kinds by connectivity (`Kind` in `src/core/puzzle.ts`):
 | `extCenter` | 4 | Extension centers, **fused** to the core center behind them | 1 |
 
 "X-face edge" and "extension side edge" name **positions** in the X shape, not
-cubelets: an outer turn moves an outer edge between the two kinds of spot. Code uses the
-kinds above for cubelets and the owner's names for spots.
+pieces: an outer turn moves an outer edge between the two kinds of spot. Code uses the
+kinds above for pieces and the owner's names for spots.
 
-**Look-alike cubelets:** only core cubelets have identical twins (4 white core corners, 4
-yellow, 4 white single edges, 4 yellow, 4 double edges). Outer cubelets with the same
+**Look-alike pieces:** only core pieces have identical twins (4 white core corners, 4
+yellow, 4 white single edges, 4 yellow, 4 double edges). Outer pieces with the same
 colors are **not** interchangeable, because of the outward-color rule below.
 
 ## Moves and notation
@@ -62,7 +64,7 @@ colors are **not** interchangeable, because of the outward-color rule below.
 | Notation | Meaning |
 |---|---|
 | `R L U D F B` | **Inner turn**: the 3x3x3 layer plus everything beyond it, including that side's extension (for R: every slot with x >= 1). Clockwise as seen looking at that face. Always allowed. |
-| `r l f b` (`u d`) | **Outer turn**: the extension layer alone (for r: x == 2). Allowed only when all 9 of its slots are filled ("complete"). An outer turn that isn't allowed is **blocked** or **refused** (UI wording: "f refused: extension has 6/9 cubelets"). |
+| `r l f b` (`u d`) | **Outer turn**: the extension layer alone (for r: x == 2). Allowed only when all 9 of its slots are filled ("complete"). An outer turn that isn't allowed is **blocked** or **refused** (UI wording: "f refused: extension has 6/9 pieces"). |
 | `H` | The horizontal middle slice, turned like U (the owner's name). `E` is accepted as `H'`. |
 | `M` | The slice between L and R, turned like L. |
 | `S` | The slice between F and B, turned like F. |
@@ -83,15 +85,15 @@ corner 3-cycle is `R' F' R b R' F R b'` (both verified by tests).
 ## Facts the engine relies on (all tested in `test/puzzle.test.ts`)
 
 - **Outer turns never change the shape.**
-- **Outward-color rule:** an outer cubelet always shows the same color facing outward
-  (away from the core). Inner turns carry it rigidly with the core cubelet it touches;
+- **Outward-color rule:** an outer piece always shows the same color facing outward
+  (away from the core). Inner turns carry it rigidly with the core piece it touches;
   outer turns spin it about its outward axis.
 - **Fused centers** never separate.
 - **No sticker is ever covered.** In every position, in or out of shape, the spot a
   sticker faces is empty or outside the puzzle. (The spot a sticker *will* face after some
   turns may be filled now.)
-- **The shape depends only on the core.** Each core cubelet always has the same number of
-  outer cubelets against it (2 per corner, 1 per single edge, 2 per double edge). The X
+- **The shape depends only on the core.** Each core piece always has the same number of
+  outer pieces against it (2 per corner, 1 per single edge, 2 per double edge). The X
   shape returns exactly when the core corners have white/yellow facing up or down, the
   single edges are oriented, and the double edges are in the middle layer. That is phase 1
   of Kociemba's two-phase method (at most 12 moves).
@@ -113,7 +115,7 @@ corner 3-cycle is `R' F' R b R' F R b'` (both verified by tests).
   about 1 in 3 billion others.
 - **X1** (written only for positions turns can't reach, which X2 can't hold;
   `unreachableReason` says why): `X1:` followed by 80 pairs of characters, one pair per
-  slot in slot order: cubelet id (`A-Z a-z 0-9 - _`) or `.` for empty, then orientation
+  slot in slot order: piece id (`A-Z a-z 0-9 - _`) or `.` for empty, then orientation
   `a..x` (index into the 24 cube rotations). Older saved states and test files hold X1 codes.
 
 ## Wording
@@ -133,23 +135,23 @@ and to `src/core/algorithms.ts` (with an example position) so the Lab lists them
 `src/core/solve.ts` solves any position turns can reach as a list of steps a person could
 follow (`nextStep`, `solveSteps`; `xc solve` prints them). It is not the shortest solution
 (about 175 turns on average, 242 at most in 200 sampled positions). Each step has a stage,
-a goal in words, its turns, the cubelets it applies to (`moved`: slot before, slot after) and
-the cubelets it may leave anywhere (`free`); every other cubelet looks the same after the
+a goal in words, its turns, the pieces it applies to (`moved`: slot before, slot after) and
+the pieces it may leave anywhere (`free`); every other piece looks the same after the
 step. Stages, in order:
 
 1. **hold**: turn the whole puzzle so white is up (outer steps may later flip it, below).
-2. **shape**: back to the X shape with face turns. Free: every outer cubelet.
-3. **core**: white core cubelets up, yellow down, with the shape-keeping turns. Free: every
-   outer cubelet.
+2. **shape**: back to the X shape with face turns. Free: every outer piece.
+3. **core**: white core pieces up, yellow down, with the shape-keeping turns. Free: every
+   outer piece.
 4. **parity**: when the outer corners or the outer edges need an odd number of swaps, `r`
    (both odd), `U` (edges only: it moves the four edges in one ring and the eight corners
    in two) or `U r` (corners only) makes both even.
 5. **corners**, 6. **edges**: three at a time. Each step is one of two fixed 3-cycles per kind (`CYCLES`,
    or its inverse) inside setup turns that keep the shape, written `[setup: cycle]`. An
-   outer cubelet is turned one way in each spot, so placing it is all there is to do.
+   outer piece is turned one way in each spot, so placing it is all there is to do.
 
 **Modes** (`Mode`). `kinds` is as above. `layers` goes top to bottom, as a 3x3x3 is often
-solved. Its core comes first, a cubelet at a time, in place of the shape and core stages:
+solved. Its core comes first, a piece at a time, in place of the shape and core stages:
 the white core single edges into the top layer, white up (`coreTop`), then the white core
 corners (`coreTopC`), the double edges into the middle layer (`coreMiddle`), the yellow
 single edges into the bottom layer, yellow down (`coreBottom`), and the yellow corners
@@ -158,12 +160,12 @@ the earlier kinds; look-alikes are interchangeable, so each kind is tracked as a
 four (slot, sticker axis) codes, with a table per kind and count of the fewest face
 turns, and a step is the easiest of the shortest ways an iterative deepening search finds
 (about 4.5 turns, 9 at most, over 60 sampled positions). When the five are done the
-puzzle is in the X shape with its core solved. Then the outer cubelets, with the same two
+puzzle is in the X shape with its core solved. Then the outer pieces, with the same two
 cycles as `kinds`, top to bottom: the white
 X-face's edges (`topEdges`), its corners (`topCorners`), the extension side edges
 (`sideEdges`), then the yellow X-face's corners and edges (`bottomCorners`,
-`bottomEdges`). A cycle never moves a cubelet that is already home, in either mode; it
-brings at least one cubelet of the current group home, and its third cubelet may be any
+`bottomEdges`). A cycle never moves a piece that is already home, in either mode; it
+brings at least one piece of the current group home, and its third piece may be any
 unsolved one. A step's `lands` says which of the three end up solved (in place and turned as solved; the goal says "Two end up solved", since "home" is the Home view). Sampled over 200
 positions, the two modes come out about the same length (177 and 180 turns on average).
 
@@ -186,7 +188,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   so the bottom comes on top; the steps after it go on from there, and the puzzle is
   turned back only if a later step is better off that way. So the **grip** is which of
   these eight holds the puzzle is in, from white up and green front (`GRIPS`), and each
-  outer cubelet's home turns with it. A regrip is chosen with the step it is for, but
+  outer piece's home turns with it. A regrip is chosen with the step it is for, but
   `nextStep` gives it as a **regrip step** of its own first (stage `regrip`, its goal
   naming the center that ends up up or in front: "Flip the puzzle over, so yellow is up";
   "Rotate the puzzle, so blue is in front"), and the step after it is found again
@@ -200,8 +202,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   yellow up"); a cycle step works with yellow up as it is, so its cycle keeps its front
   turns. A position held neither white nor yellow up, or yellow up before the shape and
   core are done in `kinds` (its shape and core steps need white up), starts with a hold step.
-- **Seeing the cubelets.** A cycle step's cost, and a layer core step's, also counts where
-  the cubelets it is for are while a person turns: after the regrip and after each turn,
+- **Seeing the pieces.** A cycle step's cost, and a layer core step's, also counts where
+  the pieces it is for are while a person turns: after the regrip and after each turn,
   each one on the bottom (y below 0) costs `UNSEEN_DOWN` (4) and each on the back (z below
   0) `UNSEEN_BACK` (2), in ease units. In `layers`, a step that builds the white or the
   yellow layer (`coreTop`, `coreTopC`, `coreBottom`, `coreBottomC`, `topEdges`,
@@ -210,11 +212,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   being built on top. A flip costs `FLIP_COST` (16) on top of the `x2` turn's ease, so a
   solve doesn't flip back and forth for little gain. Each cycle reaches into the bottom
   layer (corners Fx.UL, Rx.UF, Rx.DF; edges Fx.L, Rx.F, Rx.D), so some time there is
-  unavoidable. Over 40 Lab shuffles solved top to bottom: the steps' cubelets spent 21%
+  unavoidable. Over 40 Lab shuffles solved top to bottom: the steps' pieces spent 21%
   of their turns on the bottom (28% with no flips), 28 of 750 white or yellow layer steps
   were worked with that layer on the bottom (159 of 736 with no flips), about 3 flips per
   solve (typically at the yellow core, and back for the white X-face), and 227 turns
-  instead of 222 (230 once `F` cost more than `R`; most `F` turns left are the cycles' own). Over 100 sampled `kinds` solves, the outer steps' cubelets' share of
+  instead of 222 (230 once `F` cost more than `R`; most `F` turns left are the cycles' own). Over 100 sampled `kinds` solves, the outer steps' pieces' share of
   turns on the bottom fell from 27% to 22%, with about 1.5 flips and the same turns.
 - **The cycles are commutators, written grouped:** corners `(F' L' F) r (F' L F) r'`,
   edges `(F' M' F) r (F' M F) r'` (inverses: `r (F' L' F) r' (F' L F)` and likewise).
@@ -233,12 +235,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 ## Code map
 
 - `src/core/geometry.ts`: rotations, directions.
-- `src/core/puzzle.ts`: slots, cubelets, state, move definitions, applying turns.
+- `src/core/puzzle.ts`: slots, pieces, state, move definitions, applying turns.
 - `src/core/notation.ts`: parser and formatter.
 - `src/core/analyze.ts`: shape and solved tests, effect (cycles and twists), text face views,
   flat-view rim data (`faceRimView`).
 - `src/core/algorithms.ts`: the known algorithms the Lab lists, each with an example position.
-- `src/core/edit.ts`: the Lab's editor: fitting painted sticker colors to real cubelets
+- `src/core/edit.ts`: the Lab's editor: fitting painted sticker colors to real pieces
   (`fitColors`), and editing the shape (`draftTap` and the other `draft` functions).
 - `src/core/search.ts`, `src/core/goals.ts`: iterative-deepening search with goal masks
   based on appearance (look-alike twins compare equal).
@@ -261,7 +263,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   original look; light intensities are scaled by pi for newer three.js light units.
 - **Drawing on demand:** the views are drawn only when something in them may have changed
   (`requestDraw`): while something moves (a turn, a settle, a gesture, the view turning,
-  the guide's flying cubelets, the halo's arrow), when the view's orientation or size
+  the guide's flying pieces, the halo's arrow), when the view's orientation or size
   changes, after any input event, and when a function that changes what is shown asks
   (`render`, `syncMeshes`, `renderEdit`, `drawEdit`, the guide's, `applyShading`, any probe
   call). At rest nothing is drawn, which spares a phone's battery.
@@ -293,7 +295,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   copies, as JSON, what the Lab is showing and doing (`debugInfo`): the start, the turns
   and the cursor, the view, the solve's steps, the device (user agent, touch points, size),
   and an edit in progress with
-  its shape (a state code, X1 when turns can't reach it), cubelets taken off and put in,
+  its shape (a state code, X1 when turns can't reach it), pieces taken off and put in,
   paint and problems; once copied, the ⓘ panel closes so the message shows; where the browser won't let it write the clipboard, the text shows selected under the link, to copy by hand, and the panel stays open. It is for the owner to hand to a developer when something looks
   wrong, including an edit whose shape isn't valid, which has no state code of its own.
   With the shared database it also keeps a copy there, in the `debug` collection (`json`,
@@ -390,11 +392,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   (r l u / d f b), good when that turn can be made and off when not (the color rule).
 - **Edge glow:** a soft band at a depth discontinuity, in the color of the sticker around
   the edge. No glow means that side has no sticker. Only shown where the side face points
-  away from the viewer or is edge-on. Where two visible faces of one cubelet meet, the
+  away from the viewer or is edge-on. Where two visible faces of one piece meet, the
   hidden sticker's glow continues around the corner between them, rounded like the
   sticker's corner; elsewhere a glow fades out at its ends, and always in the flat view,
   which sees only one side of a corner. Recomputed every frame during turns, from where
-  the cubelets are right then: a face between a turning layer and its neighbors is
+  the pieces are right then: a face between a turning layer and its neighbors is
   exposed, and glows, from just after the turn starts until just before it ends.
 - **Shading:** grid-based ambient occlusion. Each face corner is darkened by filled grid
   spots in front of it (three near, five farther with less weight), blended across the
@@ -406,7 +408,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   bands pixel by pixel (`shadeFlat`), so it needs no vertices inside it. A
   visible face at depth 0 or below has always been unstickered in sampled positions, so
   every drop seen on a sticker is one step.
-- **Plastic:** each cubelet is a box with rounded edges (`roundedBox`), two segments across
+- **Plastic:** each piece is a box with rounded edges (`roundedBox`), two segments across
   each rounding, with the normals set at each vertex: 300 triangles. At iPad resolution it
   looked the same as four segments (972 triangles); one made the corner glints blocky.
 - **Shadows:** soft shadows from the single key light.
@@ -424,37 +426,37 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   stickers to match the real puzzle, in either order. Its palette has the six colors and a
   **Shape** tool; drags tumble the view, and the other controls are set aside.
   - **Shape tool:** a tap changes only what it taps (`draftTap`), as the owner thinks of
-    a stack of cubelets rather than of the rules behind it: an extension cubelet goes away,
-    and an empty spot gets a cubelet. Every empty spot next to the core is marked while
+    a stack of pieces rather than of the rules behind it: an extension piece goes away,
+    and an empty spot gets a piece. Every empty spot next to the core is marked while
     Shape is selected: small gray glass boxes with white edges, unlit, so they show over
     white, over black and in shadow. While the halo marks some of them, the others are
     drawn fainter (`GHOST_DIM`), so the marked ones stand out; they can still be tapped. Nothing turns or swings: a tap only takes an
-    extension cubelet away or puts one in.
+    extension piece away or puts one in.
   - **A wrong shape for a while:** as paint may be wrong, so may the shape. The line names
     what keeps it from being one the puzzle can have ("This core corner has only one
     extension, but it has to have two" or "has no extensions", "This core corner has three
     extensions, but it can have only two", "This core edge has no extensions, but it has to
-    have one or two": one problem for each core cubelet, since each is fixed on its own; "Only three core edges have
+    have one or two": one problem for each core piece, since each is fixed on its own; "Only three core edges have
     two extensions, but there must be four", "Five ... but there can be only four",
     "Only three centers have an extension center", "The two centers without an extension
     center must be opposite each other"). Each says what to tap (`shapeTaps`, `shapeHint`):
     the nearest shape the puzzle can have, by fewest taps, with the core corners' twists
     adding up to whole turns (so of a corner's two bare spots, the one that keeps them whole
     is the one to fill), and of the spots some such fewest taps change, those on the core
-    cubelets the problem names (or of its kind, when it names none), taking one away before
-    putting one in, the halo on the core cubelet the problem names as well as on what the
+    pieces the problem names (or of its kind, when it names none), taking one away before
+    putting one in, the halo on the core piece the problem names as well as on what the
     hint names ("this" always points at something marked; `WORDING.md`). A problem about one core
-    corner or edge is fixed on that cubelet and nowhere else, so its hint says what to do
+    corner or edge is fixed on that piece and nowhere else, so its hint says what to do
     plainly, with "probably" only for which of its spots, and only when the halo marks
     fewer than all the spots that could be ("Add an extension to this corner, probably
     here", "Remove an extension from this corner, probably the circled one": a corner with three
     extensions is hidden on every side, so its halo is on all three, and the one meant is
-    circled as a whole cubelet, a ring standing at its middle, turned to the viewer, as big as
+    circled as a whole piece, a ring standing at its middle, turned to the viewer, as big as
     the largest circle around its middle inside its outline on screen (`insetRadius`; the flat
     view rings each face of it that shows), "Add an extension to
     this edge in one of these spots", "Add two extensions to this corner, probably in these
     spots"); the count
-    problems, where which cubelet to change is a guess, say "This extension should probably
+    problems, where which piece to change is a guess, say "This extension should probably
     be removed" (the halo on it), "An
     extension should probably be added here" (the halo on the Shape tool's glass box in the
     empty spot, the control a tap fills it with; with another tool picked, the hint draws
@@ -465,130 +467,130 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     color picked, a tap on what the hint says to tap (`Problem.taps`: a glass box, or an
     extension to take away) colors nothing: "To add or remove an extension, pick Shape
     first", and the Shape button pulses until Shape is picked or for 8 seconds (`shapeFirst`,
-    `SHAPE_FLASH_MS`; a play-tester missed a one-second flash while reading the message). A halo marks a cubelet or a spot for one (3D); a
+    `SHAPE_FLASH_MS`; a play-tester missed a one-second flash while reading the message). A halo marks a piece or a spot for one (3D); a
     ring marks a sticker (2D), so shape hints have no rings. In the shape messages an
-    extension cubelet is "an extension", as in "This core corner has only one extension". One tap at a time; the next problem goes on from there. Over 200 simulated
+    extension piece is "an extension", as in "This core corner has only one extension". One tap at a time; the next problem goes on from there. Over 200 simulated
     edits of 2 to 6 random taps followed hint by hint, every one reached a valid shape in at
     most 6 taps (49 before), never back to a shape seen before (240 times before), and "needs
-    to be rotated" came up 12 times (171). A cubelet put in is a blank body meanwhile (drawn
+    to be rotated" came up 12 times (171). A piece put in is a blank body meanwhile (drawn
     in the flat view too, with its stickers, as is every dashed outline). Once
-    the shape is one the puzzle can have, real cubelets take the blanks' places at once.
+    the shape is one the puzzle can have, real pieces take the blanks' places at once.
     The core corners' twists can still be wrong, as no turns leave them: "The core corners
     can't all be oriented as they are now. One of them needs to be rotated" (no halo: any
     of them may be the one).
-  - **Paint stays on its spot**, not on a cubelet: what a tap turns (a core cubelet with
-    the extension cubelets on it) loses its paint. A cubelet that only comes or goes changes only its own spot
+  - **Paint stays on its spot**, not on a piece: what a tap turns (a core piece with
+    the extension pieces on it) loses its paint. A piece that only comes or goes changes only its own spot
     and the faces it covers or bares: one put in takes, on each of its faces, the color of
     the face it covers behind it, seen from that side (a neighbor's), and one taken away
     leaves each of its colors on the face it bares behind it (`repaint`); a face with
     nothing behind it starts unpainted. Not between its face away from the core and the
-    core cubelet's face behind it: the core's sticker there is white or yellow, which an
-    extension cubelet never shows facing out, and its own is a side color, which a core
-    cubelet never shows. Each keeps its own color, unseen while covered or empty, so a
-    core face bared again shows the color it had, and a cubelet put back the color it had
+    core piece's face behind it: the core's sticker there is white or yellow, which an
+    extension piece never shows facing out, and its own is a side color, which a core
+    piece never shows. Each keeps its own color, unseen while covered or empty, so a
+    core face bared again shows the color it had, and a piece put back the color it had
     (the owner's choice, after the white and yellow carried out made a play-tester's edit
     unfixable). A sticker not painted yet (`UNPAINTED`) fits any color
     and is drawn as a dashed outline on the plastic, with no edge glow; the line counts
-    them ("6 stickers have no color yet", with a halo on their cubelets), and Done waits
-    for them. Where a cubelet's stickers are follows from the shape around it alone
+    them ("6 stickers have no color yet", with a halo on their pieces), and Done waits
+    for them. Where a piece's stickers are follows from the shape around it alone
     (`draftColors`), so a sticker can be painted while the shape is still wrong. Until
     every center is painted, the center arrangement isn't checked.
   - **Painting:** pick a color, then tap stickers; a tap on a sticker that already shows the
     picked color clears it (no color yet). A painted sticker's edge glow takes the
-    paint too. Each paint is refit to cubelets
+    paint too. Each paint is refit to pieces
   (`fitColors` in `src/core/edit.ts`), and a line says "Valid", or "Not valid:" with what's
-  wrong: no cubelet of that kind can have a color ("An X-face corner must be ...", or, on a
-  cubelet with one sticker, about that sticker, circled, which Show turns to: "This core
+  wrong: no piece of that kind can have a color ("An X-face corner must be ...", or, on a
+  piece with one sticker, about that sticker, circled, which Show turns to: "This core
   corner's sticker must be white or yellow, never blue"; a play-tester expected the
   sticker meant to be circled), two stickers of one color or opposite colors, a corner's colors going around it
-  in mirrored order ("No cubelet has white, green, and red arranged this way", followed, where
-  the counts can't say, by the trades of two of its stickers that make a real cubelet,
-  `swapHint`: "Its white and red stickers should probably trade places"), more spots of a kind showing some colors than the puzzle has cubelets for ("Three extension edges are green and orange, but there can be only two like that"; found among the spots whose stickers all have a color, since a spot still being colored fits many cubelets and a group that takes one in can spread over most of a kind: a play-tester saw 13 X-face corners haloed, where two unfinished corners each needed the last red, white, and blue one; the halo marks every competing spot), or an outer
-  cubelet turned against the outward-color rule (a sign of a sticker painted wrong; the
+  in mirrored order ("No piece has white, green, and red arranged this way", followed, where
+  the counts can't say, by the trades of two of its stickers that make a real piece,
+  `swapHint`: "Its white and red stickers should probably trade places"), more spots of a kind showing some colors than the puzzle has pieces for ("Three extension edges are green and orange, but there can be only two like that"; found among the spots whose stickers all have a color, since a spot still being colored fits many pieces and a group that takes one in can spread over most of a kind: a play-tester saw 13 X-face corners haloed, where two unfinished corners each needed the last red, white, and blue one; the halo marks every competing spot), or an outer
+  piece turned against the outward-color rule (a sign of a sticker painted wrong; the
   physical cube can't do that). Outward-rule problems name only what the owner can check on
-  the cube: "This cubelet's white sticker has the wrong color", or "This cubelet's circled
+  the cube: "This piece's white sticker has the wrong color", or "This piece's circled
   white sticker ..." where another of its stickers is white too, always circled then (no
-  extension cubelet's outward sticker is white or yellow; that needs no counting and says
+  extension piece's outward sticker is white or yellow; that needs no counting and says
   for certain which sticker is wrong, so it is told first, before any other problem, and
-  other problems on that cubelet wait for it: a play-tester recolored the other sticker of
+  other problems on that piece wait for it: a play-tester recolored the other sticker of
   an edge with yellow facing down through all six colors, told each time about the pair or
   a count; where the counts can't say what it should be, the hint names the side colors
-  some cubelet could show there beside its other stickers, "Its yellow sticker must be
+  some piece could show there beside its other stickers, "Its yellow sticker must be
   green, blue, red, or orange" when that is all of them (`sideHint`); where none fits beside
   them, the white or yellow belongs on another side, and the hint offers the trades that make
-  a real cubelet ("Its yellow and orange stickers should probably trade places. Or its yellow
+  a real piece ("Its yellow and orange stickers should probably trade places. Or its yellow
   and blue stickers should", `swapHint`; a play-tester tried every color on the sticker), and
   where no trade fits either, another sticker is certainly wrong too, and the problem names
-  the ones some fix recolors ("This cubelet's yellow sticker has the wrong color, and so does
+  the ones some fix recolors ("This piece's yellow sticker has the wrong color, and so does
   either its orange or blue sticker", `twoHint`; a sentence naming no sticker was no help,
   and spelling out each fix's colors, four sentences, was overwhelming); and circles the
-  sticker, which Show turns to: the halo outlines the whole cubelet, and a play-tester
-  saw only its uncolored other sticker), "No cubelet has green and red
+  sticker, which Show turns to: the halo outlines the whole piece, and a play-tester
+  saw only its uncolored other sticker), "No piece has green and red
   arranged this way. One of its stickers has the wrong color", or "Two X-face corners
   look the same, but the puzzle has only one like that. One of them has a sticker with the
   wrong color"; none of them says "outward" or which color points out, which the owner
-  can't act on. Every problem that colors cause also says, where counting can tell, what a wrong spot should probably be (`missingColors`): once every sticker on the cubelets of that kind has a color, the colors they show, cubelet by cubelet, must be exactly the puzzle's cubelets of that kind, so a cubelet no spot shows is what a wrong one should be. The hint says which stickers to recolor to make a spot one of those cubelets, turned as the outward-color rule allows (`fitAt`). Every spot of the kind must be a different cubelet of the kind, so the likeliest fixes are those that recolor the fewest stickers over all those spots together (two stickers trading places counts as one change), found as a least-cost assignment of spots to cubelets (`assignCost`); a fix for the problem's spot is offered only if some such assignment uses it, so one that suits the spot alone but leaves another spot without the cubelet it needs is not: "Its red sticker should probably be orange", "Its blue and orange stickers should probably trade places", "Its white sticker should probably be yellow, and the green sticker should be blue". Options for one sticker merge ("should maybe be white or yellow"); other options get a sentence each, starting "Or". The halo marks only the spots the hint's options are for (`Hint.slots`): a fix that works on one look-alike spot may not on another, and a play-tester sim that picked any haloed spot went in circles. With one such spot it is "Its ..."; with several, "On one of these, ..." or, where they differ, "On the one that is blue and red, ...". Stickers of one color can't be told apart by color, so when the hint is sure which one it means it is "its circled yellow sticker", and the Lab circles that sticker as Lost? marks the sticker it asks about: a ring in the halo's purple with a dark casing (white was a color the puzzle has), drawn over everything, in the 3D view only while the sticker faces the viewer (so it never shows through the puzzle) and on its face in the flat view (`Problem.marks`, `markRing`); else "one of its yellow stickers" (or "its yellow stickers should be white and blue, one each"). A cubelet with one sticker (a core cubelet or a center) gets its color named, plainly when the counts leave one ("This sticker should be white", "One of these should be green"), and no hint when they leave every color its kind can have, which the problem already says ("must be white or yellow"). With nothing missing, a spot's own colors are right and only a swap is offered. A hint stays short: at most two stickers to recolor, and at most two ways, or three when each recolors one sticker (`HINT_STICKERS`, `HINT_OPTIONS`, `HINT_ONE_STICKER_OPTIONS`); a fix past that is more a guess than help, and the problem goes without one. Centers count by kind, each color on exactly one center: of the colors the spot's kind can have (white or yellow on a core center, a side color on an extension center), the ones no center of that kind shows, narrowed, when one center is wrong, to the one opposite the color across from a haloed center; when several are, each needs a different one, so all are named ("Three of these should be green, blue, and orange, one each") if the counts leave exactly that many ("This core center's sticker must be white or yellow, never red. This sticker should be yellow"; a play-tester was once told blue, a color only an extension center has). "Probably": the counts give the fewest stickers to change, and more may be wrong. No hint while a sticker of that kind has no color yet. Each names the problem
-  itself ("Red and orange can never be on the same cubelet"), not "a cubelet" (the halo
+  can't act on. Every problem that colors cause also says, where counting can tell, what a wrong spot should probably be (`missingColors`): once every sticker on the pieces of that kind has a color, the colors they show, piece by piece, must be exactly the puzzle's pieces of that kind, so a piece no spot shows is what a wrong one should be. The hint says which stickers to recolor to make a spot one of those pieces, turned as the outward-color rule allows (`fitAt`). Every spot of the kind must be a different piece of the kind, so the likeliest fixes are those that recolor the fewest stickers over all those spots together (two stickers trading places counts as one change), found as a least-cost assignment of spots to pieces (`assignCost`); a fix for the problem's spot is offered only if some such assignment uses it, so one that suits the spot alone but leaves another spot without the piece it needs is not: "Its red sticker should probably be orange", "Its blue and orange stickers should probably trade places", "Its white sticker should probably be yellow, and the green sticker should be blue". Options for one sticker merge ("should maybe be white or yellow"); other options get a sentence each, starting "Or". The halo marks only the spots the hint's options are for (`Hint.slots`): a fix that works on one look-alike spot may not on another, and a play-tester sim that picked any haloed spot went in circles. With one such spot it is "Its ..."; with several, "On one of these, ..." or, where they differ, "On the one that is blue and red, ...". Stickers of one color can't be told apart by color, so when the hint is sure which one it means it is "its circled yellow sticker", and the Lab circles that sticker as Lost? marks the sticker it asks about: a ring in the halo's purple with a dark casing (white was a color the puzzle has), drawn over everything, in the 3D view only while the sticker faces the viewer (so it never shows through the puzzle) and on its face in the flat view (`Problem.marks`, `markRing`); else "one of its yellow stickers" (or "its yellow stickers should be white and blue, one each"). A piece with one sticker (a core piece or a center) gets its color named, plainly when the counts leave one ("This sticker should be white", "One of these should be green"), and no hint when they leave every color its kind can have, which the problem already says ("must be white or yellow"). With nothing missing, a spot's own colors are right and only a swap is offered. A hint stays short: at most two stickers to recolor, and at most two ways, or three when each recolors one sticker (`HINT_STICKERS`, `HINT_OPTIONS`, `HINT_ONE_STICKER_OPTIONS`); a fix past that is more a guess than help, and the problem goes without one. Centers count by kind, each color on exactly one center: of the colors the spot's kind can have (white or yellow on a core center, a side color on an extension center), the ones no center of that kind shows, narrowed, when one center is wrong, to the one opposite the color across from a haloed center; when several are, each needs a different one, so all are named ("Three of these should be green, blue, and orange, one each") if the counts leave exactly that many ("This core center's sticker must be white or yellow, never red. This sticker should be yellow"; a play-tester was once told blue, a color only an extension center has). "Probably": the counts give the fewest stickers to change, and more may be wrong. No hint while a sticker of that kind has no color yet. Each names the problem
+  itself ("Red and orange can never be on the same piece"), not "a piece" (the halo
   marks it), and says what, not where: words for a spot proved unreliable (center colors move with
   slices, extensions leave their sides, left depends on the viewpoint), so the Lab points
   the spot out instead. Lists of three colors use the serial comma. The line shows one
   problem at a time; with several, tiny ‹ and › buttons step through them ("‹2/4›"), and the
   choice is kept across paints while that problem remains. The shown problem's
-  cubelets get a **halo** by themselves, in purple. In the 3D view it is an outline: a band
-  5 CSS pixels wide on screen, just outside the part of the cubelet the view shows, off its
-  stickers (a mask of the pixels where a haloed cubelet is the nearest thing drawn, and
-  the band drawn over the view around it). A sticker drawn over a cubelet (a color it
+  pieces get a **halo** by themselves, in purple. In the 3D view it is an outline: a band
+  5 CSS pixels wide on screen, just outside the part of the piece the view shows, off its
+  stickers (a mask of the pixels where a haloed piece is the nearest thing drawn, and
+  the band drawn over the view around it). A sticker drawn over a piece (a color it
   doesn't have, or the dashed outline of one with no color yet) counts as part of it, or
-  the band would ring that sticker too, as a play-tester saw. It is as bold beside a cubelet flush with its
+  the band would ring that sticker too, as a play-tester saw. It is as bold beside a piece flush with its
   neighbors or set back among them as beside one standing out: a rim in the space around
-  the cubelet was only a hairline in the seams there. A cubelet hidden behind the puzzle
-  has none: a play-tester found a glow drawn through the puzzle covered the cubelet he
-  was painting in front. In every frame in which a haloed cubelet isn't turned well toward the
+  the piece was only a hairline in the seams there. A piece hidden behind the puzzle
+  has none: a play-tester found a glow drawn through the puzzle covered the piece he
+  was painting in front. In every frame in which a haloed piece isn't turned well toward the
   viewer (no face at least 0.4 toward the viewer with its middle unblocked; `hiddenHalos`),
-  a purple **arrow** in the scene points to it, even while other haloed cubelets can be
+  a purple **arrow** in the scene points to it, even while other haloed pieces can be
   seen, drawn as one would on a whiteboard to say "look here" (`HALO_ARROW`): a lit tube that
   starts thin on the side facing the viewer, off to one side, runs around the puzzle just
   inside the edge of the view, then turns in and ends in a head pointing straight at those
-  cubelets. It thickens toward the head and lighter chevrons run along it toward the head,
+  pieces. It thickens toward the head and lighter chevrons run along it toward the head,
   so the way to follow it is plain even when the head is behind the puzzle (drawn faintly
   there); it casts a shadow, which shows its depth. It is rebuilt as the view turns, so it
-  always starts on the near side; it fades out once every haloed cubelet is turned well
+  always starts on the near side; it fades out once every haloed piece is turned well
   toward the viewer and back in when one isn't; a tap on it turns the view to the one
   Show turns to (`highlightView`), so the two agree, unless that view still leaves a haloed
-  cubelet out of sight (a halo spread around the puzzle), when it turns to those instead. The
+  piece out of sight (a halo spread around the puzzle), when it turns to those instead. The
   Hide pill keeps off it. The halo, Show, Hide and the arrow are there whichever tool is
-  selected, Shape included (the outline doesn't cover what to tap). A named cubelet enclosed on every side (a
-  core edge with extension cubelets on both sides, which nothing shows) is haloed through
-  the extension cubelets around it (`haloSlots`), which can be seen, turned to with Show
-  and pointed at; a cubelet put in that is still a blank carries the halo, and is pointed at and shown, like any other (`drawnAt`). The arrow points at one hidden cubelet at a time, the one nearest to
-  coming into view, and goes on to the next once that one is turned toward the viewer. On each flat-view face where the cubelet shows, the halo is a
-  soft glow around it, hidden only by a haloed cubelet in front (so many halos don't pile
+  selected, Shape included (the outline doesn't cover what to tap). A named piece enclosed on every side (a
+  core edge with extension pieces on both sides, which nothing shows) is haloed through
+  the extension pieces around it (`haloSlots`), which can be seen, turned to with Show
+  and pointed at; a piece put in that is still a blank carries the halo, and is pointed at and shown, like any other (`drawnAt`). The arrow points at one hidden piece at a time, the one nearest to
+  coming into view, and goes on to the next once that one is turned toward the viewer. On each flat-view face where the piece shows, the halo is a
+  soft glow around it, hidden only by a haloed piece in front (so many halos don't pile
   up over each other's stickers). A halo appearing never moves the view. **Show**
-  (or tapping the line) tumbles the 3D view to show those cubelets' stickers best (the
+  (or tapping the line) tumbles the 3D view to show those pieces' stickers best (the
   most unblocked, then each as squarely as possible, from the preset views and the
   directions between the stickers; weighed on a box for each spot, `boxFaceView`, since
-  rays against the drawn cubelets took over a second for a halo on many cubelets), again each time it is tapped. For a shape problem about
-  one core cubelet it looks at that cubelet from its own direction, tilted along an edge
+  rays against the drawn pieces took over a second for a halo on many pieces), again each time it is tapped. For a shape problem about
+  one core piece it looks at that piece from its own direction, tilted along an edge
   by about 20 degrees (`EDGE_TILT`; a corner's own view shows its three sides): straight
   at its sticker showed the spots on it edge-on, and a corner view from below crowded them
   with other glass boxes, where a play-tester liked a slight angle best. Of the tilts up to
   40 degrees (`coreViews`), it takes the one showing the most of the halo (`haloShare`: of
-  points over each haloed cubelet and spot, those a ray from the camera reaches first, a
+  points over each haloed piece and spot, those a ray from the camera reaches first, a
   glass box in front counting as covering; each filled spot and glass box taken as a box,
-  which weighs a corner's 25 views in a few milliseconds, where the drawn cubelets, about
+  which weighs a corner's 25 views in a few milliseconds, where the drawn pieces, about
   62,000 triangles, froze the page for most of a second), each degree from the aim costing 1% of it; then
   from above, then nearest the view now. For other shape problems it counts every face of
-  the cubelets and spots, and first takes the view showing faces on the most sides. **Hide** removes the
-  halo until the shown problem names other cubelets; while the halo shows, a **Hide** pill in
+  the pieces and spots, and first takes the view showing faces on the most sides. **Hide** removes the
+  halo until the shown problem names other pieces; while the halo shows, a **Hide** pill in
   the halo's color in the 3D view does the same, placed clear of the puzzle as drawn, just past
-  its edge on the haloed cubelets' side (above it if they are at the middle; a play-tester
+  its edge on the haloed pieces' side (above it if they are at the middle; a play-tester
   found it too much beside them, and the halo and the arrow already mark them), following
   the view and kept inside it. Done, available only when valid, makes the fitted position the start
   ("Edited"). **Valid means turns can reach it:** some position showing the paint can
   be reached by turning, and Done gives that position (so it has an X2 code). Many positions
-  show the same paint, because look-alike core cubelets can trade places and core double
+  show the same paint, because look-alike core pieces can trade places and core double
   edges are never seen; those choices absorb every swap and flip parity (the argument is at
-  the top of `src/core/edit.ts`, and `test/edit.test.ts` samples it). So two outer cubelets
+  the top of `src/core/edit.ts`, and `test/edit.test.ts` samples it). So two outer pieces
   painted as each other are valid, and beyond the problems above the paint can be
   unreachable in only one way: the center colors arranged as no turns arrange them, either
   "Opposite centers must be red and orange, green and blue, or white and yellow" (halo on
@@ -629,49 +631,49 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   button gives "Step 2 of 9 —" (no "(done)" once played: the step list's ✓ says that; counted from when the guide was started; a step taken
   from anywhere but the end of the one before starts the count again), the stage and the goal,
   then on its own line "Turns:" with the turns as the solver writes them (`[setup: cycle]`). Until the step has
-  been played through, its colors picture what its turns do (`stepColors`): the cubelets it applies to that it moves or
-  turns keep their colors (with the extension cubelets moving with them as a unit), every other cubelet it moves or turns is
-  darker gray (left for later steps), and every cubelet it leaves as it was is gray, even one it applies to that is not yet
+  been played through, its colors picture what its turns do (`stepColors`): the pieces it applies to that it moves or
+  turns keep their colors (with the extension pieces moving with them as a unit), every other piece it moves or turns is
+  darker gray (left for later steps), and every piece it leaves as it was is gray, even one it applies to that is not yet
   where it belongs (stickers and flat-view tiles; one gray for every color at each
   level, so a gray white can't be taken for a white). **Full color**, a small switch beside
-  the counts and kept on the device, turns the grays off: every cubelet keeps its colors
+  the counts and kept on the device, turns the grays off: every piece keeps its colors
   and its edge glow, for someone who wants to match the screen to the puzzle in hand
   rather than see what a step is for; the paths stay. Before the step's first turn, **paths** in the 3D view
-  show where each cubelet it moves will go and how it will be turned: a path follows one of
-  the cubelet's stickers, in that sticker's color with a dark casing, leaving the sticker and
+  show where each piece it moves will go and how it will be turned: a path follows one of
+  the piece's stickers, in that sticker's color with a dark casing, leaving the sticker and
   coming onto the face the sticker will be on within 45 degrees of straight out. A
-  cubelet that ends up solved has a full path and a ring where its sticker lands;
+  piece that ends up solved has a full path and a ring where its sticker lands;
   one only passing through has a dashed path. In a shape or core step, which solves no
-  cubelet, each cubelet it applies to that moves or turns has a plain path (no ring), read
+  piece, each piece it applies to that moves or turns has a plain path (no ring), read
   from where it ends. Shape and core steps have only inner turns, which carry each core
-  corner, single edge and double edge rigidly with the extension cubelets against it (two,
-  one and two; `attached`), so each moves as a unit: those cubelets keep their colors and
+  corner, single edge and double edge rigidly with the extension pieces against it (two,
+  one and two; `attached`), so each moves as a unit: those pieces keep their colors and
   fly with it. A corner's or single edge's path follows its own sticker; a core double edge
   has no sticker and is never seen, so its unit's path, in a neutral gray, follows the
-  outward sticker of one of the others. A cubelet that stays in its spot and only turns
+  outward sticker of one of the others. A piece that stays in its spot and only turns
   gets no path, which would show a move that isn't there (`twistPath`): a hairline stem
   runs straight out of its outermost corner or edge along the axis it turns about (always
   clear: nothing is beyond it), and on the stem's end a white disc, outlined dark, has the
   share of a whole turn it turns filled in the page's highlight blue, with a blue arrow
   just outside the rim from one end of that share to the other, the way it turns. Its
-  flying cubelet (with its unit) rises along the stem to just past the disc, turns there
+  flying piece (with its unit) rises along the stem to just past the disc, turns there
   the same way the disc shows, and drops back in, each of the three eased at both ends.
   A path goes
   around the puzzle, never through it (`route`). It starts as an arc well outside the
   puzzle (the short way around; for opposite sides, also by way of each of the six
   directions) and is pulled tight like an elastic band: each point moves toward the
   middle of its neighbors and back out of whatever it is pulled into, keeping a margin
-  from every cubelet, so the path is straight where nothing is near and rounded where it
-  bends around a cubelet. Near its ends it stays inside a 45 degree cone around straight
+  from every piece, so the path is straight where nothing is near and rounded where it
+  bends around a piece. Near its ends it stays inside a 45 degree cone around straight
   out of the sticker and straight onto the new face. It is then let spring like a stiff rod, which spreads each bend
-  over about a cubelet's width and keeps it convex (away from its ends it never bows in
+  over about a piece's width and keeps it convex (away from its ends it never bows in
   toward the puzzle). No sticker is ever covered, so the start is clear; the spot the
-  new face looks into may be filled until the step takes that cubelet away, so that one
-  cubelet doesn't count (the path is drawn faintly through it). Of the routes, the one
+  new face looks into may be filled until the step takes that piece away, so that one
+  piece doesn't count (the path is drawn faintly through it). Of the routes, the one
   costing least is taken: the length of it inside the puzzle costs most, then its length,
   how much it turns, and how far it leaves the room the 3D view shows (a sphere around
   the puzzle, whatever the view's angle). A route may leave that room by up to 0.4 of a
-  cubelet, to round a cubelet near the edge of the view without a tight bend. A flying copy moves by distance along its path, so
+  piece, to round a piece near the edge of the view without a tight bend. A flying copy moves by distance along its path, so
   its speed is even (eased at the ends). It turns the way its path goes: the followed
   sticker faces out of its face at the start, away from the puzzle's center along the
   way (leaning out only within the plane of its turn, so whatever faces along the turn's
@@ -679,14 +681,14 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   keeps facing that way), and any spin about that sticker still needed
   is spread evenly along the path. The sticker
   followed is the one whose route costs least, so a hop to a neighboring spot stays a
-  short hop and the sticker facing the way the cubelet goes is preferred to one whose
+  short hop and the sticker facing the way the piece goes is preferred to one whose
   path would turn back on itself; one on the faces the Home view shows is favored a little. Each loop
-  (`GUIDE_LOOP`): a small copy of each cubelet (a **flying cubelet**, made like the
+  (`GUIDE_LOOP`): a small copy of each piece (a **flying piece**, made like the
   puzzle's own: the same rounded plastic and stickers, lit by the same room and key light,
-  casting and taking shadows, its cubelets hiding each other as solid ones do) flies along its path, turning as the cubelet will turn (it leaves showing its
+  casting and taking shadows, its pieces hiding each other as solid ones do) flies along its path, turning as the piece will turn (it leaves showing its
   stickers as they are and arrives showing them as they will be), rests where it
   arrives, vanishes, and after a short gap the loop starts again; none of this moves
-  where the device asks for reduced motion. Only the cubelets the step applies to have
+  where the device asks for reduced motion. Only the pieces the step applies to have
   edge glow. The ⓘ beside the 3D view explains how to read the paths.
   Where the puzzle is in the way, a path and its flying copy are drawn faintly (a second
   drawing that passes only behind what is already drawn, without the path's dark
@@ -732,11 +734,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Probe:** `window.xcubeProbe` (end of `src/web/main.ts`) tells the browser tests what
   is drawn where: the screen position of a sticker's center, and, for a point of the 3D
   view or a cell of the flat view, the slot, face and color drawn there (the slot and face
-  from the cubelet's mesh, so a misdrawn cubelet shows up), and the stickers the model
-  turns toward the camera that are not drawn, and how strong one cubelet's edge glow is at
+  from the piece's mesh, so a misdrawn piece shows up), and the stickers the model
+  turns toward the camera that are not drawn, and how strong one piece's edge glow is at
   a point in either view. It draws into its own offscreen buffer (an
   ID pass and a plain-color pass), so the views don't change. Its fault methods misdraw
-  cubelets on purpose, so a test can check that the drawing checks catch them. It also
+  pieces on purpose, so a test can check that the drawing checks catch them. It also
   reports what the effect switches control, how far the shading and the glow computed
   during a turn are, at its start, from those at rest, and whether one glow band is drawn
   right now (also part-way through a turn).

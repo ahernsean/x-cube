@@ -4,41 +4,41 @@
 // The method (it is not the shortest; it is one a person can learn):
 //   1. hold:   turn the whole puzzle so white is up.
 //   2. shape:  back to the X shape, with face turns (found by search).
-//   3. core:   white core cubelets up, yellow down, with the shape-keeping turns
+//   3. core:   white core pieces up, yellow down, with the shape-keeping turns
 //              (U, D, R2, L2, F2, B2).
 //   4. parity: if the outer corners, or the outer edges, need an odd number of swaps, one
 //              turn makes both even: an outer turn swaps both oddly, and U swaps only the
-//              edges oddly (the white core cubelets it moves are look-alikes).
+//              edges oddly (the white core pieces it moves are look-alikes).
 //   5. corners, 6. edges: three at a time, each step one fixed 3-cycle wrapped in setup
-//              turns: [setup: cycle]. An outer cubelet is turned one way in each spot, so
+//              turns: [setup: cycle]. An outer piece is turned one way in each spot, so
 //              placing it is all there is to do.
-// Steps 2 and 3 scramble the outer cubelets freely, and may trade look-alike core cubelets; steps 4 to 6 change nothing but the
-// cubelets they name.
+// Steps 2 and 3 scramble the outer pieces freely, and may trade look-alike core pieces; steps 4 to 6 change nothing but the
+// pieces they name.
 //
 // Ease. Turns are chosen for a person's hands, not for their number (EASE): the back
 // face and back extension are the hardest to turn, then the bottom, then the H and S
 // slices; M is fine. A step may begin with a regrip, a turn of the whole puzzle about its
 // vertical axis, when that makes the rest easier; a regrip is never in the middle of a
 // step. A cycle step or a layer core step may also flip the puzzle over (x2) first, when
-// that keeps the cubelets it is for off the bottom and the back while the person turns
+// that keeps the pieces it is for off the bottom and the back while the person turns
 // (see unseen), and the steps after it go on with yellow up. So the centers are not fixed
-// in space: the "grip" is which of eight holds the puzzle is in, and each outer cubelet's
+// in space: the "grip" is which of eight holds the puzzle is in, and each outer piece's
 // home turns with it.
 
 import { isHomeX, isSolved } from "./analyze.ts";
 import { DIRS, ROT_DIR, ROTATIONS, axisRotation, matVec, type Vec3 } from "./geometry.ts";
 import { formatAlg, parseAlg } from "./notation.ts";
-import { COLOR_NAME, CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, type Kind, type Turn } from "./puzzle.ts";
+import { COLOR_NAME, PIECES, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, type Kind, type Turn } from "./puzzle.ts";
 import { unreachableReason } from "./serialize.ts";
 
 export type Stage = "hold" | "regrip" | "shape" | "core" | "coreTop" | "coreTopC" | "coreMiddle" | "coreBottom" | "coreBottomC" | "parity" | "corners" | "edges" | "topEdges" | "topCorners" | "sideEdges" | "bottomCorners" | "bottomEdges";
 
 /**
- * The order the outer cubelets are solved in. Both orders use the same two 3-cycles.
+ * The order the outer pieces are solved in. Both orders use the same two 3-cycles.
  * - "kinds": every X-face corner, then every extension edge.
  * - "layers": the white X-face's edges, then its corners, then the extension side edges,
  *   then the yellow X-face's corners, then its edges: top to bottom, as a 3x3x3 is often
- *   solved. Cubelets of later layers are moved about freely until their turn comes.
+ *   solved. Pieces of later layers are moved about freely until their turn comes.
  */
 export type Mode = "kinds" | "layers";
 
@@ -50,19 +50,19 @@ export interface SolveStep {
   alg: string;
   turns: Turn[];
   /**
-   * The cubelets the step is for, by the slot each is in before the step. In the parity,
+   * The pieces the step is for, by the slot each is in before the step. In the parity,
    * corners and edges stages, where each goes; in the shape and core stages the pair is
    * the same slot twice, marking a spot that is wrong before the step and right after.
    */
   moved: [from: number, to: number][];
-  /** Slots, before the step, of cubelets the step may leave anywhere: nothing depends on them yet. */
+  /** Slots, before the step, of pieces the step may leave anywhere: nothing depends on them yet. */
   free: number[];
   /**
    * The step's turns in parts, in order, with how many turns each has: a cycle step is an
    * optional regrip, the setup, the cycle, and the setup undone; any other step is one part.
    */
   parts: { name: "regrip" | "setup" | "cycle" | "undo" | "turns"; turns: number }[];
-  /** In a cycle step: the slots, before the step, of the moved cubelets that end up solved. The others are only passing through. */
+  /** In a cycle step: the slots, before the step, of the moved pieces that end up solved. The others are only passing through. */
   lands: number[];
   /**
    * The turns of the whole puzzle the step begins with, in notation ("" for none): y, y2
@@ -82,10 +82,10 @@ const nonzero = (s: number) => SLOT_POS[s].filter((c) => c !== 0).length;
 const CORNER_SLOTS = SLOTS.filter((s) => isCore(s) && nonzero(s) === 3);
 const EDGE_SLOTS = SLOTS.filter((s) => isCore(s) && nonzero(s) === 2);
 const SOLVED = State.solved();
-const homeSlots = (kind: Kind) => CUBELETS.filter((c) => c.kind === kind).map((c) => c.home);
-const kindAt = (st: State, s: number) => CUBELETS[st.occ[s]].kind;
+const homeSlots = (kind: Kind) => PIECES.filter((c) => c.kind === kind).map((c) => c.home);
+const kindAt = (st: State, s: number) => PIECES[st.occ[s]].kind;
 
-/** Where a turn sends each slot's cubelet (the same for every position the turn is allowed in). */
+/** Where a turn sends each slot's piece (the same for every position the turn is allowed in). */
 function slotPerm(t: Turn): Int16Array {
   const d = MOVE_DEFS[t.def];
   const m = ROTATIONS[axisRotation(d.axis, d.ccw * t.amount)];
@@ -108,14 +108,14 @@ const ALL_TURNS: Turn[] = MOVE_DEFS.flatMap((_, def) => ([1, 2, 3] as const).map
 
 const compose = (first: Int16Array, then: Int16Array) => first.map((s) => then[s]);
 const Y = slotPerm(turn("y"));
-/** Y_POWER[m][s]: where the cubelet in slot s is after m regrips (y turns). */
+/** Y_POWER[m][s]: where the piece in slot s is after m regrips (y turns). */
 const Y_POWER = [Int16Array.from(SLOTS), Y, compose(Y, Y), compose(compose(Y, Y), Y)];
 const REGRIP = [[], [turn("y")], [turn("y2")], [turn("y'")]];
 const X2 = slotPerm(turn("x2"));
 /**
  * The ways a cycle step or a layer core step may begin, as the puzzle is held before it: a regrip about the
  * vertical axis, and each of them after flipping the puzzle over (x2), which puts the
- * bottom on top. GRIP_PERM[k][s]: where the cubelet in slot s is after GRIPS[k].
+ * bottom on top. GRIP_PERM[k][s]: where the piece in slot s is after GRIPS[k].
  */
 const GRIPS: Turn[][] = [...REGRIP, ...REGRIP.map((r) => [turn("x2"), ...r])];
 const GRIP_PERM = [...Y_POWER, ...Y_POWER.map((p) => compose(X2, p))];
@@ -164,7 +164,7 @@ function holdTurns(st: State): Turn[] {
 // ---------------------------------------------------------------- 2. shape
 //
 // The shape depends on the core alone: which way each core corner's and core single
-// edge's sticker faces, and where the four core double edges are. Each cubelet's
+// edge's sticker faces, and where the four core double edges are. Each piece's
 // "marker" is that sticker's face (for a double edge, its front or back face), and the
 // tables below follow the markers' axes through face turns, as three coordinates:
 // corners (3^8), edges (2^12), and the double edges' places (495).
@@ -186,7 +186,7 @@ function bitCount(n: number): number {
 /** The three coordinates of a position's core. */
 function shapeCoords(st: State): [twist: number, flip: number, place: number] {
   const markerAxis = (s: number) => {
-    const c = CUBELETS[st.occ[s]];
+    const c = PIECES[st.occ[s]];
     const h = SLOT_POS[c.home];
     const marker = h[1] ? (h[1] > 0 ? 2 : 3) : h[2] > 0 ? 4 : 5;
     return ROT_DIR[st.ori[s] * 6 + marker] >> 1;
@@ -228,7 +228,7 @@ function buildShapeTables(): ShapeTables {
       let out = 0;
       EDGE_SLOTS.forEach((s, i) => {
         const before = c & (1 << i) ? otherAxis(s) : mainAxis(s);
-        const axis = eTo[i] === i ? before : axisTo[before]; // only the turned layer's cubelets turn
+        const axis = eTo[i] === i ? before : axisTo[before]; // only the turned layer's pieces turn
         if (axis !== mainAxis(EDGE_SLOTS[eTo[i]])) out |= 1 << eTo[i];
       });
       flip[c * 18 + m] = out;
@@ -352,14 +352,14 @@ function buildCoreTable(): Int8Array {
   return table;
 }
 
-const whiteMask = (st: State, slots: number[]) => slots.reduce((m, s, i) => m | (CUBELETS[st.occ[s]].stickers.includes("W") ? 1 << i : 0), 0);
+const whiteMask = (st: State, slots: number[]) => slots.reduce((m, s, i) => m | (PIECES[st.occ[s]].stickers.includes("W") ? 1 << i : 0), 0);
 
 function coreTurns(st: State): Turn[] {
   const table = (coreTable ??= buildCoreTable());
   let corners = whiteMask(st, CORNER_SLOTS), edges = whiteMask(st, SINGLE_SLOTS);
   const out: Turn[] = [];
   for (let m = table[corners * 256 + edges]; m !== -1; m = table[corners * 256 + edges]) {
-    if (m === -2) throw new Error("the shape-keeping turns can't bring the white core cubelets up");
+    if (m === -2) throw new Error("the shape-keeping turns can't bring the white core pieces up");
     out.push(KEEP_TURNS[m]);
     corners = moveMask(corners, KEEP_PERMS[m].corners);
     edges = moveMask(edges, KEEP_PERMS[m].edges);
@@ -370,14 +370,14 @@ function coreTurns(st: State): Turn[] {
 // ---------------------------------------------------------------- 2-3, by layers
 //
 // In the layers mode the shape and core stages are replaced by five, each step of which
-// brings one more core cubelet of one kind where it belongs, keeping those already there:
+// brings one more core piece of one kind where it belongs, keeping those already there:
 //   coreTop      white core single edges in the top layer, white up;
 //   coreTopC     white core corners in the top layer, white up;
 //   coreMiddle   core double edges in the middle layer;
 //   coreBottom   yellow core single edges in the bottom layer, yellow down;
 //   coreBottomC  yellow core corners in the bottom layer, yellow down.
 // When all five are done the puzzle is in the X shape and the core is solved. Look-alike
-// cubelets are interchangeable, so each kind is tracked as a set of four (slot, axis)
+// pieces are interchangeable, so each kind is tracked as a set of four (slot, axis)
 // codes: the slot, and the axis its white or yellow sticker (for a double edge, its front
 // or back face) points along. For each kind and each count, a table gives the fewest
 // face turns to have at least that many of the four where they belong; a step is found by
@@ -387,7 +387,7 @@ function coreTurns(st: State): Turn[] {
 /** The five kinds tracked, in stage order, with the slots their codes index into. */
 const TRACKED = (() => {
   const marker = (h: Vec3) => (h[1] ? (h[1] > 0 ? 2 : 3) : h[2] > 0 ? 4 : 5);
-  const of = (kind: Kind, color: "W" | "Y" | null) => CUBELETS.filter((c) => c.kind === kind && (!color || c.stickers.includes(color))).map((c) => c.id);
+  const of = (kind: Kind, color: "W" | "Y" | null) => PIECES.filter((c) => c.kind === kind && (!color || c.stickers.includes(color))).map((c) => c.id);
   const kinds = [
     { stage: "coreTop", target: 1, ids: of("singleEdge", "W"), slots: EDGE_SLOTS, good: (s: number, axis: number) => SLOT_POS[s][1] === 1 && axis === 1 },
     { stage: "coreTopC", target: 1, ids: of("coreCorner", "W"), slots: CORNER_SLOTS, good: (s: number, axis: number) => SLOT_POS[s][1] === 1 && axis === 1 },
@@ -395,7 +395,7 @@ const TRACKED = (() => {
     { stage: "coreBottom", target: -1, ids: of("singleEdge", "Y"), slots: EDGE_SLOTS, good: (s: number, axis: number) => SLOT_POS[s][1] === -1 && axis === 1 },
     { stage: "coreBottomC", target: -1, ids: of("coreCorner", "Y"), slots: CORNER_SLOTS, good: (s: number, axis: number) => SLOT_POS[s][1] === -1 && axis === 1 },
   ] as const;
-  return kinds.map((k) => ({ ...k, marker: (id: number) => marker(SLOT_POS[CUBELETS[id].home]) }));
+  return kinds.map((k) => ({ ...k, marker: (id: number) => marker(SLOT_POS[PIECES[id].home]) }));
 })();
 
 interface LayerTables {
@@ -515,14 +515,14 @@ function layerCoreStep(st: State, flipped: boolean): SolveStep | null {
   };
   let depth = bound(at);
   for (; !found.length && depth <= 16; depth++) dfs(at, depth, -1);
-  if (!found.length) throw new Error("no face turns place the next core cubelet");
+  if (!found.length) throw new Error("no face turns place the next core piece");
   if (depth <= 8) dfs(at, depth, -1); // and the ways one turn longer, which may be easier
   const t = TRACKED[k];
-  // The step is for the cubelets of kind k not yet where they belong.
+  // The step is for the pieces of kind k not yet where they belong.
   const wrong = t.ids.map((id) => st.occ.indexOf(id)).filter((s) => !t.good(s, ROT_DIR[st.ori[s] * 6 + t.marker(st.occ[s])] >> 1));
   const done = TRACKED.slice(0, k).flatMap((x) => x.ids.map((id) => st.occ.indexOf(id)));
   // The easiest way under any of the eight grips, counting, as a cycle step does, where
-  // the cubelets the step is for are while the person turns.
+  // the pieces the step is for are while the person turns.
   let best: { turns: Turn[]; regrip: number; cost: number } | null = null;
   for (const way of found)
     for (let m = 0; m < GRIPS.length; m++) {
@@ -561,7 +561,7 @@ const LAYER_GOAL: ((n: number) => string)[] = [
   (n) => `Put a yellow core corner in the bottom layer, yellow down (${n} of 4)`,
 ];
 
-// ---------------------------------------------------------------- 4-6. outer cubelets
+// ---------------------------------------------------------------- 4-6. outer pieces
 //
 // With the shape and core done, each outer corner and outer edge has one home, and is
 // turned the one right way whenever it is there. So each kind is a plain permutation of
@@ -632,10 +632,10 @@ function cycleTable(kind: "outerCorner" | "outerEdge", v: number): CycleTable {
 
 const OUTER_NAME = { outerCorner: ["X-face corners", "corners"], outerEdge: ["extension edges", "edges"] } as const;
 
-/** For each slot of this kind, the slot its cubelet belongs in, as the puzzle is gripped. */
+/** For each slot of this kind, the slot its piece belongs in, as the puzzle is gripped. */
 const homes = (st: State, kind: Kind) => {
   const turned = GRIP_PERM[gripOf(st)];
-  return new Map(homeSlots(kind).map((s) => [s, turned[CUBELETS[st.occ[s]].home]]));
+  return new Map(homeSlots(kind).map((s) => [s, turned[PIECES[st.occ[s]].home]]));
 };
 
 function isOdd(home: Map<number, number>): boolean {
@@ -676,8 +676,8 @@ const GROUPS: Record<Mode, Group[]> = {
 };
 
 /**
- * Where a cubelet is hard to see while a person turns: on the bottom (y below 0) most of
- * all, and on the back (z below 0) less. Counted for each cubelet a step is for as the
+ * Where a piece is hard to see while a person turns: on the bottom (y below 0) most of
+ * all, and on the back (z below 0) less. Counted for each piece a step is for as the
  * regrip leaves it and after each turn, in ease units.
  */
 const UNSEEN_DOWN = 4, UNSEEN_BACK = 2;
@@ -698,7 +698,7 @@ const UNSEEN_HELD = Float32Array.from(SLOTS, (s) => (SLOT_POS[s][1] < 0 ? UNSEEN
 const UNSEEN = [UNSEEN_HELD, UNSEEN_HELD.map((_, s) => UNSEEN_HELD[X2[s]])];
 const TURN_PERMS = new Map(ALL_TURNS.map((t) => [t.def * 3 + t.amount - 1, slotPerm(t)]));
 const turnPerm = (t: Turn) => TURN_PERMS.get(t.def * 3 + t.amount - 1)!;
-/** What it costs that the cubelets in slots `at` are hard to see before and after each turn; `flipped` when the puzzle is held yellow up. */
+/** What it costs that the pieces in slots `at` are hard to see before and after each turn; `flipped` when the puzzle is held yellow up. */
 function unseen(at: number[], perms: Int16Array[], flipped: boolean): number {
   const cost1 = UNSEEN[+flipped];
   let cost = 0;
@@ -723,11 +723,11 @@ function cycleStep(st: State, group: Group): SolveStep | null {
     ease: ease(parseAlg(cycleAlg(kind, v, false))),
   }));
   const yellowUp = centerAt(st, DOWN) === UP;
-  // Each candidate sends the cubelet in a home (to b), the one in b on to c, and the one in
-  // c back to a, for any other unsolved spot c: a cubelet already home is never moved. It
-  // must bring a cubelet of this group home. Prefer the step that sends the most cubelets
+  // Each candidate sends the piece in a home (to b), the one in b on to c, and the one in
+  // c back to a, for any other unsolved spot c: a piece already home is never moved. It
+  // must bring a piece of this group home. Prefer the step that sends the most pieces
   // home, then the easiest: its setup, done and undone, the regrip it begins with, and how
-  // much of the step its three cubelets spend where they are hard to see (unseen).
+  // much of the step its three pieces spend where they are hard to see (unseen).
   let best: { triple: number[]; setup: Turn[]; inverse: boolean; v: number; landing: number; cost: number; regrip: number } | null = null;
   for (const a of unsolved) {
     const b = home.get(a)!;
@@ -797,8 +797,8 @@ function parityStep(st: State): SolveStep | null {
 // ---------------------------------------------------------------- the whole method
 
 /**
- * What the shape and core steps leave free: every cubelet but the centers and the ones the
- * step is for. The other core cubelets may trade places with their look-alikes.
+ * What the shape and core steps leave free: every piece but the centers and the ones the
+ * step is for. The other core pieces may trade places with their look-alikes.
  */
 const others = (st: State, wrong: number[]) => SLOTS.filter((s) => st.occ[s] >= 0 && !wrong.includes(s) && !["center", "extCenter"].includes(kindAt(st, s)));
 
@@ -817,7 +817,7 @@ export function nextStep(st: State, mode: Mode = "kinds"): SolveStep | null {
   const after = st.clone();
   applyTurns(after, grip);
   if (stepFrom(after, mode)?.regrip) return step;
-  const color = (s: number) => COLOR_NAME[FACE_COLOR[[0, 1, 2, 3, 4, 5].find((d) => slotAt(DIRS[d]) === CUBELETS[after.occ[s]].home)!]];
+  const color = (s: number) => COLOR_NAME[FACE_COLOR[[0, 1, 2, 3, 4, 5].find((d) => slotAt(DIRS[d]) === PIECES[after.occ[s]].home)!]];
   // A flip is a half turn (x2, y2); a quarter turn about the vertical is a rotation.
   const over = grip.some((t) => MOVE_DEFS[t.def].axis !== 1);
   const around = grip.find((t) => MOVE_DEFS[t.def].axis === 1);
@@ -886,8 +886,8 @@ function asFlipped(step: SolveStep): SolveStep {
 function heldStep(st: State, mode: Mode): SolveStep | null {
   if (!held(st)) {
     const turns = holdTurns(st);
-    // The color a center shows is the color of the face its core center cubelet came from.
-    const up = COLOR_NAME[FACE_COLOR[[0, 1, 2, 3, 4, 5].find((d) => slotAt(DIRS[d]) === CUBELETS[st.occ[UP]].home)!]];
+    // The color a center shows is the color of the face its core center piece came from.
+    const up = COLOR_NAME[FACE_COLOR[[0, 1, 2, 3, 4, 5].find((d) => slotAt(DIRS[d]) === PIECES[st.occ[UP]].home)!]];
     return { stage: "hold", goal: `Rotate the whole puzzle so the white center is up (now ${up} is up). Nothing else moves`, alg: formatAlg(turns), turns, parts: [{ name: "turns", turns: turns.length }], moved: [], free: [], lands: [], regrip: "" };
   }
   if (mode === "layers") {
@@ -896,9 +896,9 @@ function heldStep(st: State, mode: Mode): SolveStep | null {
   }
   if (!isHomeX(st)) {
     const { turns, regrip } = shapeTurns(st);
-    // The step is for the core cubelets that keep the puzzle out of shape: a corner or
+    // The step is for the core pieces that keep the puzzle out of shape: a corner or
     // single edge whose sticker faces sideways, and any core edge in the wrong layer.
-    const sideways = (s: number) => ROT_DIR[st.ori[s] * 6 + (SLOT_POS[CUBELETS[st.occ[s]].home][1] > 0 ? 2 : 3)] >> 1 !== 1;
+    const sideways = (s: number) => ROT_DIR[st.ori[s] * 6 + (SLOT_POS[PIECES[st.occ[s]].home][1] > 0 ? 2 : 3)] >> 1 !== 1;
     const wrong = [...CORNER_SLOTS, ...EDGE_SLOTS].filter((s) => {
       const kind = kindAt(st, s);
       if (kind === "doubleEdge") return SLOT_POS[s][1] !== 0;
@@ -909,8 +909,8 @@ function heldStep(st: State, mode: Mode): SolveStep | null {
   }
   const core = coreTurns(st);
   if (core.length) {
-    const wrong = [...CORNER_SLOTS, ...SINGLE_SLOTS].filter((s) => CUBELETS[st.occ[s]].stickers.includes("W") !== SLOT_POS[s][1] > 0);
-    return { stage: "core", goal: "Bring the white core cubelets up and the yellow ones down", alg: formatAlg(core), turns: core, parts: [{ name: "turns", turns: core.length }], moved: wrong.map((s) => [s, s]), free: others(st, wrong), lands: [], regrip: "" };
+    const wrong = [...CORNER_SLOTS, ...SINGLE_SLOTS].filter((s) => PIECES[st.occ[s]].stickers.includes("W") !== SLOT_POS[s][1] > 0);
+    return { stage: "core", goal: "Bring the white core pieces up and the yellow ones down", alg: formatAlg(core), turns: core, parts: [{ name: "turns", turns: core.length }], moved: wrong.map((s) => [s, s]), free: others(st, wrong), lands: [], regrip: "" };
   }
   return outerStep(st, mode);
 }
