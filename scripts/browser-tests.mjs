@@ -2758,6 +2758,33 @@ labTest("lost: debug info saved during Lost? puts back the solve and the intervi
   check(back.solving && back.steps.length === 10 && back.cursor === 66 && !back.lost, `Cancel edit then puts the solve back as it was before Lost? (${back.steps.length} steps, at ${back.cursor})`);
 });
 
+/** Lost? on a one-turn step from solved followed by r (the solve's first step is that r), as if its turn went as candidate i (0 no slip, 1 r2, 3 left out), then Yes. */
+async function lostOnOneTurn(page, probe, settle, play, i) {
+  await play("r");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  await page.click("#lost");
+  await settle();
+  const slip = await probe("lostPick", i);
+  for (let k = 0; k < 14 && (await probe("lost"))?.phase !== "confirm"; k++) {
+    await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
+    await settle();
+  }
+  await page.click(`#lost-opts [data-lost="yes"]`);
+  await settle();
+  return slip;
+}
+
+labTest("lost: a step left out entirely loads no empty Back on track step, and Next step gives it again", async ({ page, check, probe, settle, play }) => {
+  const slip = await lostOnOneTurn(page, probe, settle, play, 3);
+  const after = JSON.parse(await probe("debugInfo"));
+  check(slip === "skipped" && after.steps.every((s) => s.alg !== ""), `nothing to undo leaves no empty step (${slip}; ${JSON.stringify(after.steps)})`);
+  await guideHelpers(page, settle).next();
+  const alive = await Promise.race([page.evaluate(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length), new Promise((r) => setTimeout(() => r(-1), 10000))]);
+  check(alive >= 1, `Next step then gives the step again, and the page answers (${alive} steps)`);
+});
+
 labTest("lost: Cancel puts the turn list and the step back as they were", async ({ page, check, probe, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);

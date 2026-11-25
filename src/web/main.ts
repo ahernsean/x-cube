@@ -4744,17 +4744,16 @@ function acceptLost(c: Candidate) {
   trail = l.saved.trail.filter((g) => g.start + g.step.turns.length <= base.start);
   const back = wayBack(c, base.start - l.start);
   const at = l.start + c.made.length + c.grip.length;
-  const step: SolveStep = {
-    stage: "recover",
-    goal: `Undo the turns you made, back to where step ${base.index} began. Then Next step gives step ${base.index} again`,
-    alg: formatAlg(back),
-    turns: back,
-    moved: [],
-    free: [],
-    parts: [{ name: "turns", turns: back.length }],
-    lands: [],
-    regrip: "",
-  };
+  if (!back.length) {
+    // Nothing to undo (the step's only turn left out): the puzzle is already where the step begins.
+    app.history = [...l.saved.history.slice(0, l.start), ...c.made, ...c.grip];
+    jump(app.history.length);
+    guide = null;
+    guideLine = "";
+    setMessage(`${words} There is nothing to undo: Next step gives step ${base.index} again.`, "info");
+    return render();
+  }
+  const step = recoverStep(back, base.index);
   app.history = [...l.saved.history.slice(0, l.start), ...c.made, ...c.grip, ...back];
   jump(at);
   // It isn't one of the plan's steps: it stands before the first step of the slip's, which
@@ -4792,6 +4791,21 @@ function setLostLast(l: Lost, k: number) {
 function lostStepTurns(l: Lost): number[] {
   const g = l.steps[l.steps.length - 1];
   return g.step.turns.map((_, i) => g.start - l.start + i);
+}
+
+/** A Back on track step: the turns that undo a slip, back to where step `index` began. */
+function recoverStep(back: Turn[], index: number): SolveStep {
+  return {
+    stage: "recover",
+    goal: `Undo the turns you made, back to where step ${index} began. Then Next step gives step ${index} again`,
+    alg: formatAlg(back),
+    turns: back,
+    moved: [],
+    free: [],
+    parts: [{ name: "turns", turns: back.length }],
+    lands: [],
+    regrip: "",
+  };
 }
 
 /** Lost? found no way that fits: it says so, and offers to have the person color the puzzle to match theirs. */

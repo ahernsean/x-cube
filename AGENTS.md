@@ -762,7 +762,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   regrip to how they hold it), then a **Back on track** step (stage `recover`, numbered
   as the step it goes back to, graying nothing, with no paths) that undoes them, back to
   where the step the slip was in began; Next step after it gives that step again with
-  the same number. With no slip, nothing is undone: held as the screen is, the turn list
+  the same number. When there is nothing to undo (a step's only turn left out), no step
+  is loaded: the message says so, and Next step gives the step again (an empty step in the
+  turn list froze the page). With no slip, nothing is undone: held as the screen is, the turn list
   stays and the position goes to the turn they made last ("Your puzzle is where turn 6
   of step 10 leaves it"). **No**, No piece here or None of these:
   it **gives up** and says so, in the first person, as Lost? speaks to the person ("I can't
