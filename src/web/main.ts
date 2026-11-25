@@ -4698,7 +4698,7 @@ function slipWords(c: Candidate): string {
   // A last turn other than the one named: say which it was.
   const [lastStep, lastAt] = lostTurnStep(l, c.last);
   const also = c.last === l.last ? "" : ` The last turn you made was turn ${lastAt + 1} of step ${lastStep.index}, ${turnName(l.all[c.last])}.`;
-  const madeAs = c.made[c.at];
+  const madeAs = c.as[0];
   switch (c.slip) {
     case "amount":
     case "layer":

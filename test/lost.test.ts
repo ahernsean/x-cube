@@ -142,3 +142,19 @@ test("lost: a last turn misremembered by up to two turns either way is still fou
   assert.ok(most <= 9, `${interviews} interviews, at most ${most} questions`);
   console.log(`misremembered last turn: ${interviews} interviews, ${(total / interviews).toFixed(1)} questions on average, ${most} at most`);
 });
+
+test("lost: a candidate's turns and its way back hold only turns the puzzle takes", () => {
+  // F2 for the first F': both r turns are then refused, so they are neither made nor undone.
+  const cands = slipCandidates(State.solved(), parseAlg("F' L' F r F' L F r'"));
+  let checked = 0;
+  for (const c of cands) {
+    const st = State.solved();
+    for (const t of c.made) assert.ok(applyTurn(st, t), "every turn made is one the puzzle takes");
+    for (const t of wayBack(c)) assert.ok(applyTurn(st, t), "every turn of the way back is one the puzzle takes");
+    assert.equal(st.appearanceKey(), State.solved().appearanceKey(), "the way back returns to the start");
+    checked++;
+  }
+  const f2 = cands.find((c) => c.at === 0 && c.as[0]?.amount === 2);
+  assert.ok(f2 && !f2.made.some((t) => MOVE_DEFS[t.def].kind === "outer"), "with F2 first, the refused r turns are left out");
+  assert.ok(checked > 10);
+});

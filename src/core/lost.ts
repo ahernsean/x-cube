@@ -22,8 +22,10 @@ import { MOVE_BY_NAME, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, slotAt,
 
 /** One way the turns may have gone. */
 export interface Candidate {
-  /** The turns the person made, as far as this candidate goes. */
+  /** The turns the person made, as far as this candidate goes: only those the puzzle took (a slip can leave a later outer turn refused). */
   made: Turn[];
+  /** What the slipped turn was made as (nothing for a turn left out or no slip). */
+  as: Turn[];
   /** Which turn slipped (an index into the turns followed), or -1 for none. */
   at: number;
   /** What happened to that turn. */
@@ -70,17 +72,18 @@ function otherFaces(t: Turn): Turn[] {
 export function slipCandidates(start: State, turns: readonly Turn[], from = 0): Candidate[] {
   const out: Candidate[] = [];
   const seen = new Set<string>();
-  const add = (made: Turn[], at: number, slip: Candidate["slip"]) => {
-    const state = run(start, made);
+  const add = (tried: Turn[], at: number, slip: Candidate["slip"], as: Turn[]) => {
+    const state = start.clone();
+    const made = tried.filter((t) => applyTurn(state, t));
     const key = state.appearanceKey();
     if (seen.has(key)) return;
     seen.add(key);
-    out.push({ made, at, slip, state, grip: [], last: turns.length - 1 });
+    out.push({ made, as, at, slip, state, grip: [], last: turns.length - 1 });
   };
-  add([...turns], -1, "none");
+  add([...turns], -1, "none", []);
   turns.forEach((t, i) => {
     if (i < from) return;
-    const put = (slip: Candidate["slip"], ...r: Turn[]) => add([...turns.slice(0, i), ...r, ...turns.slice(i + 1)], i, slip);
+    const put = (slip: Candidate["slip"], ...r: Turn[]) => add([...turns.slice(0, i), ...r, ...turns.slice(i + 1)], i, slip, r);
     for (const a of [1, 2, 3] as const) if (a !== t.amount) put("amount", { def: t.def, amount: a });
     put("skipped");
     put("twice", t, t);
@@ -105,7 +108,7 @@ export function endCandidates(start: State, turns: readonly Turn[], ends: readon
     if (!seen.has(key)) seen.add(key), out.push(c);
   };
   for (const j of ends) if (j >= 0 && j < turns.length) slipCandidates(start, turns.slice(0, j + 1)).forEach(keep);
-  for (const j of stops) if (j >= 0 && j < turns.length) keep({ made: turns.slice(0, j + 1), at: -1, slip: "none", state: run(start, turns.slice(0, j + 1)), grip: [], last: j });
+  for (const j of stops) if (j >= 0 && j < turns.length) keep({ made: turns.slice(0, j + 1), as: [], at: -1, slip: "none", state: run(start, turns.slice(0, j + 1)), grip: [], last: j });
   return out;
 }
 
