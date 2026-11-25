@@ -4762,13 +4762,13 @@ function giveUpLost(why: string) {
 }
 
 /**
- * Lost? while the puzzle is colored to match the person's: the interview, set aside. The
- * solve goes on: Done looks for the way the colored puzzle was reached (`lostFromEdit`),
+ * Lost? while the puzzle is edited to match the person's: the interview, set aside. The
+ * solve goes on: Continue search looks for the way the edited puzzle was reached (`lostFromEdit`),
  * Cancel puts the turn list and the steps back.
  */
 let lostEdit: Lost | null = null;
 
-/** Color my puzzle: Edit puzzle, from the nearest position found, so only what differs needs coloring. The solve stays. */
+/** Edit to match mine: Edit puzzle, from the nearest position found, so only what differs needs changing. The solve stays. */
 function lostToEdit(c: Candidate | null) {
   const l = lost!;
   lost = null;
@@ -4781,6 +4781,7 @@ function lostToEdit(c: Candidate | null) {
   lostEdit = l;
   startEdit();
   $("edit-done").textContent = "Continue search";
+  $("edit-cancel").textContent = "Cancel edit";
   render();
 }
 
@@ -4886,10 +4887,10 @@ function renderLost() {
     answers = colors.filter((c) => c !== l.up && c !== opposite[l.up!]);
   } else if (l.phase === "ask") {
     const q = l.question!;
-    text = q.kind === "color" ? `Look at your puzzle, not this one. What color is the sticker in the ring?` : `Look at your puzzle, not this one. Is there a piece in the box?`;
+    text = q.kind === "color" ? `Look at your puzzle, not this screen. What color is the sticker in the ring?` : `Look at your puzzle, not this screen. Is there a piece in the box?`;
     answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? [...(canBeEmpty(q.slot) ? ["empty"] : []), "none"] : [])];
   } else if (l.phase === "giveup") {
-    text = `I can't find how your puzzle got this way. ${l.why} Color the puzzle on the screen to match yours, then tap Continue search, and I'll look again from there.`;
+    text = `I can't find how your puzzle got this way. ${l.why} Edit the puzzle on this screen to match yours, then tap Continue search, and I'll look again from there.`;
     answers = ["color"];
   } else {
     text = `${slipWords(l.cands[0])} Does your puzzle look like this one now?`;
@@ -4905,7 +4906,7 @@ function renderLost() {
       }
       if (a === "empty") return `<button class="btn small lost-text" data-lost="empty">No piece here</button>`;
       if (a === "none") return `<button class="btn small lost-text" data-lost="none">None of these</button>`;
-      if (a === "color") return `<button class="btn small lost-text primary" data-lost="color">Color my puzzle</button>`;
+      if (a === "color") return `<button class="btn small lost-text primary" data-lost="color">Edit to match mine</button>`;
       if (a in NET_COLOR) return `<button class="lost-swatch" data-lost="${a}" aria-label="${LOST_ANSWER_NAME[a as Answer]}"><i style="background:${NET_COLOR[a]}"></i>${LOST_ANSWER_NAME[a as Answer]}</button>`;
       if (a === "black") return `<button class="lost-swatch" data-lost="black" aria-label="No sticker"><i class="bare"></i>No sticker</button>`;
       const label = l.phase === "confirm" ? (a === "yes" ? "Yes" : "No") : LOST_ANSWER_NAME[a as Answer];
@@ -6932,6 +6933,7 @@ function endEdit(apply: boolean) {
   for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
   const fromLost = lostEdit;
   $("edit-done").textContent = "Done";
+  $("edit-cancel").textContent = "Cancel";
   if (fromLost) {
     if (apply && e.fit.level === "reachable" && e.fit.state) lostFromEdit(fromLost, e.fit.state);
     else lostEditCancel(fromLost);

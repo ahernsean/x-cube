@@ -759,10 +759,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   stays and the position goes to the turn they made last ("Your puzzle is where turn 6
   of step 10 leaves it"). **No**, No piece here or None of these:
   it **gives up** and says so, in the first person, as Lost? speaks to the person ("I can't
-  find how your puzzle got this way", why, and what to do), with **Color my puzzle**: Edit
+  find how your puzzle got this way", why, and what to do), with **Edit to match mine** (not "color": the editor changes the shape too): Edit
   puzzle, starting from the position found nearest, while the solve stays (no "End the
-  solve?"; `lostEdit`). There Done reads **Continue search** and looks
-  again from the puzzle colored, now known exactly, with every last turn from six before
+  solve?"; `lostEdit`). There Done reads **Continue search** and Cancel **Cancel edit**; Continue search looks
+  again from the puzzle edited, now known exactly, with every last turn from six before
   the one named to the end of the turns: a way Lost? knows that gives it loads
   the Back on track step as Yes does; with none, the message says so and the solve starts
   again from it. **Cancel** there, as in the interview, puts the turn list, the steps and
@@ -770,7 +770,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   of these means a slip it doesn't list (two slips, for one). Starting Lost? drops a
   question still waiting ("End the solve in progress?"), and Edit puzzle ends an
   interview: answered under one, it left the editor gray.
-  **Not handled yet:** two slips: those end in Color my puzzle, where Continue search
+  **Not handled yet:** two slips: those end in Edit to match mine, where Continue search
   looks only among the one-slip candidates.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side

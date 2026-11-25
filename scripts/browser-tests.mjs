@@ -2600,7 +2600,7 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
   check(fits, "the page is no wider than the screen");
 });
 
-labTest("lost: giving up says so, and Color my puzzle opens Edit puzzle in full color with the solve kept", async ({ page, check, probe, settle }) => {
+labTest("lost: giving up says so, and Edit to match mine opens Edit puzzle in full color with the solve kept", async ({ page, check, probe, settle }) => {
   // A play-tester's solve, restored from debug info, then a sticker with a color no way gives.
   await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
   await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 10, null, { timeout: 20000 });
@@ -2622,13 +2622,15 @@ labTest("lost: giving up says so, and Color my puzzle opens Edit puzzle in full 
   await page.click(`#lost-opts [data-lost="none"]`);
   await settle();
   const gave = await probe("lost");
-  check(gave.phase === "giveup" && /^I can't find how your puzzle got this way/.test(gave.text) && gave.answers.join() === "color", `it says plainly that it gave up, and offers Color my puzzle (${JSON.stringify(gave)})`);
+  check(gave.phase === "giveup" && /^I can't find how your puzzle got this way/.test(gave.text) && gave.answers.join() === "color", `it says plainly that it gave up, and offers Edit to match mine (${JSON.stringify(gave)})`);
   await page.click(`#lost-opts [data-lost="color"]`);
   await settle();
   const confirm = !(await page.$eval("#confirm", (e) => e.hidden));
   const gray = await page.evaluate(() => window.xcubeProbe.grayStickers());
   const info = JSON.parse(await probe("debugInfo"));
   const done = await page.$eval("#edit-done", (b) => b.textContent);
+  const cancelLabel = await page.$eval("#edit-cancel", (b) => b.textContent);
+  check(cancelLabel === "Cancel edit", `its Cancel reads Cancel edit (${cancelLabel})`);
   check(!!(await probe("shapeEdit")) && gray === 0 && !confirm && info.solving && (await probe("lostEdit")) && done === "Continue search", `Edit puzzle opens in full color, without ending the solve, its Done reading Continue search (${JSON.stringify({ gray, confirm, solving: info.solving, done })})`);
   await page.click("#edit-cancel");
   await settle();
@@ -2637,7 +2639,7 @@ labTest("lost: giving up says so, and Color my puzzle opens Edit puzzle in full 
   check(back.solving && back.steps.length === 10 && back.cursor === 66 && !(await probe("lostEdit")) && label === "Done", `Cancel puts the solve back as it was (${back.steps.length} steps, at ${back.cursor}; the editor's button reads ${label} again)`);
 });
 
-labTest("lost: after Color my puzzle, Done finds the slip from the puzzle colored and carries on with the solve", async ({ page, check, probe, settle, play }) => {
+labTest("lost: after Edit to match mine, Continue search finds the slip from the puzzle edited and carries on with the solve", async ({ page, check, probe, settle, play }) => {
   await play("R U R' F");
   await page.click(`[data-tab="solve"]`);
   await page.click("#next-step");
@@ -2649,7 +2651,7 @@ labTest("lost: after Color my puzzle, Done finds the slip from the puzzle colore
   await page.click("#lost");
   await settle();
   const slip = await probe("lostPick", 2);
-  // Answers that lead to the person's puzzle, then No: so Color my puzzle opens on it, as if colored to match.
+  // Answers that lead to the person's puzzle, then No: so Edit to match mine opens on it, as if edited to match.
   for (let k = 0; k < 14; k++) {
     const l = await probe("lost");
     if (l.phase === "confirm") break;
