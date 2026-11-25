@@ -4768,7 +4768,7 @@ function giveUpLost(why: string) {
  */
 let lostEdit: Lost | null = null;
 
-/** Edit to match mine: Edit puzzle, from the nearest position found, so only what differs needs changing. The solve stays. */
+/** Edit puzzle: Edit puzzle, from the nearest position found, so only what differs needs changing. The solve stays. */
 function lostToEdit(c: Candidate | null) {
   const l = lost!;
   lost = null;
@@ -4906,7 +4906,7 @@ function renderLost() {
       }
       if (a === "empty") return `<button class="btn small lost-text" data-lost="empty">No piece here</button>`;
       if (a === "none") return `<button class="btn small lost-text" data-lost="none">None of these</button>`;
-      if (a === "color") return `<button class="btn small lost-text primary" data-lost="color">Edit to match mine</button>`;
+      if (a === "color") return `<button class="btn small lost-text primary" data-lost="color">Edit puzzle</button>`;
       if (a in NET_COLOR) return `<button class="lost-swatch" data-lost="${a}" aria-label="${LOST_ANSWER_NAME[a as Answer]}"><i style="background:${NET_COLOR[a]}"></i>${LOST_ANSWER_NAME[a as Answer]}</button>`;
       if (a === "black") return `<button class="lost-swatch" data-lost="black" aria-label="No sticker"><i class="bare"></i>No sticker</button>`;
       const label = l.phase === "confirm" ? (a === "yes" ? "Yes" : "No") : LOST_ANSWER_NAME[a as Answer];
