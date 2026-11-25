@@ -2565,8 +2565,13 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
   } else check(last.phase === "up", `with a step of one turn, there is no asking which was last (${last.phase})`);
   const up = await probe("lost");
   check(up.phase === "up" && up.answers.length === 6 && up.gray > 0, `then which center is on top, with the puzzle shown gray (${JSON.stringify(up)})`);
-  const inert = await page.evaluate(() => document.getElementById("dock").inert && document.getElementById("tabs").inert);
-  check(inert, "the turn list and the tabs are set aside");
+  const inert = await page.evaluate(() => ["dock", "tabs", "panel-start", "panel-turn", "panel-algs", "undo"].every((id) => document.getElementById(id).inert));
+  check(inert, "the turn list, the tabs, the other panels and Undo are set aside");
+  const turnedBefore = await probe("debugInfo");
+  // Inert stops a tap; a handler reached another way (a key, a script) must do nothing too.
+  await page.evaluate(() => document.getElementById("undo").click());
+  await settle();
+  check(JSON.parse(await probe("debugInfo")).current === JSON.parse(turnedBefore).current, "Undo doesn't turn the puzzle shown while Lost? asks");
   // The person's puzzle: one of the slips (not the right result).
   const slip = await probe("lostPick", Math.max(1, Math.floor(up.answers.length / 2)));
   check(slip && slip !== "none", `a slipped puzzle is picked (${slip})`);

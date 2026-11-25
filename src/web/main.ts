@@ -1735,6 +1735,8 @@ function finishShuffle() {
 
 /** Undo the last turn (Undo button, or a double tap on the 3D view). */
 function undoLast() {
+  // While Lost? asks, the puzzle shown is its guess at the person's; nothing may turn it.
+  if (lost) return;
   if (app.cursor <= 0) {
     setMessage("Nothing to undo", "info");
     render();
@@ -2152,6 +2154,7 @@ function dismissMessage() {
 
 /** Tap a move button: add the turn at the cursor (discarding any "redo" turns). */
 function doTurn(turn: Turn) {
+  if (lost) return;
   flushAnimations();
   const why = blockedReason(app.current, turn);
   if (why) {
@@ -4587,9 +4590,9 @@ function startLost() {
   render();
 }
 
-/** While Lost? asks, the turn list and the tabs are set aside. */
+/** While Lost? asks, the turn list, the tabs, the other panels' controls and Undo are set aside (the view still tumbles). */
 function setLostLock(on: boolean) {
-  for (const id of ["dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = on;
+  for (const id of ["dock", "tabs", "panel-start", "panel-turn", "panel-algs", "undo"]) ($(id) as HTMLElement & { inert: boolean }).inert = on;
   $("guide").classList.toggle("lost-on", on);
 }
 
