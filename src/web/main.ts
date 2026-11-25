@@ -3144,7 +3144,13 @@ function debugInfo(): string {
       view: [q.x, q.y, q.z, q.w].map((v) => Math.round(v * 1e5) / 1e5),
       solving,
       order: guideMode,
-      steps: trail.map((g) => ({ index: g.index, stage: g.step.stage, start: g.start, alg: g.step.alg, shown: g === guide })),
+      // During Lost?, the solve's steps are the ones it set aside (the turn list shown is a guess at the person's).
+      steps: ((lost ?? lostEdit)?.saved.trail ?? trail).map((g) => ({ index: g.index, stage: g.step.stage, start: g.start, alg: g.step.alg, shown: g === ((lost ?? lostEdit) ? (lost ?? lostEdit)!.saved.guide : guide) })),
+      // Lost? under way: the solve's own turn list and step shown, and the answers given, which replay the interview.
+      lost: (() => {
+        const l = lost ?? lostEdit;
+        return l && { turns: formatAlg(l.saved.history), cursor: l.saved.cursor, shown: l.saved.guide?.start ?? null, answers: l.log, editing: !!lostEdit };
+      })(),
       edit: edit && {
         shape: encodeState(edit.shape),
         removed: [...edit.removed].map(name),
@@ -3445,34 +3451,63 @@ function slotByName(name: string): number {
 /** Puts back what debugInfo wrote: the start, the turns and the cursor, the view, and an edit in progress. */
 function restoreDebug(json: string) {
   const d = JSON.parse(json);
+  if (lost) cancelLost();
   if (edit) endEdit(false);
   if (solving) stopGuide();
+  // During Lost?, the turn list shown is a guess at the person's; the solve's own is kept with it.
+  const L = d.lost && Array.isArray(d.lost.answers) ? d.lost : null;
   app.base = decodeState(d.base);
-  app.history = parseAlg(d.turns ?? "");
-  jump(d.cursor ?? app.history.length);
+  app.history = parseAlg((L ? L.turns : d.turns) ?? "");
+  jump((L ? L.cursor : d.cursor) ?? app.history.length);
   if (d.view) pivot.quaternion.set(d.view[0], d.view[1], d.view[2], d.view[3]);
   trail = [];
-  if (d.solving && !d.edit && Array.isArray(d.steps) && d.steps.length) restoreSolve(d.order === "layers" ? "layers" : "kinds", d.steps);
-  if (d.edit) {
-    startEdit();
-    const e = edit!;
-    e.shape = decodeState(d.edit.shape);
-    e.shown = e.shape.clone();
-    e.removed = new Set(d.edit.removed.map(slotByName));
-    e.added = new Set(d.edit.added.map(slotByName));
-    e.colors = [...d.edit.colors].map((c: string) => (c === "." ? undefined : (c as Color)));
-    e.paint = d.edit.tool;
-    e.selected = d.edit.selected ?? "";
-    e.hidden = d.edit.hidden ?? null;
-    refitEdit();
-    renderEdit();
+  if (d.solving && (!d.edit || L) && Array.isArray(d.steps) && d.steps.length) restoreSolve(d.order === "layers" ? "layers" : "kinds", d.steps, L ? () => restoreLost(d) : undefined);
+  else if (d.edit) restoreEdit(d.edit);
+  render();
+}
+
+/**
+ * Lost? from debug info, once its solve is back: started again from the step it was asked
+ * from, and its answers given again in order, which bring the interview (or its Edit puzzle,
+ * then put back as it was) to where it was.
+ */
+function restoreLost(d: any) {
+  const L = d.lost;
+  guide = trail.find((g) => g.start === L.shown) ?? null;
+  startLost();
+  if (!lost) return setMessage("The solve is back, but Lost? couldn't be started again from it", "error");
+  for (const a of L.answers) {
+    if (!lost) break;
+    answerLost(String(a));
   }
+  if (L.editing && edit && d.edit) restoreEdit(d.edit, false);
+  // The view as it was, not where the replayed questions turned it.
+  tween = null;
+  if (d.view) pivot.quaternion.set(d.view[0], d.view[1], d.view[2], d.view[3]);
+  if (lost || lostEdit) setMessage(`Solve and Lost? restored: ${trail.length} ${trail.length === 1 ? "step" : "steps"}, ${L.answers.length} ${L.answers.length === 1 ? "answer" : "answers"}`, "ok");
+  render();
+}
+
+/** An edit from debug info: Edit puzzle opened (unless it already is) and set as it was. */
+function restoreEdit(de: any, open = true) {
+  if (open) startEdit();
+  const e = edit!;
+  e.shape = decodeState(de.shape);
+  e.shown = e.shape.clone();
+  e.removed = new Set(de.removed.map(slotByName));
+  e.added = new Set(de.added.map(slotByName));
+  e.colors = [...de.colors].map((c: string) => (c === "." ? undefined : (c as Color)));
+  e.paint = de.tool;
+  e.selected = de.selected ?? "";
+  e.hidden = de.hidden ?? null;
+  refitEdit();
+  renderEdit();
   render();
 }
 
 /** A solve from debug info, being given back a step at a time as plans reach each step's start (`restoreSolve`). */
 type SavedStep = { index: number; stage: string; start: number; alg: string; shown?: boolean };
-let restoring: { steps: SavedStep[]; total: number; got: number; shown: Guide | null; planned: Set<string> } | null = null;
+let restoring: { steps: SavedStep[]; total: number; got: number; shown: Guide | null; planned: Set<string>; then?: () => void } | null = null;
 
 /**
  * Puts a solve from debug info back: the guide's steps, each in its box in the turn list,
@@ -3480,11 +3515,11 @@ let restoring: { steps: SavedStep[]; total: number; got: number; shown: Guide | 
  * from where it starts, in the order it was solved in; a step that doesn't (one Lost? made
  * to undo a slip, which no plan has) keeps its turns without a box.
  */
-function restoreSolve(mode: Mode, steps: SavedStep[]) {
+function restoreSolve(mode: Mode, steps: SavedStep[], then?: () => void) {
   if (guideMode !== mode) setGuideMode(mode);
   solving = true;
   const fit = steps.filter((s) => Number.isInteger(s.start) && s.start >= 0 && s.start <= app.history.length && typeof s.alg === "string");
-  restoring = { steps: fit, total: steps.length, got: 0, shown: null, planned: new Set() };
+  restoring = { steps: fit, total: steps.length, got: 0, shown: null, planned: new Set(), then };
   restoreNext();
 }
 
@@ -3525,6 +3560,7 @@ function restoreNext() {
   drawGuide();
   setMessage(r.got === r.total ? `Solve restored: ${r.got} ${r.got === 1 ? "step" : "steps"}` : `Solve restored: ${r.got} of ${r.total} steps`, "ok");
   render();
+  r.then?.();
 }
 
 /** The ⓘ and Display buttons beside the 3D and flat views' headings each open a small panel over the view. */
@@ -4490,6 +4526,8 @@ interface Lost {
   expected: Candidate;
   /** Why it gave up, in words (phase "giveup"). */
   why: string;
+  /** Every answer given, in order: Lost? is deterministic, so replaying them from the same start gives the same interview (debug info). */
+  log: string[];
   /** The candidates still left, held as the person holds the puzzle once the grip is known. */
   cands: Candidate[];
   question: Question | null;
@@ -4534,6 +4572,7 @@ function startLost() {
     up: null,
     front: null,
     known: [],
+    log: [],
     expected: slipCandidates(steps[0].from, turns)[0],
     why: "",
     cands: [],
@@ -4582,6 +4621,7 @@ function answerLost(a: string) {
   const l = lost;
   if (!l) return;
   if (a === "cancel") return cancelLost();
+  l.log.push(a);
   if (a === "color") return lostToEdit(l.cands[0] ?? null);
   if (a === "empty") return giveUpLost("Your puzzle has no piece there, and every way I looked at has one.");
   if (a === "none") return giveUpLost("None of the ways I looked at gives your puzzle that color there.");

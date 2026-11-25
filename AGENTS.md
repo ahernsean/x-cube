@@ -309,7 +309,14 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   step comes again from a plan made from where it starts, in the order it was solved in;
   a step Lost? made to undo a slip, which no plan has, keeps its turns without a box; the
   message says "Solve restored: 10 steps", or how many of them came back), so Next step and
-  Lost? go on from there (the probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
+  Lost? go on from there. Debug info is a restart dump: saved during Lost?, it also holds
+  the solve's own turn list, cursor and shown step (the list shown then is a guess at the
+  person's) and every answer given, in order (`Lost.log`, the last turn named included),
+  and whether Lost?'s Edit puzzle was open; Lost? is deterministic, so once the solve is
+  back, `restoreLost` starts it again from the same step and replays the answers, which
+  brings the interview to the same question with the same colors told, or opens its Edit
+  puzzle, then set as it was, with Continue search ("Solve and Lost? restored: 10 steps,
+  5 answers") (the probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
   won't read it, from text pasted into the field that opens. Beside it, a clock (shown
   with the shared database) opens a list of the saved copies, newest first, each by the
   date and time it was saved, to the second, in small type, and the device ("Nov 20, 2026,
