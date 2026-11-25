@@ -133,6 +133,8 @@ export function answerOf(st: State, q: Question): Answer | null {
 }
 
 const outerSlot = (s: number) => SLOT_POS[s].some((c) => Math.abs(c) === 2);
+/** Whether a spot can be empty in some shape: an extension spot can, a core spot never. */
+export const canBeEmpty = outerSlot;
 
 /**
  * How easy a spot is to look at, held as the person holds it: the top, the front and the

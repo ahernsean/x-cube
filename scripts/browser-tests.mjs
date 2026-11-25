@@ -2616,22 +2616,25 @@ labTest("lost: giving up says so, and Color my puzzle opens Edit puzzle in full 
     await settle();
   }
   const asking = await probe("lost");
-  check(asking.phase === "ask" && asking.answers.includes("empty") && asking.answers.includes("none") && !asking.answers.includes("other"), `a color question offers No piece here and None of these (${asking.answers})`);
+  const extension = /^[UDFBLR]x/.test(asking.question);
+  check(asking.phase === "ask" && asking.answers.includes("none") && asking.answers.includes("empty") === extension, `a color question offers None of these, and No piece here only at an extension spot, which can be empty (${asking.question}: ${asking.answers})`);
   check(asking.known >= 2, `the two centers told, and the stickers answered, show in their colors (${asking.known} stickers known)`);
   await page.click(`#lost-opts [data-lost="none"]`);
   await settle();
   const gave = await probe("lost");
-  check(gave.phase === "giveup" && /^Lost\? can't find how your puzzle got this way/.test(gave.text) && gave.answers.join() === "color", `it says plainly that it gave up, and offers Color my puzzle (${JSON.stringify(gave)})`);
+  check(gave.phase === "giveup" && /^I can't find how your puzzle got this way/.test(gave.text) && gave.answers.join() === "color", `it says plainly that it gave up, and offers Color my puzzle (${JSON.stringify(gave)})`);
   await page.click(`#lost-opts [data-lost="color"]`);
   await settle();
   const confirm = !(await page.$eval("#confirm", (e) => e.hidden));
   const gray = await page.evaluate(() => window.xcubeProbe.grayStickers());
   const info = JSON.parse(await probe("debugInfo"));
-  check(!!(await probe("shapeEdit")) && gray === 0 && !confirm && info.solving && (await probe("lostEdit")), `Edit puzzle opens in full color, without ending the solve (${JSON.stringify({ gray, confirm, solving: info.solving })})`);
+  const done = await page.$eval("#edit-done", (b) => b.textContent);
+  check(!!(await probe("shapeEdit")) && gray === 0 && !confirm && info.solving && (await probe("lostEdit")) && done === "Continue search", `Edit puzzle opens in full color, without ending the solve, its Done reading Continue search (${JSON.stringify({ gray, confirm, solving: info.solving, done })})`);
   await page.click("#edit-cancel");
   await settle();
   const back = JSON.parse(await probe("debugInfo"));
-  check(back.solving && back.steps.length === 10 && back.cursor === 66 && !(await probe("lostEdit")), `Cancel puts the solve back as it was (${back.steps.length} steps, at ${back.cursor})`);
+  const label = await page.$eval("#edit-done", (b) => b.textContent);
+  check(back.solving && back.steps.length === 10 && back.cursor === 66 && !(await probe("lostEdit")) && label === "Done", `Cancel puts the solve back as it was (${back.steps.length} steps, at ${back.cursor}; the editor's button reads ${label} again)`);
 });
 
 labTest("lost: after Color my puzzle, Done finds the slip from the puzzle colored and carries on with the solve", async ({ page, check, probe, settle, play }) => {

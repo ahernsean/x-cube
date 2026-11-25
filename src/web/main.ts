@@ -30,7 +30,7 @@ import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTa
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 import { Planner, type Plan } from "./planner.ts";
-import { answerOf, answersTo, bestQuestion, centerColor, holdAs, narrow, slipCandidates, wayBack, type Answer, type Candidate, type Question } from "../core/lost.ts";
+import { answerOf, answersTo, bestQuestion, canBeEmpty, centerColor, holdAs, narrow, slipCandidates, wayBack, type Answer, type Candidate, type Question } from "../core/lost.ts";
 
 declare const THREE: any;
 
@@ -4580,8 +4580,8 @@ function answerLost(a: string) {
   if (!l) return;
   if (a === "cancel") return cancelLost();
   if (a === "color") return lostToEdit(l.cands[0] ?? null);
-  if (a === "empty") return giveUpLost("Your puzzle has no piece there, and every way Lost? looked at has one.");
-  if (a === "none") return giveUpLost("None of the ways Lost? looked at gives your puzzle that color there.");
+  if (a === "empty") return giveUpLost("Your puzzle has no piece there, and every way I looked at has one.");
+  if (a === "none") return giveUpLost("None of the ways I looked at gives your puzzle that color there.");
   if (l.phase === "last") {
     const k = Number(a.slice(2));
     if (!a.startsWith("t:") || !(k >= 0 && k < l.all.length)) return;
@@ -4611,7 +4611,7 @@ function answerLost(a: string) {
     nextLostQuestion();
   } else if (l.phase === "confirm") {
     if (a === "yes") return acceptLost(l.cands[0]);
-    return giveUpLost("So it isn't the way Lost? found, and that was the only one left that fits your answers.");
+    return giveUpLost("So it isn't the way I found, and that was the only one left that fits your answers.");
   }
   render();
 }
@@ -4624,7 +4624,7 @@ function nextLostQuestion() {
     l.phase = "ask";
     lookAtSpot(l.question);
   } else if (!l.cands.length) {
-    return giveUpLost("None of the ways Lost? looked at fits your answers.");
+    return giveUpLost("None of the ways I looked at fits your answers.");
   } else {
     l.phase = "confirm";
     showCandidate(l.cands[0]);
@@ -4759,6 +4759,7 @@ function lostToEdit(c: Candidate | null) {
   }
   lostEdit = l;
   startEdit();
+  $("edit-done").textContent = "Continue search";
   render();
 }
 
@@ -4778,7 +4779,7 @@ function lostFromEdit(l: Lost, target: State) {
   guideLine = "";
   stopGuide();
   setBase(target, "Edited");
-  setMessage("Lost? couldn't find how your puzzle got this way, so the solve starts again from it.", "info");
+  setMessage("I couldn't find how your puzzle got this way, so the solve starts again from it.", "info");
   nextStep();
 }
 
@@ -4863,9 +4864,9 @@ function renderLost() {
   } else if (l.phase === "ask") {
     const q = l.question!;
     text = q.kind === "color" ? `Look at your puzzle, not this one. What color is the sticker in the ring?` : `Look at your puzzle, not this one. Is there a piece in the box?`;
-    answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? ["empty", "none"] : [])];
+    answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? [...(canBeEmpty(q.slot) ? ["empty"] : []), "none"] : [])];
   } else if (l.phase === "giveup") {
-    text = `Lost? can't find how your puzzle got this way. ${l.why} Color the puzzle on the screen to match yours, and it will look again from there.`;
+    text = `I can't find how your puzzle got this way. ${l.why} Color the puzzle on the screen to match yours, then tap Continue search, and I'll look again from there.`;
     answers = ["color"];
   } else {
     text = `${slipWords(l.cands[0])} Does your puzzle look like this one now?`;
@@ -6907,6 +6908,7 @@ function endEdit(apply: boolean) {
   document.body.classList.remove("editing");
   for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
   const fromLost = lostEdit;
+  $("edit-done").textContent = "Done";
   if (fromLost) {
     if (apply && e.fit.level === "reachable" && e.fit.state) lostFromEdit(fromLost, e.fit.state);
     else lostEditCancel(fromLost);

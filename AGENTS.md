@@ -736,8 +736,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   them (the turns' result with no slip); then, one at a time, the
   question whose answers split the candidates left most evenly (then the spot easiest to
   look at: top, front and right before bottom and back): the color in a ring on one face
-  (answers: the colors some candidate shows there, "No sticker", **No piece here** and
-  **None of these**), or whether there is a piece in a box at an extension spot. Meanwhile
+  (answers: the colors some candidate shows there, "No sticker", **No piece here** where
+  the spot can be empty, which is an extension spot and never a core one (`canBeEmpty`),
+  and **None of these**), or whether there is a piece in a box at an extension spot. Meanwhile
   the puzzle shown is where the step should leave it, all gray (so it can't be read for
   theirs) except what the person has told: the two centers in the colors named, and each
   sticker answered in its color, kept as the view turns (`lostKnown`); the view
@@ -753,9 +754,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   the same number. With no slip, nothing is undone: held as the screen is, the turn list
   stays and the position goes to the turn they made last ("Your puzzle is where turn 6
   of step 10 leaves it"). **No**, No piece here or None of these:
-  it **gives up** and says so ("Lost? can't find how your puzzle got this way", why, and
-  what to do), with **Color my puzzle**: Edit puzzle, starting from the position found
-  nearest, while the solve stays (no "End the solve?"; `lostEdit`). There **Done** looks
+  it **gives up** and says so, in the first person, as Lost? speaks to the person ("I can't
+  find how your puzzle got this way", why, and what to do), with **Color my puzzle**: Edit
+  puzzle, starting from the position found nearest, while the solve stays (no "End the
+  solve?"; `lostEdit`). There Done reads **Continue search** and looks
   again from the puzzle colored, now known exactly: a way Lost? knows that gives it loads
   the Back on track step as Yes does; with none, the message says so and the solve starts
   again from it. **Cancel** there, as in the interview, puts the turn list, the steps and
