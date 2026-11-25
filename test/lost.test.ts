@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { MOVE_DEFS, State, applyTurn, type Turn } from "../src/core/puzzle.ts";
 import { parseAlg } from "../src/core/notation.ts";
 import { solveSteps } from "../src/core/solve.ts";
-import { answerOf, bestQuestion, centerColor, holdAs, narrow, slipCandidates, wayBack } from "../src/core/lost.ts";
+import { answerOf, bestQuestion, centerColor, endCandidates, holdAs, narrow, slipCandidates, wayBack } from "../src/core/lost.ts";
 
 const random = (seed: number) => (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), (seed >>> 12) % n);
 const UP = 2, FRONT = 4;
@@ -105,4 +105,40 @@ test("lost: a turn made on the wrong face is a candidate", () => {
   const wrong = State.solved();
   for (const t of parseAlg("R U L'")) applyTurn(wrong, t);
   assert.ok(cands.some((c) => c.slip === "face" && c.state.appearanceKey() === wrong.appearanceKey()));
+});
+
+test("lost: a last turn misremembered by up to two turns either way is still found", () => {
+  const rnd = random(11);
+  let interviews = 0, total = 0, most = 0;
+  for (let k = 0; k < 4; k++) {
+    const st = State.solved();
+    for (let i = 30; i > 0; i--) applyTurn(st, { def: rnd(MOVE_DEFS.length), amount: (1 + rnd(3)) as 1 | 2 | 3 });
+    const steps = solveSteps(st, "kinds");
+    for (const n of [6, 9, 12]) {
+      const turns = steps.slice(0, n).flatMap((s) => s.turns);
+      const stepStart = steps.slice(0, n - 1).flatMap((s) => s.turns).length;
+      // The person says their last turn was the step's last; it was really up to two either side.
+      const said = turns.length - 1;
+      const real = Math.min(said, said - 2 + rnd(5));
+      const made = slipCandidates(st, turns.slice(0, real + 1)).filter((c) => c.at >= real - 5);
+      const truth = made[rnd(made.length)];
+      const stops = [...turns.keys()].filter((j) => j >= stepStart);
+      const all = endCandidates(st, turns, [said, said - 1, said + 1, said - 2, said + 2], stops);
+      const up = centerColor(truth.state, UP)!, front = centerColor(truth.state, FRONT)!;
+      let group = holdAs(all, up, front);
+      const held = holdAs([truth], up, front)[0];
+      let asked = 0;
+      for (let q = bestQuestion(group); q; q = bestQuestion(group)) {
+        group = narrow(group, q, answerOf(held.state, q)!);
+        asked++;
+      }
+      assert.equal(group.length, 1);
+      assert.equal(group[0].state.appearanceKey(), held.state.appearanceKey(), "the one left looks like the person's puzzle");
+      interviews++;
+      total += asked;
+      most = Math.max(most, asked);
+    }
+  }
+  assert.ok(most <= 9, `${interviews} interviews, at most ${most} questions`);
+  console.log(`misremembered last turn: ${interviews} interviews, ${(total / interviews).toFixed(1)} questions on average, ${most} at most`);
 });

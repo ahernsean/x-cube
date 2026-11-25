@@ -32,6 +32,8 @@ export interface Candidate {
   state: State;
   /** The whole-puzzle turns that took `state` from the made turns' position to that grip. */
   grip: Turn[];
+  /** The turn followed that the person made last (an index into the turns followed). */
+  last: number;
 }
 
 /** A question about one spot of the puzzle as held: a face's color, or whether a spot holds a piece. */
@@ -73,7 +75,7 @@ export function slipCandidates(start: State, turns: readonly Turn[], from = 0): 
     const key = state.appearanceKey();
     if (seen.has(key)) return;
     seen.add(key);
-    out.push({ made, at, slip, state, grip: [] });
+    out.push({ made, at, slip, state, grip: [], last: turns.length - 1 });
   };
   add([...turns], -1, "none");
   turns.forEach((t, i) => {
@@ -86,6 +88,24 @@ export function slipCandidates(start: State, turns: readonly Turn[], from = 0): 
     if (o) put("layer", o);
     for (const f of otherFaces(t)) put("face", f);
   });
+  return out;
+}
+
+/**
+ * The candidates when the person may misremember which turn they made last: one slip (or
+ * none) in the turns up to each of `ends`, in that order (the turn they named first), and
+ * no slip up to each of `stops` (stopping anywhere in a step is easy to misremember).
+ * Candidates that look alike are one, the earlier kept.
+ */
+export function endCandidates(start: State, turns: readonly Turn[], ends: readonly number[], stops: readonly number[] = []): Candidate[] {
+  const out: Candidate[] = [];
+  const seen = new Set<string>();
+  const keep = (c: Candidate) => {
+    const key = c.state.appearanceKey();
+    if (!seen.has(key)) seen.add(key), out.push(c);
+  };
+  for (const j of ends) if (j >= 0 && j < turns.length) slipCandidates(start, turns.slice(0, j + 1)).forEach(keep);
+  for (const j of stops) if (j >= 0 && j < turns.length) keep({ made: turns.slice(0, j + 1), at: -1, slip: "none", state: run(start, turns.slice(0, j + 1)), grip: [], last: j });
   return out;
 }
 

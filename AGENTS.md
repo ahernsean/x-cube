@@ -723,15 +723,19 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   (a play-tester read a turn's ' wrong and couldn't get back). It asks about their puzzle
   instead of having them repaint it (`src/core/lost.ts`). It first asks which turn of the
   step shown (or the newest step) they made last, one button a turn, the last one
-  highlighted (not asked for a step of one turn). The candidates are what one slip in the
-  turns up to that one gives, anywhere in the step and in every step back to back before
-  it, as far back as the solve goes: a turn made by another amount, left out, made twice,
+  highlighted (not asked for a step of one turn). The person may misremember it, so the
+  candidates (`endCandidates`) are what one slip in the turns up to that one, or up to a
+  turn or two either side of it, gives, and no slip up to any turn of the step; the slip
+  anywhere in the step and in every step back to back before it, as far back as the solve
+  goes: a turn made by another amount, left out, made twice,
   as the other layer's turn (r for R, and the reverse), or as another face's inner turn by
   the same amount (L for R); a turn the puzzle won't make is left out, as the person
   couldn't make it either; no slip at all is a candidate too, and candidates that look
   alike are one. Sampled with slips 1 to 5 turns before the last, over 6 to 12 steps, the
   right one is found every time in 5.2 questions on average and 6 at most (12 cases),
-  besides the centers; 941 candidates for 20 steps take under 0.1 s. It then asks which center color is on top and which faces the
+  besides the centers; 941 candidates for 20 steps take under 0.1 s. With the last turn
+  really up to two either side of the one named, 5.3 on average and 9 at most (12 cases);
+  a slip's words then also say which turn was made last. It then asks which center color is on top and which faces the
   person, and turns every candidate whole to be held that way, and the puzzle shown with
   them (the turns' result with no slip); then, one at a time, the
   question whose answers split the candidates left most evenly (then the spot easiest to
@@ -758,15 +762,16 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   find how your puzzle got this way", why, and what to do), with **Color my puzzle**: Edit
   puzzle, starting from the position found nearest, while the solve stays (no "End the
   solve?"; `lostEdit`). There Done reads **Continue search** and looks
-  again from the puzzle colored, now known exactly: a way Lost? knows that gives it loads
+  again from the puzzle colored, now known exactly, with every last turn from six before
+  the one named to the end of the turns: a way Lost? knows that gives it loads
   the Back on track step as Yes does; with none, the message says so and the solve starts
   again from it. **Cancel** there, as in the interview, puts the turn list, the steps and
   the shown step back as they were. Each candidate's answers come from the model, so None
   of these means a slip it doesn't list (two slips, for one). Starting Lost? drops a
   question still waiting ("End the solve in progress?"), and Edit puzzle ends an
   interview: answered under one, it left the editor gray.
-  **Not handled yet:** two slips, or a slip and then the last turn misremembered: those
-  end in Color my puzzle, where Done looks only among the one-slip candidates.
+  **Not handled yet:** two slips: those end in Color my puzzle, where Continue search
+  looks only among the one-slip candidates.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.

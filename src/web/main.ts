@@ -30,7 +30,7 @@ import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTa
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 import { Planner, type Plan } from "./planner.ts";
-import { answerOf, answersTo, bestQuestion, canBeEmpty, centerColor, holdAs, narrow, slipCandidates, wayBack, type Answer, type Candidate, type Question } from "../core/lost.ts";
+import { answerOf, answersTo, bestQuestion, canBeEmpty, centerColor, endCandidates, holdAs, narrow, slipCandidates, wayBack, type Answer, type Candidate, type Question } from "../core/lost.ts";
 
 declare const THREE: any;
 
@@ -4476,8 +4476,9 @@ interface Lost {
   start: number;
   from: State;
   turns: Turn[];
-  /** Every turn of the steps, the person's last or not. */
+  /** Every turn of the steps, the person's last or not, and the one they said they made last. */
   all: Turn[];
+  last: number;
   /** The steps those turns are: every step back to back before the one Lost? was asked from, and that one. */
   steps: Guide[];
   phase: "last" | "up" | "front" | "ask" | "confirm" | "giveup";
@@ -4527,6 +4528,7 @@ function startLost() {
     from: steps[0].from.clone(),
     turns,
     all: turns,
+    last: turns.length - 1,
     steps,
     phase: g.step.turns.length > 1 ? "last" : "up",
     up: null,
@@ -4534,11 +4536,12 @@ function startLost() {
     known: [],
     expected: slipCandidates(steps[0].from, turns)[0],
     why: "",
-    cands: slipCandidates(steps[0].from, turns),
+    cands: [],
     question: null,
     asked: 0,
     saved: { history: [...app.history], cursor: app.cursor, trail: [...trail], guide, guideLine },
   };
+  setLostLast(lost, turns.length - 1);
   // The puzzle shown is where the step should leave it, the nearest guess at the person's.
   jump(g.start + g.step.turns.length);
   setLostLock(true);
@@ -4585,9 +4588,7 @@ function answerLost(a: string) {
   if (l.phase === "last") {
     const k = Number(a.slice(2));
     if (!a.startsWith("t:") || !(k >= 0 && k < l.all.length)) return;
-    l.turns = l.all.slice(0, k + 1);
-    l.cands = slipCandidates(l.from, l.turns);
-    l.expected = l.cands[0];
+    setLostLast(l, k);
     showCandidate(l.expected);
     l.phase = "up";
   } else if (l.phase === "up") {
@@ -4652,18 +4653,21 @@ function slipWords(c: Candidate): string {
   }
   // Which step and which of its turns.
   const [step, at] = lostTurnStep(l, c.at);
-  const want = turnName(l.turns[c.at]);
+  const want = turnName(l.all[c.at]);
   const which = `Turn ${at + 1} of step ${step.index}, ${want},`;
+  // A last turn other than the one named: say which it was.
+  const [lastStep, lastAt] = lostTurnStep(l, c.last);
+  const also = c.last === l.last ? "" : ` The last turn you made was turn ${lastAt + 1} of step ${lastStep.index}, ${turnName(l.all[c.last])}.`;
   const madeAs = c.made[c.at];
   switch (c.slip) {
     case "amount":
     case "layer":
     case "face":
-      return `${which} was made as ${turnName(madeAs)}.`;
+      return `${which} was made as ${turnName(madeAs)}.${also}`;
     case "skipped":
-      return `${which} was left out.`;
+      return `${which} was left out.${also}`;
     case "twice":
-      return `${which} was made twice.`;
+      return `${which} was made twice.${also}`;
   }
 }
 
@@ -4730,6 +4734,23 @@ function acceptLost(c: Candidate) {
   render();
 }
 
+/**
+ * The turn the person says they made last. They may misremember it, so the candidates take
+ * one slip up to it or up to a turn or two either side, and no slip up to any turn of the step.
+ */
+function setLostLast(l: Lost, k: number) {
+  l.last = k;
+  l.turns = l.all.slice(0, k + 1);
+  l.cands = endCandidates(l.from, l.all, [k, k - 1, k + 1, k - 2, k + 2], lostStepTurns(l));
+  l.expected = l.cands[0];
+}
+
+/** The turns of the step Lost? was asked from, as indices into its turns. */
+function lostStepTurns(l: Lost): number[] {
+  const g = l.steps[l.steps.length - 1];
+  return g.step.turns.map((_, i) => g.start - l.start + i);
+}
+
 /** Lost? found no way that fits: it says so, and offers to have the person color the puzzle to match theirs. */
 function giveUpLost(why: string) {
   const l = lost!;
@@ -4768,7 +4789,9 @@ function lostFromEdit(l: Lost, target: State) {
   lostEdit = null;
   const up = centerColor(target, 2), front = centerColor(target, 4);
   const key = target.appearanceKey();
-  const found = up && front ? holdAs(slipCandidates(l.from, l.turns), up, front).find((c) => c.state.appearanceKey() === key) : undefined;
+  // Known exactly, every last turn from a few before the one named to the end is cheap to try.
+  const ends = [...l.all.keys()].filter((j) => j >= l.last - 6).sort((a, b) => Math.abs(a - l.last) - Math.abs(b - l.last));
+  const found = up && front ? holdAs(endCandidates(l.from, l.all, ends, lostStepTurns(l)), up, front).find((c) => c.state.appearanceKey() === key) : undefined;
   if (found) {
     lost = l;
     return acceptLost(found);
