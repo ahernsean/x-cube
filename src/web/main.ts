@@ -3533,6 +3533,32 @@ function restoreNext() {
     const s = r.steps[0];
     const from = app.base.clone();
     for (let k = 0; k < s.start; k++) applyTurn(from, app.history[k]);
+    if (s.stage === "recover") {
+      // A Back on track step no plan has: its turns undo a slip, back to where a step of a plan begins.
+      const back = parseAlg(s.alg);
+      const after = from.clone();
+      applyTurns(after, back);
+      const goes = encodeState(after);
+      const plan = planner.plan;
+      const at = planner.indexOf(goes, guideMode);
+      const holds = formatAlg(app.history.slice(s.start, s.start + back.length)) === s.alg;
+      if (plan && at >= 0 && holds && back.length) {
+        const g: Guide = { step: recoverStep(back, s.index), plan, at, extra: { steps: 1, turns: back.length }, index: s.index, start: s.start, from: from.clone(), focus: new Set(), free: new Set(), arrows: [] };
+        trail.push(g);
+        r.got++;
+        if (s.shown) r.shown = g;
+        r.steps.shift();
+        continue;
+      }
+      if (holds && back.length && planner.running) return;
+      if (holds && back.length && !r.planned.has(goes)) {
+        r.planned.add(goes);
+        planner.start(after, guideMode);
+        return;
+      }
+      r.steps.shift();
+      continue;
+    }
     const code = encodeState(from);
     const plan = planner.plan;
     const i = planner.indexOf(code, guideMode);

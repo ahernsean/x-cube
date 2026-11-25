@@ -2785,6 +2785,22 @@ labTest("lost: a step left out entirely loads no empty Back on track step, and N
   check(alive >= 1, `Next step then gives the step again, and the page answers (${alive} steps)`);
 });
 
+labTest("lost: debug info saved during Lost? after a Back on track step puts the interview back", async ({ page, check, probe, settle, play }) => {
+  const slip = await lostOnOneTurn(page, probe, settle, play, 1);
+  const g = await probe("guide");
+  check(slip === "amount" && g?.stage === "recover", `the first Lost? loads a Back on track step (${slip}, ${g?.stage})`);
+  await page.click("#lost");
+  await settle();
+  const before = await probe("lost");
+  const saved = await probe("debugInfo");
+  await page.click(`#lost-box [data-lost="cancel"]`);
+  await settle();
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), saved);
+  const back = await page.waitForFunction(() => !!window.xcubeProbe.lost(), null, { timeout: 30000 }).then(() => true, () => false);
+  const after = await probe("lost");
+  check(back && after?.phase === before.phase && after?.cands === before.cands, `Lost? asked from the Back on track step comes back from debug info (${JSON.stringify({ before, after })})`);
+});
+
 labTest("lost: Cancel puts the turn list and the step back as they were", async ({ page, check, probe, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);

@@ -307,7 +307,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   **Paste debug info**, beside it, puts the position, the view and the edit back, and a
   solve in progress with its steps (`restoreSolve`: the solver is deterministic, so each
   step comes again from a plan made from where it starts, in the order it was solved in;
-  a step Lost? made to undo a slip, which no plan has, keeps its turns without a box; the
+  a Back on track step, which no plan has, comes back from its own turns, going back to
+  the plan step its turns end at (planned from there if need be); the
   message says "Solve restored: 10 steps", or how many of them came back), so Next step and
   Lost? go on from there. Debug info is a restart dump: saved during Lost?, it also holds
   the solve's own turn list, cursor and shown step (the list shown then is a guess at the
