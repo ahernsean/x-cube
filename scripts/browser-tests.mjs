@@ -2556,8 +2556,15 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
   check(before.lostOn && before.guide?.index === 2, `Lost? is there during a solve (step ${before.guide?.index})`);
   await page.click("#lost");
   await settle();
+  const last = await probe("lost");
+  const stepTurns = (await probe("guide")).turns;
+  if (stepTurns > 1) {
+    check(last.phase === "last" && last.answers.length === stepTurns && last.gray > 0 && /Which turn of step 2 did you make last\?/.test(last.text), `it first asks which turn of the step was made last, one button a turn (${JSON.stringify(last)})`);
+    await page.click(`#lost-opts [data-lost="${last.answers[last.answers.length - 1]}"]`);
+    await settle();
+  } else check(last.phase === "up", `with a step of one turn, there is no asking which was last (${last.phase})`);
   const up = await probe("lost");
-  check(up.phase === "up" && up.answers.length === 6 && up.gray > 0, `it asks which center is on top, with the puzzle shown gray (${JSON.stringify(up)})`);
+  check(up.phase === "up" && up.answers.length === 6 && up.gray > 0, `then which center is on top, with the puzzle shown gray (${JSON.stringify(up)})`);
   const inert = await page.evaluate(() => document.getElementById("dock").inert && document.getElementById("tabs").inert);
   check(inert, "the turn list and the tabs are set aside");
   // The person's puzzle: one of the slips (not the right result).
@@ -2601,14 +2608,16 @@ labTest("lost: giving up says so, and Color my puzzle opens Edit puzzle in full 
   await settle();
   await page.click("#lost");
   await settle();
+  const first = await probe("lost");
+  check(first.phase === "last" && /Which turn of step 10 did you make last\?/.test(first.text) && first.answers.length === 12, `it first asks which turn of step 10 was made last (${JSON.stringify(first)})`);
   await probe("lostPick", 1);
-  for (let k = 0; k < 2; k++) {
+  for (let k = 0; k < 10 && !(await probe("lost")).answers.includes("none"); k++) {
     await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
     await settle();
   }
   const asking = await probe("lost");
   check(asking.phase === "ask" && asking.answers.includes("empty") && asking.answers.includes("none") && !asking.answers.includes("other"), `a color question offers No piece here and None of these (${asking.answers})`);
-  check(asking.known === 2, `the two centers told show in their colors (${asking.known} stickers known)`);
+  check(asking.known >= 2, `the two centers told, and the stickers answered, show in their colors (${asking.known} stickers known)`);
   await page.click(`#lost-opts [data-lost="none"]`);
   await settle();
   const gave = await probe("lost");
@@ -2669,6 +2678,30 @@ labTest("lost: Lost? asked while End the solve? waits takes that question away",
   await settle();
   const state = { confirm: !(await page.$eval("#confirm", (e) => e.hidden)), lost: !!(await probe("lost")) };
   check(asked && !state.confirm && state.lost, `the old question goes away when Lost? starts (${JSON.stringify({ asked, ...state })})`);
+});
+
+labTest("lost: a puzzle stopped partway through a step, with no slip, carries on from the turn made last", async ({ page, check, probe, settle }) => {
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
+  await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 10, null, { timeout: 20000 });
+  await page.click(`[data-tab="solve"]`);
+  await settle();
+  await page.click("#lost");
+  await settle();
+  const turns = (await probe("lost")).answers;
+  // Step 10 starts at turn 54: the person made its first six turns.
+  await page.click(`#lost-opts [data-lost="${turns[5]}"]`);
+  await settle();
+  await probe("lostPick", 0);
+  for (let k = 0; k < 14 && (await probe("lost"))?.phase !== "confirm"; k++) {
+    await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
+    await settle();
+  }
+  const found = await probe("lost");
+  check(found?.phase === "confirm" && /turn 6 of step 10/.test(found.text), `it finds the puzzle where turn 6 of step 10 leaves it (${found?.text})`);
+  await page.click(`#lost-opts [data-lost="yes"]`);
+  await settle();
+  const info = JSON.parse(await probe("debugInfo"));
+  check(info.cursor === 60 && info.steps.length === 10 && info.solving, `Yes goes to that turn in the turn list, with the steps kept (${JSON.stringify({ cursor: info.cursor, steps: info.steps.length })})`);
 });
 
 labTest("lost: Cancel puts the turn list and the step back as they were", async ({ page, check, probe, settle, play, counter }) => {

@@ -4472,13 +4472,15 @@ function planningText(g: Guide): string {
  * answers fit: Edit puzzle, starting from the nearest position found.
  */
 interface Lost {
-  /** Where in the turn list the turns followed begin, the position there, and the turns. */
+  /** Where in the turn list the turns followed begin, the position there, and the turns, up to the one the person made last. */
   start: number;
   from: State;
   turns: Turn[];
-  /** The steps those turns are: the step before (if any) and the step Lost? was asked from. */
+  /** Every turn of the steps, the person's last or not. */
+  all: Turn[];
+  /** The steps those turns are: every step back to back before the one Lost? was asked from, and that one. */
   steps: Guide[];
-  phase: "up" | "front" | "ask" | "confirm" | "giveup";
+  phase: "last" | "up" | "front" | "ask" | "confirm" | "giveup";
   up: Color | null;
   front: Color | null;
   /** What the person told about their puzzle, as held: each answered sticker's color. */
@@ -4512,16 +4514,21 @@ function startLost() {
   // A question still waiting from before ("End the solve in progress?") is about something else now.
   answerConfirm(false);
   flushAnimations();
-  const i = trail.indexOf(g);
-  const before = i > 0 ? trail[i - 1] : null;
-  const steps = before && before.start + before.step.turns.length === g.start && guideHolds(before) ? [before, g] : [g];
+  // The steps back to back before it, as far as the solve goes: a slip may be several turns back.
+  const steps = [g];
+  for (let i = trail.indexOf(g) - 1; i >= 0; i--) {
+    const p = trail[i];
+    if (p.start + p.step.turns.length !== steps[0].start || !guideHolds(p)) break;
+    steps.unshift(p);
+  }
   const turns = steps.flatMap((s) => s.step.turns);
   lost = {
     start: steps[0].start,
     from: steps[0].from.clone(),
     turns,
+    all: turns,
     steps,
-    phase: "up",
+    phase: g.step.turns.length > 1 ? "last" : "up",
     up: null,
     front: null,
     known: [],
@@ -4575,7 +4582,15 @@ function answerLost(a: string) {
   if (a === "color") return lostToEdit(l.cands[0] ?? null);
   if (a === "empty") return giveUpLost("Your puzzle has no piece there, and every way Lost? looked at has one.");
   if (a === "none") return giveUpLost("None of the ways Lost? looked at gives your puzzle that color there.");
-  if (l.phase === "up") {
+  if (l.phase === "last") {
+    const k = Number(a.slice(2));
+    if (!a.startsWith("t:") || !(k >= 0 && k < l.all.length)) return;
+    l.turns = l.all.slice(0, k + 1);
+    l.cands = slipCandidates(l.from, l.turns);
+    l.expected = l.cands[0];
+    showCandidate(l.expected);
+    l.phase = "up";
+  } else if (l.phase === "up") {
     l.up = a as Color;
     l.phase = "front";
   } else if (l.phase === "front") {
@@ -4618,23 +4633,32 @@ function nextLostQuestion() {
   placeLostMarker();
 }
 
+/** The step turn k of Lost?'s turns belongs to, and which of the step's turns it is. */
+function lostTurnStep(l: Lost, k: number): [Guide, number] {
+  for (const g of l.steps) {
+    const off = g.start - l.start;
+    if (k < off + g.step.turns.length) return [g, k - off];
+  }
+  const g = l.steps[l.steps.length - 1];
+  return [g, k - (g.start - l.start)];
+}
+
 /** What a candidate's slip was, in words. */
 function slipWords(c: Candidate): string {
   const l = lost!;
-  if (c.slip === "none") return "Your puzzle is where the step leaves it: no slip.";
-  // Which step and which of its turns.
-  let at = c.at;
-  let step = l.steps[0];
-  if (l.steps.length === 2 && at >= l.steps[0].step.turns.length) {
-    at -= l.steps[0].step.turns.length;
-    step = l.steps[1];
+  if (c.slip === "none") {
+    const [step, at] = lostTurnStep(l, c.made.length - 1);
+    return at === step.step.turns.length - 1 ? "Your puzzle is where the step leaves it: no slip." : `Your puzzle is where turn ${at + 1} of step ${step.index} leaves it: no slip.`;
   }
+  // Which step and which of its turns.
+  const [step, at] = lostTurnStep(l, c.at);
   const want = turnName(l.turns[c.at]);
   const which = `Turn ${at + 1} of step ${step.index}, ${want},`;
   const madeAs = c.made[c.at];
   switch (c.slip) {
     case "amount":
     case "layer":
+    case "face":
       return `${which} was made as ${turnName(madeAs)}.`;
     case "skipped":
       return `${which} was left out.`;
@@ -4646,22 +4670,32 @@ function slipWords(c: Candidate): string {
 /** Yes: the turn list takes the turns the person made, and a step that undoes them. */
 function acceptLost(c: Candidate) {
   const l = lost!;
-  const base = l.steps[0];
+  // The step the slip was in: the turns are undone back to where it began.
+  const base = c.slip === "none" ? l.steps[0] : lostTurnStep(l, c.at)[0];
   const words = slipWords(c);
   lost = null;
   placeLostMarker();
   setLostLock(false);
-  trail = l.saved.trail.filter((g) => g.start + g.step.turns.length <= l.start);
   if (c.slip === "none") {
-    // Nothing to undo; only the way the puzzle is held may differ.
-    app.history = [...l.saved.history.slice(0, l.start), ...c.made, ...c.grip];
-    jump(app.history.length);
     guide = null;
     guideLine = "";
-    setMessage("Your puzzle matches the step. Carry on with Next step.", "ok");
+    if (!c.grip.length) {
+      // Nothing to undo, held as the screen is: carry on from the turn the person made last.
+      app.history = l.saved.history;
+      trail = l.saved.trail;
+      jump(l.start + c.made.length);
+      setMessage(c.made.length === l.all.length ? "Your puzzle matches the step. Carry on with Next step." : `${words} Carry on from there.`, "ok");
+      return render();
+    }
+    // Only the way the puzzle is held differs.
+    trail = l.saved.trail.filter((g) => g.start + g.step.turns.length <= l.start);
+    app.history = [...l.saved.history.slice(0, l.start), ...c.made, ...c.grip];
+    jump(app.history.length);
+    setMessage(`${words} Carry on with Next step.`, "ok");
     return render();
   }
-  const back = wayBack(c);
+  trail = l.saved.trail.filter((g) => g.start + g.step.turns.length <= base.start);
+  const back = wayBack(c, base.start - l.start);
   const at = l.start + c.made.length + c.grip.length;
   const step: SolveStep = {
     stage: "recover",
@@ -4814,8 +4848,14 @@ function renderLost() {
   let answers: string[] = [];
   const colors: Color[] = ["W", "Y", "G", "B", "R", "O"];
   const opposite: Record<Color, Color> = { W: "Y", Y: "W", G: "B", B: "G", R: "O", O: "R" };
-  if (l.phase === "up") {
-    text = "Let's find where your puzzle went another way. Hold it as you have been, without turning anything. Which center color is on top?";
+  if (l.phase === "last") {
+    const g = l.steps[l.steps.length - 1];
+    text = `Let's find where your puzzle went another way. Which turn of step ${g.index} did you make last? If you made them all, it's the last one.`;
+    const off = g.start - l.start;
+    answers = g.step.turns.map((_, k) => `t:${off + k}`);
+  } else if (l.phase === "up") {
+    const intro = l.steps[l.steps.length - 1].step.turns.length > 1 ? "" : "Let's find where your puzzle went another way. ";
+    text = `${intro}Hold your puzzle as you have been, without turning anything. Which center color is on top?`;
     answers = colors;
   } else if (l.phase === "front") {
     text = "Which center color faces you?";
@@ -4835,6 +4875,10 @@ function renderLost() {
   $("lost-count").textContent = l.phase === "ask" ? `Question ${l.asked + 1}` : l.phase === "giveup" ? "Not found" : "";
   $("lost-opts").innerHTML = answers
     .map((a) => {
+      if (a.startsWith("t:")) {
+        const k = Number(a.slice(2));
+        return `<button class="btn small lost-text lost-turn${k === l.all.length - 1 ? " primary" : ""}" data-lost="${a}">${turnName(l.all[k])}</button>`;
+      }
       if (a === "empty") return `<button class="btn small lost-text" data-lost="empty">No piece here</button>`;
       if (a === "none") return `<button class="btn small lost-text" data-lost="none">None of these</button>`;
       if (a === "color") return `<button class="btn small lost-text primary" data-lost="color">Color my puzzle</button>`;
@@ -7201,13 +7245,14 @@ function installProbe() {
       },
     /** Picks candidate i of those left as the person's puzzle (by the turns made), for lostAnswer to answer as. */
     lostPick: (i: number) => {
-      lostTruth = lost?.phase === "up" ? (lost.cands[i] ?? null) : null;
+      lostTruth = lost?.phase === "up" || lost?.phase === "last" ? (lost.cands[i] ?? null) : null;
       return lostTruth && lostTruth.slip;
     },
     /** The answer the picked candidate's puzzle gives to the question asked now. */
     lostAnswer: () => {
       const l = lost;
       if (!l || !lostTruth) return null;
+      if (l.phase === "last") return `t:${l.all.length - 1}`;
       if (l.phase === "up") return centerColor(lostTruth.state, 2);
       if (l.phase === "front") return centerColor(lostTruth.state, 4);
       const held = holdAs([lostTruth], l.up!, l.front!)[0].state;

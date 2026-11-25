@@ -1,9 +1,10 @@
 // "Lost?": finding the position a person reached when they followed turns on their own
 // puzzle and slipped once, by asking about a few stickers.
 //
-// The person was following `turns` from `start`. Each candidate is what one slip gives: a
-// turn made by another amount (the other way, or a half turn for a quarter), a turn left
-// out, a turn made twice, or an inner turn made as the outer one or the reverse (R for r).
+// The person was following `turns` from `start`, up to the turn they say they made last.
+// Each candidate is what one slip gives: a turn made by another amount (the other way, or a
+// half turn for a quarter), a turn left out, a turn made twice, an inner turn made as the
+// outer one or the reverse (R for r), or as another face's (F for R).
 // A turn the puzzle won't make (an outer turn on an incomplete extension) is left out, as
 // the person couldn't make it either. With no slip at all among them, an answer can also
 // say the puzzle is where it should be. Candidates that look the same are one candidate.
@@ -26,7 +27,7 @@ export interface Candidate {
   /** Which turn slipped (an index into the turns followed), or -1 for none. */
   at: number;
   /** What happened to that turn. */
-  slip: "none" | "amount" | "skipped" | "twice" | "layer";
+  slip: "none" | "amount" | "skipped" | "twice" | "layer" | "face";
   /** The position the made turns give, turned whole to the grip the person holds (once the grip is known). */
   state: State;
   /** The whole-puzzle turns that took `state` from the made turns' position to that grip. */
@@ -54,8 +55,17 @@ function otherLayer(t: Turn): Turn | null {
   return def === undefined ? null : { def, amount: t.amount };
 }
 
-/** Every distinct-looking position one slip (or none) in `turns` from `start` gives, the right one first. */
-export function slipCandidates(start: State, turns: readonly Turn[]): Candidate[] {
+/** The other faces' inner turns, by the same amount (F for R): a turn made on the wrong face. Empty for any other kind of turn. */
+function otherFaces(t: Turn): Turn[] {
+  if (MOVE_DEFS[t.def].kind !== "inner") return [];
+  return MOVE_DEFS.flatMap((d, def) => (d.kind === "inner" && def !== t.def ? [{ def, amount: t.amount }] : []));
+}
+
+/**
+ * Every distinct-looking position one slip (or none) in `turns` from `start` gives, the
+ * right one first. Slips are looked for in the turns from index `from` on.
+ */
+export function slipCandidates(start: State, turns: readonly Turn[], from = 0): Candidate[] {
   const out: Candidate[] = [];
   const seen = new Set<string>();
   const add = (made: Turn[], at: number, slip: Candidate["slip"]) => {
@@ -67,12 +77,14 @@ export function slipCandidates(start: State, turns: readonly Turn[]): Candidate[
   };
   add([...turns], -1, "none");
   turns.forEach((t, i) => {
+    if (i < from) return;
     const put = (slip: Candidate["slip"], ...r: Turn[]) => add([...turns.slice(0, i), ...r, ...turns.slice(i + 1)], i, slip);
     for (const a of [1, 2, 3] as const) if (a !== t.amount) put("amount", { def: t.def, amount: a });
     put("skipped");
     put("twice", t, t);
     const o = otherLayer(t);
     if (o) put("layer", o);
+    for (const f of otherFaces(t)) put("face", f);
   });
   return out;
 }
@@ -181,7 +193,10 @@ export function narrow(cands: Candidate[], q: Question, a: Answer): Candidate[] 
   return cands.filter((c) => answerOf(c.state, q) === a);
 }
 
-/** The turns that take a candidate's position, held as the person holds it, back to `start` as it was held. */
-export function wayBack(c: Candidate): Turn[] {
-  return simplify(invert([...c.made, ...c.grip]));
+/**
+ * The turns that take a candidate's position, held as the person holds it, back to where
+ * its made turns from index `from` began (back to `start`, as it was held, by default).
+ */
+export function wayBack(c: Candidate, from = 0): Turn[] {
+  return simplify(invert([...c.made.slice(from), ...c.grip]));
 }

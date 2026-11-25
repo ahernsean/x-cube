@@ -67,3 +67,42 @@ test("lost: from the centers and a few stickers the interview finds the slip, an
   }
   assert.ok(interviews >= 30 && most <= 8, `${interviews} interviews, at most ${most} questions`);
 });
+
+test("lost: a slip several turns back, in an earlier step, is found from the whole solve so far", () => {
+  const rnd = random(7);
+  let interviews = 0, total = 0, most = 0;
+  for (let k = 0; k < 4; k++) {
+    const st = State.solved();
+    for (let i = 30; i > 0; i--) applyTurn(st, { def: rnd(MOVE_DEFS.length), amount: (1 + rnd(3)) as 1 | 2 | 3 });
+    const steps = solveSteps(st, "kinds");
+    for (const n of [6, 9, 12]) {
+      // The person followed n steps and knows their last turn; the slip was 1 to 5 turns before it.
+      const turns = steps.slice(0, n).flatMap((s) => s.turns);
+      const all = slipCandidates(st, turns);
+      const near = all.filter((c) => c.at >= turns.length - 6 && c.at < turns.length - 1);
+      const truth = near[rnd(near.length)];
+      const up = centerColor(truth.state, UP)!, front = centerColor(truth.state, FRONT)!;
+      let group = holdAs(all, up, front);
+      const real = holdAs([truth], up, front)[0];
+      let asked = 0;
+      for (let q = bestQuestion(group); q; q = bestQuestion(group)) {
+        group = narrow(group, q, answerOf(real.state, q)!);
+        asked++;
+      }
+      assert.equal(group.length, 1);
+      assert.equal(group[0].state.appearanceKey(), real.state.appearanceKey());
+      interviews++;
+      total += asked;
+      most = Math.max(most, asked);
+    }
+  }
+  assert.ok(most <= 9, `${interviews} interviews, ${(total / interviews).toFixed(1)} questions on average, ${most} at most`);
+  console.log(`whole solve: ${interviews} interviews, ${(total / interviews).toFixed(1)} questions on average, ${most} at most`);
+});
+
+test("lost: a turn made on the wrong face is a candidate", () => {
+  const cands = slipCandidates(State.solved(), parseAlg("R U R'"));
+  const wrong = State.solved();
+  for (const t of parseAlg("R U L'")) applyTurn(wrong, t);
+  assert.ok(cands.some((c) => c.slip === "face" && c.state.appearanceKey() === wrong.appearanceKey()));
+});
