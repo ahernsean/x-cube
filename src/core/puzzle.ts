@@ -1,4 +1,4 @@
-// The X-Cube model: slots, cubelets, state, and moves.
+// The X-Cube model: slots, pieces, state, and moves.
 //
 // Model (agreed with the puzzle owner):
 // - The puzzle lives in an 80-slot lattice: every integer point in -2..2 with at
@@ -79,7 +79,7 @@ export function inHomeX(p: Vec3): boolean {
 /**
  * Human-readable slot name. Core slots use standard cubie names (UFR, UF, U).
  * Extension slots are named "<face>x.<position within that extension>", e.g.
- * "Fx.UR" is the up-right cubelet of the front extension, "Fx" its center.
+ * "Fx.UR" is the up-right piece of the front extension, "Fx" its center.
  */
 export function slotName(s: number): string {
   const [x, y, z] = SLOT_POS[s];
@@ -96,7 +96,7 @@ export function slotName(s: number): string {
   return parts(x, y, z);
 }
 
-// ---------------------------------------------------------------- cubelets
+// ---------------------------------------------------------------- pieces
 
 export type Color = "W" | "Y" | "G" | "B" | "R" | "O";
 /**
@@ -115,7 +115,7 @@ export const COLOR_NAME: Record<Color, string> = {
 };
 
 /**
- * Cubelet kinds, by connectivity in the solved puzzle (Baum's grouping):
+ * Piece kinds, by connectivity in the solved puzzle (Baum's grouping):
  * - center: core face center (U/D carry the X-face center sticker; L/R/F/B are
  *   hidden and fused to their extension center)
  * - extCenter: extension center (fused to the core center behind it)
@@ -127,13 +127,13 @@ export const COLOR_NAME: Record<Color, string> = {
  */
 export type Kind = "center" | "extCenter" | "coreCorner" | "singleEdge" | "doubleEdge" | "outerCorner" | "outerEdge";
 
-export interface Cubelet {
+export interface Piece {
   id: number;
   home: number; // slot index in the solved puzzle
   kind: Kind;
-  /** stickers[d] = color on the cubelet's face that points in direction d when solved, or null. */
+  /** stickers[d] = color on the piece's face that points in direction d when solved, or null. */
   stickers: readonly (Color | null)[];
-  /** For outer cubelets: direction (in the cubelet's own frame) of its outward face. */
+  /** For outer pieces: direction (in the piece's own frame) of its outward face. */
   outward: number | null;
   name: string;
 }
@@ -147,8 +147,8 @@ function classify(p: Vec3): Kind {
   return p[1] === 0 ? "doubleEdge" : "singleEdge";
 }
 
-export const CUBELETS: readonly Cubelet[] = (() => {
-  const out: Cubelet[] = [];
+export const PIECES: readonly Piece[] = (() => {
+  const out: Piece[] = [];
   for (let s = 0; s < NUM_SLOTS; s++) {
     const p = SLOT_POS[s];
     if (!inHomeX(p)) continue;
@@ -168,13 +168,13 @@ export const CUBELETS: readonly Cubelet[] = (() => {
   }
   return out;
 })();
-export const NUM_CUBELETS = CUBELETS.length; // 62 (52 that matter + 6 centers + 4 extension centers)
+export const NUM_PIECES = PIECES.length; // 62 (52 that matter + 6 centers + 4 extension centers)
 
 // ---------------------------------------------------------------- state
 
 /**
- * A puzzle state. occ[slot] is the cubelet id in that slot (-1 = empty);
- * ori[slot] is the rotation index (into ROTATIONS) of that cubelet relative to
+ * A puzzle state. occ[slot] is the piece id in that slot (-1 = empty);
+ * ori[slot] is the rotation index (into ROTATIONS) of that piece relative to
  * its solved orientation.
  */
 export class State {
@@ -186,7 +186,7 @@ export class State {
   }
   static solved(): State {
     const st = new State();
-    for (const c of CUBELETS) st.occ[c.home] = c.id;
+    for (const c of PIECES) st.occ[c.home] = c.id;
     return st;
   }
   clone(): State {
@@ -208,7 +208,7 @@ export class State {
     const id = this.occ[s];
     if (id < 0) return null;
     const local = ROT_DIR[ROT_INV[this.ori[s]] * 6 + d];
-    return CUBELETS[id].stickers[local];
+    return PIECES[id].stickers[local];
   }
   filled(s: number): boolean {
     return this.occ[s] >= 0;
@@ -222,7 +222,7 @@ export class State {
   /**
    * Key that is equal for two states exactly when they look identical:
    * same occupancy, and every face of every slot shows the same color.
-   * Identical twin cubelets (e.g. the four white core corners) compare equal.
+   * Identical twin pieces (e.g. the four white core corners) compare equal.
    */
   appearanceKey(): string {
     let k = "";
@@ -281,7 +281,7 @@ function defineMoves(): MoveDef[] {
     // Clockwise looking at the face = -90 degrees about its outward normal.
     const ccw = (sgn > 0 ? -1 : 1) as 1 | -1;
     add(n, "inner", axis, ccw, (c) => c * sgn >= 1, sgn > 0 ? 0 : 4, `${n} face layer plus its extension (inner turn)`);
-    add(n.toLowerCase(), "outer", axis, ccw, (c) => c * sgn === 2, sgn > 0 ? 1 : 3, `${n} extension alone (outer turn; needs all 9 cubelets)`);
+    add(n.toLowerCase(), "outer", axis, ccw, (c) => c * sgn === 2, sgn > 0 ? 1 : 3, `${n} extension alone (outer turn; needs all 9 pieces)`);
   }
   add("M", "slice", 0, 1, (c) => c === 0, 2, "middle slice between L and R, turned like L");
   add("H", "slice", 1, -1, (c) => c === 0, 2, "horizontal middle slice, turned like U (viewed from above)");
@@ -305,7 +305,7 @@ export interface Turn {
 interface TurnTable {
   from: Int16Array; // slots in layer
   to: Int16Array; // destination slot for each
-  rot: number; // rotation index applied to cubelets
+  rot: number; // rotation index applied to pieces
 }
 
 /** TURN_TABLES[def * 3 + amount - 1] */
@@ -333,7 +333,7 @@ export function blockedReason(st: State, t: Turn): string | null {
   if (d.kind !== "outer") return null;
   let n = 0;
   for (const s of d.slots) if (st.occ[s] >= 0) n++;
-  return n === 9 ? null : `${d.name} blocked: extension has ${n}/9 cubelets`;
+  return n === 9 ? null : `${d.name} blocked: extension has ${n}/9 pieces`;
 }
 
 const scratchOcc = new Int8Array(NUM_SLOTS);

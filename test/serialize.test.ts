@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { KNOWN_ALGORITHMS } from "../src/core/algorithms.ts";
 import { axisRotation, NUM_ROT, ROT_DIR, ROT_INV, ROT_MUL, ROTATIONS } from "../src/core/geometry.ts";
 import { parseAlg } from "../src/core/notation.ts";
-import { CUBELETS, MOVE_DEFS, NUM_SLOTS, SLOT_NEIGHBOR, SLOT_POS, State, applyTurn, applyTurns, blockedReason } from "../src/core/puzzle.ts";
+import { PIECES, MOVE_DEFS, NUM_SLOTS, SLOT_NEIGHBOR, SLOT_POS, State, applyTurn, applyTurns, blockedReason } from "../src/core/puzzle.ts";
 import {
   CHECK_PRIME,
   X2_POSITIONS,
@@ -149,7 +149,7 @@ function groupOrder(deg: number, gens: Int32Array[]): bigint {
 
 test("state codes: the number of X2 indexes is exactly the number of reachable positions", () => {
   // Reachable positions = core positions (inner turns, slices, rotations) times the
-  // arrangements of outer cubelets on their sites (outer turns), since inner turns leave
+  // arrangements of outer pieces on their sites (outer turns), since inner turns leave
   // sites alone. Both groups are built from the engine's own turns.
   const isCore = (s: number) => SLOT_POS[s].every((c) => Math.abs(c) < 2);
   const core = [...Array(NUM_SLOTS).keys()].filter(isCore);
@@ -169,7 +169,7 @@ test("state codes: the number of X2 indexes is exactly the number of reachable p
   });
   const coreOrder = groupOrder(core.length * NUM_ROT, coreGens);
 
-  // Outer cubelets as (site, rotation relative to the core cubelet behind it).
+  // Outer pieces as (site, rotation relative to the core piece behind it).
   const sites = (st: State) => {
     const m = new Map<number, { site: number; rel: number }>();
     for (let s = 0; s < NUM_SLOTS; s++) {
@@ -282,11 +282,11 @@ test("state codes: X1 codes still read, and convert to X2 when turns can reach t
 
 test("state codes: positions turns can't reach are refused by X2 with a reason, kept as X1", () => {
   const swapTwins = State.solved();
-  const [a, b] = CUBELETS.filter((c) => c.kind === "coreCorner" && c.stickers[2]).slice(0, 2).map((c) => swapTwins.occ.indexOf(c.id));
+  const [a, b] = PIECES.filter((c) => c.kind === "coreCorner" && c.stickers[2]).slice(0, 2).map((c) => swapTwins.occ.indexOf(c.id));
   [swapTwins.occ[a], swapTwins.occ[b]] = [swapTwins.occ[b], swapTwins.occ[a]];
   // Each keeps white up: turned about the vertical axis onto the other's spot.
   for (const s of [a, b]) {
-    const from = SLOT_POS[CUBELETS[swapTwins.occ[s]].home];
+    const from = SLOT_POS[PIECES[swapTwins.occ[s]].home];
     swapTwins.ori[s] = [0, 1, 2, 3].map((k) => axisRotation(1, k)).find((r) => positionsMatchTo(r, from, SLOT_POS[s]))!;
   }
   assert.match(unreachableReason(swapTwins)!, /swapped/);
@@ -295,7 +295,7 @@ test("state codes: positions turns can't reach are refused by X2 with a reason, 
   assert.ok(decodeState(encodeState(swapTwins)).equals(swapTwins));
 
   const twisted = State.solved();
-  const s = CUBELETS.find((c) => c.kind === "coreCorner")!.home;
+  const s = PIECES.find((c) => c.kind === "coreCorner")!.home;
   twisted.ori[s] = [...Array(NUM_ROT).keys()].find((r) => r !== 0 && positionsMatch(r, s))!;
   assert.match(unreachableReason(twisted)!, /twisted/);
 });

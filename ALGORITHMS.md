@@ -9,12 +9,12 @@ test in `test/puzzle.test.ts` or `test/algorithms.test.ts`.
 ## Shape stage: one flipped single edge
 
 **Situation.** Everything is back in the X shape except one core single edge, which is
-flipped: its white or yellow sticker faces sideways. On the cube you see one cubelet
+flipped: its white or yellow sticker faces sideways. On the cube you see one piece
 standing up above the top (or below the bottom) layer, and the extension next to it is
-missing a cubelet (for example "f 8/9"), so that outer turn refuses.
+missing a piece (for example "f 8/9"), so that outer turn refuses.
 
 **Why it happens.** On a 3x3x3, edges can only be flipped in pairs. The second flipped
-edge is one of the four hidden core double edges. A double edge has outer cubelets on both
+edge is one of the four hidden core double edges. A double edge has outer pieces on both
 of its faces, so flipping it doesn't change the shape and you can't see it. It looks like
 a lone flip.
 
@@ -43,8 +43,8 @@ The result is the X shape. Colors are scrambled by it, as by any shape-stage ste
 
 **Situation.** The white top is solved (all 21 white stickers up), but the puzzle is out of
 shape because one core single edge in the bottom layer is flipped: its yellow sticker faces
-sideways instead of down, the cubelet below it sticks out, and the extension beside it is
-short one cubelet (for example "f 8/9"). This is the same lone flip as above (its partner is
+sideways instead of down, the piece below it sticks out, and the extension beside it is
+short one piece (for example "f 8/9"). This is the same lone flip as above (its partner is
 a hidden double edge), found after solving the top.
 
 **Fix.** Hold the cube so the flipped edge is at **bottom front (DF)**, its yellow facing you,
@@ -64,11 +64,11 @@ The Lab lists this algorithm under Algorithms, with "Confusing edge" as its posi
 
 ## Outer stages: the solver's 3-cycles
 
-The step-by-step solver places outer cubelets three at a time with these four cycles (or
+The step-by-step solver places outer pieces three at a time with these four cycles (or
 their inverses), each inside setup turns that keep the X shape. Each is a commutator,
-written grouped, and keeps the X shape; from solved it moves only the three cubelets named.
+written grouped, and keeps the X shape; from solved it moves only the three pieces named.
 
-| Cycle | Turns | Cubelets, from solved |
+| Cycle | Turns | Pieces, from solved |
 |---|---|---|
 | Corners | `(F' L' F) r (F' L F) r'` | Fx.UL -> Rx.UF -> Rx.DF |
 | Corners, mirrored | `(F R F') l' (F R' F') l` | Lx.DF -> Fx.UR -> Lx.UF |

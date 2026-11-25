@@ -5,7 +5,7 @@ import { isHomeX, isSolved } from "../src/core/analyze.ts";
 import { fitColors, visibleColors } from "../src/core/edit.ts";
 import { DIRS } from "../src/core/geometry.ts";
 import { parseAlg } from "../src/core/notation.ts";
-import { CUBELETS, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, turnName, type Kind } from "../src/core/puzzle.ts";
+import { PIECES, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, invertTurns, slotAt, turnName, type Kind } from "../src/core/puzzle.ts";
 import { decodeState, encodeState, rotsTo, unreachableReason } from "../src/core/serialize.ts";
 import { nextStep, planSteps, solveSteps, type Mode, type SolveStep } from "../src/core/solve.ts";
 import { planMessages } from "../src/web/planner.ts";
@@ -21,7 +21,7 @@ const scrambled = (rnd: (n: number) => number) => {
   for (let i = 5 + rnd(40); i > 0; i--) applyTurn(st, { def: rnd(MOVE_DEFS.length), amount: (1 + rnd(3)) as 1 | 2 | 3 });
   return st;
 };
-/** What shows on every face of every slot whose cubelet is not in `except`. */
+/** What shows on every face of every slot whose piece is not in `except`. */
 const look = (st: State, except: Set<number>) => {
   let out = "";
   for (let s = 0; s < NUM_SLOTS; s++) {
@@ -32,14 +32,14 @@ const look = (st: State, except: Set<number>) => {
 };
 const usage = { turns: 0, back: 0 };
 const LAYER_CORE = ["coreTop", "coreTopC", "coreMiddle", "coreBottom", "coreBottomC"];
-/** How many core cubelets of the i-th layer stage's kind are where they belong in st. */
+/** How many core pieces of the i-th layer stage's kind are where they belong in st. */
 function coreInPlace(st: State, i: number): number {
   const wanted = [
     ["singleEdge", "W", 1], ["coreCorner", "W", 1], ["doubleEdge", null, 0], ["singleEdge", "Y", -1], ["coreCorner", "Y", -1],
   ][i] as [string, string | null, number];
   let n = 0;
   for (let s = 0; s < NUM_SLOTS; s++) {
-    const c = CUBELETS[st.occ[s]];
+    const c = PIECES[st.occ[s]];
     if (!c || c.kind !== wanted[0] || (wanted[1] && !c.stickers.includes(wanted[1] as "W"))) continue;
     if (SLOT_POS[s][1] !== wanted[2] || SLOT_POS[s].some((v) => Math.abs(v) > 1)) continue;
     // A white or yellow sticker must face up or down; a double edge only has to be in the middle.
@@ -48,15 +48,15 @@ function coreInPlace(st: State, i: number): number {
   }
   return n;
 }
-/** Whether the cubelet in a slot is home: each of its stickers matches the center of the face it is on. */
+/** Whether the piece in a slot is home: each of its stickers matches the center of the face it is on. */
 const atHome = (st: State, slot: number) =>
   [0, 1, 2, 3, 4, 5].every((d) => {
-    const center = CUBELETS[st.occ[slotAt(DIRS[d])]];
+    const center = PIECES[st.occ[slotAt(DIRS[d])]];
     const color = st.colorAt(slot, d);
     return !color || color === FACE_COLOR[[0, 1, 2, 3, 4, 5].find((h) => slotAt(DIRS[h]) === center.home)!];
   });
 /** Whether the white center is up (yellow is up once an outer step has flipped the puzzle over). */
-const whiteUp = (st: State) => CUBELETS[st.occ[slotAt([0, 1, 0])]].home === slotAt([0, 1, 0]);
+const whiteUp = (st: State) => PIECES[st.occ[slotAt([0, 1, 0])]].home === slotAt([0, 1, 0]);
 /** st turned white up, if it is held yellow up. */
 const upright = (st: State) => {
   if (whiteUp(st)) return st;
@@ -94,11 +94,11 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
     usage.turns += step.turns.length;
     for (const t of step.turns) if (/^[Bb]/.test(turnName(t))) usage.back++;
     if (["corners", "edges"].includes(step.stage)) assert.ok(!/[bBSH]/.test(step.alg.slice(step.alg.indexOf(":") + 1)), `the cycle in ${step.alg} has no back turn and no S or H`);
-    // Every cubelet the step doesn't name, or free, shows the same in the same slot.
+    // Every piece the step doesn't name, or free, shows the same in the same slot.
     const named = new Set([...step.moved.map(([from]) => before.occ[from]), ...step.free.map((s) => before.occ[s])]);
     assert.equal(look(seen, named), look(before, named), `${step.alg} changes only what it names`);
     if (LAYER_CORE.includes(step.stage)) {
-      // One more cubelet of the stage's kind where it belongs, and every earlier kind kept.
+      // One more piece of the stage's kind where it belongs, and every earlier kind kept.
       const k = LAYER_CORE.indexOf(step.stage);
       const n = (st: State) => LAYER_CORE.map((_, i) => coreInPlace(upright(st), i));
       const [was, now] = [n(before), n(seen)];
@@ -109,9 +109,9 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
     assert.ok(isHomeX(seen), `${step.alg} ends in the X shape`);
     if (step.stage === "shape") continue;
     for (let s = 0; s < NUM_SLOTS; s++)
-      if (["coreCorner", "singleEdge"].includes(CUBELETS[seen.occ[s]]?.kind)) assert.equal(seen.colorAt(s, SLOT_POS[s][1] > 0 ? 2 : 3), SLOT_POS[s][1] > 0 === whiteUp(seen) ? "W" : "Y", `after ${step.alg}, the core cubelets are the color of their X-face center`);
-    if (step.stage !== "core") for (const [from, to] of step.moved) assert.equal(seen.occ[to], before.occ[from], `${step.alg} moves the cubelet it says where it says`);
-    // A cycle brings home the cubelets it says, and at least one.
+      if (["coreCorner", "singleEdge"].includes(PIECES[seen.occ[s]]?.kind)) assert.equal(seen.colorAt(s, SLOT_POS[s][1] > 0 ? 2 : 3), SLOT_POS[s][1] > 0 === whiteUp(seen) ? "W" : "Y", `after ${step.alg}, the core pieces are the color of their X-face center`);
+    if (step.stage !== "core") for (const [from, to] of step.moved) assert.equal(seen.occ[to], before.occ[from], `${step.alg} moves the piece it says where it says`);
+    // A cycle brings home the pieces it says, and at least one.
     if (!["core", "parity"].includes(step.stage)) {
       // Its parts: the setup, the eight turns of the cycle, and the setup undone, after any regrip.
       const names = step.parts.map((part) => part.name).join();
@@ -119,9 +119,9 @@ function play(start: State, steps: SolveStep[], mode: Mode = "kinds"): State {
       const [setup, undo] = [step.parts.find((part) => part.name === "setup"), step.parts.find((part) => part.name === "undo")];
       assert.equal(setup?.turns, undo?.turns);
       if (setup) assert.deepEqual(step.turns.slice(-setup.turns), parseAlg(`(${step.alg.slice(step.alg.indexOf("[") + 1, step.alg.indexOf(":"))})'`), `${step.alg} ends by undoing its setup`);
-      assert.ok(step.lands.length >= 1, `${step.alg} brings a cubelet home`);
+      assert.ok(step.lands.length >= 1, `${step.alg} brings a piece home`);
       assert.match(step.goal, [/One ends up solved$/, /Two end up solved$/, /All three end up solved$/][step.lands.length - 1]);
-      for (const [from, to] of step.moved) assert.equal(atHome(seen, to), step.lands.includes(from), `${step.alg} says which cubelets end at home`);
+      for (const [from, to] of step.moved) assert.equal(atHome(seen, to), step.lands.includes(from), `${step.alg} says which pieces end at home`);
     }
   }
   return st;
@@ -146,14 +146,14 @@ test("solve: scrambled positions are solved, each step changing only what it rep
 });
 
 test("solve: positions from the color editor are solved, whichever parity they need", () => {
-  // Outer cubelets traded at random, then fitted as the editor fits paint. This is the
+  // Outer pieces traded at random, then fitted as the editor fits paint. This is the
   // constructive check of the editor's "Valid": each such position gets actual turns to solved.
   const rnd = random(2026);
   const parity = new Set<string>();
   for (let trial = 0; trial < 60; trial++) {
     const st = scrambled(rnd);
     for (const kind of ["outerCorner", "outerEdge"] as Kind[]) {
-      const slots = [...Array(NUM_SLOTS).keys()].filter((s) => st.occ[s] >= 0 && CUBELETS[st.occ[s]].kind === kind);
+      const slots = [...Array(NUM_SLOTS).keys()].filter((s) => st.occ[s] >= 0 && PIECES[st.occ[s]].kind === kind);
       for (let i = rnd(4); i > 0; i--) {
         const [a, b] = [slots[rnd(slots.length)], slots[rnd(slots.length)]];
         if (a === b) continue;
@@ -170,7 +170,7 @@ test("solve: positions from the color editor are solved, whichever parity they n
   assert.deepEqual([...parity].sort(), ["U", "U r", "none", "r"], "the sample needs every parity fix, and none");
 });
 
-test("solve: layer by layer solves the same positions, the core a cubelet at a time from the top", () => {
+test("solve: layer by layer solves the same positions, the core a piece at a time from the top", () => {
   // The other order: white X-face edges, its corners, the side edges, then the yellow
   // X-face's corners and edges. A layer, once done, stays done.
   const rnd = random(77);
@@ -188,7 +188,7 @@ test("solve: layer by layer solves the same positions, the core a cubelet at a t
 test("solve: two outer edges traded alone are solved through the U parity step", () => {
   const st = State.solved();
   const colors = visibleColors(st);
-  const [fu, ru] = [CUBELETS.find((c) => c.name === "Fx.U")!.home, CUBELETS.find((c) => c.name === "Rx.U")!.home];
+  const [fu, ru] = [PIECES.find((c) => c.name === "Fx.U")!.home, PIECES.find((c) => c.name === "Rx.U")!.home];
   [colors[fu * 6 + 4], colors[ru * 6 + 0]] = ["R", "G"];
   const fit = fitColors(st, colors);
   const steps = solveSteps(fit.state!);
@@ -197,7 +197,7 @@ test("solve: two outer edges traded alone are solved through the U parity step",
   assert.ok(isSolved(play(fit.state!, steps)));
 });
 
-test("solve: an outer step flips the puzzle over when the cubelets it cycles are on the bottom", () => {
+test("solve: an outer step flips the puzzle over when the pieces it cycles are on the bottom", () => {
   // Shape and core done; the first corners to cycle are three yellow X-face corners.
   const st = decodeState("GAQB MAQZ OPMU ADTJ BUGX BTTM REMC BKDW RYUV XEPY LUSB");
   for (const mode of ["kinds", "layers"] as Mode[]) {
@@ -206,7 +206,7 @@ test("solve: an outer step flips the puzzle over when the cubelets it cycles are
     const i = steps.findIndex((s) => s.stage === "regrip" && s.alg.includes("x2"));
     assert.ok(i >= 0, `${mode}: some regrip step flips the puzzle over`);
     const next = steps[i + 1];
-    assert.ok(next.moved.filter(([from]) => SLOT_POS[from][1] > 0).length >= 2, `${mode}: the step after the flip is for cubelets now on top (${next.alg})`);
+    assert.ok(next.moved.filter(([from]) => SLOT_POS[from][1] > 0).length >= 2, `${mode}: the step after the flip is for pieces now on top (${next.alg})`);
     assert.ok(!steps.some((s) => s.stage === "hold"), `${mode}: the steps go on with yellow up, with no hold step`);
   }
   const first = nextStep(st)!;
@@ -220,7 +220,7 @@ test("solve: an outer step flips the puzzle over when the cubelets it cycles are
   assert.ok(second.moved.every(([from]) => SLOT_POS[from][1] > 0), "its three corners are on top, where the flip brought them");
 });
 
-test("solve: a layer core step flips the puzzle over for yellow core cubelets on the bottom, and the next goes on yellow up", () => {
+test("solve: a layer core step flips the puzzle over for yellow core pieces on the bottom, and the next goes on yellow up", () => {
   // Layer by layer, at the yellow core corners, all four of them still to place.
   const st = decodeState("GWSV OIRU LSII FXSG YHCO UAHZ SCBW RRHP LSSB IWGO GTNA");
   const flip = nextStep(st, "layers")!;
@@ -300,7 +300,7 @@ test("solve: the stages come as needed", () => {
 
 test("solve: a position no turns reach is refused", () => {
   const st = State.solved();
-  const [a, b] = [CUBELETS.find((c) => c.name === "Fx.U")!.home, CUBELETS.find((c) => c.name === "Rx.U")!.home];
+  const [a, b] = [PIECES.find((c) => c.name === "Fx.U")!.home, PIECES.find((c) => c.name === "Rx.U")!.home];
   const [ia, ib] = [st.occ[a], st.occ[b]];
   [st.occ[a], st.ori[a], st.occ[b], st.ori[b]] = [ib, rotsTo(ib, a)[0], ia, rotsTo(ia, b)[0]];
   assert.ok(unreachableReason(st));
@@ -338,7 +338,7 @@ test("solve: the guide's plan gives the solve's steps one at a time, each with t
 
 test("solve: the guide's plan says why, for a position turns can't reach", () => {
   const st = State.solved();
-  const [a, b] = [CUBELETS.find((c) => c.name === "Fx.U")!.home, CUBELETS.find((c) => c.name === "Rx.U")!.home];
+  const [a, b] = [PIECES.find((c) => c.name === "Fx.U")!.home, PIECES.find((c) => c.name === "Rx.U")!.home];
   const [ia, ib] = [st.occ[a], st.occ[b]];
   [st.occ[a], st.ori[a], st.occ[b], st.ori[b]] = [ib, rotsTo(ib, a)[0], ia, rotsTo(ia, b)[0]];
   const messages = [...planMessages(1, encodeState(st), "kinds")];

@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { faceView, netView, statusLine } from "../src/core/analyze.ts";
 import { all, looksLike, shapeLike } from "../src/core/goals.ts";
 import { formatAlg, parseAlg, simplify } from "../src/core/notation.ts";
-import { CUBELETS, NUM_SLOTS, State, applyTurns } from "../src/core/puzzle.ts";
+import { PIECES, NUM_SLOTS, State, applyTurns } from "../src/core/puzzle.ts";
 import { search } from "../src/core/search.ts";
 import { decodeState, encodeState, encodeX1 } from "../src/core/serialize.ts";
 
@@ -28,7 +28,7 @@ test("cli: show prints the status, flat view and effect of Baum's edge 3-cycle",
   assert.match(r.out, /^alg: R' S' R b R' S R b' {2}\(8 turns\)$/m);
   assert.match(r.out, /^X shape \| outer turns: r l u\(0\/9\) d\(0\/9\) f b$/m);
   assert.ok(r.out.includes(netView(after("R' S' R b R' S R b'"))), "prints the flat view of the result");
-  assert.match(r.out, /^cubelets moved: 3$/m);
+  assert.match(r.out, /^pieces moved: 3$/m);
   assert.equal((r.out.match(/^ {2}cycle: /gm) ?? []).length, 1);
 });
 
@@ -49,10 +49,10 @@ test("cli: solve prints the steps from a position to solved", () => {
   assert.match(xc("solve", "").out, /already solved/);
 });
 
-test("cli: effect says the corner 3-cycle moves 3 cubelets and prints no flat view", () => {
+test("cli: effect says the corner 3-cycle moves 3 pieces and prints no flat view", () => {
   const r = xc("effect", "[R' F' R, b]");
   assert.equal(r.status, 0, r.err);
-  assert.match(r.out, /^cubelets moved: 3$/m);
+  assert.match(r.out, /^pieces moved: 3$/m);
   assert.ok(!r.out.includes("    L          F"), "effect has no flat view");
 });
 
@@ -127,11 +127,11 @@ test("search: stops at its node limit and says the search was incomplete", () =>
   assert.ok(r.nodes <= 51);
 });
 
-test("state: appearanceKey makes look-alike twins compare equal, other cubelets don't", () => {
+test("state: appearanceKey makes look-alike twins compare equal, other pieces don't", () => {
   const solved = State.solved();
   const swapped = (kind: string, sameColor: boolean) => {
     const st = solved.clone();
-    const [a, b] = CUBELETS.filter((c) => c.kind === kind && (!sameColor || c.stickers.join() === CUBELETS.find((x) => x.kind === kind)!.stickers.join()))
+    const [a, b] = PIECES.filter((c) => c.kind === kind && (!sameColor || c.stickers.join() === PIECES.find((x) => x.kind === kind)!.stickers.join()))
       .slice(0, 2)
       .map((c) => st.occ.indexOf(c.id));
     [st.occ[a], st.occ[b]] = [st.occ[b], st.occ[a]];
@@ -154,6 +154,6 @@ test("state codes: malformed X1 codes are refused with a reason", () => {
   const dup = good.slice(0, 3 + 2 * secondFilled) + good.slice(3 + 2 * firstFilled, 5 + 2 * firstFilled) + good.slice(5 + 2 * secondFilled);
   assert.throws(() => decodeState(dup), /appears twice/);
   const missing = good.slice(0, 3 + 2 * firstFilled) + ".." + good.slice(5 + 2 * firstFilled);
-  assert.throws(() => decodeState(missing), /state has 61 cubelets, expected 62/);
+  assert.throws(() => decodeState(missing), /state has 61 pieces, expected 62/);
   assert.equal(encodeX1(decodeState("  " + good + "\n")), good, "surrounding whitespace is ignored");
 });

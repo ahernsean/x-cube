@@ -4,7 +4,7 @@ import { NUM_ROT, ROT_DIR, ROT_MUL } from "../src/core/geometry.ts";
 import { effect, isExposed, isHomeX, isSolved, isXShape, outerAvailability } from "../src/core/analyze.ts";
 import { formatAlg, parseAlg } from "../src/core/notation.ts";
 import {
-  CUBELETS,
+  PIECES,
   MOVE_DEFS,
   NUM_SLOTS,
   SLOT_POS,
@@ -52,11 +52,11 @@ test("geometry: 24 rotations form a group", () => {
   }
 });
 
-test("inventory: 80 slots, 62 cubelets, counts by kind match the agreed inventory", () => {
+test("inventory: 80 slots, 62 pieces, counts by kind match the agreed inventory", () => {
   assert.equal(NUM_SLOTS, 80);
-  assert.equal(CUBELETS.length, 62);
+  assert.equal(PIECES.length, 62);
   const count: Record<string, number> = {};
-  for (const c of CUBELETS) count[c.kind] = (count[c.kind] ?? 0) + 1;
+  for (const c of PIECES) count[c.kind] = (count[c.kind] ?? 0) + 1;
   assert.deepEqual(count, {
     center: 6,
     extCenter: 4,
@@ -66,7 +66,7 @@ test("inventory: 80 slots, 62 cubelets, counts by kind match the agreed inventor
     outerCorner: 16,
     outerEdge: 16,
   });
-  const stickers = (k: string) => [...new Set(CUBELETS.filter((c) => c.kind === k).map((c) => c.stickers.filter(Boolean).length))];
+  const stickers = (k: string) => [...new Set(PIECES.filter((c) => c.kind === k).map((c) => c.stickers.filter(Boolean).length))];
   assert.deepEqual(stickers("coreCorner"), [1]);
   assert.deepEqual(stickers("singleEdge"), [1]);
   assert.deepEqual(stickers("doubleEdge"), [0]);
@@ -74,7 +74,7 @@ test("inventory: 80 slots, 62 cubelets, counts by kind match the agreed inventor
   assert.deepEqual(stickers("outerEdge"), [2]);
   assert.deepEqual(stickers("extCenter"), [1]);
   // 18 core stickers: 8 corners + 8 single edges + 2 X-face centers
-  const core = CUBELETS.filter((c) => !["outerCorner", "outerEdge", "extCenter"].includes(c.kind));
+  const core = PIECES.filter((c) => !["outerCorner", "outerEdge", "extCenter"].includes(c.kind));
   assert.equal(core.reduce((n, c) => n + c.stickers.filter(Boolean).length, 0), 18);
 });
 
@@ -120,7 +120,7 @@ test("owner-confirmed: U and R2 keep the X shape", () => {
   assert.ok(!isHomeX(run("R").st));
 });
 
-test("stickers: no sticker is ever covered by another cubelet, in or out of shape", () => {
+test("stickers: no sticker is ever covered by another piece, in or out of shape", () => {
   const rand = rng(23);
   const st = State.solved();
   for (let i = 0; i < 2000; i++) {
@@ -133,13 +133,13 @@ test("stickers: no sticker is ever covered by another cubelet, in or out of shap
 test("fused centers: an extension center always stays next to its core face center", () => {
   const rand = rng(7);
   const st = State.solved();
-  const ext = CUBELETS.filter((c) => c.kind === "extCenter");
+  const ext = PIECES.filter((c) => c.kind === "extCenter");
   for (let i = 0; i < 300; i++) {
     randomLegalScramble(st, 1, rand);
     for (const e of ext) {
       const p = SLOT_POS[e.home];
       const coreHome = slotAt([p[0] / 2, p[1] / 2, p[2] / 2]);
-      const coreId = CUBELETS.find((c) => c.home === coreHome)!.id;
+      const coreId = PIECES.find((c) => c.home === coreHome)!.id;
       const se = st.occ.indexOf(e.id);
       const sc = st.occ.indexOf(coreId);
       const pe = SLOT_POS[se], pc = SLOT_POS[sc];
@@ -148,7 +148,7 @@ test("fused centers: an extension center always stays next to its core face cent
   }
 });
 
-test("outer cubelets: the outward-facing color never changes (so look-alike twins are NOT interchangeable)", () => {
+test("outer pieces: the outward-facing color never changes (so look-alike twins are NOT interchangeable)", () => {
   const rand = rng(3);
   const st = State.solved();
   for (let i = 0; i < 400; i++) {
@@ -156,9 +156,9 @@ test("outer cubelets: the outward-facing color never changes (so look-alike twin
     for (let s = 0; s < NUM_SLOTS; s++) {
       const id = st.occ[s];
       if (id < 0) continue;
-      const c = CUBELETS[id];
+      const c = PIECES[id];
       if (c.outward === null) continue;
-      // the cubelet's outward face must point away from the core: the axis where |coord| == 2
+      // the piece's outward face must point away from the core: the axis where |coord| == 2
       const p = SLOT_POS[s];
       const axis = p.findIndex((v) => Math.abs(v) === 2);
       const worldOut = axis * 2 + (p[axis] > 0 ? 0 : 1);
@@ -184,7 +184,7 @@ test("shape: outer turns never change the shape", () => {
   }
 });
 
-test("algorithms: Baum's 3-cycles, translated to the white-up grip, keep the X shape and move exactly 3 cubelets", () => {
+test("algorithms: Baum's 3-cycles, translated to the white-up grip, keep the X shape and move exactly 3 pieces", () => {
   for (const alg of ["R' S' R b R' S R b'", "R' F' R b R' F R b'"]) {
     const { st, r } = run(alg);
     assert.ok(r.ok, alg);

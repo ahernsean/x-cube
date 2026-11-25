@@ -6,7 +6,7 @@ import { DIRS, axisRotation, ROT_DIR, ROT_INV, ROTATIONS, dirIndex, matVec, type
 import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
 import {
   COLOR_NAME,
-  CUBELETS,
+  PIECES,
   FACE_COLOR,
   MOVE_BY_NAME,
   MOVE_DEFS,
@@ -64,7 +64,7 @@ const STICKER: Record<Color, number> = {
 };
 
 let renderer: any, scene: any, camera: any, pivot: any;
-const meshes: any[] = []; // indexed by cubelet id
+const meshes: any[] = []; // indexed by piece id
 // The camera stays put; turning the view rotates the puzzle (pivot) instead.
 // Preset views are orientations of the pivot. "Home" is the three-quarter view.
 type Quat = [number, number, number, number]; // x, y, z, w
@@ -111,7 +111,7 @@ let copyLook: {
   bodyMat: any;
   sticker: (c: Color) => any;
   place: (m: any, d: number) => void;
-  /** The flat view's look, for the editor's own meshes: a cubelet's dark backing, and a tile on face d, `out` from the cubelet's middle. */
+  /** The flat view's look, for the editor's own meshes: a piece's dark backing, and a tile on face d, `out` from the piece's middle. */
   flat: { body: () => any; tile: (mat: any) => any; place: (m: any, d: number, out?: number) => void };
 } | null = null;
 const SHADOW_KEY = "xcube-lab-shadows";
@@ -314,11 +314,11 @@ function initScene(canvas: HTMLCanvasElement) {
   camera.position.set(0, 0, 13.5);
   camera.lookAt(0, 0, 0);
 
-  // Cubelets nearly touch, as on the real puzzle: a hairline gap between them.
+  // Pieces nearly touch, as on the real puzzle: a hairline gap between them.
   // Rounded like a real cube's plastic. Dark gray, not black, so that inside faces
   // facing different ways can be told apart by their shading.
   // Two segments across each rounded edge: at iPad resolution they looked the same as four,
-  // the edge's normals being set at each vertex, with 300 triangles a cubelet instead of 972.
+  // the edge's normals being set at each vertex, with 300 triangles a piece instead of 972.
   const body = roundedBox(0.985, BODY_RADIUS, 2);
   // Glossy plastic: small, tight highlights that slide along the rounded edges and
   // corners as the cube tumbles (the lights stay put while the puzzle turns).
@@ -361,7 +361,7 @@ function initScene(canvas: HTMLCanvasElement) {
     if (!glowMats.has(key)) glowMats.set(key, makeGlowMaterial(glowTex, new THREE.Color(STICKER[c]), open));
     return glowMats.get(key);
   };
-  // Flat-view backing: a dark body just inside each cubelet's cell, so the gaps between
+  // Flat-view backing: a dark body just inside each piece's cell, so the gaps between
   // tiles read as black plastic, as on the puzzle, rather than as the light background.
   const netBody = new THREE.BoxGeometry(0.98, 0.98, 0.98);
   const netOccluderMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x141617) });
@@ -381,7 +381,7 @@ function initScene(canvas: HTMLCanvasElement) {
     return mats.get(c);
   };
   paintMaterial = { sticker: matFor, tile: netMatFor, darkTile: netDarkMat, glow: (c: Color) => [0, 1, 2, 3].map((open) => glowMatFor(c, open)) };
-  // Grays for the step guide: level 1 for cubelets a step leaves alone, level 2 (darker)
+  // Grays for the step guide: level 1 for pieces a step leaves alone, level 2 (darker)
   // for those it may leave anywhere, the same for every color.
   const grayMats = new Map<string, { sticker: any; tile: any; glow: any[] }>();
   grayMaterial = (c: Color, level: 1 | 2) => {
@@ -442,7 +442,7 @@ function initScene(canvas: HTMLCanvasElement) {
     const r = (v: any): Vec3 => [Math.round(v.x), Math.round(v.y), Math.round(v.z)];
     FACE_AXES[d] = { ux: r(new THREE.Vector3(1, 0, 0).applyEuler(e)), uy: r(new THREE.Vector3(0, 1, 0).applyEuler(e)) };
   }
-  for (const c of CUBELETS) {
+  for (const c of PIECES) {
     const g = new THREE.Group();
     const bodyMesh = new THREE.Mesh(withAoColors(body), bodyMat);
     bodyMesh.castShadow = true;
@@ -465,7 +465,7 @@ function initScene(canvas: HTMLCanvasElement) {
       aoList.push(aoFace(m, d, "3d"));
     });
     // Flat-view faces: unlit, one per face, seen only by the flat view's cameras (layer 2),
-    // in front of the cubelet's dark backing, which also hides deeper cubelets.
+    // in front of the piece's dark backing, which also hides deeper pieces.
     const occluder = new THREE.Mesh(netBody, netOccluderMat);
     probeInfo.set(occluder, { id: c.id, d: 6 });
     occluder.layers.set(NET_LAYER);
@@ -487,9 +487,9 @@ function initScene(canvas: HTMLCanvasElement) {
     // plane, starting at the shared edge and fading outward, in face b's color. It is
     // shown only when both faces are exposed, i.e. where face a steps down to something
     // deeper or to empty space. Seen by the 3D view (layer 3) and the flat view (layer 4).
-    // Each end of the band reaches the cubelet face beside it (lo at -X, hi at +X); where
+    // Each end of the band reaches the piece face beside it (lo at -X, hi at +X); where
     // that face is exposed too, the band in its plane carries the same glow around the
-    // corner, joined to this one by a rounded corner piece (made here for the hi end).
+    // corner, joined to this one by a rounded corner joint (made here for the hi end).
     const list: GlowBand[] = [];
     for (let a = 0; a < 6; a++)
       for (let b = 0; b < 6; b++) {
@@ -510,7 +510,7 @@ function initScene(canvas: HTMLCanvasElement) {
         m.visible = false;
         g.add(m);
         const lo = dirIndex([-X.x, -X.y, -X.z]), hi = dirIndex([X.x, X.y, X.z]);
-        // The corner piece's frame: x along A, y along B, so the band at the hi end lies at -z.
+        // The corner joint's frame: x along A, y along B, so the band at the hi end lies at -z.
         const corner = new THREE.Mesh(glowCorner, mats[0]);
         corner.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(A, B, new THREE.Vector3().crossVectors(A, B)));
         corner.layers.set(GLOW3D_LAYER);
@@ -553,11 +553,11 @@ function syncMeshes(st: State) {
     const o = st.ori[s];
     const exposed = [0, 1, 2, 3, 4, 5].map((d) => isExposed(st, s, ROT_DIR[o * 6 + d]));
     showGlow(id, exposed);
-    shadeCubelet(st, s, o, id);
+    shadePiece(st, s, o, id);
   }
 }
 
-/** Shows a cubelet's glow bands for the faces of it that are exposed (index = face direction in the cubelet's frame). */
+/** Shows a piece's glow bands for the faces of it that are exposed (index = face direction in the piece's frame). */
 function showGlow(id: number, exposed: boolean[]) {
   for (const gl of glows[id] ?? []) {
     gl.mesh.visible = exposed[gl.a] && exposed[gl.b];
@@ -567,14 +567,14 @@ function showGlow(id: number, exposed: boolean[]) {
   }
 }
 
-/** Grid shading for all six faces of the cubelet in `slot`, applied to its sticker, tile and plastic. */
-function shadeCubelet(st: State, slot: number, ori: number, id: number) {
+/** Grid shading for all six faces of the piece in `slot`, applied to its sticker, tile and plastic. */
+function shadePiece(st: State, slot: number, ori: number, id: number) {
   const per: (number[] | null)[] = [], perFlat: (number[] | null)[] = [];
   for (let d = 0; d < 6; d++) {
     per.push(aoOn["3d"] ? gridCorners(st, slot, ori, d) : null);
     perFlat.push(aoOn.flat ? gridNeighbors(st, slot, ori, d) : null);
   }
-  applyToCubelet(id, per, perFlat);
+  applyToPiece(id, per, perFlat);
 }
 
 // Second ring: grid spots two cells out along the face, with less weight, so big
@@ -623,7 +623,7 @@ function flatNeighbors(fill: (x: number, y: number, z: number) => number, f: rea
   ];
 }
 
-/** The front spot and in-plane axes of face d of the cubelet in `slot`, at rest. */
+/** The front spot and in-plane axes of face d of the piece in `slot`, at rest. */
 function restFrame(slot: number, ori: number, d: number) {
   const R = ROTATIONS[ori];
   const p = SLOT_POS[slot];
@@ -631,25 +631,25 @@ function restFrame(slot: number, ori: number, d: number) {
   return { front: [p[0] + n[0], p[1] + n[1], p[2] + n[2]], ux: matVec(R, FACE_AXES[d].ux), uy: matVec(R, FACE_AXES[d].uy) };
 }
 
-/** Four corner values for face d of the cubelet in `slot` (grid rule), 3D view. */
+/** Four corner values for face d of the piece in `slot` (grid rule), 3D view. */
 function gridCorners(st: State, slot: number, ori: number, d: number): number[] {
   const { front, ux, uy } = restFrame(slot, ori, d);
   const fill = (x: number, y: number, z: number) => (filledAt(st, [x, y, z]) ? 1 : 0);
   return CORNER_SIGNS.map(([sx, sy]) => cornerValue(fill, front, ux, uy, sx, sy));
 }
 
-/** Flat-view neighbor darkness for face d of the cubelet in `slot` (see flatNeighbors). */
+/** Flat-view neighbor darkness for face d of the piece in `slot` (see flatNeighbors). */
 function gridNeighbors(st: State, slot: number, ori: number, d: number): number[] {
   const { front, ux, uy } = restFrame(slot, ori, d);
   return flatNeighbors((x, y, z) => (filledAt(st, [x, y, z]) ? 1 : 0), front, ux, uy);
 }
 
 /**
- * Apply per-face shading (index = face direction in the cubelet's frame; null = leave as
- * is) to the cubelet's sticker faces and plastic body (`per`, corner values) and its flat
+ * Apply per-face shading (index = face direction in the piece's frame; null = leave as
+ * is) to the piece's sticker faces and plastic body (`per`, corner values) and its flat
  * tiles (`perFlat`, neighbor darkness).
  */
-function applyToCubelet(id: number, per: (number[] | null)[], perFlat: (number[] | null)[]) {
+function applyToPiece(id: number, per: (number[] | null)[], perFlat: (number[] | null)[]) {
   requestDraw();
   for (const f of aoFaces[id] ?? []) {
     const flat = f.view === "flat";
@@ -683,9 +683,9 @@ function applyToCubelet(id: number, per: (number[] | null)[], perFlat: (number[]
   b.shaded = true;
 }
 
-/** The plane axes of each face direction (cubelet frame), shared by stickers, tiles and plastic. */
+/** The plane axes of each face direction (piece frame), shared by stickers, tiles and plastic. */
 const FACE_AXES: { ux: Vec3; uy: Vec3 }[] = [];
-/** Per-cubelet plastic body: which face each vertex belongs to, and its position across that face. */
+/** Per-piece plastic body: which face each vertex belongs to, and its position across that face. */
 const bodyAo: { mesh: any; face: Uint8Array; u: Float32Array; v: Float32Array; shaded: boolean }[] = [];
 
 function registerBody(id: number, mesh: any, size: number) {
@@ -711,13 +711,13 @@ function registerBody(id: number, mesh: any, size: number) {
 // Grid-based ambient occlusion, as in block-building games. For each corner of a
 // visible face, look at the three grid spots in front of the face around that corner
 // (two along the edges, one diagonal). Filled spots darken the corner; both edge
-// spots filled makes it darkest. Corners blend smoothly across the face. Cubelets
+// spots filled makes it darkest. Corners blend smoothly across the face. Pieces
 // flush with the face (same plane) don't count, so flat surfaces get no lines.
 
 interface AoFace {
   mesh: any;
-  d: number; // face direction in the cubelet's own frame
-  ux: Vec3; // the plane's local x axis, in the cubelet's own frame
+  d: number; // face direction in the piece's own frame
+  ux: Vec3; // the plane's local x axis, in the piece's own frame
   uy: Vec3;
   extent: number; // the face's full width, for blending corner values across it
   view: "3d" | "flat";
@@ -842,7 +842,7 @@ function flatBrightness(n: readonly number[], x: number, y: number) {
   return 1 - Math.max(n[0] * l * t, n[1] * r * t, n[2] * l * b, n[3] * r * b, n[4] * l, n[5] * r, n[6] * b, n[7] * t);
 }
 
-/** A flat-view square's width, in a cubelet's frame. */
+/** A flat-view square's width, in a piece's frame. */
 const FLAT_SQUARE = 0.92;
 
 /**
@@ -932,10 +932,10 @@ function applyShading(f: AoFace, vals: number[]) {
 //
 // Real occlusion, recomputed every frame: the same three-spots-per-corner rule, but each
 // spot's "filled" amount is continuous: it depends on how far the spot is from the
-// nearest cubelet's center, measured in that cubelet's own (possibly tilted) frame.
-// At rest every cubelet sits on the grid and this matches the grid shading exactly.
+// nearest piece's center, measured in that piece's own (possibly tilted) frame.
+// At rest every piece sits on the grid and this matches the grid shading exactly.
 
-/** How "filled" a spot is, from its distance d to a cubelet center (cube-shaped distance). */
+/** How "filled" a spot is, from its distance d to a piece center (cube-shaped distance). */
 const fillAt = (d: number) => {
   if (d <= 0.35) return 1;
   if (d >= 0.75) return 0;
@@ -963,15 +963,15 @@ function rotAxis(axis: number, c: number, s: number, v: number[]): number[] {
   return [c * x - s * y, s * x + c * y, z];
 }
 
-/** Recompute shading for the faces near a turning layer, from where cubelets actually are. */
+/** Recompute shading for the faces near a turning layer, from where pieces actually are. */
 function shadeDuringTurn(pose: TurnPose) {
   if (!aoOn["3d"] && !aoOn.flat) return;
   const d = MOVE_DEFS[pose.def];
   const axis = d.axis;
   const c = Math.cos(pose.angle), sn = Math.sin(pose.angle);
   const st = pose.before;
-  // Which cubelets turn, and where their centers are right now.
-  const isMovingId = new Uint8Array(CUBELETS.length);
+  // Which pieces turn, and where their centers are right now.
+  const isMovingId = new Uint8Array(PIECES.length);
   const mx: number[] = [], my: number[] = [], mz: number[] = [];
   let lo = 9, hi = -9;
   for (const sl of d.slots) {
@@ -987,7 +987,7 @@ function shadeDuringTurn(pose: TurnPose) {
     mz.push(r[2]);
   }
   const nm = mx.length;
-  const REACH2 = 0.75 * 0.75 * 3; // beyond this squared distance a cubelet can't fill the spot
+  const REACH2 = 0.75 * 0.75 * 3; // beyond this squared distance a piece can't fill the spot
   const staticAt = (x: number, y: number, z: number) => {
     if (x === 0 && y === 0 && z === 0) return true;
     const slot = slotAtXYZ(x, y, z);
@@ -1047,7 +1047,7 @@ function shadeDuringTurn(pose: TurnPose) {
     for (let fd = 0; fd < 6; fd++) {
       const n = tf(DIRS[fd]), ux = tf(FACE_AXES[fd].ux), uy = tf(FACE_AXES[fd].uy);
       const fx = center[0] + n[0], fy = center[1] + n[1], fz = center[2] + n[2];
-      // A face covered by a cubelet that isn't moving can't be seen: leave it.
+      // A face covered by a piece that isn't moving can't be seen: leave it.
       if (!moving && staticAt(fx, fy, fz)) {
         per.push(null);
         perFlat.push(null);
@@ -1057,18 +1057,18 @@ function shadeDuringTurn(pose: TurnPose) {
       per.push(aoOn["3d"] ? CORNER_SIGNS.map(([sx, sy]) => cornerValue(filled, f, ux, uy, sx, sy)) : null);
       perFlat.push(aoOn.flat ? flatNeighbors(filled, f, ux, uy) : null);
     }
-    applyToCubelet(id, per, perFlat);
+    applyToPiece(id, per, perFlat);
   }
 }
 
-// A face counts as covered during a turn while a cubelet's center is within this distance
+// A face counts as covered during a turn while a piece's center is within this distance
 // of the spot in front of it, so the faces between a turning layer and its neighbors
 // are exposed from just after the turn starts until just before it ends.
 const GLOW_COVER = 0.1;
 
 /**
- * Edge glow while a layer turns: each cubelet's bands, from the faces exposed where the
- * cubelets are right now. At angle 0 this matches the glow at rest.
+ * Edge glow while a layer turns: each piece's bands, from the faces exposed where the
+ * pieces are right now. At angle 0 this matches the glow at rest.
  */
 function glowDuringTurn(pose: TurnPose) {
   const d = MOVE_DEFS[pose.def];
@@ -1077,7 +1077,7 @@ function glowDuringTurn(pose: TurnPose) {
   const st = pose.before;
   const turning = new Uint8Array(NUM_SLOTS);
   for (const sl of d.slots) turning[sl] = 1;
-  // Is a cubelet of the group (turning or not) at p, given in that group's own frame?
+  // Is a piece of the group (turning or not) at p, given in that group's own frame?
   const groupHas = (p: number[], group: number) => {
     const x = Math.round(p[0]), y = Math.round(p[1]), z = Math.round(p[2]);
     if (Math.hypot(p[0] - x, p[1] - y, p[2] - z) > GLOW_COVER) return false;
@@ -1093,7 +1093,7 @@ function glowDuringTurn(pose: TurnPose) {
     const exposed: boolean[] = [];
     for (let fd = 0; fd < 6; fd++) {
       const n = DIRS[ROT_DIR[st.ori[slot] * 6 + fd]];
-      // The spot in front of the face, in this cubelet's group's frame, then in the other's.
+      // The spot in front of the face, in this piece's group's frame, then in the other's.
       const own = [p[0] + n[0], p[1] + n[1], p[2] + n[2]];
       const other = mine ? rotAxis(axis, c, sn, own) : rotAxis(axis, c, -sn, own);
       exposed.push(!groupHas(own, mine) && !groupHas(other, 1 - mine));
@@ -1152,18 +1152,18 @@ const GLOW3D_LAYER = 3;
 const GLOWNET_LAYER = 4;
 const HALO_LAYER = 5; // the editor's highlight in the 3D view
 const FLAT_HALO_LAYER = 6; // ... and in the flat view: 6 + direction, one layer per face
-const HALO_ARROW_LAYER = 12; // the arrow to haloed cubelets behind the puzzle, 3D view only
-const BODY_RADIUS = 0.07; // rounding of cubelet edges
+const HALO_ARROW_LAYER = 12; // the arrow to haloed pieces behind the puzzle, 3D view only
+const BODY_RADIUS = 0.07; // rounding of piece edges
 // The glow band lies just below the face's surface (GLOW_DEPTH) and starts under the
-// cubelet (GLOW_START), so the cubelet hides its inner part and the glow appears to
-// come from right under the cubelet's edge from any viewing angle, with no gap.
+// piece (GLOW_START), so the piece hides its inner part and the glow appears to
+// come from right under the piece's edge from any viewing angle, with no gap.
 const GLOW_DEPTH = 0.47;
 const GLOW_START = 0.36;
 const GLOW_WIDTH = 0.56;
 const GLOW_SOLID = (0.495 - GLOW_START) / GLOW_WIDTH; // fraction kept at full strength (to just past the edge)
 // Where two bands of one hidden sticker meet at a corner, a quarter cylinder of this
 // radius joins them, so the glow is rounded there like the sticker's own corner. Each
-// band reaches the cubelet's side (0.5); at an open end it is cut back to where the
+// band reaches the piece's side (0.5); at an open end it is cut back to where the
 // cylinder takes over (GLOW_CUT from its middle).
 const GLOW_ROUND = 0.25;
 const GLOW_CUT = GLOW_DEPTH - GLOW_ROUND;
@@ -1207,7 +1207,7 @@ function makeGlowMaterial(map: any, color: any, open: number) {
       varying float vOrtho;
       void main() {
         vOrtho = projectionMatrix[3][3] == 1.0 ? 1.0 : 0.0;
-        // An open end is cut back to where the corner piece starts, by moving the end
+        // An open end is cut back to where the corner joint starts, by moving the end
         // column of vertices onto the column there, so the two meet on shared edges.
         vec3 p = position;
         vUv = uv;
@@ -1242,7 +1242,7 @@ function makeGlowMaterial(map: any, color: any, open: number) {
 }
 
 /**
- * The rounded corner piece between two glow bands, in a frame with x along one band's
+ * The rounded corner joint between two glow bands, in a frame with x along one band's
  * face, y along the glowing face and -z along the other band's face: a quarter cylinder
  * about the y axis, tangent to both bands. Its uv.y runs along y like the bands' (so it
  * fades outward at the same rate). It uses the material of a band with no open end
@@ -1418,7 +1418,7 @@ const WIDE = window.matchMedia("(min-width: 900px)");
 
 /**
  * The views are drawn only when something in them may have changed: while something moves
- * (a turn, a settle, a gesture, a view turning, the guide's flying cubelets, the halo's
+ * (a turn, a settle, a gesture, a view turning, the guide's flying pieces, the halo's
  * arrow), when the view's orientation or size changes, and after `requestDraw`, which the
  * functions that change what is shown call, as does every input event (a backstop). At
  * rest nothing is drawn, which spares a phone's battery.
@@ -1513,7 +1513,7 @@ const LAYER_MOVE: Record<number, Record<number, string>> = {
 interface CubeHit {
   point: any; // hit point, puzzle frame
   normal: Vec3; // face normal, puzzle frame (unit axis vector)
-  cell: Vec3; // the touched cubelet's grid position, puzzle frame
+  cell: Vec3; // the touched piece's grid position, puzzle frame
 }
 
 function pickCube(el: HTMLElement, clientX: number, clientY: number): CubeHit | null {
@@ -1523,7 +1523,7 @@ function pickCube(el: HTMLElement, clientX: number, clientY: number): CubeHit | 
   const rect = el.getBoundingClientRect();
   const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
   const ray = new THREE.Raycaster();
-  ray.layers.set(0); // cubelet bodies and stickers only, not glow
+  ray.layers.set(0); // piece bodies and stickers only, not glow
   ray.setFromCamera(ndc, camera);
   const inv = pivot.quaternion.clone().invert();
   for (const h of ray.intersectObjects(pivot.children, true)) {
@@ -1554,7 +1554,7 @@ function toScreen(el: HTMLElement, p: any): [number, number] {
 
 /** A layer being turned by a finger. */
 interface Live {
-  group: any; // holds the turning cubelets
+  group: any; // holds the turning pieces
   axisVec: any; // +axis unit vector, puzzle frame
   def: number; // the move whose layer is turning
   sign: number; // +1 if moving the finger along the swipe direction turns CCW about +axis
@@ -1574,7 +1574,7 @@ let settle: { live: Live; from: number; to: number; start: number; ms: number } 
  * Start turning the layer under a swipe. Of the two directions you can slide along
  * the touched face, take the one whose on-screen direction best matches the swipe.
  * Moving the face (normal n) toward direction m is a rotation about n x m; the touched
- * cubelet's position along that axis picks the layer: 1 = inner turn, 2 = outer
+ * piece's position along that axis picks the layer: 1 = inner turn, 2 = outer
  * (extension) turn, 0 = middle slice.
  */
 function beginLiveTurn(el: HTMLElement, hit: CubeHit, x0: number, y0: number, dx: number, dy: number): Live | null {
@@ -1658,7 +1658,7 @@ function tickSettle() {
   finishLiveTurn(l, Math.round(to / (Math.PI / 2)));
 }
 
-/** Put the turned cubelets back and record the turn (q = counterclockwise quarters about +axis). */
+/** Put the turned pieces back and record the turn (q = counterclockwise quarters about +axis). */
 function finishLiveTurn(l: Live, q: number) {
   for (const child of [...l.group.children]) pivot.attach(child);
   pivot.remove(l.group);
@@ -2617,7 +2617,7 @@ function render() {
   $("status").dataset.solved = String(solvedNow);
   // A letter for each outer turn, green when it can turn.
   $("outer-grid").innerHTML = outerAvailability(st)
-    .map(([n, c]) => `<span class="chip ${c === 9 ? "on" : "off-plain"}" data-outer="${n}" title="${c === 9 ? `${n} can turn` : `${n} refuses: ${c} of 9 cubelets`}">${n}</span>`)
+    .map(([n, c]) => `<span class="chip ${c === 9 ? "on" : "off-plain"}" data-outer="${n}" title="${c === 9 ? `${n} can turn` : `${n} refuses: ${c} of 9 pieces`}">${n}</span>`)
     .join("");
   // Undo, over the 3D view's corner, only while there is a turn to undo.
   $("undo").hidden = app.cursor <= 0 || shuffling;
@@ -3098,18 +3098,18 @@ function infoHelp(): string[] {
   if (edit) {
     const tool =
       edit.paint === "shape"
-        ? "Tap a cubelet to remove it, or tap a gray box to add one."
+        ? "Tap a piece to remove it, or tap a gray box to add one."
         : "Tap a sticker to give it the picked color. Tap one that already has that color to clear it.";
     return [
       `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it.`,
-      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid cubelets are marked in purple, and a sticker the message calls circled has a white ring around it. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
+      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid pieces are marked in purple, and a sticker the message calls circled has a white ring around it. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
     ];
   }
   const gestures = "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn.";
   if (!solving) return [gestures];
   return [
     gestures,
-    "<strong>During a solve step</strong>, only the cubelets the step applies to keep their colors; gray ones end the step just as they started, and dark gray ones may end up anywhere. Each colored cubelet has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the cubelet flies along it. A solid path that ends in a ring: the cubelet ends up solved. A dashed path: it is passing through and moves again later. A solid path with no ring: a shape or core step moves it, and it is solved later.",
+    "<strong>During a solve step</strong>, only the pieces the step applies to keep their colors; gray ones end the step just as they started, and dark gray ones may end up anywhere. Each colored piece has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the piece flies along it. A solid path that ends in a ring: the piece ends up solved. A dashed path: it is passing through and moves again later. A solid path with no ring: a shape or core step moves it, and it is solved later.",
   ];
 }
 let infoKey = "";
@@ -3787,25 +3787,25 @@ function bindUI() {
 // Edit puzzle: the owner sets the shape (the Shape tool, below) and paints the stickers to
 // match the real puzzle, in any order: a sticker can be painted while the shape is still wrong.
 // Paint stays on its spot; a sticker not painted yet fits any color. Each change refits
-// the paint to real cubelets (src/core/edit.ts). While it fits, the view shows the fitted
+// the paint to real pieces (src/core/edit.ts). While it fits, the view shows the fitted
 // state; while it doesn't, the last fitted state with the differing stickers repainted on
 // top. Done, once every sticker is painted and the whole is valid, makes the fitted state
 // the new start; the rest of the controls are inert while editing.
 
-/** Sticker and flat-tile meshes by cubelet id * 6 + face (in the cubelet's own frame). */
+/** Sticker and flat-tile meshes by piece id * 6 + face (in the piece's own frame). */
 const stickerMesh3d: any[] = [];
 const tileMesh: any[] = [];
 let paintMaterial: { sticker: (c: Color) => any; tile: (c: Color) => any; darkTile: any; glow: (c: Color) => any[] } | null = null;
 let grayMaterial: ((c: Color, level: 1 | 2) => { sticker: any; tile: any; glow: any[] }) | null = null;
 
 interface Edit {
-  shape: State; // a position with the edited shape: the one editing started from, as the Shape tool has moved its cubelets
+  shape: State; // a position with the edited shape: the one editing started from, as the Shape tool has moved its pieces
   colors: (Color | undefined)[]; // the stickers painted, by slot * 6 + direction; paint stays on its spot
   view: FaceColors; // what the shape shows with that paint: a sticker without paint is UNPAINTED
   fit: Fit;
   shown: State; // the last state that fit, drawn underneath the paint
   paint: Color | "shape"; // the color taps paint with, or the Shape tool
-  // Shape changes no moves of real cubelets account for yet (a Draft, src/core/edit.ts):
+  // Shape changes no moves of real pieces account for yet (a Draft, src/core/edit.ts):
   // while there are any, the shape is wrong.
   removed: Set<number>;
   added: Set<number>;
@@ -3868,14 +3868,14 @@ function refitEdit() {
 }
 
 // The Shape tool changes only what is tapped (draftTap in src/core/edit.ts): an extension
-// cubelet that isn't there on the real puzzle swings to its core cubelet's bare side or
+// piece that isn't there on the real puzzle swings to its core piece's bare side or
 // goes away, and an empty spot where one is missing gets one. The shape may be wrong
-// meanwhile: a cubelet put in is a blank body until the shape is one the puzzle can have,
-// when real cubelets take the blanks' places. Ghosts mark the empty spots: a small glass
+// meanwhile: a piece put in is a blank body until the shape is one the puzzle can have,
+// when real pieces take the blanks' places. Ghosts mark the empty spots: a small glass
 // box, gray with white edges and unlit, so it shows against white, against dark and in
 // shadow, and each spot reads as its own box. The stickers
-// a tap moves lose their paint: paint stays on its spot, and the cubelet now there is
-// another one. A cubelet that only comes or goes leaves the others on its unit painted,
+// a tap moves lose their paint: paint stays on its spot, and the piece now there is
+// another one. A piece that only comes or goes leaves the others on its unit painted,
 // and takes or leaves the color of the core sticker it covers or bares (repaint).
 const ghosts: any[] = [];
 const blanks: any[] = [];
@@ -3965,7 +3965,7 @@ function dashedOutline(round: number) {
 
 /**
  * Stickers drawn over the puzzle, in the 3D view and the flat view, [slot, direction,
- * color]: a painted one that no real cubelet's mesh is there to show, or (UNPAINTED) one
+ * color]: a painted one that no real piece's mesh is there to show, or (UNPAINTED) one
  * not painted yet, drawn as a dashed outline on the plastic where the sticker belongs.
  */
 const overlays: any[] = [];
@@ -4000,7 +4000,7 @@ function placeOverlays(list: [number, number, Color | typeof UNPAINTED][]) {
   });
 }
 
-/** The ghost under a point of the 3D view, unless a cubelet (hit `h`) is in front of it. */
+/** The ghost under a point of the 3D view, unless a piece (hit `h`) is in front of it. */
 function pickMarker(el: HTMLElement, clientX: number, clientY: number, h: CubeHit | null, pool = ghosts): number | null {
   pivot.updateMatrixWorld(true); // markers placed since the last frame are where they are now
   const rect = el.getBoundingClientRect();
@@ -4059,15 +4059,15 @@ function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit 
 
 // A shape edit is shown as a move: the meshes are already where they end up, and until
 // the move is over each frame puts the moved ones part-way there. Every edit carries its
-// cubelets as rotations about the puzzle's center, so part-way is part of that rotation,
-// - a core corner or core single edge turns where it is, with the cubelets on it;
-// - a cubelet that changes places (the centers, or one going from a core double edge to
+// pieces as rotations about the puzzle's center, so part-way is part of that rotation,
+// - a core corner or core single edge turns where it is, with the pieces on it;
+// - a piece that changes places (the centers, or one going from a core double edge to
 //   a core single edge) swings around the outside of the puzzle, clear of the others.
 const SHAPE_MOVE = { turnMs: 450, arcMs: 600, bulge: 0.55 };
 interface ShapeAnim {
   start: number;
   ms: number;
-  bulge: number; // how far out the cubelets swing mid-move, as a share of their distance from the center
+  bulge: number; // how far out the pieces swing mid-move, as a share of their distance from the center
   items: { mesh: any; p0: any; q0: any; turn: any }[];
 }
 let shapeAnim: ShapeAnim | null = null;
@@ -4081,9 +4081,9 @@ function rotationQuat(r: number) {
 function animateShape(carries: { from: number; to: number; rot: number }[]) {
   if (!edit || reduceMotionView()) return;
   const core = (s: number) => SLOT_POS[s].every((c) => Math.abs(c) < 2);
-  // A core cubelet that stays in its slot and turns, with the cubelets on it.
+  // A core piece that stays in its slot and turns, with the pieces on it.
   const hub = carries.find((c) => c.from === c.to && core(c.from));
-  // A cubelet from a core double edge: only it is seen to move (the two core edges behind trade places unseen).
+  // A piece from a core double edge: only it is seen to move (the two core edges behind trade places unseen).
   const moved = hub || carries.every((c) => c.rot === carries[0].rot) ? carries : carries.filter((c) => !core(c.from));
   shapeAnim = {
     start: performance.now(),
@@ -4098,7 +4098,7 @@ function animateShape(carries: { from: number; to: number; rot: number }[]) {
   stepShapeAnim();
 }
 
-/** Puts the cubelets of a shape edit where they are now in their move; ends it when it is over. */
+/** Puts the pieces of a shape edit where they are now in their move; ends it when it is over. */
 function stepShapeAnim() {
   if (!shapeAnim) return;
   const t = Math.min(1, (performance.now() - shapeAnim.start) / shapeAnim.ms);
@@ -4111,7 +4111,7 @@ function stepShapeAnim() {
   if (t >= 1) shapeAnim = null;
 }
 
-/** Ends a shape edit's move at once, the cubelets where they end up. */
+/** Ends a shape edit's move at once, the pieces where they end up. */
 function endShapeAnim() {
   if (!shapeAnim) return;
   shapeAnim.start = -Infinity;
@@ -4125,7 +4125,7 @@ function drawEdit() {
   for (const m of edit.painted) m.material = m.userData.ownMaterial;
   edit.painted = [];
   clearGlowPaint();
-  // A cubelet taken away is not drawn, and what it covered is drawn as open.
+  // A piece taken away is not drawn, and what it covered is drawn as open.
   const drawn = edit.shown.clone();
   for (const m of meshes) if (m) m.visible = true;
   for (const t of edit.removed) {
@@ -4148,7 +4148,7 @@ function drawEdit() {
       continue;
     }
     if (want === UNPAINTED) over.push([s, dir, want]);
-    if (CUBELETS[id].stickers[local] === want) continue;
+    if (PIECES[id].stickers[local] === want) continue;
     for (const [mesh, mat] of [[stickerMesh3d[id * 6 + local], look.sticker], [tileMesh[id * 6 + local], look.tile]]) {
       if (!mesh) continue;
       mesh.userData.ownMaterial ??= mesh.material;
@@ -4168,9 +4168,9 @@ function drawEdit() {
 //
 // Next step asks the solver (src/core/solve.ts) for one step from the position shown,
 // puts its turns in the turn list, unplayed, and says what the step is for. Until the
-// step has been played through, the cubelets it applies to keep their colors, the cubelets it
+// step has been played through, the pieces it applies to keep their colors, the pieces it
 // leaves alone are gray, and the ones it may leave anywhere are darker gray; before its
-// first turn, arrows show where the cubelets it moves will go. Each step stays boxed in the
+// first turn, arrows show where the pieces it moves will go. Each step stays boxed in the
 // turn list behind a tag; the tag, or Step start, goes back to where the step begins.
 
 // Stages are named by color, not by place: the puzzle may be held either way up.
@@ -4192,10 +4192,10 @@ interface Guide {
   /** Where in the turn list the step's turns begin, and the position there. */
   start: number;
   from: State;
-  /** Cubelet ids: the ones the step is for, and the ones it may leave anywhere. */
+  /** Piece ids: the ones the step is for, and the ones it may leave anywhere. */
   focus: Set<number>;
   free: Set<number>;
-  /** A path for each cubelet the step moves to another spot. */
+  /** A path for each piece the step moves to another spot. */
   arrows: StickerPath[];
 }
 /** Every step the guide has put in the turn list that is still there, in order; `guide` is the one being shown, if any. */
@@ -4203,7 +4203,7 @@ let trail: Guide[] = [];
 let guide: Guide | null = null;
 let guideLine = "";
 const GUIDE_MODE_KEY = "xcube.guideMode";
-/** The order Next step solves the outer cubelets in, kept on this device. */
+/** The order Next step solves the outer pieces in, kept on this device. */
 let guideMode: Mode = (() => {
   try {
     return localStorage.getItem(GUIDE_MODE_KEY) === "layers" ? "layers" : "kinds";
@@ -4222,7 +4222,7 @@ function setGuideMode(mode: Mode) {
   render();
 }
 const GUIDE_COLOR_KEY = "xcube.guideFullColor";
-/** Full color: a step grays nothing, and every cubelet keeps its edge glow. Kept on this device. */
+/** Full color: a step grays nothing, and every piece keeps its edge glow. Kept on this device. */
 let guideFullColor = (() => {
   try {
     return localStorage.getItem(GUIDE_COLOR_KEY) === "1";
@@ -4385,12 +4385,12 @@ function planningText(g: Guide): string {
 }
 
 /**
- * Which cubelets a step colors and which it grays darker, by what its turns do (as the
+ * Which pieces a step colors and which it grays darker, by what its turns do (as the
  * puzzle is held before it, the regrip undone), so the colors picture what the turns do.
- * Colored: each cubelet the step is for that it moves or turns, with the extension
- * cubelets that move with it as a unit. Darker gray: every other cubelet it moves or
+ * Colored: each piece the step is for that it moves or turns, with the extension
+ * pieces that move with it as a unit. Darker gray: every other piece it moves or
  * turns, left for later steps. Everything it leaves as it was is the lighter gray, even a
- * cubelet the step is for (one not yet where it belongs, left for a later step).
+ * piece the step is for (one not yet where it belongs, left for a later step).
  */
 function stepColors(st: State, step: SolveStep): { focus: Set<number>; free: Set<number> } {
   const after = st.clone();
@@ -4640,7 +4640,7 @@ function drawGuide() {
     guideArrows = null;
   }
   if (within) {
-    for (const c of CUBELETS) {
+    for (const c of PIECES) {
       if (guideFullColor || g!.focus.has(c.id)) continue;
       const level = g!.free.has(c.id) ? 2 : 1;
       c.stickers.forEach((color, d) => {
@@ -4652,7 +4652,7 @@ function drawGuide() {
           mesh.material = mat;
           guideDimmed.push(mesh);
         }
-        // Only the cubelets the step applies to glow.
+        // Only the pieces the step applies to glow.
         for (const gl of glows[c.id] ?? []) if (gl.b === d) gl.paint = noGlow ??= [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ visible: false }));
       });
     }
@@ -4666,14 +4666,14 @@ drawGuide.key = "";
 
 /**
  * The paths of a step, in the 3D view only. Each follows one
- * sticker of a moved cubelet, in that sticker's color: it rises straight out of the
+ * sticker of a moved piece, in that sticker's color: it rises straight out of the
  * sticker, arches over, and comes straight down onto the face the sticker will be on. So a
- * path shows where the cubelet goes and how it is turned when it gets there. Where the
+ * path shows where the piece goes and how it is turned when it gets there. Where the
  * puzzle is in the way, a path (and the copy flying along it) is drawn faintly, so one on
- * the far side can't be taken for one on the near side. A cubelet
+ * the far side can't be taken for one on the near side. A piece
  * that ends solved has a full path and a ring where its sticker lands; one only
- * passing through has a dashed path. In a shape or core step, which solves no cubelet,
- * each cubelet it is for that moves or turns has a full path without a ring; one with
+ * passing through has a dashed path. In a shape or core step, which solves no piece,
+ * each piece it is for that moves or turns has a full path without a ring; one with
  * no sticker (a core double edge) has none.
  */
 /**
@@ -4681,7 +4681,7 @@ drawGuide.key = "";
  * the way the path goes: the sticker the path follows faces out of the sticker's face at
  * the start, away from the puzzle's center along the way, and out of its new face at the
  * end, turning no more than that needs. Whatever spin about that sticker is then left to
- * reach how the cubelet will be turned is spread evenly along the path.
+ * reach how the piece will be turned is spread evenly along the path.
  */
 const RUNNER_STEPS = 48;
 function runnerTurns(curve: any, n0: any, n1: any, from: any, to: any): any[] {
@@ -4724,7 +4724,7 @@ function makeArrows(paths: StickerPath[]) {
   group.userData.drawn = 0; // meshes making up the paths themselves
   group.userData.through = 0; // sampled points of the paths that are inside the puzzle
   group.userData.headGap = 0; // the worst miss between a shaft and its head
-  group.userData.bend = 0; // the sharpest bend of any path: radians over one cubelet's width
+  group.userData.bend = 0; // the sharpest bend of any path: radians over one piece's width
   group.userData.turning = 0; // the most any path turns in all, in radians
   group.userData.out = 0; // the farthest any path goes outside the room the 3D view shows
   // Everything here is drawn twice: plainly where it is in front of the puzzle, and as a
@@ -4749,17 +4749,17 @@ function makeArrows(paths: StickerPath[]) {
   };
   const dir = (d: number) => new THREE.Vector3(...DIRS[d]);
   /**
-   * A small copy of a path's cubelet, with the rest of its unit placed and turned as it is
-   * beside it: made like the puzzle's own cubelets (the same rounded plastic and stickers,
+   * A small copy of a path's piece, with the rest of its unit placed and turned as it is
+   * beside it: made like the puzzle's own pieces (the same rounded plastic and stickers,
    * lit by the same room and key light, casting and taking shadows), at COPY of their size.
    * It is drawn twice, as the paths are: faintly where the puzzle is in the way, then
-   * plainly in front, where its cubelets hide each other as solid ones do.
+   * plainly in front, where its pieces hide each other as solid ones do.
    */
   const COPY = 0.47;
   const unitCopy = (p: StickerPath) => {
     const look = copyLook!;
     const copy = new THREE.Group();
-    copy.userData.cubelet = p.cubelet;
+    copy.userData.piece = p.piece;
     copy.scale.setScalar(COPY);
     const twice = (to: any, geo: any, mat: any, place?: (m: any) => void) => {
       for (const ghost of [true, false]) {
@@ -4773,19 +4773,19 @@ function makeArrows(paths: StickerPath[]) {
         to.add(m);
       }
     };
-    const one = (to: any, cubelet: number) => {
+    const one = (to: any, piece: number) => {
       twice(to, withAoColors(look.body), look.bodyMat);
-      CUBELETS[cubelet].stickers.forEach((color, d) => {
+      PIECES[piece].stickers.forEach((color, d) => {
         if (color) twice(to, withAoColors(look.plane), look.sticker(color), (m) => look.place(m, d));
       });
     };
-    one(copy, p.cubelet);
+    one(copy, p.piece);
     const undo = oriQuaternion(p.fromOri).invert();
     for (const other of p.unit ?? []) {
       const part = new THREE.Group();
       part.position.set(...other.offset).applyQuaternion(undo);
       part.quaternion.copy(undo).multiply(oriQuaternion(other.ori));
-      one(part, other.cubelet);
+      one(part, other.piece);
       copy.add(part);
     }
     group.add(copy);
@@ -4822,9 +4822,9 @@ function makeArrows(paths: StickerPath[]) {
     // The dark casing is left out of the faint drawing: behind the puzzle it would only
     // outline where the path goes in.
     const ink = flat(0x101214, opacity).slice(0, 1), paint = flat(p.color ? STICKER[p.color] : NEUTRAL_PATH, opacity);
-    // A cubelet only passing through gets a dashed path: the shaft in short pieces.
-    const pieces = !p.dashed ? [[0, 1]] : [...Array(9).keys()].map((k) => [k / 9, k / 9 + 0.6 / 9]);
-    const shafts = pieces.map(([t0, t1]) => new THREE.CatmullRomCurve3([...Array(9).keys()].map((k) => shaftCurve.getPoint(t0 + ((t1 - t0) * k) / 8))));
+    // A piece only passing through gets a dashed path: the shaft in short segments.
+    const segments = !p.dashed ? [[0, 1]] : [...Array(9).keys()].map((k) => [k / 9, k / 9 + 0.6 / 9]);
+    const shafts = segments.map(([t0, t1]) => new THREE.CatmullRomCurve3([...Array(9).keys()].map((k) => shaftCurve.getPoint(t0 + ((t1 - t0) * k) / 8))));
     const parts: [any, any, number][] = [
       // A dark casing under the color keeps a white or yellow path readable on any background.
       ...shafts.flatMap((c) => [[new THREE.TubeGeometry(c, p.dashed ? 6 : 32, radius + 0.035, 8), ink, 4], [new THREE.TubeGeometry(c, p.dashed ? 6 : 32, radius, 8), paint, 5]] as [any, any, number][]),
@@ -4851,8 +4851,8 @@ function makeArrows(paths: StickerPath[]) {
       });
       group.userData.drawn++;
     });
-    // A small copy of the cubelet flies along the path, over and over, turning as the
-    // cubelet will turn: it leaves showing its stickers as they are and arrives showing
+    // A small copy of the piece flies along the path, over and over, turning as the
+    // piece will turn: it leaves showing its stickers as they are and arrives showing
     // them as they will be. Each face is drawn only from its front, so the copy looks
     // solid although, like the path, it is drawn over everything.
     if (!reduceMotion && !p.layer) {
@@ -4862,9 +4862,9 @@ function makeArrows(paths: StickerPath[]) {
     }
   }
   /**
-   * A cubelet that stays in its spot and only turns: a hairline stem straight out of it
+   * A piece that stays in its spot and only turns: a hairline stem straight out of it
    * along the axis it turns about, and on the stem's end a white disc square to that axis,
-   * outlined in the paths' dark casing, with the share of a whole turn the cubelet turns
+   * outlined in the paths' dark casing, with the share of a whole turn the piece turns
    * filled in. Its copy (with the rest of its unit) rises along the stem to just past the
    * disc, turns there, and drops back in, easing into and out of each of the three.
    */
@@ -4875,7 +4875,7 @@ function makeArrows(paths: StickerPath[]) {
     const ink = flat(0x101214, 1).slice(0, 1), paint = flat(p.color ? STICKER[p.color] : NEUTRAL_PATH, 1);
     const stem = new THREE.LineCurve3(tip, center);
     const DISC = 0.5, RIM = 0.05;
-    // The filled share starts at the disc's top as the Home view holds the puzzle, and goes the way the cubelet turns.
+    // The filled share starts at the disc's top as the Home view holds the puzzle, and goes the way the piece turns.
     const up = new THREE.Vector3(0, 1, 0).projectOnPlane(axis);
     if (up.lengthSq() < 1e-6) up.set(0, 0, -1).projectOnPlane(axis);
     up.normalize();
@@ -4899,7 +4899,7 @@ function makeArrows(paths: StickerPath[]) {
       [new THREE.CircleGeometry(DISC - 0.02, 48, Math.PI / 2 - (angle > 0 ? 0 : share), share), flat(TWIST_BLUE, 1), 6, onDisc(0.002)],
     ];
     // An arrow just outside the disc's rim, from where the blue share starts to where it
-    // ends, the way the cubelet turns.
+    // ends, the way the piece turns.
     const ARROW = DISC + RIM + 0.11, TIP = 0.26;
     const onRim = (a: number) => new THREE.Vector3(Math.cos(a) * ARROW, Math.sin(a) * ARROW, 0.004).applyQuaternion(face).add(center);
     const reach = share - TIP / ARROW;
@@ -4930,13 +4930,13 @@ function makeArrows(paths: StickerPath[]) {
     const turned = (t: number) => ease((t - OUT - GAP) / (BACK - OUT - 2 * GAP));
     const turns = Array.from({ length: RUNNER_STEPS + 1 }, (_, k) => new THREE.Quaternion().setFromAxisAngle(axis, angle * turned(k / RUNNER_STEPS)).multiply(from));
     const place = (t: number) => home.clone().lerp(above, t < OUT ? ease(t / OUT) : t > BACK ? ease((1 - t) / (1 - BACK)) : 1);
-    const followed = Math.max(0, CUBELETS[p.cubelet].stickers.findIndex((c) => !!c));
+    const followed = Math.max(0, PIECES[p.piece].stickers.findIndex((c) => !!c));
     group.userData.runners.push({ copy, curve: p.curve, followed, turns, place, raw: true, twist: { axis, angle, home } });
   }
   return group;
 }
 
-/** The share of a whole turn a cubelet turns in place, on its disc: the page's highlight blue (--accent). */
+/** The share of a whole turn a piece turns in place, on its disc: the page's highlight blue (--accent). */
 const TWIST_BLUE = 0x1d5fd6;
 
 /** The color of a path that follows no sticker: a core double edge's unit. */
@@ -4956,7 +4956,7 @@ function disposeTree(group: any) {
   for (const x of owned) x.dispose();
 }
 
-/** Glow materials that draw nothing, for cubelets a step doesn't apply to (made on first use, once THREE is loaded). */
+/** Glow materials that draw nothing, for pieces a step doesn't apply to (made on first use, once THREE is loaded). */
 let noGlow: any[] | null = null;
 
 /** The flying copies' loop, in milliseconds. */
@@ -4968,24 +4968,24 @@ interface StickerPath {
   fromDir: number;
   to: number;
   toDir: number;
-  /** The sticker's color, or null for the neutral path of a cubelet with no sticker. */
+  /** The sticker's color, or null for the neutral path of a piece with no sticker. */
   color: Color | null;
   /** Whether this is the arrow of a whole layer's turn, which has no flying copy. */
   layer?: boolean;
-  /** The other cubelets flying with it as one unit: each one's id, how it is turned, and where it is from this one (in slots). */
-  unit?: { cubelet: number; ori: number; offset: Vec3 }[];
+  /** The other pieces flying with it as one unit: each one's id, how it is turned, and where it is from this one (in slots). */
+  unit?: { piece: number; ori: number; offset: Vec3 }[];
   /**
-   * For a cubelet that stays in its spot and only turns: the axis it turns about (out from
+   * For a piece that stays in its spot and only turns: the axis it turns about (out from
    * the puzzle's center through the spot) and how far, in radians (right-handed about the
-   * axis). The curve is then the stem from the cubelet out to the turn's glyph.
+   * axis). The curve is then the stem from the piece out to the turn's glyph.
    */
   twist?: { axis: Vec3; angle: number };
-  /** Whether the cubelet ends solved: in its place, turned as solved (drawn with a ring). */
+  /** Whether the piece ends solved: in its place, turned as solved (drawn with a ring). */
   lands: boolean;
   /** Whether it is only passing through: a cycle moves it, but not to where it ends up solved (drawn dashed). */
   dashed: boolean;
-  /** The cubelet, and how it is turned before and after. */
-  cubelet: number;
+  /** The piece, and how it is turned before and after. */
+  piece: number;
   fromOri: number;
   toOri: number;
   /** The route drawn (see route), how many of its sampled points are inside the puzzle, and how far it leaves the room the 3D view shows. */
@@ -4994,11 +4994,11 @@ interface StickerPath {
   out: number;
   /** How much the route turns in all, in radians. */
   turning: number;
-  /** The most its heading turns over one cubelet's width, in radians. */
+  /** The most its heading turns over one piece's width, in radians. */
   bend: number;
 }
 
-/** A cubelet orientation (an index into ROTATIONS) as a quaternion. */
+/** A piece orientation (an index into ROTATIONS) as a quaternion. */
 function oriQuaternion(ori: number) {
   const m = ROTATIONS[ori];
   return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().set(m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, 0, 0, 0, 1));
@@ -5009,7 +5009,7 @@ function oriQuaternion(ori: number) {
  * nearly straight out of the sticker and arrives nearly straight onto that face. Of a few
  * routes (the short way around the puzzle and, for ends on opposite sides, ways by each of
  * the six directions), each pulled tight around the puzzle, the one costing least is taken:
- * leaving the room the 3D view shows costs sixty for each cubelet out, a stretch inside the
+ * leaving the room the 3D view shows costs sixty for each piece out, a stretch inside the
  * puzzle eight times its length, and each radian of turning 0.6. `hits` counts the sampled
  * points that are inside the puzzle, away from the route's ends; `effort` is the route's
  * place in the list; `length` its length; `turning` how much it turns in all.
@@ -5022,16 +5022,16 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
   // the view is turned (a portrait phone is the tightest); a route that goes farther is cut
   // off at the edge of the view.
   const ROOM = 3.1;
-  // A route may go this much farther where it has to (it costs), to round a cubelet that
+  // A route may go this much farther where it has to (it costs), to round a piece that
   // nearly reaches the edge of the view without a tight bend.
   const SLACK = 0.4;
-  // A route keeps this far from every cubelet, except near its ends, where it need only
-  // be LEAN times as far from them as from the end, as a cubelet beside the end leaves
+  // A route keeps this far from every piece, except near its ends, where it need only
+  // be LEAN times as far from them as from the end, as a piece beside the end leaves
   // room for a route within 45 degrees of straight out.
   const MARGIN = 0.32, LEAN = 0.7, POINTS = 40;
-  // What is in the way: every cubelet and the puzzle's solid center, as boxes. No sticker
+  // What is in the way: every piece and the puzzle's solid center, as boxes. No sticker
   // is ever covered, so the way out of the sticker is clear. The spot the new face looks
-  // into may be filled now by a cubelet the step takes away, so that one doesn't count.
+  // into may be filled now by a piece the step takes away, so that one doesn't count.
   const p1 = SLOT_POS[to];
   const beyond = slotAtXYZ(p1[0] + DIRS[toDir][0], p1[1] + DIRS[toDir][1], p1[2] + DIRS[toDir][2]);
   // Filled lattice spots, as a 5x5x5 grid from -2 to 2 (the center is filled).
@@ -5041,7 +5041,7 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
   /**
    * How far p is from the nearest box (0 inside one), up to FAR; `away` is set to the
    * direction out of it. Only the 27 spots around p are looked at: a box farther than
-   * that is more than a cubelet away, beyond any margin a route keeps.
+   * that is more than a piece away, beyond any margin a route keeps.
    */
   const FAR = 1;
   const away = new THREE.Vector3();
@@ -5064,14 +5064,14 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
     }
     best = Math.sqrt(best);
     if (best > 1e-6) away.divideScalar(best);
-    else away.copy(p).normalize(); // inside a cubelet: out from the puzzle's center
+    else away.copy(p).normalize(); // inside a piece: out from the puzzle's center
     return best;
   };
   // A route starts as an arc well outside the puzzle and is then pulled tight like an
   // elastic band: each point moves toward the middle of its neighbors, and back out of
   // whatever it is pulled into. So it ends as the shortest way of its kind around the
   // puzzle, straight where nothing is near and rounded (by MARGIN) where it bends
-  // around a cubelet.
+  // around a piece.
   const tighten = (pts: any[]) => {
     const mid = new THREE.Vector3();
     for (let pass = 0; pass < 120; pass++)
@@ -5106,10 +5106,10 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
       p.copy(end).addScaledVector(n, Math.max(side, 1e-3) * (COS / Math.sqrt(1 - COS * COS))).add(offset);
     }
   };
-  // A band pulled tight turns sharply where it wraps around a cubelet's edge. So the
+  // A band pulled tight turns sharply where it wraps around a piece's edge. So the
   // tight route is then let spring like a stiff rod: each point moves to lessen the
   // bending around it (much) and the length (a little), still kept clear of the
-  // cubelets. Bends spread over about WIDTH, so the route stands off a corner it rounds.
+  // pieces. Bends spread over about WIDTH, so the route stands off a corner it rounds.
   const WIDTH = 1.6;
   const stiffen = (taut: any[]) => {
     const tight = new THREE.CatmullRomCurve3(taut, false, "centripetal");
@@ -5172,7 +5172,7 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
     let hits = 0, out = 0, turning = 0, bend = 0;
     let before: any = null;
     const whole = curve.getLength();
-    // The sharpest bend: how far the heading turns over one cubelet's width of the route.
+    // The sharpest bend: how far the heading turns over one piece's width of the route.
     for (let k = 0; k + 1 <= 48 * Math.max(0, 1 - 1 / whole); k++) bend = Math.max(bend, curve.getTangentAt(k / 48).angleTo(curve.getTangentAt(Math.min(1, k / 48 + 1 / whole))));
     for (let k = 0; k <= 48; k++) {
       const pt = curve.getPointAt(k / 48);
@@ -5185,8 +5185,8 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
     // Clear of the puzzle matters most (a stretch behind it is drawn faintly, and still
     // seen), then being short, turning little and staying in view: a route can't go far
     // out of view, so a little out is better than a long way around. The turning is what
-    // makes one sticker of a cubelet better to follow than another: one facing the way the
-    // cubelet goes needs no bend to get started.
+    // makes one sticker of a piece better to follow than another: one facing the way the
+    // piece goes needs no bend to get started.
     const length = curve.getLength();
     const cost = Math.max(0, out) * 5 + (hits / 48) * length * 8 + length + turning * 0.6;
     return { curve, hits, effort, length, cost, out: Math.max(0, out), turning, bend };
@@ -5199,18 +5199,18 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
 }
 
 /**
- * The sticker to follow for each cubelet a step moves: the one whose route clears the
+ * The sticker to follow for each piece a step moves: the one whose route clears the
  * puzzle with the shortest path, favoring a little one that starts and ends on the faces
  * the Home view shows (up, front, right).
  */
 /**
- * The slots of the extension cubelets against a core corner, single edge or double edge in
- * slot s (none for any other cubelet): two, one and two. Inner turns carry them rigidly
+ * The slots of the extension pieces against a core corner, single edge or double edge in
+ * slot s (none for any other piece): two, one and two. Inner turns carry them rigidly
  * with it, and a shape or core step has only inner turns, so the guide shows the core
- * cubelet and these as one unit: they keep their colors, and they fly together.
+ * piece and these as one unit: they keep their colors, and they fly together.
  */
 function attached(st: State, s: number): number[] {
-  if (st.occ[s] < 0 || !["coreCorner", "singleEdge", "doubleEdge"].includes(CUBELETS[st.occ[s]].kind)) return [];
+  if (st.occ[s] < 0 || !["coreCorner", "singleEdge", "doubleEdge"].includes(PIECES[st.occ[s]].kind)) return [];
   const p = SLOT_POS[s];
   return DIRS.map((d) => slotAtXYZ(p[0] + d[0], p[1] + d[1], p[2] + d[2])).filter((n) => n >= 0 && st.occ[n] >= 0 && SLOT_POS[n].some((v) => Math.abs(v) === 2));
 }
@@ -5228,7 +5228,7 @@ function layerArrow(st: State, turn: Turn): StickerPath[] {
   if (!side || !filled.length) return [];
   const out = Math.sign(side);
   const [u, v] = [0, 1, 2].filter((k) => k !== def.axis);
-  // The arc is level with the layer's cubelets nearest the middle of the puzzle (an inner
+  // The arc is level with the layer's pieces nearest the middle of the puzzle (an inner
   // turn's layer also holds the extension beyond it) and just outside the farthest of them.
   const level = Math.min(...filled.map((s) => SLOT_POS[s][def.axis] * out)) * out;
   const rim = Math.max(...filled.filter((s) => SLOT_POS[s][def.axis] === level).map((s) => Math.hypot(Math.abs(SLOT_POS[s][u]) + 0.5, Math.abs(SLOT_POS[s][v]) + 0.5)));
@@ -5241,37 +5241,37 @@ function layerArrow(st: State, turn: Turn): StickerPath[] {
   // Show turns the view by the path's ends: here the layer's middle, seen from outside.
   const center = filled.find((s) => SLOT_POS[s][u] === 0 && SLOT_POS[s][v] === 0) ?? filled[0];
   const d = dirIndex(axis.toArray() as Vec3);
-  return [{ from: center, fromDir: d, to: center, toDir: d, color: null, lands: false, dashed: false, layer: true, cubelet: -1, fromOri: 0, toOri: 0, curve, hits: 0, out: 0, turning: 0, bend: 0 }];
+  return [{ from: center, fromDir: d, to: center, toDir: d, color: null, lands: false, dashed: false, layer: true, piece: -1, fromOri: 0, toOri: 0, curve, hits: 0, out: 0, turning: 0, bend: 0 }];
 }
 
 /**
- * The path of a cubelet that stays in slot s and only turns (to orientation `ori`): a stem
+ * The path of a piece that stays in slot s and only turns (to orientation `ori`): a stem
  * from its outermost corner or edge straight out from the puzzle's center, the way it turns
- * about, to where the turn's glyph is drawn. Nothing is ever beyond a core cubelet's
+ * about, to where the turn's glyph is drawn. Nothing is ever beyond a core piece's
  * outermost corner or edge (a spot with two coordinates of +/-2 is not a slot), so the stem
- * is always clear. It follows the cubelet's own sticker, or none (a core double edge).
+ * is always clear. It follows the piece's own sticker, or none (a core double edge).
  */
-function twistPath(st: State, s: number, ori: number, unit: { cubelet: number; ori: number; offset: Vec3 }[], dashed: boolean, lands: boolean): StickerPath {
+function twistPath(st: State, s: number, ori: number, unit: { piece: number; ori: number; offset: Vec3 }[], dashed: boolean, lands: boolean): StickerPath {
   const pos = SLOT_POS[s];
   const axis = new THREE.Vector3(...pos).normalize();
-  // The turn, as the cubelet sees it from outside: about the axis out through it. It never
+  // The turn, as the piece sees it from outside: about the axis out through it. It never
   // moves its spot, so it is about that axis; a half turn is shown counterclockwise.
   const q = oriQuaternion(ori).multiply(oriQuaternion(st.ori[s]).invert());
   let angle = 2 * Math.atan2(new THREE.Vector3(q.x, q.y, q.z).dot(axis), q.w);
   if (angle > Math.PI + 1e-6) angle -= 2 * Math.PI;
   if (angle < -Math.PI + 1e-6) angle += 2 * Math.PI;
-  const c = CUBELETS[st.occ[s]];
+  const c = PIECES[st.occ[s]];
   const d = c.stickers.findIndex((color) => !!color);
   const fromDir = d >= 0 ? ROT_DIR[st.ori[s] * 6 + d] : dirIndex(pos.map((v, k) => (k === pos.findIndex((x) => x !== 0) ? Math.sign(v) : 0)) as unknown as Vec3);
   const toDir = d >= 0 ? ROT_DIR[ori * 6 + d] : fromDir;
   const tip = new THREE.Vector3(...pos.map((v) => v + Math.sign(v) * 0.5));
   const STEM = 0.9;
   const curve = new THREE.LineCurve3(tip, tip.clone().addScaledVector(axis, STEM));
-  return { from: s, fromDir, to: s, toDir, color: d >= 0 ? c.stickers[d] : null, lands, dashed, cubelet: c.id, fromOri: st.ori[s], toOri: ori, unit: unit.length ? unit : undefined, twist: { axis: axis.toArray() as Vec3, angle }, curve, hits: 0, out: Math.max(0, tip.length() + STEM - 3.1), turning: 0, bend: 0 };
+  return { from: s, fromDir, to: s, toDir, color: d >= 0 ? c.stickers[d] : null, lands, dashed, piece: c.id, fromOri: st.ori[s], toOri: ori, unit: unit.length ? unit : undefined, twist: { axis: axis.toArray() as Vec3, angle }, curve, hits: 0, out: Math.max(0, tip.length() + STEM - 3.1), turning: 0, bend: 0 };
 }
 
 function stickerPaths(st: State, step: SolveStep): StickerPath[] {
-  // A parity step turns whole layers: paths for every cubelet in them would only tangle.
+  // A parity step turns whole layers: paths for every piece in them would only tangle.
   // Each turn has one neutral arrow instead, around the face of the layer it turns.
   if (step.stage === "parity") return step.turns.flatMap((turn) => layerArrow(st, turn));
   // Where everything ends, as the puzzle is held before the step: the regrip undone.
@@ -5280,15 +5280,15 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
   applyTurns(after, invertTurns(parseAlg(step.regrip)));
   const shown = [2, 4, 0];
   const out: StickerPath[] = [];
-  // In a cycle step the solver says where each cubelet goes. In a shape or core step it
-  // names the cubelets that are wrong, and where each goes is read from the result.
+  // In a cycle step the solver says where each piece goes. In a shape or core step it
+  // names the pieces that are wrong, and where each goes is read from the result.
   const cycle = !(["shape", "core"].includes(step.stage) || step.stage.startsWith("core"));
   for (const [from, named] of step.moved) {
     const to = cycle ? named : after.occ.indexOf(st.occ[from]);
     if (to === from && after.ori[to] === st.ori[from]) continue;
-    const c = CUBELETS[st.occ[from]];
+    const c = PIECES[st.occ[from]];
     const unit = attached(st, from);
-    const offsets = (around: number, xs: number[]) => xs.map((x) => ({ cubelet: st.occ[x], ori: st.ori[x], offset: [SLOT_POS[x][0] - SLOT_POS[around][0], SLOT_POS[x][1] - SLOT_POS[around][1], SLOT_POS[x][2] - SLOT_POS[around][2]] as Vec3 }));
+    const offsets = (around: number, xs: number[]) => xs.map((x) => ({ piece: st.occ[x], ori: st.ori[x], offset: [SLOT_POS[x][0] - SLOT_POS[around][0], SLOT_POS[x][1] - SLOT_POS[around][1], SLOT_POS[x][2] - SLOT_POS[around][2]] as Vec3 }));
     if (to === from) {
       out.push(twistPath(st, from, after.ori[to], offsets(from, unit), cycle && !step.lands.includes(from), step.lands.includes(from)));
       continue;
@@ -5300,10 +5300,10 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
       const r = route(st, from, fromDir, to, toDir);
       // A route clear of the puzzle first, then the shortest, then one on faces the Home view shows.
       const score = r.cost - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
-      if (score < bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from), dashed: cycle && !step.lands.includes(from), cubelet: c.id, fromOri: st.ori[from], toOri: after.ori[to], unit: unit.length ? offsets(from, unit) : undefined, curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
+      if (score < bestScore) [best, bestScore] = [{ from, fromDir, to, toDir, color, lands: step.lands.includes(from), dashed: cycle && !step.lands.includes(from), piece: c.id, fromOri: st.ori[from], toOri: after.ori[to], unit: unit.length ? offsets(from, unit) : undefined, curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
     });
     // A core double edge has no sticker: its unit's path follows the outward sticker of
-    // one of the extension cubelets against it, in a neutral color.
+    // one of the extension pieces against it, in a neutral color.
     if (c.kind === "doubleEdge") for (const u of unit) {
       const pu = SLOT_POS[u], pf = SLOT_POS[from];
       const fromDir = dirIndex([pu[0] - pf[0], pu[1] - pf[1], pu[2] - pf[2]]);
@@ -5312,7 +5312,7 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
       const r = route(st, u, fromDir, toU, toDir);
       const score = r.cost - (shown.includes(fromDir) ? 0.6 : 0) - (shown.includes(toDir) ? 0.3 : 0);
       const others = offsets(u, [from, ...unit.filter((x) => x !== u)]);
-      if (score < bestScore) [best, bestScore] = [{ from: u, fromDir, to: toU, toDir, color: null, lands: false, dashed: false, cubelet: st.occ[u], fromOri: st.ori[u], toOri: after.ori[toU], unit: others, curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
+      if (score < bestScore) [best, bestScore] = [{ from: u, fromDir, to: toU, toDir, color: null, lands: false, dashed: false, piece: st.occ[u], fromOri: st.ori[u], toOri: after.ori[toU], unit: others, curve: r.curve, hits: r.hits, out: r.out, turning: r.turning, bend: r.bend }, score];
     }
     if (best) out.push(best);
   }
@@ -5321,19 +5321,19 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
 
 // ------------------------------------------------------------------ highlight halo
 
-// Purple around a whole cubelet, outside it, to point out the spot a color-editing problem
+// Purple around a whole piece, outside it, to point out the spot a color-editing problem
 // names.
 // In the 3D view it is an outline (HALO.outline): a band a few pixels wide on screen, just
-// outside the part of the cubelet the view shows, the same width whatever is around it. A
-// mask holds the pixels where a haloed cubelet is the nearest thing drawn, and the band is
-// drawn over the view where the mask is empty but near it. A cubelet hidden behind the
+// outside the part of the piece the view shows, the same width whatever is around it. A
+// mask holds the pixels where a haloed piece is the nearest thing drawn, and the band is
+// drawn over the view where the mask is empty but near it. A piece hidden behind the
 // puzzle has no outline; the arrow points to it instead (placeHaloArrow).
-// In the flat view it is a soft glow (HALO.glow), one for each face the cubelet shows, each
+// In the flat view it is a soft glow (HALO.glow), one for each face the piece shows, each
 // seen only by that face's camera (layer FLAT_HALO_LAYER + direction), so it never marks a
-// face where the cubelet is buried. It is drawn on a box shell around the cubelet: each
-// pixel finds how close its view ray passes to the cubelet's rounded body (the distance
+// face where the piece is buried. It is drawn on a box shell around the piece: each
+// pixel finds how close its view ray passes to the piece's rounded body (the distance
 // along the ray is convex, so a ternary search finds the closest point) and is purple by
-// how near that is. Glows sit in the cubelet's group, so they follow turns, and on their
+// how near that is. Glows sit in the piece's group, so they follow turns, and on their
 // own layers, so the probe's passes don't see them.
 const HALO = { color: 0xa63dff, glow: { reach: 0.5, shape: 1.5 }, outline: { width: 5, soft: 2 } }; // outline in CSS pixels
 const haloMaterials: Record<string, any> = {};
@@ -5345,13 +5345,13 @@ function haloMesh(kind: "glow") {
     uniforms: { color: { value: new THREE.Color(HALO.color) }, size: { value: 0.985 / 2 }, round: { value: BODY_RADIUS }, reach: { value: reach }, shape: { value: shape } },
     transparent: true,
     depthWrite: false,
-    // Against the haloed cubelets only (placeHalos clears the rest first).
+    // Against the haloed pieces only (placeHalos clears the rest first).
     depthTest: true,
     vertexShader: `
       varying vec3 vOrigin;
       varying vec3 vDir;
       void main() {
-        // The view ray in the cubelet's own frame: from the camera (perspective), or
+        // The view ray in the piece's own frame: from the camera (perspective), or
         // straight along the view direction from this point (orthographic).
         mat4 inv = inverse(modelViewMatrix);
         bool ortho = projectionMatrix[3][3] == 1.0;
@@ -5391,7 +5391,7 @@ function haloMesh(kind: "glow") {
         vec3 near = o + d * (0.5 * (a + b));
         float dist = body(near);
         if (dist <= 0.0) discard;
-        // Tested at the depth of the purple itself, beside the cubelet, not at the shell's face.
+        // Tested at the depth of the purple itself, beside the piece, not at the shell's face.
         vec4 clip = projectionMatrix * modelViewMatrix * vec4(near, 1.0);
         gl_FragDepth = 0.5 + 0.5 * clip.z / clip.w;
         float k = 1.0 - clamp(dist / reach, 0.0, 1.0);
@@ -5405,7 +5405,7 @@ function haloMesh(kind: "glow") {
   return m;
 }
 
-/** The drawn cubelets (or blanks) the 3D view outlines now. */
+/** The drawn pieces (or blanks) the 3D view outlines now. */
 function outlined(): any[] {
   if (!edit?.highlight) return [];
   return haloSlots().map((s) => drawnAt(edit!.shown, s)).filter((o) => o);
@@ -5413,9 +5413,9 @@ function outlined(): any[] {
 
 const outlineMask = { black: null as any, white: null as any };
 /**
- * Draws into `target` the mask of the haloed cubelets as `cam` sees them: white where one
+ * Draws into `target` the mask of the haloed pieces as `cam` sees them: white where one
  * is the nearest thing drawn, black or clear elsewhere. The puzzle (and any blanks) goes
- * into the depth first, then the haloed cubelets where they are frontmost.
+ * into the depth first, then the haloed pieces where they are frontmost.
  */
 function drawOutlineMask(target: any, cam: any, roots: any[]) {
   outlineMask.black ??= new THREE.MeshBasicMaterial({ color: 0x000000 });
@@ -5503,7 +5503,7 @@ function outlinePass() {
 function drawOutline(cam: any, target: any, w: number, h: number, scale: number) {
   const drawn = outlined();
   if (!drawn.length) return;
-  // A sticker drawn over a cubelet (a color it doesn't have, or a dashed outline for none)
+  // A sticker drawn over a piece (a color it doesn't have, or a dashed outline for none)
   // is part of it: else the mask has a hole there, and the band rings the sticker too.
   const lit = new Set(haloSlots());
   const roots = [...drawn, ...overlays.filter((g) => g.parent && lit.has(g.userData.slot))];
@@ -5526,9 +5526,9 @@ function drawOutline(cam: any, target: any, w: number, h: number, scale: number)
 }
 
 /**
- * What the 3D view draws in slot s of the shown position: its cubelet, or while editing the
- * blank put in there, or a shape hint's glass box (first: a cubelet taken off is only hidden,
- * so its own cubelet is still in the slot); null if nothing.
+ * What the 3D view draws in slot s of the shown position: its piece, or while editing the
+ * blank put in there, or a shape hint's glass box (first: a piece taken off is only hidden,
+ * so its own piece is still in the slot); null if nothing.
  */
 function drawnAt(st: State, s: number): any {
   const ghost = markedGhost(s);
@@ -5540,7 +5540,7 @@ function drawnAt(st: State, s: number): any {
 /**
  * An empty spot a shape hint says to fill gets the halo on the Shape tool's glass box there,
  * the control a tap fills it with; with another tool picked, the hint draws that one box
- * itself (`hintGhosts`). So the halo marks where the cubelet should go (3D, as a halo always
+ * itself (`hintGhosts`). So the halo marks where the piece should go (3D, as a halo always
  * is; a ring marks a sticker). The arrow, Show and the view's checks treat the box as what
  * is in that spot.
  */
@@ -5553,7 +5553,7 @@ function markedGhost(s: number): any {
 }
 const hintGhostAt = (s: number) => !!markedGhost(s);
 
-/** Whether the 3D view shows any face of the cubelet in slot s now: one turned at all toward the viewer, its middle unblocked. */
+/** Whether the 3D view shows any face of the piece in slot s now: one turned at all toward the viewer, its middle unblocked. */
 function slotSeen(st: State, s: number): boolean {
   // Turned well toward the viewer, not just glimpsed at the edge.
   for (let d = 0; d < 6; d++) if (faceView(st, s, d, 0.4) > 0) return true;
@@ -5561,9 +5561,9 @@ function slotSeen(st: State, s: number): boolean {
 }
 
 /**
- * The cubelets the halo marks for the problem shown: the ones it names, except that one
- * enclosed on every side (a core edge with extension cubelets on both sides, which nothing
- * shows) is marked by the extension cubelets that enclose it, which can be seen.
+ * The pieces the halo marks for the problem shown: the ones it names, except that one
+ * enclosed on every side (a core edge with extension pieces on both sides, which nothing
+ * shows) is marked by the extension pieces that enclose it, which can be seen.
  */
 function haloSlots(): number[] {
   if (!edit?.highlight) return [];
@@ -5578,7 +5578,7 @@ function haloSlots(): number[] {
   return [...out];
 }
 
-/** The haloed slots whose cubelets the 3D view doesn't show now (they are behind the puzzle as it is turned). */
+/** The haloed slots whose pieces the 3D view doesn't show now (they are behind the puzzle as it is turned). */
 let hiddenKey = "", hiddenVal: number[] = [];
 function hiddenHalos(): number[] {
   if (!edit?.highlight) return [];
@@ -5592,19 +5592,19 @@ function hiddenHalos(): number[] {
   }
   return hiddenVal;
 }
-/** Goes up whenever the haloed cubelets may have changed (placeHalos), so hiddenHalos looks again. */
+/** Goes up whenever the haloed pieces may have changed (placeHalos), so hiddenHalos looks again. */
 let haloStamp = 0;
 
 /**
- * The arrow to haloed cubelets the 3D view doesn't show well: a lit purple tube in the
+ * The arrow to haloed pieces the 3D view doesn't show well: a lit purple tube in the
  * scene, as one would draw on a whiteboard to say "look here". It starts thin on the side
  * of the puzzle facing the viewer, off to one side, runs around the puzzle just inside the
- * edge of the view, then turns in and ends in a head pointing straight at those cubelets.
+ * edge of the view, then turns in and ends in a head pointing straight at those pieces.
  * It thickens toward the head and lighter chevrons run along it toward the head, so which
  * way to follow it is plain even when its head is behind the puzzle (where it is drawn
  * faintly). It casts a shadow, which shows how far it is from the puzzle. It is rebuilt as
  * the view turns, so it always starts on the near side; it fades out once every haloed
- * cubelet is turned well toward the viewer, and back in when one isn't. A tap on it turns
+ * piece is turned well toward the viewer, and back in when one isn't. A tap on it turns
  * the view to them.
  */
 const HALO_ARROW = { radius: 3.65, tube: 0.085, tubeStart: 0.03, head: 0.55, headWidth: 0.26, gap: 0.62, fadeMs: 300, chevrons: 5, chevronMs: 1600 };
@@ -5623,7 +5623,7 @@ function placeHaloArrow() {
     return;
   }
   const eye = pivot.worldToLocal(camera.position.clone()).normalize();
-  // One cubelet at a time, the one nearest to coming into view: an arrow aimed between
+  // One piece at a time, the one nearest to coming into view: an arrow aimed between
   // several points at none of them. Once it is in view, the arrow goes on to the next.
   const nearest = [...hidden].sort((a, b) => new THREE.Vector3(...SLOT_POS[b]).normalize().dot(eye) - new THREE.Vector3(...SLOT_POS[a]).normalize().dot(eye))[0];
   const aim: number[] = nearest !== undefined ? [nearest] : (haloArrow?.userData.slots ?? []);
@@ -5652,13 +5652,13 @@ function placeHaloArrow() {
   haloArrow.userData.screen = haloArrow.userData.pts.filter((_: any, i: number) => i % 3 === 0).map((p: any) => toScreen(el, p));
 }
 
-/** Builds the arrow from the side facing the viewer (eye, a unit vector in the puzzle's frame) to the cubelets in slots. */
+/** Builds the arrow from the side facing the viewer (eye, a unit vector in the puzzle's frame) to the pieces in slots. */
 function buildHaloArrow(eye: any, slots: number[]) {
   if (haloArrow) {
     pivot.remove(haloArrow);
     disposeTree(haloArrow);
   }
-  // Where the head points: at the middle of the cubelets, coming straight in from outside.
+  // Where the head points: at the middle of the pieces, coming straight in from outside.
   const center = new THREE.Vector3();
   for (const t of slots) center.add(new THREE.Vector3(...SLOT_POS[t]));
   center.multiplyScalar(1 / slots.length);
@@ -5679,7 +5679,7 @@ function buildHaloArrow(eye: any, slots: number[]) {
     const th = th0 + (total - th0) * t, ps = ps0 * (1 - t) * (1 - t);
     return eye.clone().multiplyScalar(Math.cos(th)).add(u.clone().multiplyScalar(Math.cos(ps) * Math.sin(th))).add(w.clone().multiplyScalar(Math.sin(ps) * Math.sin(th))).multiplyScalar(R);
   };
-  // Around, then in toward the cubelets: the last stretch drops from the sphere to the head's base.
+  // Around, then in toward the pieces: the last stretch drops from the sphere to the head's base.
   const lead = Array.from({ length: 24 }, (_, i) => around(i / 26));
   const above = out.clone().multiplyScalar(R);
   const turnIn = above.clone().lerp(base, 0.55);
@@ -5761,8 +5761,8 @@ function hitsHaloArrow(el: HTMLElement, clientX: number, clientY: number): boole
 
 /**
  * The arrow's tap: the view Show turns to, so the two agree. Where that view still leaves a
- * haloed cubelet out of sight (a halo spread around the puzzle), the arrow would stay and a
- * second tap do nothing new, so then it turns to the cubelets it can't show now instead.
+ * haloed piece out of sight (a halo spread around the puzzle), the arrow would stay and a
+ * second tap do nothing new, so then it turns to the pieces it can't show now instead.
  */
 function showHiddenHalos() {
   if (!edit) return;
@@ -5784,7 +5784,7 @@ function showHiddenHalos() {
 }
 
 /**
- * Puts the halo's Hide pill beside the haloed cubelets: just past them on the side away
+ * Puts the halo's Hide pill beside the haloed pieces: just past them on the side away
  * from the middle of the puzzle as drawn (above, if they are at the middle), inside the view.
  */
 function placeHidePill() {
@@ -5795,7 +5795,7 @@ function placeHidePill() {
   const pts = haloSlots().map((t) => at(new THREE.Vector3(...SLOT_POS[t])));
   const mid = [0, 1].map((k) => pts.reduce((a, q) => a + q[k], 0) / pts.length);
   const center = at(new THREE.Vector3());
-  // How big a cubelet is on screen, from a step across the view at the puzzle's center.
+  // How big a piece is on screen, from a step across the view at the puzzle's center.
   const across = new THREE.Vector3(1, 0, 0).applyQuaternion(pivot.quaternion.clone().invert());
   const unit = Math.hypot(at(across)[0] - center[0], at(across)[1] - center[1]);
   let dx = mid[0] - center[0], dy = mid[1] - center[1];
@@ -5803,8 +5803,8 @@ function placeHidePill() {
   if (len < unit * 0.4) (dx = 0), (dy = -1);
   else (dx /= len), (dy /= len);
   const hw = pill.offsetWidth / 2, hh = pill.offsetHeight / 2;
-  // Clear of the whole puzzle as drawn, out past its edge on the haloed cubelets' side: the
-  // halo and the arrow mark the cubelets, so the pill needn't sit beside them.
+  // Clear of the whole puzzle as drawn, out past its edge on the haloed pieces' side: the
+  // halo and the arrow mark the pieces, so the pill needn't sit beside them.
   const drawn: [number, number][] = [];
   for (let s = 0; s < NUM_SLOTS; s++) if (draftFilled(edit, s)) drawn.push(at(new THREE.Vector3(...SLOT_POS[s])));
   const edge = (cx: number, cy: number) => Math.max(...drawn.map(([px, py]) => (px - center[0]) * cx + (py - center[1]) * cy)) + unit * 0.75;
@@ -5822,10 +5822,10 @@ function placeHidePill() {
   pill.style.top = `${y}px`;
 }
 
-// In the flat view, halos hide each other but nothing else does: a haloed cubelet hides
+// In the flat view, halos hide each other but nothing else does: a haloed piece hides
 // the halos behind it, so its stickers aren't buried under the glow of every haloed
-// cubelet behind it. Drawn after everything else: one mesh clears the depth buffer
-// (haloClearer), each haloed cubelet's body is drawn into it alone, with no color
+// piece behind it. Drawn after everything else: one mesh clears the depth buffer
+// (haloClearer), each haloed piece's body is drawn into it alone, with no color
 // (haloBodies), then the halos test against it.
 const haloBodies: any[] = [];
 let haloClearer: any = null;
@@ -5834,17 +5834,17 @@ const HALO_VIEWS = [0, 1, 2, 3, 4, 5].map((d) => FLAT_HALO_LAYER + d);
 /**
  * What a hint circles: a ring in the halo's purple with a dark casing, as Lost? marks the
  * sticker it asks about, drawn over everything so neighbors don't cut it.
- * - A sticker (one its colors can't tell from another of the same color on its cubelet):
+ * - A sticker (one its colors can't tell from another of the same color on its piece):
  *   the ring lies on it. In the 3D view it shows only while the sticker faces the viewer, so
  *   it never shows through the puzzle; the flat view has its own copy on the sticker's face.
- * - A whole cubelet (face -1; one the halo can't tell from others it marks): in the 3D view
- *   the ring stands at the cubelet's middle, turned to the viewer every frame, as big as the
- *   largest circle around the cubelet's middle inside its outline on screen (the convex hull
- *   of its eight corners as drawn); it shows while some face of the cubelet is seen. The flat
- *   view rings each of the cubelet's faces it shows.
+ * - A whole piece (face -1; one the halo can't tell from others it marks): in the 3D view
+ *   the ring stands at the piece's middle, turned to the viewer every frame, as big as the
+ *   largest circle around the piece's middle inside its outline on screen (the convex hull
+ *   of its eight corners as drawn); it shows while some face of the piece is seen. The flat
+ *   view rings each of the piece's faces it shows.
  */
 const markRings: { view: any; flats: any[] }[] = [];
-/** The ring's size: its outer edge (radius plus tube) is the inscribed sphere of a cubelet. */
+/** The ring's size: its outer edge (radius plus tube) is the inscribed sphere of a piece. */
 const MARK_RADIUS = 0.42, MARK_TUBE = 0.075;
 function markRing() {
   const group = new THREE.Group();
@@ -5856,7 +5856,7 @@ function markRing() {
   return group;
 }
 /**
- * The radius, in world units at the cubelet's middle, of the largest circle around its
+ * The radius, in world units at the piece's middle, of the largest circle around its
  * middle that fits inside its outline as the 3D view draws it: its eight corners projected,
  * their convex hull, and the nearest of the hull's sides to the projected middle.
  */
@@ -5892,7 +5892,7 @@ function insetRadius(slot: number): number {
   return Number.isFinite(r) ? r * perPx : MARK_RADIUS + MARK_TUBE;
 }
 
-/** Shows each 3D-view ring only while what it marks faces the viewer, a cubelet's turned to the viewer and sized. */
+/** Shows each 3D-view ring only while what it marks faces the viewer, a piece's turned to the viewer and sized. */
 function showMarks() {
   if (!edit) return;
   edit.marks.forEach((m, i) => {
@@ -5910,7 +5910,7 @@ function showMarks() {
 }
 
 
-/** Puts halos on the cubelet in each highlighted slot of the shown state, and removes the rest. */
+/** Puts halos on the piece in each highlighted slot of the shown state, and removes the rest. */
 function placeHalos() {
   for (const h of [...halos, ...haloBodies, ...hintGhosts, ...markRings.flatMap((r) => [r.view, ...r.flats])]) h.parent?.remove(h);
   haloClearer?.parent?.remove(haloClearer);
@@ -5925,7 +5925,7 @@ function placeHalos() {
   });
   edit.marks.forEach((m, i) => {
     const r = (markRings[i] ??= { view: markRing(), flats: [] });
-    // A sticker's face, or each face a whole cubelet shows.
+    // A sticker's face, or each face a whole piece shows.
     const faces = m.face >= 0 ? [m.face] : [0, 1, 2, 3, 4, 5].filter((d) => bareFace(edit!.shown, m.slot, d));
     while (r.flats.length < faces.length) r.flats.push(markRing());
     const place = (g: any, layer: number, face: number) => {
@@ -5963,7 +5963,7 @@ function placeHalos() {
     on.add(h);
   };
   for (const s of marked) {
-    // A cubelet put in is drawn as a blank until the shape is one the puzzle can have.
+    // A piece put in is drawn as a blank until the shape is one the puzzle can have.
     const on = drawnAt(edit.shown, s);
     if (!on) continue;
     if (b === haloBodies.length) {
@@ -5988,7 +5988,7 @@ function bareFace(st: State, s: number, d: number): boolean {
 
 function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   const drawn = drawnAt(st, s);
-  // While editing, the shape being edited decides what is there: a cubelet taken off is
+  // While editing, the shape being edited decides what is there: a piece taken off is
   // not, and one put in is (as a blank).
   // A glass box stands for what is in its own spot; it doesn't cover the face behind it.
   const there = (t: number) => (edit ? draftFilled(edit, t) || (t === s && hintGhostAt(t)) : st.occ[t] >= 0);
@@ -5996,7 +5996,7 @@ function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   if (!drawn || !there(s) || n === -2 || (n >= 0 && there(n))) return -1;
   pivot.updateMatrixWorld(true);
   const p = SLOT_POS[s], v = DIRS[d];
-  // A glass box is smaller than a cubelet: look at its own face.
+  // A glass box is smaller than a piece: look at its own face.
   const out = drawn.geometry?.parameters?.width === GHOST_SIZE ? GHOST_SIZE / 2 - 0.02 : 0.45;
   const target = pivot.localToWorld(new THREE.Vector3(p[0] + v[0] * out, p[1] + v[1] * out, p[2] + v[2] * out));
   const cos = new THREE.Vector3(...v).applyQuaternion(pivot.quaternion).dot(camera.position.clone().sub(target).normalize());
@@ -6004,7 +6004,7 @@ function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   const ray = new THREE.Raycaster(camera.position, target.clone().sub(camera.position).normalize());
   ray.layers.set(0);
   ray.layers.enable(HALO_LAYER); // where a shape hint's glass box is
-  // The first cubelet the ray meets that is drawn: one taken off in the editor is hidden, not gone.
+  // The first piece the ray meets that is drawn: one taken off in the editor is hidden, not gone.
   for (const h of ray.intersectObjects(pivot.children, true)) {
     let o = h.object;
     while (o.parent && o.parent !== pivot) o = o.parent;
@@ -6031,7 +6031,7 @@ function lookFrom(v: any): any {
 }
 
 /**
- * Turns the 3D view to show the highlighted cubelets' stickers best (for a shape problem,
+ * Turns the 3D view to show the highlighted pieces' stickers best (for a shape problem,
  * all their faces): the most of them unblocked, then each as squarely as possible. Tries the preset views and looking from
  * between the stickers' directions. Only on the owner's tap: a halo appearing never moves the view.
  */
@@ -6047,11 +6047,11 @@ function highlightView(): any {
   const st = edit.shown;
   const faces: [number, number][] = [];
   const slots = haloSlots();
-  // A shape problem is about how a core cubelet and the extensions or spots on it fit
+  // A shape problem is about how a core piece and the extensions or spots on it fit
   // together, so every face of them counts: seeing the most of them takes a view from an
-  // angle, not one straight at the core cubelet's own sticker.
+  // angle, not one straight at the core piece's own sticker.
   const shape = edit.removed.size > 0 || edit.added.size > 0;
-  // A problem about one core cubelet: a view of it at the angle that suits it.
+  // A problem about one core piece: a view of it at the angle that suits it.
   const cores = edit.highlight.filter((s) => SLOT_POS[s].every((c) => Math.abs(c) <= 1) && SLOT_POS[s].filter((c) => c !== 0).length >= 2);
   if (shape && cores.length === 1) return lookFrom(coreView(st, cores[0], slots));
   // The stickers the hint circles are the ones it is about.
@@ -6061,16 +6061,16 @@ function highlightView(): any {
   return faces.length ? bestView(st, faces, shape) : null;
 }
 
-/** Half the width of a cubelet, as a box for `haloShare`. */
-const CUBELET_HALF = 0.49;
+/** Half the width of a piece, as a box for `haloShare`. */
+const PIECE_HALF = 0.49;
 
 /**
- * The share of the haloed cubelets and spots the view from direction v shows: of points
+ * The share of the haloed pieces and spots the view from direction v shows: of points
  * spread over each (its corners and face middles, drawn in a little), those where the first
  * thing a ray from the camera meets is one of them. Everything is taken as a box: each
- * filled spot a cubelet's width, each glass box its own size. A glass box in front counts
+ * filled spot a piece's width, each glass box its own size. A glass box in front counts
  * as covering, though it is see-through: other boxes in the way are what make a view hard
- * to read. Boxes, not the drawn cubelets (about 62,000 triangles), keep Show quick: a
+ * to read. Boxes, not the drawn pieces (about 62,000 triangles), keep Show quick: a
  * corner's 25 views took most of a second with the drawn ones, and froze the page.
  */
 function haloShare(st: State, slots: number[], v: any): number {
@@ -6082,7 +6082,7 @@ function haloShare(st: State, slots: number[], v: any): number {
   for (const s of slots) {
     const h = half.get(s);
     if (h === undefined) continue;
-    const r = h * 2 * 0.42 * (h === CUBELET_HALF ? 0.9 / 0.98 : 1);
+    const r = h * 2 * 0.42 * (h === PIECE_HALF ? 0.9 / 0.98 : 1);
     for (const o of [...[-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => [x, y, z]))), ...DIRS]) {
       n++;
       const first = firstBox(eye, [SLOT_POS[s][0] + o[0] * r, SLOT_POS[s][1] + o[1] * r, SLOT_POS[s][2] + o[2] * r], boxes);
@@ -6103,12 +6103,12 @@ function eyeFrom(v: any): number[] {
   return [local.x, local.y, local.z];
 }
 
-/** What the puzzle is as drawn, as boxes: each filled spot a cubelet's width, each glass box its own size. */
+/** What the puzzle is as drawn, as boxes: each filled spot a piece's width, each glass box its own size. */
 function sceneBoxes(st: State): { slot: number; half: number }[] {
   const ghostAt = new Set([...ghosts, ...hintGhosts].filter((g) => g.parent).map((g) => g.userData.slot as number));
   const boxes: { slot: number; half: number }[] = [];
   for (let t = 0; t < NUM_SLOTS; t++) {
-    if (edit ? draftFilled(edit, t) : st.occ[t] >= 0) boxes.push({ slot: t, half: CUBELET_HALF });
+    if (edit ? draftFilled(edit, t) : st.occ[t] >= 0) boxes.push({ slot: t, half: PIECE_HALF });
     else if (ghostAt.has(t)) boxes.push({ slot: t, half: GHOST_SIZE / 2 });
   }
   return boxes;
@@ -6156,9 +6156,9 @@ function boxFaceView(st: State, eye: number[], boxes: { slot: number; half: numb
 const EDGE_TILT = 20;
 
 /**
- * The direction Show looks at a core cubelet from, for a problem about it alone. A view
+ * The direction Show looks at a core piece from, for a problem about it alone. A view
  * straight at an edge shows the spots on it edge-on, and a tilt along it shows how they sit
- * on it, but too far and other cubelets and glass boxes crowd in; a play-tester liked a slight
+ * on it, but too far and other pieces and glass boxes crowd in; a play-tester liked a slight
  * angle best. So of the views `coreViews` gives, the one aiming for `EDGE_TILT` (none for a
  * corner, whose own view shows its three sides) that shows the most of the halo, each degree
  * away from the aim costing 1% of it; then from above, then nearest the view now.
@@ -6175,7 +6175,7 @@ function coreView(st: State, core: number, slots: number[]): any {
 }
 
 /**
- * Views of a core cubelet for Show: from its own direction (straight at an edge, the corner
+ * Views of a core piece for Show: from its own direction (straight at an edge, the corner
  * view for a corner), and tilted from it by up to 40 degrees: along an edge's length, or
  * toward and away from each of a corner's sides.
  */
@@ -6205,15 +6205,15 @@ function showFaces(st: State, faces: [number, number][], sides = false) {
 }
 /**
  * The view that shows the given faces best (see showFaces). With `sides`, first the one
- * showing faces on the most sides of the puzzle, so the cubelets show in depth (a view
+ * showing faces on the most sides of the puzzle, so the pieces show in depth (a view
  * straight at a core edge shows the spots on it edge-on); then, of views alike, the one
  * nearest the view now.
  */
 function bestView(st: State, faces: [number, number][], sides = false): any {
   if (!faces.length) return pivot.quaternion.clone();
   const now = new THREE.Vector3(0, 0, 1).applyQuaternion(pivot.quaternion.clone().invert());
-  // Faces are weighed on boxes (boxFaceView): rays against the drawn cubelets, about 62,000
-  // triangles, took over a second for a halo on many cubelets.
+  // Faces are weighed on boxes (boxFaceView): rays against the drawn pieces, about 62,000
+  // triangles, took over a second for a halo on many pieces.
   const boxes = sceneBoxes(st), half = new Map(boxes.map((b) => [b.slot, b.half]));
   const score = () => {
     const eye = eyeFrom(pivot.quaternion);
@@ -6265,8 +6265,8 @@ function updateHighlight() {
   const { i, slots } = shownProblem();
   const problem = edit.fit.level !== "reachable" ? edit.fit.problems[i] : undefined;
   edit.selected = problem ? problemKey(problem) : "";
-  if (edit.hidden !== slots.join()) edit.hidden = null; // Hide lasts until other cubelets are named
-  // No halo while the Shape tool is in hand: it would cover the cubelets and spots to tap.
+  if (edit.hidden !== slots.join()) edit.hidden = null; // Hide lasts until other pieces are named
+  // No halo while the Shape tool is in hand: it would cover the pieces and spots to tap.
   edit.highlight = slots.length && edit.hidden === null ? [...slots] : null;
   edit.marks = edit.highlight ? (problem?.marks ?? []) : [];
 }
@@ -6292,7 +6292,7 @@ function renderEdit() {
   const { i } = shownProblem();
   $("edit-hint").textContent =
     edit.paint === "shape"
-      ? "Tap an extension cubelet to remove it, or a gray box to add one. Drag to tumble the view."
+      ? "Tap an extension piece to remove it, or a gray box to add one. Drag to tumble the view."
       : "Pick a color, then tap stickers to color them; tap one again to clear it. Drag to tumble the view.";
   if (level === "reachable") {
     st.className = "edit-status good";
@@ -6361,15 +6361,15 @@ function endEdit(apply: boolean) {
 // ------------------------------------------------------------------ probe for browser tests
 
 // window.xcubeProbe answers "what is drawn where" for scripts/browser-tests.mjs. Apart
-// from the fault methods (which the tests use to check that a misdrawn cubelet is caught),
+// from the fault methods (which the tests use to check that a misdrawn piece is caught),
 // it only reads: it draws into its own offscreen buffer, so the visible views don't change.
 // - model(slot, face): the color the puzzle model says is there.
 // - sticker(slot, face): where the center of the sticker in that slot, facing that way,
 //   appears on screen (client coordinates), to aim gestures at.
 // - at3d(x, y), scan3d() and flatFace(face): what is drawn there. One offscreen pass draws
-//   each sticker in a color that encodes its cubelet and face (an ID buffer); the slot
-//   and direction it is drawn at come from that cubelet's mesh transform (not from the
-//   model), along with the cubelet the model has in that slot; a second pass draws each sticker in the plain
+//   each sticker in a color that encodes its piece and face (an ID buffer); the slot
+//   and direction it is drawn at come from that piece's mesh transform (not from the
+//   model), along with the piece the model has in that slot; a second pass draws each sticker in the plain
 //   color of the material it is drawn with (no lighting, shading, shadows, glow or
 //   gloss), which gives the color.
 // Answers are meaningful only while nothing is moving (idle()).
@@ -6438,7 +6438,7 @@ function outlineImages(w: number, h: number): [Uint8Array, Uint8Array] {
   return [plain, ringed];
 }
 
-type ProbeHit = { slot: string; face: string; color: string; cubelet: number; modelCubelet: number } | { plastic: true; slot: string; cubelet: number } | null;
+type ProbeHit = { slot: string; face: string; color: string; piece: number; modelPiece: number } | { plastic: true; slot: string; piece: number } | null;
 
 
 /** What the two passes show at pixel (px, py) from the top left. */
@@ -6446,14 +6446,14 @@ function probeDecode(ids: Uint8Array, colors: Uint8Array, w: number, h: number, 
   const i = ((h - 1 - Math.floor(py)) * w + Math.floor(px)) * 4;
   if (ids[i + 3] === 0) return null; // background
   const code = ids[i] + ids[i + 1] * 256;
-  // The editor's own meshes (a blank cubelet, a sticker drawn over the puzzle) belong to no cubelet.
-  if (code === 0) return { plastic: true, slot: "editor", cubelet: -1 };
-  const cubelet = Math.floor((code - 1) / 7), d = (code - 1) % 7;
+  // The editor's own meshes (a blank piece, a sticker drawn over the puzzle) belong to no piece.
+  if (code === 0) return { plastic: true, slot: "editor", piece: -1 };
+  const piece = Math.floor((code - 1) / 7), d = (code - 1) % 7;
   // Where it was drawn: from the mesh's own transform in the puzzle frame, not from the
-  // model, so a cubelet drawn in the wrong place or turned the wrong way shows up.
-  const g = meshes[cubelet];
+  // model, so a piece drawn in the wrong place or turned the wrong way shows up.
+  const g = meshes[piece];
   const slot = slotAtXYZ(Math.round(g.position.x), Math.round(g.position.y), Math.round(g.position.z));
-  if (d === 6) return { plastic: true, slot: slot < 0 ? "?" : slotName(slot), cubelet };
+  if (d === 6) return { plastic: true, slot: slot < 0 ? "?" : slotName(slot), piece };
   const n = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(g.quaternion);
   const dir = dirIndex([Math.round(n.x), Math.round(n.y), Math.round(n.z)]);
   const face = dir < 0 ? "?" : COMPASS_FACES[dir];
@@ -6464,7 +6464,7 @@ function probeDecode(ids: Uint8Array, colors: Uint8Array, w: number, h: number, 
     if (dist < best) [best, color] = [dist, name];
   }
   if (best > 12) color = "?";
-  return { slot: slot < 0 ? "?" : slotName(slot), face, color, cubelet, modelCubelet: slot < 0 ? -1 : app.current.occ[slot] };
+  return { slot: slot < 0 ? "?" : slotName(slot), face, color, piece, modelPiece: slot < 0 ? -1 : app.current.occ[slot] };
 }
 
 /** Both passes of the 3D view, with a lookup by client coordinates. */
@@ -6486,14 +6486,14 @@ function installProbe() {
     /** The debug info Copy debug info copies, and putting it back (for reproducing what a person saw). */
     debugInfo: () => debugInfo(),
     restoreDebug: (json: string) => restoreDebug(json),
-    /** For each view Show weighs for a core cubelet (slot name): its direction, tilt and the share of the halo it shows. */
+    /** For each view Show weighs for a core piece (slot name): its direction, tilt and the share of the halo it shows. */
     coreViewShares: (name: string) => coreViews(slotByName(name)).map(({ v, tilt }) => ({ v: v.toArray().map((x: number) => +x.toFixed(2)), tilt, share: +haloShare(edit!.shown, haloSlots(), v).toFixed(2) })),
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),
     /** The turns of the last shuffle (the page doesn't show them). */
     shuffleTurns: () => shuffleAlg,
-    /** The step guide: its step, the slots (now) of the cubelets it applies to, how many stickers are drawn gray at each level, and the arrows showing. */
-    /** Triangles in a cubelet's plastic. */
+    /** The step guide: its step, the slots (now) of the pieces it applies to, how many stickers are drawn gray at each level, and the arrows showing. */
+    /** Triangles in a piece's plastic. */
     bodyTriangles: () => copyLook!.body.index.count / 3,
     /** Frames drawn so far: the 3D view's and the flat view's. */
     drawCount: () => ({ ...drawCount }),
@@ -6501,7 +6501,7 @@ function installProbe() {
     geometries: () => renderer.info.memory.geometries,
     guide: () => {
       if (!guide) return null;
-      const grays = [1, 2].map((level) => guideDimmed.filter((m) => stickerMesh3d.includes(m) && CUBELETS.some((c) => c.stickers.some((col) => col && grayMaterial!(col, level as 1 | 2).sticker === m.material))).length);
+      const grays = [1, 2].map((level) => guideDimmed.filter((m) => stickerMesh3d.includes(m) && PIECES.some((c) => c.stickers.some((col) => col && grayMaterial!(col, level as 1 | 2).sticker === m.material))).length);
       return {
         stage: guide.step.stage,
         alg: guide.step.alg,
@@ -6515,12 +6515,12 @@ function installProbe() {
         arrows: guideArrows?.visible ? guideArrows.userData.count : 0,
         /** Each path: the sticker it follows, from where and facing which way, to where and facing which way. */
         paths: guide.arrows.map((p) => `${p.color} ${slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " lands" : ""}${p.dashed ? " dashed" : ""}${p.twist ? " twist" : ""}`),
-        /** How many cubelets fly together on each path (a core cubelet with the extension cubelets against it is three, two or three). */
+        /** How many pieces fly together on each path (a core piece with the extension pieces against it is three, two or three). */
         units: guide.arrows.filter((p) => !p.layer).map((p) => 1 + (p.unit?.length ?? 0)),
         /**
-         * Each cubelet that turns in place: its slot, how far the disc says it turns (degrees,
-         * right-handed about the axis out through it), how far its flying cubelet has turned
-         * halfway through its flight, and how far out along the axis the flying cubelet is
+         * Each piece that turns in place: its slot, how far the disc says it turns (degrees,
+         * right-handed about the axis out through it), how far its flying piece has turned
+         * halfway through its flight, and how far out along the axis the flying piece is
          * at 25 even times of its flight.
          */
         twists: guideArrows?.visible
@@ -6528,14 +6528,14 @@ function installProbe() {
               const q = r.turns[RUNNER_STEPS / 2].clone().multiply(r.turns[0].clone().invert());
               const half = 2 * Math.atan2(new THREE.Vector3(q.x, q.y, q.z).dot(r.twist.axis), q.w);
               return {
-                slot: slotName(app.current.occ.indexOf(r.copy.userData.cubelet)),
+                slot: slotName(app.current.occ.indexOf(r.copy.userData.piece)),
                 angle: Math.round((r.twist.angle * 180) / Math.PI),
                 half: Math.round((half * 180) / Math.PI),
                 lift: Array.from({ length: 25 }, (_, k) => Math.round(r.place(k / 24).sub(r.twist.home).dot(r.twist.axis) * 1000) / 1000),
               };
             })
           : [],
-        /** Whether every flying cubelet is made of the puzzle's own lit materials, and casts and takes shadows where it is drawn plainly. */
+        /** Whether every flying piece is made of the puzzle's own lit materials, and casts and takes shadows where it is drawn plainly. */
         flyersLit: guideArrows?.visible
           ? guideArrows.userData.runners.every((r: any) => {
               const meshes: any[] = [];
@@ -6546,17 +6546,17 @@ function installProbe() {
         mode: guideMode,
         fullColor: guideFullColor,
         runners: guideArrows?.visible ? guideArrows.userData.runners.length : 0,
-        /** Glow bands of the cubelets the step doesn't apply to that are drawn, and that are not; and of those it does apply to that are drawn. */
-        otherGlow: CUBELETS.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 0 : 1), 0),
-        otherNoGlow: CUBELETS.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 1 : 0), 0),
+        /** Glow bands of the pieces the step doesn't apply to that are drawn, and that are not; and of those it does apply to that are drawn. */
+        otherGlow: PIECES.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 0 : 1), 0),
+        otherNoGlow: PIECES.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 1 : 0), 0),
         focusGlow: [...guide.focus].flatMap((id) => glows[id] ?? []).reduce((n, gl) => n + (gl.paint ? 0 : 1), 0),
-        /** How many meshes the paths are drawn with (a shaft, a start and a head, each cased; and a ring for a cubelet reaching home). */
+        /** How many meshes the paths are drawn with (a shaft, a start and a head, each cased; and a ring for a piece reaching home). */
         pathMeshes: guideArrows?.visible ? guideArrows.userData.drawn : 0,
         /** The worst miss between a path's shaft and its head: how far off the head's axis the shaft ends, inside the head's base (1 if outside it). */
         headGap: guideArrows?.visible ? guideArrows.userData.headGap : -1,
         /** How many sampled points of the paths, away from their ends, are inside the puzzle. */
         pathsThrough: guideArrows?.visible ? guideArrows.userData.through : -1,
-        /** How far, in cubelets, the farthest path goes outside the room the 3D view shows. */
+        /** How far, in pieces, the farthest path goes outside the room the 3D view shows. */
         pathsOut: guideArrows?.visible ? guideArrows.userData.out : -1,
         pathsTurning: guideArrows?.visible ? guideArrows.userData.turning : -1,
         pathsBend: guideArrows?.visible ? guideArrows.userData.bend : -1,
@@ -6566,9 +6566,9 @@ function installProbe() {
       };
     },
     view: () => pivot.quaternion.toArray(),
-    // Deliberate faults, for testing the tests: draw two cubelets in each other's places,
-    // or turn one cubelet's mesh a quarter turn about a face's axis. resync() redraws
-    // every cubelet where the model puts it.
+    // Deliberate faults, for testing the tests: draw two pieces in each other's places,
+    // or turn one piece's mesh a quarter turn about a face's axis. resync() redraws
+    // every piece where the model puts it.
     faultSwap(a: string, b: string) {
       const ga = meshes[app.current.occ[slotByName(a)]], gb = meshes[app.current.occ[slotByName(b)]];
       const [pa, qa] = [ga.position.clone(), ga.quaternion.clone()];
@@ -6592,12 +6592,12 @@ function installProbe() {
     // summed opacity, in whole pixels). "3d": how many pixels of the puzzle as drawn the
     // rims change, so a rim hidden behind the puzzle counts nothing.
     highlighted: () => (edit?.highlight ?? []).map(slotName),
-    /** The cubelets the halo marks: those named, or for one nothing shows, those around it. */
+    /** The pieces the halo marks: those named, or for one nothing shows, those around it. */
     haloed: () => haloSlots().map(slotName).sort(),
     /**
      * The pixels of the 3D view the halo's outline changes ("changed"), how many of them
      * it turns the halo's own purple ("purple"), and how many are on each sticker
-     * ("slot/face") of each cubelet the halo doesn't mark.
+     * ("slot/face") of each piece the halo doesn't mark.
      */
     outlineOver: () => {
       const w = 192, h = 192;
@@ -6616,13 +6616,13 @@ function installProbe() {
           if (Math.abs(ringed[i] - pr) + Math.abs(ringed[i + 1] - pg) + Math.abs(ringed[i + 2] - pb) < 90) purple++;
           const hit = probeDecode(ids, colors, w, h, x, y);
           if (hit && !("plastic" in hit) && !marked.has(hit.slot)) over[`${hit.slot}/${hit.face}`] = (over[`${hit.slot}/${hit.face}`] ?? 0) + 1;
-          if (hit && marked.has(hit.slot)) inside++; // the band over a haloed cubelet itself
+          if (hit && marked.has(hit.slot)) inside++; // the band over a haloed piece itself
         }
       return { changed, purple, over, inside };
     },
     /** The stickers the shown problem's hint circles, and how many pixels of the 3D view their rings cover. */
     marks: () => {
-      const list = (edit?.marks ?? []).map((m) => ({ slot: slotName(m.slot), face: m.face < 0 ? "cubelet" : COMPASS_FACES[m.face] }));
+      const list = (edit?.marks ?? []).map((m) => ({ slot: slotName(m.slot), face: m.face < 0 ? "piece" : COMPASS_FACES[m.face] }));
       const plain = probeImage(camera, 0, 192, 192, "drawn"), framed = probeImage(camera, 0, 192, 192, "drawn", HALO_LAYER);
       let px = 0;
       for (let i = 0; i < plain.length; i += 4) if (Math.abs(plain[i] - framed[i]) + Math.abs(plain[i + 1] - framed[i + 1]) + Math.abs(plain[i + 2] - framed[i + 2]) > 24) px++;
@@ -6632,10 +6632,10 @@ function installProbe() {
     hintBoxes: () => hintGhosts.filter((g) => g.parent).length,
     /** The Shape tool's glass boxes now: each one's spot (slot name) and whether it is drawn fainter. */
     ghostBoxes: () => ghosts.filter((g) => g.parent).map((g) => ({ slot: slotName(g.userData.slot), dim: g.material === ghostDimMaterial })),
-    /** The slots whose drawn cubelet (or blank) the 3D view outlines now. */
+    /** The slots whose drawn piece (or blank) the 3D view outlines now. */
     outlined: () => (edit?.highlight ? haloSlots().filter((s) => drawnAt(edit!.shown, s)).map(slotName).sort() : []),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),
-    // `hiding` false draws them as if no haloed cubelet hid the halos behind it, to compare.
+    // `hiding` false draws them as if no haloed piece hid the halos behind it, to compare.
     haloPixels: (view: string, hiding = true) => {
       const nc = netCams.find((c) => c.face === view);
       if (!nc) {
@@ -6667,7 +6667,7 @@ function installProbe() {
     painted: (slot: string, face: string) => edit?.colors[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)] ?? null,
     /**
      * While editing: the shape as tapped so far (spots emptied and filled that no real
-     * cubelets account for yet, and the empty spots marked for the Shape tool), how many
+     * pieces account for yet, and the empty spots marked for the Shape tool), how many
      * stickers show as not painted yet and how many dashed outlines are drawn, and where
      * the halo's Hide pill is (client coordinates; null while hidden).
      */
@@ -6694,7 +6694,7 @@ function installProbe() {
       return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
     },
     /**
-     * The edge glow of the cubelet in slot alone, as drawn by the 3D view (view "3d") or
+     * The edge glow of the piece in slot alone, as drawn by the 3D view (view "3d") or
      * a face's flat-view camera (view "U", "F", ...): its opacity (0-1) at the point
      * offset from the slot's center by each [face, distance], in the puzzle's frame.
      */
@@ -6735,7 +6735,7 @@ function installProbe() {
     shadeRestError,
     glowRestError,
     /**
-     * Whether the glow band lying in the plane of one face of the cubelet in slot, showing
+     * Whether the glow band lying in the plane of one face of the piece in slot, showing
      * the sticker of another, is drawn now (also part-way through a turn), and whether its
      * ends are open; faces as they are in the position shown at rest.
      */
@@ -6790,7 +6790,7 @@ function installProbe() {
       if (id < 0 || dir < 0) return null;
       const o = drawn.ori[s];
       const d = [0, 1, 2, 3, 4, 5].find((k) => ROT_DIR[o * 6 + k] === dir)!;
-      if (!CUBELETS[id].stickers[d]) return null;
+      if (!PIECES[id].stickers[d]) return null;
       const p = meshes[id].localToWorld(new THREE.Vector3(DIRS[d][0] * 0.4945, DIRS[d][1] * 0.4945, DIRS[d][2] * 0.4945)).project(camera);
       const r = canvas().getBoundingClientRect();
       return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };
@@ -6809,8 +6809,8 @@ function installProbe() {
     },
     /**
      * Stickers the model says face the 3D view's camera that are not drawn: at the center
-     * of each, the drawing shows that slot's cubelet without that sticker, or nothing.
-     * (Where another cubelet is drawn in front, the sticker is hidden, not missing.)
+     * of each, the drawing shows that slot's piece without that sticker, or nothing.
+     * (Where another piece is drawn in front, the sticker is hidden, not missing.)
      */
     missing3d() {
       const { r, at } = probe3d();
@@ -6829,9 +6829,9 @@ function installProbe() {
           const h = at(r.left + ((p.x + 1) / 2) * r.width, r.top + ((1 - p.y) / 2) * r.height);
           const name = `${slotName(s)}/${COMPASS_FACES[dir]}`;
           if (!h) out.push(`${name}: nothing drawn`);
-          else if (h.slot !== slotName(s)) continue; // hidden behind another cubelet
-          else if ("plastic" in h) out.push(`${name}: cubelet ${h.cubelet} drawn without it`);
-          else if (h.face !== COMPASS_FACES[dir] || h.cubelet !== id) out.push(`${name}: ${h.slot}/${h.face} of cubelet ${h.cubelet} drawn there`);
+          else if (h.slot !== slotName(s)) continue; // hidden behind another piece
+          else if ("plastic" in h) out.push(`${name}: piece ${h.piece} drawn without it`);
+          else if (h.face !== COMPASS_FACES[dir] || h.piece !== id) out.push(`${name}: ${h.slot}/${h.face} of piece ${h.piece} drawn there`);
         }
       }
       return out;

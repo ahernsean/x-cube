@@ -14,17 +14,17 @@
 // range, so their codes share no letters by pattern.
 //
 // X1 (read always; written only for positions turns can't reach): "X1:" followed by 80
-// pairs of characters, one pair per slot in slot order. First char: cubelet id (alphabet
+// pairs of characters, one pair per slot in slot order. First char: piece id (alphabet
 // below) or "." for empty. Second char: orientation a..x.
 //
-// Index. Every move turns a cubelet's position and its orientation by the same rotation,
-// so ROTATIONS[ori] maps a cubelet's home position to its slot. A reachable position is
+// Index. Every move turns a piece's position and its orientation by the same rotation,
+// so ROTATIONS[ori] maps a piece's home position to its slot. A reachable position is
 // then given by, in this order of mixed-radix digits:
 //   - the whole-puzzle rotation that carries the six core centers home (24);
 //   - with that rotation undone, the core as a supercube: corner permutation (8!),
 //     corner twists (3^7), core edge permutation of the same parity as the corners
 //     (12!/2), edge flips (2^11), center spins (4^5 * 2);
-//   - the outer cubelets by "site": the core cubelet and its face that each one rests
+//   - the outer pieces by "site": the core piece and its face that each one rests
 //     against. Inner turns never change sites; outer turns permute them. Outer corner
 //     sites (16!), outer edge sites with the parity of the corners' (16!/2), extension
 //     center spins relative to the fused core center (4^3 * 2).
@@ -34,7 +34,7 @@
 //   permutations of equal parity; extension center spin sum = outer corner parity (mod 2).
 
 import { axisRotation, matVec, NUM_ROT, ROT_DIR, ROT_INV, ROT_MUL, ROTATIONS, type Vec3 } from "./geometry.ts";
-import { CUBELETS, NUM_SLOTS, SLOT_NEIGHBOR, SLOT_POS, State, slotAt, type Kind } from "./puzzle.ts";
+import { PIECES, NUM_SLOTS, SLOT_NEIGHBOR, SLOT_POS, State, slotAt, type Kind } from "./puzzle.ts";
 
 // ---------------------------------------------------------------- X1
 
@@ -62,13 +62,13 @@ function decodeX1(c: string): State {
     if (a === ".") continue;
     const id = ID_ALPHABET.indexOf(a);
     const o = ORI_ALPHABET.indexOf(b);
-    if (id < 0 || id >= CUBELETS.length || o < 0 || o >= NUM_ROT) throw new Error(`bad entry at slot ${s}`);
-    if (seen.has(id)) throw new Error(`cubelet ${id} appears twice`);
+    if (id < 0 || id >= PIECES.length || o < 0 || o >= NUM_ROT) throw new Error(`bad entry at slot ${s}`);
+    if (seen.has(id)) throw new Error(`piece ${id} appears twice`);
     seen.add(id);
     st.occ[s] = id;
     st.ori[s] = o;
   }
-  if (seen.size !== CUBELETS.length) throw new Error(`state has ${seen.size} cubelets, expected ${CUBELETS.length}`);
+  if (seen.size !== PIECES.length) throw new Error(`state has ${seen.size} pieces, expected ${PIECES.length}`);
   return st;
 }
 
@@ -84,7 +84,7 @@ const outwardDir = (p: Vec3) => {
   const a = p.findIndex((c) => Math.abs(c) === (p.some((c) => Math.abs(c) === 2) ? 2 : 1));
   return a * 2 + (p[a] > 0 ? 0 : 1);
 };
-const ids = (...kinds: Kind[]) => CUBELETS.filter((c) => kinds.includes(c.kind)).map((c) => c.id);
+const ids = (...kinds: Kind[]) => PIECES.filter((c) => kinds.includes(c.kind)).map((c) => c.id);
 
 const CORE_SLOTS = [...Array(NUM_SLOTS).keys()].filter((s) => !isOuterSlot(s));
 const CORNER_SLOTS = CORE_SLOTS.filter((s) => nonzero(s) === 3);
@@ -95,29 +95,29 @@ const CENTERS = ids("center");
 const OUTER_CORNERS = ids("outerCorner");
 const OUTER_EDGES = ids("outerEdge");
 const EXT_CENTERS = ids("extCenter");
-const U_CENTER = CENTERS.find((id) => SLOT_POS[CUBELETS[id].home][1] === 1)!;
-const F_CENTER = CENTERS.find((id) => SLOT_POS[CUBELETS[id].home][2] === 1)!;
+const U_CENTER = CENTERS.find((id) => SLOT_POS[PIECES[id].home][1] === 1)!;
+const F_CENTER = CENTERS.find((id) => SLOT_POS[PIECES[id].home][2] === 1)!;
 
-/** Rotations that carry cubelet id's home position to slot s. */
-const ROTS_TO: number[][][] = CUBELETS.map((c) =>
+/** Rotations that carry piece id's home position to slot s. */
+const ROTS_TO: number[][][] = PIECES.map((c) =>
   SLOT_POS.map((p) => [...Array(NUM_ROT).keys()].filter((r) => same(rotate(r, SLOT_POS[c.home]), p))),
 );
 export const rotsTo = (id: number, s: number): readonly number[] => ROTS_TO[id][s];
 
 /**
- * Corner twist 0..2: where the cubelet's home up/down face points, counted around the
+ * Corner twist 0..2: where the piece's home up/down face points, counted around the
  * corner in one fixed turning sense (y axis first).
  */
 function twistOf(id: number, s: number, ori: number): number {
   const p = SLOT_POS[s];
   const cyc = p[0] * p[1] * p[2] > 0 ? [1, 0, 2] : [1, 2, 0];
-  const homeY = SLOT_POS[CUBELETS[id].home][1] > 0 ? 2 : 3;
+  const homeY = SLOT_POS[PIECES[id].home][1] > 0 ? 2 : 3;
   return cyc.indexOf(axisOf(ROT_DIR[ori * 6 + homeY]));
 }
 
-/** Edge flip 0..1: whether the cubelet's main face misses the slot's main axis (y in the up and down layers, z in the middle). */
+/** Edge flip 0..1: whether the piece's main face misses the slot's main axis (y in the up and down layers, z in the middle). */
 function flipOf(id: number, s: number, ori: number): number {
-  const h = SLOT_POS[CUBELETS[id].home];
+  const h = SLOT_POS[PIECES[id].home];
   const main = h[1] ? (h[1] > 0 ? 2 : 3) : h[2] > 0 ? 4 : 5;
   const slotAxis = SLOT_POS[s][1] ? 1 : 2;
   return axisOf(ROT_DIR[ori * 6 + main]) === slotAxis ? 0 : 1;
@@ -129,18 +129,18 @@ function spinOf(r: number, d: number): number {
   return -1;
 }
 
-/** Outer sites: [core cubelet, its own face direction], ordered by the home slot of the outer cubelet on it. */
+/** Outer sites: [core piece, its own face direction], ordered by the home slot of the outer piece on it. */
 interface Site {
   core: number;
   face: number;
 }
-const SITE_OF_HOME = new Map<number, Site>(); // outer cubelet id -> its home site
-for (const c of CUBELETS) {
+const SITE_OF_HOME = new Map<number, Site>(); // outer piece id -> its home site
+for (const c of PIECES) {
   if (c.outward === null) continue;
   const inward = SLOT_NEIGHBOR[c.home * 6 + (c.outward ^ 1)];
   SITE_OF_HOME.set(c.id, { core: State.solved().occ[inward], face: c.outward });
 }
-const sitesOf = (cubelets: number[]) => cubelets.map((id) => SITE_OF_HOME.get(id)!);
+const sitesOf = (pieces: number[]) => pieces.map((id) => SITE_OF_HOME.get(id)!);
 const CORNER_SITES = sitesOf(OUTER_CORNERS);
 const EDGE_SITES = sitesOf(OUTER_EDGES);
 const EXT_SITES = sitesOf(EXT_CENTERS);
@@ -215,14 +215,14 @@ export function unreachableReason(st: State): string | null {
 
 /** The X2 index of a state; throws with the reason if turns can't reach it. */
 export function positionIndex(st: State): bigint {
-  const slotOf = new Int16Array(CUBELETS.length).fill(-1);
+  const slotOf = new Int16Array(PIECES.length).fill(-1);
   for (let s = 0; s < NUM_SLOTS; s++) {
     const id = st.occ[s];
     if (id < 0) continue;
-    if (!rotsTo(id, s).includes(st.ori[s])) throw new Error(`cubelet in ${s} is turned in a way no move turns it`);
+    if (!rotsTo(id, s).includes(st.ori[s])) throw new Error(`piece in ${s} is turned in a way no move turns it`);
     slotOf[id] = s;
   }
-  if (slotOf.some((s) => s < 0)) throw new Error("a cubelet is missing");
+  if (slotOf.some((s) => s < 0)) throw new Error("a piece is missing");
 
   // Whole-puzzle rotation, from the up and front centers.
   const o = [...Array(NUM_ROT).keys()].find(
@@ -249,11 +249,11 @@ export function positionIndex(st: State): bigint {
     edge[i] = EDGES.indexOf(id);
     flips[i] = flipOf(id, s, normOri(id));
   }
-  const spins = CENTERS.map((id) => spinOf(normOri(id), outwardDir(SLOT_POS[CUBELETS[id].home])));
+  const spins = CENTERS.map((id) => spinOf(normOri(id), outwardDir(SLOT_POS[PIECES[id].home])));
   const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
   if (sum(twists) % 3) throw new Error("the core corners are twisted");
   if (sum(flips) % 2) throw new Error("a core edge is flipped");
-  if (parity(corner) !== parity(edge)) throw new Error("two core cubelets are swapped");
+  if (parity(corner) !== parity(edge)) throw new Error("two core pieces are swapped");
   if (spins.includes(-1) || (sum(spins) & 1) !== parity(corner)) throw new Error("a core center is turned");
 
   const siteIndex = new Map<number, number>();
@@ -265,11 +265,11 @@ export function positionIndex(st: State): bigint {
   };
   CORNER_SITES.forEach((x, i) => siteIndex.set(siteKey(x.core, x.face), i));
   EDGE_SITES.forEach((x, i) => siteIndex.set(siteKey(x.core, x.face), 100 + i));
-  const sitePerm = (cubelets: number[], base: number) => {
+  const sitePerm = (pieces: number[], base: number) => {
     const p = new Array(16);
-    cubelets.forEach((id, j) => {
+    pieces.forEach((id, j) => {
       const i = (siteIndex.get(where(id)) ?? -1) - base;
-      if (i < 0 || i >= 16 || p[i] !== undefined) throw new Error("an outer cubelet is not against a matching core cubelet");
+      if (i < 0 || i >= 16 || p[i] !== undefined) throw new Error("an outer piece is not against a matching core piece");
       p[i] = j;
     });
     return p;
@@ -282,7 +282,7 @@ export function positionIndex(st: State): bigint {
     return spinOf(ROT_MUL[ROT_INV[st.ori[slotOf[site.core]]] * NUM_ROT + st.ori[slotOf[id]]], site.face);
   });
 
-  if (parity(oc) !== parity(oe)) throw new Error("two outer cubelets are swapped");
+  if (parity(oc) !== parity(oe)) throw new Error("two outer pieces are swapped");
   if (extSpins.includes(-1) || (sum(extSpins) & 1) !== parity(oc)) throw new Error("an extension center is turned");
 
   const out = new Digits();
@@ -340,7 +340,7 @@ export function positionAt(i: bigint): State {
     const id = EDGES[edge[i]];
     put(id, s, rotsTo(id, s).find((q) => flipOf(id, s, q) === flips[i])!);
   });
-  CENTERS.forEach((id, i) => put(id, CUBELETS[id].home, axisRotation(axisOf(outwardDir(SLOT_POS[CUBELETS[id].home])), spins[i])));
+  CENTERS.forEach((id, i) => put(id, PIECES[id].home, axisRotation(axisOf(outwardDir(SLOT_POS[PIECES[id].home])), spins[i])));
 
   const coreSlot = new Map<number, number>();
   for (let s = 0; s < NUM_SLOTS; s++) if (st.occ[s] >= 0) coreSlot.set(st.occ[s], s);

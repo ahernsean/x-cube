@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { KNOWN_ALGORITHMS } from "../src/core/algorithms.ts";
 import { effect, faceView, isHomeX } from "../src/core/analyze.ts";
 import { parseAlg } from "../src/core/notation.ts";
-import { CUBELETS, applyTurns } from "../src/core/puzzle.ts";
+import { PIECES, applyTurns } from "../src/core/puzzle.ts";
 
 const WHITE_TOP = [".WWW.", "WWWWW", "WWWWW", "WWWWW", ".WWW."];
 
@@ -34,7 +34,7 @@ test("algorithms: the corner 3-cycle moves X-face corners, the edge 3-cycle oute
     const a = KNOWN_ALGORITHMS.find((k) => k.id === id)!;
     const st = a.start().clone();
     applyTurns(st, parseAlg(a.alg));
-    return [...new Set(effect(a.start(), st).moved.map((m) => CUBELETS[m.id].kind))];
+    return [...new Set(effect(a.start(), st).moved.map((m) => PIECES[m.id].kind))];
   };
   assert.deepEqual(kinds("baum-corner"), ["outerCorner"]);
   assert.deepEqual(kinds("baum-edge"), ["outerEdge"]);

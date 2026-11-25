@@ -47,7 +47,7 @@ function main(argv: string[]) {
       if (cmd === "show") console.log("\n" + netView(st) + "\n");
       const e = effect(start, st);
       console.log(`shape unchanged: ${e.shapeSame}; visible face changes: ${e.visibleChanges}`);
-      console.log(`cubelets moved: ${e.moved.length}`);
+      console.log(`pieces moved: ${e.moved.length}`);
       for (const c of e.cycles) console.log("  cycle: " + c);
       for (const t of e.twisted) console.log("  twisted in place: " + t);
       break;

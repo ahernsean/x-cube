@@ -1,19 +1,19 @@
 // Fast goal tests for search.
 //
-// Each occupied slot gets an "appearance code": which look-alike class of cubelet
+// Each occupied slot gets an "appearance code": which look-alike class of piece
 // is there, and which way its stickers face. Two states look identical exactly
 // when every slot has the same code. Goals compare codes on a chosen set of slots,
 // so "don't care" regions are simply left out of the mask.
 
 import { NUM_ROT, ROT_DIR } from "./geometry.ts";
-import { CUBELETS, NUM_SLOTS, State } from "./puzzle.ts";
+import { PIECES, NUM_SLOTS, State } from "./puzzle.ts";
 
-/** Look-alike class per cubelet: cubelets with identical stickers on identical faces share a class. */
+/** Look-alike class per piece: pieces with identical stickers on identical faces share a class. */
 export const APPEARANCE_CLASS: Int16Array = (() => {
-  const keyOf = (id: number) => CUBELETS[id].stickers.map((c) => c ?? "-").join("");
+  const keyOf = (id: number) => PIECES[id].stickers.map((c) => c ?? "-").join("");
   const classes = new Map<string, number>();
-  const out = new Int16Array(CUBELETS.length);
-  for (const c of CUBELETS) {
+  const out = new Int16Array(PIECES.length);
+  for (const c of PIECES) {
     const k = keyOf(c.id);
     if (!classes.has(k)) classes.set(k, classes.size);
     out[c.id] = classes.get(k)!;
@@ -22,12 +22,12 @@ export const APPEARANCE_CLASS: Int16Array = (() => {
 })();
 
 /**
- * CANON_ORI[id * 24 + r] = smallest rotation index that makes cubelet `id` show its
+ * CANON_ORI[id * 24 + r] = smallest rotation index that makes piece `id` show its
  * stickers in the same directions as rotation r does.
  */
 export const CANON_ORI: Uint8Array = (() => {
-  const t = new Uint8Array(CUBELETS.length * NUM_ROT);
-  for (const c of CUBELETS) {
+  const t = new Uint8Array(PIECES.length * NUM_ROT);
+  for (const c of PIECES) {
     const sig = (r: number) => {
       let k = "";
       for (let d = 0; d < 6; d++) if (c.stickers[d]) k += `${c.stickers[d]}${ROT_DIR[r * 6 + d]}`;

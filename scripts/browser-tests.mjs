@@ -231,16 +231,16 @@ function helpers(page) {
 
   // Every sticker visible in the 3D view is drawn where the model puts it, in its color:
   // sample a grid of points; for each one that lands on a sticker, the ID pass names its
-  // cubelet, whose mesh gives the slot and facing it is drawn at. The model must have
-  // that cubelet in that slot, and the flat-color pass must match the model's color. And
+  // piece, whose mesh gives the slot and facing it is drawn at. The model must have
+  // that piece in that slot, and the flat-color pass must match the model's color. And
   // the other way round: every sticker the model turns toward the camera must be drawn.
   const sweep3d = () =>
     page.evaluate(() => {
       const P = window.xcubeProbe;
       const hits = P.scan3d(6);
       const wrong = hits
-        .filter((h) => h.slot === "?" || h.cubelet !== h.modelCubelet || h.color !== P.model(h.slot, h.face))
-        .map((h) => `${h.slot}/${h.face}: drawn cubelet ${h.cubelet} in ${h.color}, model has cubelet ${h.modelCubelet} in ${h.slot === "?" ? "?" : P.model(h.slot, h.face)}`);
+        .filter((h) => h.slot === "?" || h.piece !== h.modelPiece || h.color !== P.model(h.slot, h.face))
+        .map((h) => `${h.slot}/${h.face}: drawn piece ${h.piece} in ${h.color}, model has piece ${h.modelPiece} in ${h.slot === "?" ? "?" : P.model(h.slot, h.face)}`);
       return { stickers: new Set(hits.map((h) => h.slot + "/" + h.face)).size, wrong: [...wrong, ...P.missing3d().map((m) => "missing " + m)] };
     });
   // The flat view: each face shows exactly the cells of that face, each in the model's color.
@@ -256,7 +256,7 @@ function helpers(page) {
             if (!h || h.plastic) return;
             counts[face]++;
             const want = h.slot === "?" ? "?" : P.model(h.slot, h.face) ?? "unstickered";
-            if (h.face !== face || h.cubelet !== h.modelCubelet || h.color !== want) wrong.push(`${face}[${row},${col}] = cubelet ${h.cubelet} at ${h.slot}/${h.face} in ${h.color}; model has cubelet ${h.modelCubelet} in ${want}`);
+            if (h.face !== face || h.piece !== h.modelPiece || h.color !== want) wrong.push(`${face}[${row},${col}] = piece ${h.piece} at ${h.slot}/${h.face} in ${h.color}; model has piece ${h.modelPiece} in ${want}`);
           }),
         );
       }
@@ -641,7 +641,7 @@ labTest("turns: an algorithm plays and is listed; a blocked outer turn is refuse
   await page.fill("#alg", "R f");
   await page.click("#load");
   const msg = await page.$eval("#message", (m) => m.textContent ?? "");
-  check(/f\)?: extension has 6\/9 cubelets/.test(msg), `outer turn after R is refused (message: "${msg}")`);
+  check(/f\)?: extension has 6\/9 pieces/.test(msg), `outer turn after R is refused (message: "${msg}")`);
 
   // Baum's edge 3-cycle (white-up grip) returns to the X shape.
   await resetToSolved(page);
@@ -772,17 +772,17 @@ labTest("drawing: the flat view is drawn only while it is on screen", async ({ p
   const shown = (await probe("drawCount")).flat - before;
   check(shown > 0, `once the Flat panel shows, it is drawn (${shown} frames)`);
   // Each of the six cameras draws only the squares and glow bands facing it. Drawing all
-  // 372 squares (62 cubelets, six faces each) for each camera took 2,232 calls by itself.
-  // A cubelet's plastic has two segments across each rounded edge: 5 by 5 on each side.
+  // 372 squares (62 pieces, six faces each) for each camera took 2,232 calls by itself.
+  // A piece's plastic has two segments across each rounded edge: 5 by 5 on each side.
   const tris = await probe("bodyTriangles");
-  check(tris === 300, `a cubelet's plastic is 300 triangles (${tris})`);
+  check(tris === 300, `a piece's plastic is 300 triangles (${tris})`);
   const { flatCalls } = await probe("drawCount");
   check(flatCalls > 0 && flatCalls < 1200, `each camera draws only what faces it (${flatCalls} draw calls a frame)`);
 });
 
-labTest("drawing: a misdrawn cubelet is caught in both views", async ({ page, check, sweep3d, sweepFlat }) => {
-  // Draw two cubelets in each other's places, and turn another a quarter turn, and both
-  // views must report exactly those cubelets.
+labTest("drawing: a misdrawn piece is caught in both views", async ({ page, check, sweep3d, sweepFlat }) => {
+  // Draw two pieces in each other's places, and turn another a quarter turn, and both
+  // views must report exactly those pieces.
   await page.evaluate(() => {
     window.xcubeProbe.faultSwap("Fx.UR", "Rx.UF");
     window.xcubeProbe.faultTwist("Fx.UL", "F");
@@ -793,7 +793,7 @@ labTest("drawing: a misdrawn cubelet is caught in both views", async ({ page, ch
   const faulted = ["Fx.UR", "Rx.UF", "Fx.UL"];
   const named = (list) => faulted.filter((slot) => list.some((w) => w.includes(slot)));
   const only = (list) => list.every((w) => faulted.some((slot) => w.includes(slot)));
-  check(named(faulty3d.wrong).length === 3 && only(faulty3d.wrong), `a swapped pair and a twisted cubelet are caught in the 3D view, and nothing else (${named(faulty3d.wrong).join(", ") || "none"})`);
+  check(named(faulty3d.wrong).length === 3 && only(faulty3d.wrong), `a swapped pair and a twisted piece are caught in the 3D view, and nothing else (${named(faulty3d.wrong).join(", ") || "none"})`);
   check(named(faultyFlat.wrong).length === 3 && only(faultyFlat.wrong), `...and in the flat view (${named(faultyFlat.wrong).join(", ") || "none"})`);
   const healed = await sweep3d();
   check(healed.wrong.length === 0, "after redrawing from the model, the 3D view is clean again");
@@ -1190,7 +1190,7 @@ labTest("effects: Gloss, Edge glow, Shading and Shadows switch off and on, and t
   check(offOk && on.glow3d && on.glowFlat && on.shadows && on.shading, `Edge glow, Shading and Shadows switch their effects off and on (off: ${JSON.stringify(off)})`);
 });
 
-labTest("edge glow: wraps around a cubelet's corner where two visible faces meet, and fades out elsewhere", async ({ check, probe }) => {
+labTest("edge glow: wraps around a piece's corner where two visible faces meet, and fades out elsewhere", async ({ check, probe }) => {
   // Solved, from the Home view, Rx.UB shows its U and R faces and hides its blue B sticker.
   // Along the rounded corner the glow is about as strong as along either edge (no gap, and
   // no brighter seam where pieces meet), and it does not reach the square corner the two
@@ -1211,14 +1211,14 @@ labTest("edge glow: wraps around a cubelet's corner where two visible faces meet
     const ok = Math.min(...corner) >= 0.6 * Math.min(u, r) && Math.max(...corner) <= 1.25 * Math.max(u, r) && square < 0.35 * Math.min(u, r);
     wrap.push({ out, edges: [u, r], corner, square, ok });
   }
-  check(wrap.every((w) => w.ok), `edge glow wraps around a cubelet's corner, rounded, without a gap or seam (${wrap.map((w) => `${w.out}: edges ${fmt(w.edges)}, around the corner ${fmt(w.corner)}, square corner ${w.square.toFixed(2)}`).join("; ")})`);
+  check(wrap.every((w) => w.ok), `edge glow wraps around a piece's corner, rounded, without a gap or seam (${wrap.map((w) => `${w.out}: edges ${fmt(w.edges)}, around the corner ${fmt(w.corner)}, square corner ${w.square.toFixed(2)}`).join("; ")})`);
   const [closedMid, closedEnd] = await glowAt("Rx.B", "3d", [[["R", 0.47], ["B", 0.55]], [["R", 0.47], ["U", 0.45], ["B", 0.55]]]);
   const [flatMid, flatEnd] = await glowAt("Rx.UB", "U", [[["U", 0.47], ["B", 0.6]], [["U", 0.47], ["R", 0.45], ["B", 0.6]]]);
   check(closedEnd < 0.3 * closedMid && flatEnd < 0.3 * flatMid, `edge glow fades out at a corner with no glow around it (3D ${fmt([closedMid, closedEnd])}), and in the flat view (${fmt([flatMid, flatEnd])})`);
 });
 
-labTest("edge glow: follows the cubelets while a layer turns, from where they are right now", async ({ page, check, probe, swipe, settle }) => {
-  // Solved, the front extension's bottom middle cubelet (Fx.D) has Fx.DR against its right
+labTest("edge glow: follows the pieces while a layer turns, from where they are right now", async ({ page, check, probe, swipe, settle }) => {
+  // Solved, the front extension's bottom middle piece (Fx.D) has Fx.DR against its right
   // face, so no glow lies in that face's plane, and the glow under its front face ends
   // there. Part-way through R that face is exposed: its plane carries the yellow glow, and
   // the front glow's end opens to go around the corner. Turned back, both are as before.
@@ -1298,7 +1298,7 @@ labTest("shading: the flat view's bands come from nearer neighbors, and live sha
 // ---- Color editing.
 
 labTest("color editing: painting stickers, the validity line, Done and Cancel", async ({ page, check, probe, settle, gesture, swipe, sweep3d, flip }) => {
-  // Tap stickers to repaint them; the line says whether the colors are real cubelets that
+  // Tap stickers to repaint them; the line says whether the colors are real pieces that
   // can face those ways, and Done makes the result the start.
   const editLine = () => page.$eval("#edit-status", (e) => e.textContent);
   const doneOff = () => page.$eval("#edit-done", (e) => e.disabled);
@@ -1321,19 +1321,19 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   // of a sticker's color where that face is hidden).
   const paintedGlow = (await probe("glowColors", "Fx.U", "F")).join();
   check(paintedGlow === "R", `the edge glow of a painted sticker takes the paint (${paintedGlow})`);
-  // A problem puts a purple halo on the cubelets it names by itself, in the 3D view and
+  // A problem puts a purple halo on the pieces it names by itself, in the 3D view and
   // on the flat view's faces where they show, without moving the view. In the 3D view it
-  // is an outline around a cubelet that can be seen; one behind the puzzle draws nothing
+  // is an outline around a piece that can be seen; one behind the puzzle draws nothing
   // over what is in front of it, and an arrow points around to it instead, which a tap follows.
   // Show (or tapping the line) tumbles the 3D view to show all their stickers, again
   // after any tumble; Hide removes the halo.
   const front = { px3d: await probe("haloPixels", "3d"), arrow: await probe("haloArrow") };
-  check(front.px3d > 0 && front.arrow.at === null && front.arrow.behind.length === 0, `cubelets that can be seen have an outline and no arrow (${JSON.stringify(front)})`);
+  check(front.px3d > 0 && front.arrow.at === null && front.arrow.behind.length === 0, `pieces that can be seen have an outline and no arrow (${JSON.stringify(front)})`);
   const seenBoth = async () => `${await probe("facesSeen", "Fx.U")},${await probe("facesSeen", "Rx.U")}`;
   await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
   await settle();
   const lit = { slots: (await probe("highlighted")).sort().join(), seen: await seenBoth(), px3d: await probe("haloPixels", "3d"), flatU: await probe("haloPixels", "U"), flatD: await probe("haloPixels", "D"), buttons: await page.$$eval("#edit-status .edit-show", (els) => els.map((e) => e.textContent).join()) };
-  check(lit.slots === "Fx.U,Rx.U" && lit.seen === "0,0" && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `a problem haloes the cubelets it names by itself, without turning the view (${JSON.stringify(lit)})`);
+  check(lit.slots === "Fx.U,Rx.U" && lit.seen === "0,0" && lit.flatU > 0 && lit.flatD === 0 && lit.buttons === "Show,Hide", `a problem haloes the pieces it names by itself, without turning the view (${JSON.stringify(lit)})`);
   const behind = await probe("haloArrow");
   const box = await page.locator("#scene").boundingBox();
   const inView = behind.at && behind.at.x > box.x && behind.at.x < box.x + box.width && behind.at.y > box.y && behind.at.y < box.y + box.height;
@@ -1382,7 +1382,7 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await settle();
   await page.click("#edit-done");
   const appliedGlow = [(await probe("glowColors", "Fx.U", "F")).join(), (await probe("glowColors", "Rx.U", "R")).join()].join(" ");
-  check(appliedGlow === "R G", `after Done, the moved cubelets' glow shows their own colors (${appliedGlow})`);
+  check(appliedGlow === "R G", `after Done, the moved pieces' glow shows their own colors (${appliedGlow})`);
   const applied = { model: [await probe("model", "Fx.U", "F"), await probe("model", "Rx.U", "R")], label: await page.$eval("#base-label", (e) => e.textContent), inert: await page.$eval("#stack-col", (e) => e.inert) };
   let sw = await sweep3d();
   check(applied.model.join() === "R,G" && applied.label === "Edited" && !applied.inert && sw.wrong.length === 0, `Done makes the edited position the start, drawn as the model has it (${applied.model.join(" ")}, "${applied.label}")`);
@@ -1392,7 +1392,7 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   await paint("R", "Fx.U", "U"); // flip the white-red edge now at Fx.U in place
   await paint("W", "Fx.U", "F");
   const flipped = await editLine();
-  check(/^Not valid: This cubelet's white sticker has the wrong color\. Its white and red stickers should probably trade places\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
+  check(/^Not valid: This piece's white sticker has the wrong color\. Its white and red stickers should probably trade places\. Show Hide$/.test(flipped), `an outer edge flipped in place is real, but not possible ("${flipped}")`);
   // With several problems, ‹ and › step through them, and the halo moves with the line
   // without turning the view. Yellow facing away from the core on Rx.U and Fx.UR is wrong
   // too; the line stays on the problem it shows (Rx.U's) when Fx.UR's sorts ahead of it.
@@ -1415,9 +1415,9 @@ labTest("color editing: painting stickers, the validity line, Done and Cancel", 
   check((await probe("state")) === editedState && sw.wrong.length === 0 && cancelGlow === "W R", `Cancel leaves the position, and its drawing and glow, as they were (glow ${cancelGlow})`);
 });
 
-labTest("shape editing: Show and the arrow reach a cubelet bared by taking an extension cubelet off", async ({ page, check, probe, gesture, settle }) => {
+labTest("shape editing: Show and the arrow reach a piece bared by taking an extension piece off", async ({ page, check, probe, gesture, settle }) => {
   // The owner's case: a core edge left with no extensions. The hint halos a glass box in
-  // each spot an extension could go; the cubelet taken off is hidden, not gone, and must not
+  // each spot an extension could go; the piece taken off is hidden, not gone, and must not
   // block the view of the box in its spot.
   const tapAt = async ({ x, y }) => {
     await gesture([["pointerdown", x, y], ["pointerup", x, y]]);
@@ -1429,7 +1429,7 @@ labTest("shape editing: Show and the arrow reach a cubelet bared by taking an ex
   const line = await page.$eval("#edit-status", (e) => e.textContent);
   const haloed = (await probe("haloed")).sort().join();
   check(/This core edge has no extensions, but it has to have one or two\. Add an extension to this edge/.test(line) && haloed === "Fx.U,UF,Ux.F", `taking the edge's only extension off halos the edge and the spots to fill (${line}, ${haloed})`);
-  // From the front, the box where the cubelet taken off was shows: the hidden cubelet
+  // From the front, the box where the piece taken off was shows: the hidden piece
   // doesn't block the view of it.
   await page.evaluate(() => document.querySelector('[data-view="front"]').click());
   await settle();
@@ -1617,7 +1617,7 @@ labTest("info: the help says what taps and drags do in each mode, and Copy debug
   await page.click('[data-paint="shape"]');
   const shape = await help();
   check(
-    /Swipe on the puzzle to turn a layer/.test(plain) && !/During a solve step/.test(plain) && /During a solve step/.test(solve) && /Editing the puzzle\. Tap a sticker to give it the picked color/.test(paint) && !/Swipe on the puzzle/.test(paint) && /Tap a cubelet to remove it, or tap a gray box to add one/.test(shape),
+    /Swipe on the puzzle to turn a layer/.test(plain) && !/During a solve step/.test(plain) && /During a solve step/.test(solve) && /Editing the puzzle\. Tap a sticker to give it the picked color/.test(paint) && !/Swipe on the puzzle/.test(paint) && /Tap a piece to remove it, or tap a gray box to add one/.test(shape),
     `the help follows the mode (${[plain, solve, paint, shape].map((t) => t.slice(0, 40)).join(" | ")})`,
   );
   // An edit whose shape isn't valid, copied and put back.
@@ -1675,7 +1675,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
     /Edit puzzle$/.test(label) && fresh.spots.length === 18 && fresh.spots.every((t) => /^[UD]x/.test(t)) && fresh.removed.length + fresh.added.length === 0 && /^Valid/.test(await editLine()),
     `Edit puzzle opens on the puzzle as it is, and the Shape tool marks the empty spots a tap can fill (${label}; ${fresh.spots})`,
   );
-  // A cubelet put in where it makes a fifth double edge is a blank (the shape is wrong); the
+  // A piece put in where it makes a fifth double edge is a blank (the shape is wrong); the
   // flat view shows it, as the 3D view does. A tap on it takes it away again.
   const editorCells = async () => (await probe("flatFace", "U")).flat().filter((c) => c?.slot === "editor").length;
   const before = await editorCells();
@@ -1683,8 +1683,8 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   const blank = { added: (await probe("shapeEdit")).added.join(), before, cells: await editorCells() };
 
   await tapAt(await probe("spot", "Ux.F"));
-  check(blank.added === "Ux.F" && blank.cells > blank.before && (await probe("shapeEdit")).added.length === 0, `a cubelet put in while the shape is wrong shows in the flat view, and a tap takes it away (${JSON.stringify(blank)})`);
-  // Two problems that name no cubelets: › steps from one to the other and back.
+  check(blank.added === "Ux.F" && blank.cells > blank.before && (await probe("shapeEdit")).added.length === 0, `a piece put in while the shape is wrong shows in the flat view, and a tap takes it away (${JSON.stringify(blank)})`);
+  // Two problems that name no pieces: › steps from one to the other and back.
   await tapAt(await probe("spot", "Ux")); // a fifth extension center
   await tapAt(await probe("spot", "Ux.F")); // and a fifth double edge
   const steps = [await editLine()];
@@ -1694,18 +1694,18 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   }
   check(
     steps[0] !== steps[1] && steps.slice(0, 2).every((t) => /^Not valid: Five (core edges|centers) .*‹[12]\/2›( Show Hide)?$/.test(t)) && steps[2] === steps[0],
-    `› steps through problems that name no cubelets (${steps.join(" | ")})`,
+    `› steps through problems that name no pieces (${steps.join(" | ")})`,
   );
-  // Five core edges with two extensions each: the hint names the extension cubelets one of
-  // which should come off, the two over UF (enclosed on every side, with the cubelet just
+  // Five core edges with two extensions each: the hint names the extension pieces one of
+  // which should come off, the two over UF (enclosed on every side, with the piece just
   // put over it) among them, and halos them, never the core edge nothing shows.
   if (!/Five core edges/.test(await editLine())) await page.click('[data-halo="next"]');
   const edges = { named: await probe("highlighted"), haloed: await probe("haloed"), line: await editLine() };
   check(
     /One of these extensions should probably be removed/.test(edges.line) && !edges.haloed.includes("UF") && ["Fx.U", "Ux.F"].every((t) => edges.haloed.includes(t)),
-    `the extension cubelets to take off are haloed, not the core edge they hide (${JSON.stringify(edges)})`,
+    `the extension pieces to take off are haloed, not the core edge they hide (${JSON.stringify(edges)})`,
   );
-  // The cubelet put in is a blank until the shape is right: it is outlined too, and from
+  // The piece put in is a blank until the shape is right: it is outlined too, and from
   // below, where it can't be seen, the arrow counts it.
   const rimmed = await probe("outlined");
   await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
@@ -1717,29 +1717,29 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await tapAt(await probe("spot", "Ux.F"));
   await tapAt(await probe("spot", "Ux"));
   check((await probe("shapeEdit")).added.length === 0, "a tap on each blank takes it away again");
-  // One of two extension cubelets on a core edge goes away alone, keeping the other's paint;
+  // One of two extension pieces on a core edge goes away alone, keeping the other's paint;
   // its color away from the core stays with its spot, and the core edge it bares shows its
-  // own color, none here (no core cubelet shows green).
+  // own color, none here (no core piece shows green).
   await tapSticker("Fx.R", "F");
   const one = { e: await probe("shapeEdit"), line: await editLine(), kept: await probe("painted", "Rx.F", "R"), gone: await probe("painted", "Fx.R", "F"), fell: await probe("painted", "FR", "F") };
   check(
     one.e.removed.join() === "Fx.R" && one.e.spots.includes("Fx.R") && one.line.startsWith("Not valid: Only three core edges have two extensions, but there must be four. An extension should probably be added in one of these spots.") && one.kept === "R" && one.gone === "G" && one.fell === null,
-    `a tap takes one cubelet away, its color stays with its spot, the core edge it bares shows its own (none), and the line says what the shape lacks (${JSON.stringify(one)})`,
+    `a tap takes one piece away, its color stays with its spot, the core edge it bares shows its own (none), and the line says what the shape lacks (${JSON.stringify(one)})`,
   );
-  // A tap on an empty spot puts a cubelet there; the shape is right again, made of real cubelets, with stickers to paint.
+  // A tap on an empty spot puts a piece there; the shape is right again, made of real pieces, with stickers to paint.
   await tapAt(await probe("spot", "Ux.F"));
   const two = { e: await probe("shapeEdit"), line: await editLine(), done: await page.$eval("#edit-done", (b) => b.disabled), filled: [await probe("filled", "Ux.F"), await probe("filled", "Fx.R")].join(), took: await probe("painted", "Ux.F", "U") };
   check(
     two.e.removed.length + two.e.added.length === 0 && two.filled === "true,false" && two.took === null && /^Not valid: /.test(two.line) && two.e.unpainted > 0 && two.e.outlines === two.e.unpainted && two.done,
-    `filling a spot makes the shape right, the cubelet put in has no color yet facing away from the core (not the white it covers); each sticker not painted yet is a dashed outline, and Done waits for them (${JSON.stringify(two)})`,
+    `filling a spot makes the shape right, the piece put in has no color yet facing away from the core (not the white it covers); each sticker not painted yet is a dashed outline, and Done waits for them (${JSON.stringify(two)})`,
   );
-  // An extension cubelet on a core corner comes and goes alone too; the line names the corner.
+  // An extension piece on a core corner comes and goes alone too; the line names the corner.
   await tapSticker("Fx.UR", "F");
   const corner = { removed: (await probe("shapeEdit")).removed.join(), line: await editLine(), stays: await probe("filled", "Rx.UF") };
   await tapAt(await probe("spot", "Fx.UR"));
   check(
     corner.removed === "Fx.UR" && corner.stays && /^Not valid: This core corner has only one extension, but it has to have two\./.test(corner.line) && (await probe("filled", "Fx.UR")),
-    `a tap takes an extension cubelet off a core corner without turning anything, and a tap on its spot puts it back (${JSON.stringify(corner)})`,
+    `a tap takes an extension piece off a core corner without turning anything, and a tap on its spot puts it back (${JSON.stringify(corner)})`,
   );
   // A sticker can be painted while the shape is wrong.
   await tapSticker("Fx.L", "F");
@@ -1747,13 +1747,13 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await tapSticker("Ux.F", "U");
   const wrong = { e: await probe("shapeEdit"), painted: await probe("painted", "Ux.F", "U"), line: await editLine() };
   check(wrong.e.removed.join() === "Fx.L" && wrong.painted === "R" && /^Not valid: Only three core edges/.test(wrong.line), `a sticker takes paint while the shape is wrong (${JSON.stringify(wrong)})`);
-  // The flat view shows what the editor draws over the puzzle too: a cubelet put in while
+  // The flat view shows what the editor draws over the puzzle too: a piece put in while
   // the shape is wrong, with its stickers.
 
   await page.click("#edit-cancel");
   await idle();
   check((await probe("state")) === start && (await probe("filled", "Fx.R")), "Cancel leaves the position as it was");
-  // Taken away and put back, a cubelet gets all its colors back: its side colors fell onto
+  // Taken away and put back, a piece gets all its colors back: its side colors fell onto
   // what it bared and it takes them from what it covers, and its color away from the core
   // stayed with its spot; the core corner's face it bared shows its own color, none here.
   await page.click("#edit-start");
@@ -1762,8 +1762,8 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   const fell = [await probe("painted", "UFR", "F"), await probe("painted", "Fx.R", "U"), await probe("painted", "Fx.U", "R")].join();
   await tapAt(await probe("spot", "Fx.UR"));
   const back = { fell, line: await editLine(), colors: [await probe("painted", "Fx.UR", "F"), await probe("painted", "Fx.UR", "U"), await probe("painted", "Fx.UR", "R")].join() };
-  check(back.fell === ",W,R" && back.colors === "G,W,R" && back.line === "Valid", `a cubelet's side colors fall onto the faces it bares, and all its colors come back when it is put back (${JSON.stringify(back)})`);
-  // Moved from the front of a core edge to its top, a cubelet has stickers to color, and so
+  check(back.fell === ",W,R" && back.colors === "G,W,R" && back.line === "Valid", `a piece's side colors fall onto the faces it bares, and all its colors come back when it is put back (${JSON.stringify(back)})`);
+  // Moved from the front of a core edge to its top, a piece has stickers to color, and so
   // has the core edge's front it bared: they have a halo and a Hide pill in the 3D view.
   const move = async (from, face, to) => {
     await tapSticker(from, face);
@@ -1775,7 +1775,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   const few = { line: await editLine(), halo: (await probe("highlighted")).join(), pill: (await probe("shapeEdit")).pill, took: await probe("painted", "Ux.F", "U") };
   check(
     /^Not valid: \d+ stickers have no color yet\./.test(few.line) && few.halo.split(",").includes("UF") && few.halo.split(",").includes("Ux.F") && few.took === null && few.pill && few.pill.x > box.l && few.pill.x < box.r && few.pill.y > box.t && few.pill.y < box.b,
-    `a cubelet moved onto a core edge's bare side, and the core edge's front it bared, have stickers to color, with a halo and a Hide pill inside the 3D view (${JSON.stringify(few)})`,
+    `a piece moved onto a core edge's bare side, and the core edge's front it bared, have stickers to color, with a halo and a Hide pill inside the 3D view (${JSON.stringify(few)})`,
   );
   // The pill sits clear of the puzzle as drawn, not on it.
   const under = await probe("at3d", few.pill.x, few.pill.y);
@@ -1783,7 +1783,7 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   await page.click("#halo-hide");
   const hidden = { halo: (await probe("highlighted")).length, pill: (await probe("shapeEdit")).pill, wide: await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth) };
   check(hidden.halo === 0 && hidden.pill === null && hidden.wide <= 0, `the pill hides the halo, and itself (${JSON.stringify(hidden)})`);
-  // Many cubelets with stickers to paint get halos: the three moved, and the core faces they bared.
+  // Many pieces with stickers to paint get halos: the three moved, and the core faces they bared.
   await tool("shape");
   await move("Rx.U", "R", "Ux.R");
   await move("Fx.UR", "F", "Ux.FR");
@@ -1793,21 +1793,21 @@ labTest("shape editing: a tap changes only what it taps, paint stays on its spot
   const many = { line: await editLine(), halo: (await probe("highlighted")).length, pill: !!(await probe("shapeEdit")).pill, px: await probe("haloPixels", "3d") };
   check(
     /^Not valid: \d+ stickers have no color yet\./.test(many.line) && many.halo >= 4 && many.pill && many.px > 0,
-    `many cubelets with stickers to paint get halos (${JSON.stringify(many)})`,
+    `many pieces with stickers to paint get halos (${JSON.stringify(many)})`,
   );
   await page.click("#edit-cancel");
   await idle();
 });
 
-labTest("color editing: the halo's outline is bold whatever is around the cubelet", async ({ page, check, probe, settle }) => {
-  // Two play-testers' edits: a core corner set back between extension cubelets standing in
+labTest("color editing: the halo's outline is bold whatever is around the piece", async ({ page, check, probe, settle }) => {
+  // Two play-testers' edits: a core corner set back between extension pieces standing in
   // front of it, and a core edge flush with its neighbors, where only seams lie beside it.
   // The outline is a band on screen around the part the view shows, so both get a full one.
   for (const [name, debug] of [["set back", {"lab":"x-cube debug 1","base":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","turns":"","cursor":0,"current":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","view":[0.19084,-0.80226,0.45429,-0.33702],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","removed":[],"added":[],"colors":".O.W.G.......R.WG..G...R.......G..O........GY....OG.Y........W.O.........B.Y.R...O...W.......R...R.YG..G...O.......Y...........B..R..YG..O.W......W.......W........YO..B.......BO.W..........G.....OB....Y.B...Y.................WY......G................G............Y........Y.....R.B...R..O..R.........B..R.GY..O........W..R.BG..............Y..Y..GR.W....YW.....W.........Y.......O.Y..B..G.....W.....Y...O.Y.O.........................R..G..B..RR.............G...W.B.R..OB.O...R.W.G.","tool":"R","problems":[],"selected":"A core corner must be white or yellow, never orange. This sticker should maybe be yellow or white|13","hidden":null}}], ["flush", {"lab":"x-cube debug 1","base":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","turns":"","cursor":0,"current":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","view":[0.35003,-0.51635,-0.24334,0.74273],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"LPFF UPQE WAIR CZWC MYKV WRAT NOOA IIFW ANYV TTXT JMFF","removed":[],"added":[],"colors":".R.W.G.......W.WG..G...O.......R..Y........GY....OB.R........W.O.........W.R.G...W...W.......Y...R.WG..G...B.......R...........B..W..YG..O.W......W.......W........YO..G.......BR.W..........O.....OB....Y.G...R.................WG......O................G............Y........O.....R.B...G..O..G.........B..R.YW..R........B..R.BW..............Y..Y..GG.W....BG.....W.........G.......O.Y..B..O.....G.....G...O.Y.G.........................R..G..B..YR.............G...R.B.W..OB.O...G.W.G.","tool":"B","problems":[],"selected":"x|65","hidden":null}}]]) {
     await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
     await settle();
     const ring = await probe("outlineOver");
-    check(ring.purple >= 120, `a cubelet ${name} among its neighbors has a bold outline (${JSON.stringify(ring)})`);
+    check(ring.purple >= 120, `a piece ${name} among its neighbors has a bold outline (${JSON.stringify(ring)})`);
   }
 });
 
@@ -1846,7 +1846,7 @@ labTest("shape editing: Show looks at a core edge and its spots at a slight angl
 
 labTest("shape editing: Show weighs a core corner's views quickly", async ({ page, check, settle }) => {
   // From a play-tester's edit: a core corner short an extension. Show weighs 25 views of
-  // it; tested against the drawn cubelets (about 62,000 triangles) that froze the page for
+  // it; tested against the drawn pieces (about 62,000 triangles) that froze the page for
   // most of a second, against a box for each spot it takes a few milliseconds.
   await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","at":"2026-11-20T01:19:52.795Z","device":{"agent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Claude/1.261116.19","width":557,"height":1024,"ratio":2},"base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.11592,-0.88048,0.27985,0.36471],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:JgBaCaDaEaFaGaHaIaAg......KgLaMaNaOaPaQaRaSaTaUaVaWaXa............YaZaaabacadaeafagahaiajakala............manaoapaqarasatauavawaxayaza0a......1a2a3a4a5a6a7a8a9a","removed":["Fx.R","Rx.U","Fx.DR","Bx.UR","Rx.D","Fx.DL","Bx.DR","Lx.UF","Bx.UL","Fx.U"],"added":["Ux.FR","Dx.R","Dx.FR","Dx.FL","Ux.BL","Ux.FL"],"colors":".......O.Y...O.YG..O...B.O.....OW.G..OW..B.OW.G..O.....................................Y.....Y......G..OW..B...................O.YG......B..W.....W.....W....OW.G.....................................R..Y.B...Y.....Y.....Y..RO.YG......B............R.W.G.ROW..B..W.....W.....W.......G..........................................B...Y.....Y.....Y......G.R.WY.B......................G......B..W.....W.....W...R.W.G...................R..Y.BR.....R..YG.R....BR.WY..R...G.R.W..BR.....R.W.G.","tool":"shape","problems":[{"text":"This core corner has only one extension, but it has to have two. Add an extension to this corner in one of these spots","slots":["DBR","Dx.BR","Bx.DR"]},{"text":"This core corner has only one extension, but it has to have two. Add an extension to this corner in one of these spots","slots":["UBR","Bx.UR","Ux.BR"]},{"text":"This core corner has three extensions, but it can have only two. Remove an extension from this corner","slots":["UFR","Fx.UR","Ux.FR","Rx.UF"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UF","Fx.U","Ux.F"]},{"text":"This core edge has no extensions, but it has to have one or two. Add an extension to this edge in one of these spots","slots":["UR","Ux.R","Rx.U"]},{"text":"Only three core edges have two extensions, but there must be four. An extension should probably be added in one of these spots","slots":["Dx.L","Ux.L","Dx.B","Dx.F","Fx.U","Ux.B","Ux.F","Fx.R","Ux.R","Rx.D","Rx.U"]}],"selected":"This core corner has only one extension, but it has to have two. Add an extension to this corner in one of these spots|54,50,53","hidden":null}}));
   await settle();
@@ -1866,10 +1866,10 @@ labTest("shape editing: the extension a hint means, among a hidden corner's thre
   await settle();
   const line = await page.$eval("#edit-status", (e) => e.textContent);
   const marks = await probe("marks");
-  // The ring is drawn over the extension it means: its middle shows that cubelet.
+  // The ring is drawn over the extension it means: its middle shows that piece.
   const at = await probe("spot", "Lx.UB");
   const under = at && (await probe("at3d", at.x, at.y));
-  check(/Remove an extension from this corner, probably the circled one\./.test(line) && marks.list.map((m) => m.slot + "/" + m.face).join() === "Lx.UB/cubelet" && marks.px > 0 && under?.slot === "Lx.UB", `the extension the hint means is circled, as a whole cubelet (${JSON.stringify({ line, marks, under })})`);
+  check(/Remove an extension from this corner, probably the circled one\./.test(line) && marks.list.map((m) => m.slot + "/" + m.face).join() === "Lx.UB/piece" && marks.px > 0 && under?.slot === "Lx.UB", `the extension the hint means is circled, as a whole piece (${JSON.stringify({ line, marks, under })})`);
 });
 
 labTest("shape editing: a tap on the arrow turns to the view Show turns to", async ({ page, check, probe, settle }) => {
@@ -1960,7 +1960,7 @@ labTest("color editing: a tap with a sticker's own color clears it", async ({ pa
 
 labTest("color editing: Show turns a white or yellow sticker facing away from the core into view, circled", async ({ page, check, probe, settle }) => {
   // From a play-tester's edit: an extension edge below the puzzle with yellow facing down
-  // and its other sticker without a color. The halo outlines the cubelet, whose uncolored
+  // and its other sticker without a color. The halo outlines the piece, whose uncolored
   // sticker was all the view showed of it; the yellow one is circled, and Show turns to it.
   const debug = {"lab":"x-cube debug 1","base":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","turns":"","cursor":0,"current":"VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS","view":[-0.30345,0.48673,-0.18509,0.79797],"solving":false,"order":"kinds","steps":[],"edit":{"shape":"X1:Aa..CaDaEaFaGaHa....Bn..JaKaLnMaNa..VlQaZw..TaUaPbWiIi..ObXiSj......ilaabacadaeafagahaRsjakalaYb....mi..3w1inioapw..rasatauava..xuyaza0a7u......2aqw4a5a6awu8a9a","removed":[],"added":[],"colors":".O.Y.B.......O.YG..O...B.O.Y...OW.G..OW..B.OW.G................Y.........O.Y.B...Y...O.......Y...O.YG............B..........G........OW..B..W..........O.....OW.G.........W.....W......Y.........................B...Y.....Y..R..YG..O.Y.B.............O..G...W..B........W.....W.....W.G...W..................Y...........Y..R..Y.BR........Y......G.......R....B..................R..YG...............W.....W...R.W.G.........................R..Y.BR..YG.R..Y.BR.....R...G.......R.W...R.W.G.","tool":"shape","problems":[],"selected":"","hidden":null}};
   await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
@@ -1970,20 +1970,20 @@ labTest("color editing: Show turns a white or yellow sticker facing away from th
   await settle();
   const at = await probe("sticker", "Dx.L", "D");
   const drawn = at && (await probe("at3d", at.x, at.y));
-  check(/^Not valid: This cubelet's yellow sticker has the wrong color\. Its yellow sticker must be green, blue, red, or orange\./.test(line) && drawn?.slot === "Dx.L" && drawn?.face === "D", `Show turns the circled yellow sticker into view (${JSON.stringify({ line, drawn })})`);
-  // In the view the play-tester had, the cubelet's uncolored sticker, drawn as a dashed
-  // outline over it, faces the viewer: it is part of the cubelet, not a hole in it for the
-  // outline to ring too (a ring around it drew about 140 band pixels over the cubelet; its
+  check(/^Not valid: This piece's yellow sticker has the wrong color\. Its yellow sticker must be green, blue, red, or orange\./.test(line) && drawn?.slot === "Dx.L" && drawn?.face === "D", `Show turns the circled yellow sticker into view (${JSON.stringify({ line, drawn })})`);
+  // In the view the play-tester had, the piece's uncolored sticker, drawn as a dashed
+  // outline over it, faces the viewer: it is part of the piece, not a hole in it for the
+  // outline to ring too (a ring around it drew about 140 band pixels over the piece; its
   // own outline's soft inner edge draws about 20).
   await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
   await settle();
   const ring = await probe("outlineOver");
-  check(ring.purple > 0 && ring.inside < 60, `the outline doesn't ring a sticker drawn over the cubelet (${JSON.stringify({ purple: ring.purple, inside: ring.inside })})`);
+  check(ring.purple > 0 && ring.inside < 60, `the outline doesn't ring a sticker drawn over the piece (${JSON.stringify({ purple: ring.purple, inside: ring.inside })})`);
 });
 
-labTest("color editing: Show weighs its views quickly for a halo on many cubelets", async ({ page, check, settle }) => {
-  // From a play-tester's edit: 43 stickers with no color yet, on many cubelets. Show weighs
-  // some 70 views; with rays against the drawn cubelets that froze the page for over a
+labTest("color editing: Show weighs its views quickly for a halo on many pieces", async ({ page, check, settle }) => {
+  // From a play-tester's edit: 43 stickers with no color yet, on many pieces. Show weighs
+  // some 70 views; with rays against the drawn pieces that froze the page for over a
   // second (1,664 ms on a fast machine), against a box for each spot it takes about a
   // tenth of one. CI's runners, measuring coverage, take four times as long as that
   // machine (382 and 405 ms), so the limit sits between the two ways, clear of both.
@@ -1994,12 +1994,12 @@ labTest("color editing: Show weighs its views quickly for a halo on many cubelet
     document.getElementById("edit-status").click();
     return performance.now() - t;
   });
-  check(ms < 1000, `Show on a halo over many cubelets is quick (${Math.round(ms)} ms)`);
+  check(ms < 1000, `Show on a halo over many pieces is quick (${Math.round(ms)} ms)`);
 });
 
 labTest("color editing: colors that turns can't reach", async ({ page, check, probe, gesture }) => {
   // Valid means turns can reach some position showing the paint. Center colors arranged
-  // as no turns arrange them are refused; a swap that look-alike cubelets can absorb is not.
+  // as no turns arrange them are refused; a swap that look-alike pieces can absorb is not.
   const editLine = () => page.$eval("#edit-status", (e) => e.textContent);
   const doneOff = () => page.$eval("#edit-done", (e) => e.disabled);
   const paint = async (color, slot, face) => {
@@ -2021,8 +2021,8 @@ labTest("color editing: colors that turns can't reach", async ({ page, check, pr
   await paint("G", "Fx", "F");
   await paint("R", "Rx", "R");
   const restored = await editLine();
-  // Two outer edges traded. With every other cubelet where it was, no turns make this;
-  // with two look-alike core cubelets traded as well, turns do, and Done gives that position.
+  // Two outer edges traded. With every other piece where it was, no turns make this;
+  // with two look-alike core pieces traded as well, turns do, and Done gives that position.
   await paint("R", "Fx.U", "F");
   await paint("G", "Rx.U", "R");
   const traded = { line: await editLine(), off: await doneOff(), level: (await probe("editing")).level };
@@ -2036,7 +2036,7 @@ labTest("color editing: colors that turns can't reach", async ({ page, check, pr
 
 // ---- The step guide.
 
-labTest("guide: Next step loads one step, grays what it leaves alone, and shows where cubelets go", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
+labTest("guide: Next step loads one step, grays what it leaves alone, and shows where pieces go", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
   const { line, next } = guideHelpers(page, settle);
   // One corner 3-cycle away from solved: the step is that cycle undone, written as a commutator.
   await play("(F' L' F) r (F' L F) r'");
@@ -2048,13 +2048,13 @@ labTest("guide: Next step loads one step, grays what it leaves alone, and shows 
     `Next step loads the step's turns unplayed and says what it applies to ("${loaded.line}", ${loaded.counter})`,
   );
   // The three corners keep their colors (9 stickers); the other 93 stickers are gray, none
-  // darker, since a 3-cycle leaves every other cubelet alone. One arrow per corner.
-  check(g?.focus.length === 3 && g.gray === 93 && g.darkGray === 0 && g.arrows === 3 && g.otherGlow === 0 && g.focusGlow > 0, `the cubelets the step applies to keep their colors, the rest are gray, and arrows show the cycle (${JSON.stringify(g)})`);
+  // darker, since a 3-cycle leaves every other piece alone. One arrow per corner.
+  check(g?.focus.length === 3 && g.gray === 93 && g.darkGray === 0 && g.arrows === 3 && g.otherGlow === 0 && g.focusGlow > 0, `the pieces the step applies to keep their colors, the rest are gray, and arrows show the cycle (${JSON.stringify(g)})`);
   // Each path follows one sticker, in its color, from the face it is on to the face it will
-  // be on; all three of these cubelets end at home.
+  // be on; all three of these pieces end at home.
   const pathForm = /^[WYGBRO] [\w.]+\/[RLUDFB] > [\w.]+\/[RLUDFB] lands$/;
-  check(g?.paths.length === 3 && g.pathMeshes === 24 && g.pathsThrough === 0 && g.pathsOut < 0.45 && g.headGap >= 0 && g.headGap < 0.05 && g.paths.every((t) => pathForm.test(t)) && new Set(g.paths.map((t) => t.split(" ")[1])).size === 3, `each moved cubelet has a path from one of its stickers to where that sticker will be, going around the puzzle, not through it, each shaft joined to its head (${g?.paths.join("; ")})`);
-  // A small copy of each cubelet flies along its path (unless the device asks for less motion). Show turns the
+  check(g?.paths.length === 3 && g.pathMeshes === 24 && g.pathsThrough === 0 && g.pathsOut < 0.45 && g.headGap >= 0 && g.headGap < 0.05 && g.paths.every((t) => pathForm.test(t)) && new Set(g.paths.map((t) => t.split(" ")[1])).size === 3, `each moved piece has a path from one of its stickers to where that sticker will be, going around the puzzle, not through it, each shaft joined to its head (${g?.paths.join("; ")})`);
+  // A small copy of each piece flies along its path (unless the device asks for less motion). Show turns the
   // view so that every path's sticker, and the face it is going to, can be seen.
   const motion = await page.evaluate(() => !matchMedia("(prefers-reduced-motion: reduce)").matches);
   await page.evaluate(() => document.querySelector('[data-view="bottom"]').click());
@@ -2223,7 +2223,7 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
     holdStep.g?.stage === "hold" && holdStep.g.gray === 0 && holdStep.g.darkGray === 0 && /^Step 1 of 1 — Regrip: Rotate the whole puzzle so the white center is up \(now \w+ is up\)\. Nothing else moves\. Turns: x'$/.test(holdStep.line),
     `a Regrip step says to turn the whole puzzle, and keeps every color ("${holdStep.line}")`,
   );
-  // Out of shape, the step applies to the core cubelets that are wrong; it may leave the
+  // Out of shape, the step applies to the core pieces that are wrong; it may leave the
   // rest anywhere, so they are the darker gray. Those that move get plain paths. Their
   // stickers are often covered by neighbors that are about to move, so a path may graze
   // the puzzle near its ends, or pass behind it, faintly drawn: staying in view comes first.
@@ -2231,7 +2231,7 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   await play("R U");
   await next();
   const shape = await probe("guide");
-  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows > 0 && shape.paths.every((t) => !/ (lands|dashed)/.test(t)) && shape.pathsOut < 0.45 && shape.after > 0, `a shape step darkens the cubelets it may leave anywhere, only the cubelets it applies to glow, and those that move have plain paths (${JSON.stringify(shape)})`);
+  check(shape?.stage === "shape" && shape.focus.length > 0 && shape.darkGray > 0 && shape.otherNoGlow > 0 && shape.otherGlow === 0 && shape.focusGlow > 0 && shape.arrows > 0 && shape.paths.every((t) => !/ (lands|dashed)/.test(t)) && shape.pathsOut < 0.45 && shape.after > 0, `a shape step darkens the pieces it may leave anywhere, only the pieces it applies to glow, and those that move have plain paths (${JSON.stringify(shape)})`);
   // Playing the step and asking again carries the count on: step 2 of the same total, in its own box.
   const total = shape.after + 1;
   await page.click("#last");
@@ -2294,12 +2294,12 @@ labTest("guide: a regrip is a step of its own, and the step after it is as the p
 
 labTest("guide: dashed paths, the order switch, a layered core step, and a turn by hand", async ({ page, check, probe, settle, play, status, counter, sweep3d, startFresh, turnList }) => {
   const { line, next } = guideHelpers(page, settle);
-  // A cubelet only passing through has a dashed path, in several pieces, and no ring.
+  // A piece only passing through has a dashed path, in several pieces, and no ring.
   await play("(F' L' F) r (F' L F) r' f (F' L' F) r (F' L F) r' f'");
   await next();
   const passing = await probe("guide");
   const throughOnly = passing.paths.filter((t) => t.endsWith(" dashed")).length;
-  check(passing.stage === "corners" && throughOnly === 2 && passing.pathMeshes === 8 + 2 * (2 * 9 + 4) && passing.pathsThrough === 0 && /One ends up solved\./.test(await line()), `two cubelets only passing through get dashed paths (${passing.paths.join("; ")}; ${passing.pathMeshes} meshes)`);
+  check(passing.stage === "corners" && throughOnly === 2 && passing.pathMeshes === 8 + 2 * (2 * 9 + 4) && passing.pathsThrough === 0 && /One ends up solved\./.test(await line()), `two pieces only passing through get dashed paths (${passing.paths.join("; ")}; ${passing.pathMeshes} meshes)`);
   // The order: "Top to bottom" solves the white X-face first, so the same corner cycle is a
   // top-corners step there. The choice is kept on this device.
   await startFresh();
@@ -2311,13 +2311,13 @@ labTest("guide: dashed paths, the order switch, a layered core step, and a turn 
   const byLayer = await probe("guide");
   const kept = await page.evaluate(() => localStorage.getItem("xcube.guideMode"));
   check(byKind === "corners" && byLayer.stage === "topCorners" && byLayer.mode === "layers" && kept === "layers" && /^Step \d+ of \d+ — White corners: For the white X-face's corners: cycle three X-face corners\. All three end up solved\./.test(await line()), `the order can be switched to top to bottom (${byKind}, then ${byLayer.stage}; "${await line()}")`);
-  // Out of shape, top to bottom starts with the core, a cubelet at a time: a short step,
-  // one or two paths, and the line counts the cubelets placed.
+  // Out of shape, top to bottom starts with the core, a piece at a time: a short step,
+  // one or two paths, and the line counts the pieces placed.
   await startFresh();
   await play("R U F' L2");
   await next();
   const core = await probe("guide");
-  check(core?.stage.startsWith("core") && core.turns <= 9 && core.arrows >= 1 && core.arrows <= 3 && /^Step \d+ of \d+ — White core edges: Put a white core edge in the top layer, white up \([1-4] of 4\)\./.test(await line()), `top to bottom places the core a cubelet at a time (${core?.alg}, ${core?.arrows} paths; "${await line()}")`);
+  check(core?.stage.startsWith("core") && core.turns <= 9 && core.arrows >= 1 && core.arrows <= 3 && /^Step \d+ of \d+ — White core edges: Put a white core edge in the top layer, white up \([1-4] of 4\)\./.test(await line()), `top to bottom places the core a piece at a time (${core?.alg}, ${core?.arrows} paths; "${await line()}")`);
   await setOrder(page, "kinds");
   await startFresh();
   await play("R U");
@@ -2331,7 +2331,7 @@ labTest("guide: dashed paths, the order switch, a layered core step, and a turn 
 labTest("guide: a path goes the short way around the puzzle, at an even speed", async ({ page, check, probe, settle }) => {
   // Out of shape, the first top-to-bottom step from here is R2, which takes a white core
   // edge from the bottom of the right side to its top. The spot above where its white
-  // sticker will be is filled until the turn takes that cubelet away.
+  // sticker will be is filled until the turn takes that piece away.
   await page.locator("summary", { hasText: "State code" }).click();
   await page.fill("#code", "QDUL LPPC IPNH GUJH BHFQ ITOS NYEX YSZU JMWD ZIHV DGEL");
   await page.click("#import");
@@ -2343,14 +2343,14 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   const g = await probe("guide");
   const k = g.paths.findIndex((t) => /DR\/D > UR\/U/.test(t));
   const pts = g.pathPoints[k] ?? [];
-  check(g.alg === "R2" && k >= 0 && pts.length === 25 && pts.every(([x, , z]) => x > 0.9 && Math.abs(z) < 0.2) && g.pathsThrough === 0, `the path from the bottom of the right side to its top goes around the right side, through nothing but the cubelet the turn takes away (${g.alg}; ${g.paths.join("; ")}; ${JSON.stringify(pts)})`);
+  check(g.alg === "R2" && k >= 0 && pts.length === 25 && pts.every(([x, , z]) => x > 0.9 && Math.abs(z) < 0.2) && g.pathsThrough === 0, `the path from the bottom of the right side to its top goes around the right side, through nothing but the piece the turn takes away (${g.alg}; ${g.paths.join("; ")}; ${JSON.stringify(pts)})`);
   // The flying copies' places at equal times are equally far apart (a chord across a
   // bend is a little shorter than the path), on every path; and no path leaves the view.
   const gaps = g.pathPoints.map((path) => path.slice(1).map((q, i) => Math.hypot(q[0] - path[i][0], q[1] - path[i][1], q[2] - path[i][2])));
   const uneven = Math.max(...gaps.map((d) => Math.max(...d) / Math.min(...d)));
   check(gaps.length === g.arrows && uneven < 1.35 && g.pathsOut < 0.45, `a flying copy neither lingers nor rushes (its longest stride is ${uneven.toFixed(2)} of its shortest), and leaves the view by little if at all (${g.pathsOut.toFixed(2)} out)`);
   check(sharpest(g) < 50, `no path bends sharply (${sharpest(g).toFixed(0)} degrees at most between one stride and the next)`);
-  // A cubelet with several stickers is followed by the one that needs no bend to get
+  // A piece with several stickers is followed by the one that needs no bend to get
   // started: here a corner hops along the front face, and its front sticker is followed,
   // not the one on its side, whose path would have to turn back on itself.
   await page.click("#guide-stop");
@@ -2404,7 +2404,7 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   const first = steps[0], unit = steps[6];
   check(first.alg === "R2" && lean(first) < 47 && bowIn(first) < 0.03, `a path leaves its sticker and comes onto its face within 45 degrees of straight out (${lean(first).toFixed(0)} at most, sampled a twenty-fourth of the way in), and never bows in toward the puzzle (${bowIn(first).toFixed(3)})`);
   check(steps.every((g) => g.arrows === 0 || (lean(g) < 47 && bowIn(g) < 0.03)), `so does every path of the first seven steps (${steps.map((g) => `${g.alg}: ${g.arrows ? `${lean(g).toFixed(0)} degrees, ${bowIn(g).toFixed(3)} in` : "no paths"}`).join("; ")})`);
-  // A core double edge has no sticker: it and the two extension cubelets against it move
+  // A core double edge has no sticker: it and the two extension pieces against it move
   // as one unit, on one neutral path, and all three keep their colors.
   // One corner cycle from solved: a white X-face corner hops along the top, white up at
   // both ends, and its flying copy keeps white up all the way.
@@ -2422,10 +2422,10 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   const level = cycle.paths.findIndex((t) => /^W [\w.]+\/U > [\w.]+\/U/.test(t));
   const facing = cycle.runnerFacing[level] ?? [];
   check(cycle.stage === "corners" && level >= 0 && facing.length === 13 && facing.every((v) => angle(v, FACE.U) < 3) && lean(cycle) < 47, `a flying copy whose sticker faces up at both ends keeps it facing up all the way (${cycle.alg}; ${cycle.paths.join("; ")}; ${JSON.stringify(facing)})`);
-  check(unit.stage === "coreMiddle" && unit.arrows >= 1 && unit.paths.every((t) => /^null /.test(t)) && unit.focus.length >= 3 * unit.arrows && unit.runners === unit.arrows, `each core double edge moves as a unit with the cubelets against it, on a neutral path (${unit.alg}; ${unit.paths.join("; ")}; focus ${unit.focus.join(" ")})`);
+  check(unit.stage === "coreMiddle" && unit.arrows >= 1 && unit.paths.every((t) => /^null /.test(t)) && unit.focus.length >= 3 * unit.arrows && unit.runners === unit.arrows, `each core double edge moves as a unit with the pieces against it, on a neutral path (${unit.alg}; ${unit.paths.join("; ")}; focus ${unit.focus.join(" ")})`);
 });
 
-labTest("guide: a flying cubelet turns only about the axis its sticker turns about", async ({ page, check, probe, settle }) => {
+labTest("guide: a flying piece turns only about the axis its sticker turns about", async ({ page, check, probe, settle }) => {
   // The owner's position: Top to bottom's next step is R', which carries the white core
   // single edge at BR (white facing back) to UR. Everything facing right keeps facing
   // right, so the white sticker, turning from back to up, must stay square to the right
@@ -2444,9 +2444,9 @@ labTest("guide: a flying cubelet turns only about the axis its sticker turns abo
   check(g.alg === "R'" && unit >= 0 && facing.length === 13 && facing.every((v) => Math.abs(v[0]) < 0.03), `the edge turns only about the right's axis (${g.paths.join("; ")}; ${JSON.stringify(facing)})`);
 });
 
-labTest("guide: a cubelet turning in place has a disc, and its unit rises past it, turns, and drops back", async ({ page, check, probe, settle }) => {
+labTest("guide: a piece turning in place has a disc, and its unit rises past it, turns, and drops back", async ({ page, check, probe, settle }) => {
   // Top to bottom's next step here turns one white core corner a third of a turn in place,
-  // with its two extension cubelets.
+  // with its two extension pieces.
   await page.locator("summary", { hasText: "State code" }).click();
   await page.fill("#code", "MKCT OOXD PDQK ZTIX BSRG LFFL MBXH TUNQ CCAY TMCT GMUR");
   await page.click("#import");
@@ -2458,9 +2458,9 @@ labTest("guide: a cubelet turning in place has a disc, and its unit rises past i
   const g = await probe("guide");
   const tw = g.twists[0];
   check(g.stage === "coreTopC" && g.twists.length === 1 && g.paths.some((t) => new RegExp(`^W ${tw.slot}/\\w > ${tw.slot}/\\w twist$`).test(t)), `the corner turning in place gets a twist, not a path (${g.alg}: ${g.paths.join("; ")})`);
-  check(Math.abs(tw.angle) === 120 && Math.sign(tw.half) === Math.sign(tw.angle) && Math.abs(Math.abs(tw.half) - 60) < 3, `the disc shows a third of a turn, and the flying cubelet turns the same way (${tw.angle}, halfway ${tw.half})`);
-  check(g.units.every((n) => n === 3), `every core corner of the step flies with its two extension cubelets (${g.units.join(" ")})`);
-  check(g.flyersLit, "the flying cubelets are made and lit like the puzzle's own, with shadows");
+  check(Math.abs(tw.angle) === 120 && Math.sign(tw.half) === Math.sign(tw.angle) && Math.abs(Math.abs(tw.half) - 60) < 3, `the disc shows a third of a turn, and the flying piece turns the same way (${tw.angle}, halfway ${tw.half})`);
+  check(g.units.every((n) => n === 3), `every core corner of the step flies with its two extension pieces (${g.units.join(" ")})`);
+  check(g.flyersLit, "the flying pieces are made and lit like the puzzle's own, with shadows");
   // Out, hold past the disc while turning, back; each part eased, so the rise comes to rest at the disc.
   const lift = tw.lift, top = Math.max(...lift);
   const rise = lift.slice(0, 8), fall = lift.slice(17);
@@ -2468,9 +2468,9 @@ labTest("guide: a cubelet turning in place has a disc, and its unit rises past i
   check(rise.every((v, k) => k === 0 || v >= rise[k - 1]) && fall.every((v, k) => k === 0 || v <= fall[k - 1]) && top - lift[7] < 0.06 * top && lift[1] < 0.06 * top, `it eases into and out of the spot past the disc, as at the start and end (${lift.join(" ")})`);
 });
 
-labTest("guide: only the cubelets a step moves or turns keep their colors", async ({ page, check, probe, settle }) => {
+labTest("guide: only the pieces a step moves or turns keep their colors", async ({ page, check, probe, settle }) => {
   // The owner's position: Top to bottom's next step (R' D2 R) moves the white core corners
-  // at DBL and DFL, each with its two extension cubelets. The white core corners at UBL and
+  // at DBL and DFL, each with its two extension pieces. The white core corners at UBL and
   // UFL are not yet white up either, but the step leaves them as they are: light gray.
   await page.locator("summary", { hasText: "State code" }).click();
   await page.fill("#code", "JOJT HKNW MEZE HNZG NDXA YKTH CBNN CGVJ JLAC BAPV SSXJ");
@@ -2481,16 +2481,16 @@ labTest("guide: only the cubelets a step moves or turns keep their colors", asyn
   await page.click("#next-step");
   await settle();
   const g = await probe("guide");
-  check(g.alg === "R' D2 R" && g.focus.length === 6 && ["DBL", "DFL"].every((s) => g.focus.includes(s)) && !g.focus.some((s) => ["UBL", "UFL"].includes(s)), `only the moved corners and their extension cubelets keep their colors (${g.focus.join(" ")})`);
+  check(g.alg === "R' D2 R" && g.focus.length === 6 && ["DBL", "DFL"].every((s) => g.focus.includes(s)) && !g.focus.some((s) => ["UBL", "UFL"].includes(s)), `only the moved corners and their extension pieces keep their colors (${g.focus.join(" ")})`);
   check(g.darkGray > 0 && g.gray > 0, `what else the turns move is darker gray, and what they leave alone lighter (${g.darkGray} darker, ${g.gray} lighter)`);
 });
 
-labTest("guide: Full color grays nothing and gives every cubelet its glow back, and is kept", async ({ page, check, probe, settle, play }) => {
+labTest("guide: Full color grays nothing and gives every piece its glow back, and is kept", async ({ page, check, probe, settle, play }) => {
   await play("R U R' U'");
   await page.click(`[data-tab="solve"]`);
   await page.click("#next-step");
   await settle();
-  // Past any regrip, to a step that grays cubelets.
+  // Past any regrip, to a step that grays pieces.
   for (let i = 0; i < 6 && !(await probe("guide")).gray; i++) {
     await page.click("#guide-start");
     await page.waitForFunction(() => !document.getElementById("next-step").disabled, null, { timeout: 60000 });
@@ -2498,7 +2498,7 @@ labTest("guide: Full color grays nothing and gives every cubelet its glow back, 
     await settle();
   }
   const gray = await probe("guide");
-  check(!gray.fullColor && gray.gray + gray.darkGray > 0 && gray.otherNoGlow > 0, `to begin with the step grays cubelets and takes their glow (${gray.gray} + ${gray.darkGray} gray, ${gray.otherNoGlow} bands off)`);
+  check(!gray.fullColor && gray.gray + gray.darkGray > 0 && gray.otherNoGlow > 0, `to begin with the step grays pieces and takes their glow (${gray.gray} + ${gray.darkGray} gray, ${gray.otherNoGlow} bands off)`);
   await page.click("#guide-colors");
   await settle();
   const full = await probe("guide");

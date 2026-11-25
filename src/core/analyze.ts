@@ -2,7 +2,7 @@
 
 import { DIRS, FACE_NAMES, NUM_ROT, ROT_DIR, ROT_INV, ROT_MUL, ROTATIONS, matVec, type Vec3 } from "./geometry.ts";
 import {
-  CUBELETS,
+  PIECES,
   NUM_SLOTS,
   SLOT_NEIGHBOR,
   SLOT_POS,
@@ -73,14 +73,14 @@ export interface PieceMove {
   kind: string;
   from: string;
   to: string;
-  /** True if the cubelet ends up rotated relative to how it started (only meaningful when from === to). */
+  /** True if the piece ends up rotated relative to how it started (only meaningful when from === to). */
   rotated: boolean;
 }
 
 export interface Effect {
-  /** Cycles of slots, following where each cubelet went. */
+  /** Cycles of slots, following where each piece went. */
   cycles: string[];
-  /** Cubelets that stay in place but are rotated (and whose rotation is visible). */
+  /** Pieces that stay in place but are rotated (and whose rotation is visible). */
   twisted: string[];
   /** Number of exposed faces whose color differs between the two states. */
   visibleChanges: number;
@@ -88,17 +88,17 @@ export interface Effect {
   moved: PieceMove[];
 }
 
-/** True if cubelet `id` shows any sticker facing a different direction under orientation oa vs ob. */
+/** True if piece `id` shows any sticker facing a different direction under orientation oa vs ob. */
 function stickerDirsDiffer(id: number, oa: number, ob: number): boolean {
-  const st = CUBELETS[id].stickers;
+  const st = PIECES[id].stickers;
   for (let d = 0; d < 6; d++) if (st[d] !== null && ROT_DIR[oa * 6 + d] !== ROT_DIR[ob * 6 + d]) return true;
   return false;
 }
 
-/** Describe how state `b` differs from state `a`, in terms of cubelet movements. */
+/** Describe how state `b` differs from state `a`, in terms of piece movements. */
 export function effect(a: State, b: State): Effect {
-  const slotOfA = new Int16Array(CUBELETS.length).fill(-1);
-  const slotOfB = new Int16Array(CUBELETS.length).fill(-1);
+  const slotOfA = new Int16Array(PIECES.length).fill(-1);
+  const slotOfB = new Int16Array(PIECES.length).fill(-1);
   for (let s = 0; s < NUM_SLOTS; s++) {
     if (a.occ[s] >= 0) slotOfA[a.occ[s]] = s;
     if (b.occ[s] >= 0) slotOfB[b.occ[s]] = s;
@@ -106,7 +106,7 @@ export function effect(a: State, b: State): Effect {
   const moved: PieceMove[] = [];
   const twisted: string[] = [];
   const next = new Map<number, number>();
-  for (const c of CUBELETS) {
+  for (const c of PIECES) {
     const sa = slotOfA[c.id];
     const sb = slotOfB[c.id];
     // relative rotation from a to b
@@ -118,7 +118,7 @@ export function effect(a: State, b: State): Effect {
       twisted.push(slotName(sa));
     }
   }
-  // cycles over slots (only through occupied slots; a cubelet moving into an empty slot shows as a path)
+  // cycles over slots (only through occupied slots; a piece moving into an empty slot shows as a path)
   const cycles: string[] = [];
   const done = new Set<number>();
   for (const start of next.keys()) {
@@ -164,7 +164,7 @@ const VIEW_FRAMES: Record<string, [Vec3, Vec3, Vec3]> = {
   L: [[0, -1, 0], [0, 0, 1], [-1, 0, 0]],
 };
 
-/** Slot of the first cubelet seen along each line of sight (5x5, row-major), or -1. */
+/** Slot of the first piece seen along each line of sight (5x5, row-major), or -1. */
 function frontSlots(st: State, face: number): Int16Array {
   const [rowV, colV, view] = VIEW_FRAMES[FACE_NAMES[face]];
   const out = new Int16Array(25).fill(-1);
@@ -213,8 +213,8 @@ export interface RimCell {
   /** Sticker color seen straight on, "#" for an unstickered face, or null if nothing is there. */
   face: RimColor | null;
   /**
-   * For empty cells: side faces of neighboring cubelets that face into this cell.
-   * `top` is the side of the cubelet just above this cell (its face pointing down the page), etc.
+   * For empty cells: side faces of neighboring pieces that face into this cell.
+   * `top` is the side of the piece just above this cell (its face pointing down the page), etc.
    */
   top?: RimColor;
   bottom?: RimColor;
@@ -224,8 +224,8 @@ export interface RimCell {
 
 /**
  * The face view with a rim: a 7x7 grid (the 5x5 view plus a ring around it).
- * Wherever a seen cubelet borders an empty cell, that empty cell records the color
- * on the cubelet's side facing it, so you can tell how this face connects to its neighbors.
+ * Wherever a seen piece borders an empty cell, that empty cell records the color
+ * on the piece's side facing it, so you can tell how this face connects to its neighbors.
  * The side faces shown are always exposed: the empty cell's whole line of sight is empty.
  */
 export function faceRimView(st: State, face: number): RimCell[][] {
@@ -246,7 +246,7 @@ export function faceRimView(st: State, face: number): RimCell[][] {
       }
       const cell: RimCell = { face: null };
       const up = at(r - 1, c), down = at(r + 1, c), left = at(r, c - 1), right = at(r, c + 1);
-      if (up >= 0) cell.top = side(up, rowV); // the cubelet above, its face pointing down the page
+      if (up >= 0) cell.top = side(up, rowV); // the piece above, its face pointing down the page
       if (down >= 0) cell.bottom = side(down, neg(rowV));
       if (left >= 0) cell.left = side(left, colV);
       if (right >= 0) cell.right = side(right, neg(colV));
