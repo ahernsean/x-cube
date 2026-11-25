@@ -2593,6 +2593,52 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
   check(fits, "the page is no wider than the screen");
 });
 
+labTest("lost: giving up opens Edit puzzle in full color", async ({ page, check, probe, settle }) => {
+  // A play-tester's solve, restored from debug info, then Lost? answered "none of these".
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
+  await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 10, null, { timeout: 20000 });
+  await page.click(`[data-tab="solve"]`);
+  await settle();
+  await page.click("#lost");
+  await settle();
+  await probe("lostPick", 1);
+  const giveUpAt = 3;
+  for (let k = 0; k < 12 && (await probe("lost")); k++) {
+    const opts = (await probe("lost")).answers;
+    const a = k >= giveUpAt && opts.includes("other") ? "other" : (await probe("lostAnswer")) ?? opts[0];
+    await page.click(`#lost-opts [data-lost="${a}"]`);
+    await settle();
+    if (!(await page.$eval("#confirm", (e) => e.hidden))) {
+      await page.click("#confirm-yes");
+      await settle();
+    }
+  }
+  const gray = await page.evaluate(() => window.xcubeProbe.grayStickers());
+  check(!!(await probe("shapeEdit")) && gray === 0, `Edit puzzle is open with no sticker gray (${gray})`);
+});
+
+labTest("lost: Lost? asked again while End the solve? waits takes that question away", async ({ page, check, probe, settle, play }) => {
+  // A play-tester gave up (Something else), left "End the solve in progress?" open, tapped
+  // Lost? again, then answered the old question: Edit puzzle opened under a gray interview.
+  await play("R U");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  await page.click("#lost");
+  await settle();
+  for (let k = 0; k < 4; k++) {
+    const opts = (await probe("lost")).answers;
+    await page.click(`#lost-opts [data-lost="${opts.includes("other") ? "other" : opts[0]}"]`);
+    await settle();
+    if (opts.includes("other")) break;
+  }
+  const asked = !(await page.$eval("#confirm", (e) => e.hidden));
+  await page.click("#lost");
+  await settle();
+  const state = { confirm: !(await page.$eval("#confirm", (e) => e.hidden)), lost: !!(await probe("lost")) };
+  check(asked && !state.confirm && state.lost, `the old question goes away when Lost? starts again (${JSON.stringify({ asked, ...state })})`);
+});
+
 labTest("lost: Cancel puts the turn list and the step back as they were", async ({ page, check, probe, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);

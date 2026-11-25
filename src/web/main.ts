@@ -3885,6 +3885,8 @@ let edit: Edit | null = null;
 
 function startEdit() {
   if (edit) return;
+  // Lost?'s gray puzzle and its locks belong to the interview, not to the editor.
+  if (lost) cancelLost();
   flushAnimations();
   clearGuide();
   const st = app.current.clone();
@@ -4501,6 +4503,8 @@ function lostStep(): Guide | null {
 function startLost() {
   const g = lostStep();
   if (!g) return;
+  // A question still waiting from before ("End the solve in progress?") is about something else now.
+  answerConfirm(false);
   flushAnimations();
   const i = trail.indexOf(g);
   const before = i > 0 ? trail[i - 1] : null;
@@ -7058,6 +7062,8 @@ function installProbe() {
      * Lost?: its phase, the candidates left, the question (its spot) and the answers
      * offered, whether the spot is marked, and how many stickers are drawn gray.
      */
+    /** How many stickers are drawn gray (a step's or Lost?'s). */
+    grayStickers: () => guideDimmed.filter((m) => stickerMesh3d.includes(m)).length,
     lost: () =>
       lost && {
         phase: lost.phase,
