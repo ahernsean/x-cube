@@ -1735,8 +1735,9 @@ function finishShuffle() {
 
 /** Undo the last turn (Undo button, or a double tap on the 3D view). */
 function undoLast() {
-  // While Lost? asks, the puzzle shown is its guess at the person's; nothing may turn it.
-  if (lost) return;
+  // While Lost? asks, the puzzle shown is its guess at the person's, and in Edit puzzle it is
+  // the one being edited: nothing may turn it.
+  if (lost || edit) return;
   if (app.cursor <= 0) {
     setMessage("Nothing to undo", "info");
     render();
@@ -3959,7 +3960,7 @@ function startEdit() {
   const colors = view.map((c) => (c && c !== UNPAINTED ? c : undefined));
   edit = { shape: st, colors, view, fit: fitColors(st, view), shown: st.clone(), paint: "W", removed: new Set(), added: new Set(), painted: [], highlight: null, marks: [], hidden: null, selected: "" };
   document.body.classList.add("editing");
-  for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = true;
+  for (const id of ["stack-col", "dock", "tabs", "undo"]) ($(id) as HTMLElement & { inert: boolean }).inert = true;
   renderEdit();
 }
 
@@ -7013,7 +7014,7 @@ function endEdit(apply: boolean) {
   placeHalos();
   placeOverlays([]);
   document.body.classList.remove("editing");
-  for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
+  for (const id of ["stack-col", "dock", "tabs", "undo"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
   const fromLost = lostEdit;
   $("edit-done").textContent = "Done";
   $("edit-cancel").textContent = "Cancel";

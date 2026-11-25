@@ -2801,6 +2801,21 @@ labTest("lost: debug info saved during Lost? after a Back on track step puts the
   check(back && after?.phase === before.phase && after?.cands === before.cands, `Lost? asked from the Back on track step comes back from debug info (${JSON.stringify({ before, after })})`);
 });
 
+labTest("lost: Undo can't turn the puzzle under Edit puzzle, the ordinary one or Lost?'s", async ({ page, check, probe, settle, play }) => {
+  await play("R");
+  const before = JSON.parse(await probe("debugInfo")).current;
+  await page.evaluate(() => document.getElementById("edit-start").click());
+  await settle();
+  const inert = await page.evaluate(() => document.getElementById("undo").inert);
+  await page.evaluate(() => document.getElementById("undo").click());
+  await settle();
+  const after = JSON.parse(await probe("debugInfo"));
+  check(inert && after.current === before && after.edit?.shape === before, `Undo is set aside and does nothing while editing (${JSON.stringify({ inert, same: after.current === before, shape: after.edit?.shape === before })})`);
+  await page.click("#edit-cancel");
+  await settle();
+  check(!(await page.evaluate(() => document.getElementById("undo").inert)), "Undo is back once the editor closes");
+});
+
 labTest("lost: Cancel puts the turn list and the step back as they were", async ({ page, check, probe, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);
