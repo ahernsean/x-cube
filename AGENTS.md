@@ -337,6 +337,15 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   message holding it can be pasted; text that isn't debug info is
   refused ("That isn't debug info"), and during a solve it asks first, as setting a new
   start does. So the owner can come back to an invalid edit after the Lab is republished.
+- **Hidden restart dump:** the same JSON as Copy debug info is kept on the device
+  (`localStorage`, `xcube.session`) a moment after things settle (`SESSION_DELAY_MS`, 1.5 s),
+  only when it has changed, at once when the page is hidden, and never while something
+  turns; about 0.2 ms a save. iOS drops a page in the background when short of memory, and
+  a play-tester's solve, Lost? and edit were lost that way. After a reload, a small dialog
+  over the top of the 3D view offers it ("Pick up where you left off?", what it was and
+  when: "Solving, step 10 · Nov 26, 2026, 3:46:46 AM"); **Pick up** restores it as Paste
+  debug info does, **Start fresh** (or a tap anywhere else) drops it. Nothing worth keeping
+  (no turns, a solved start, no solve, Lost? or edit) keeps nothing; kept for 7 days.
 - **Display panel:** the ◐ in the 3D view's corner opens the Edge glow, Shading, Shadows
   and Gloss switches, over the view and over the edge labels.
 - **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. The

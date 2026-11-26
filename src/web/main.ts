@@ -2620,6 +2620,7 @@ function escapeHtml(s: string) {
 
 function render() {
   requestDraw();
+  scheduleSession();
   const st = app.current;
   refreshGuide();
   renderInfo();
@@ -7373,6 +7374,7 @@ function installProbe() {
     /** How many stickers are drawn gray (a step's or Lost?'s). */
     grayStickers: () => guideDimmed.filter((m) => stickerMesh3d.includes(m)).length,
     lostEdit: () => !!lostEdit,
+    saveSession: () => saveSession(true),
     lost: () =>
       lost && {
         phase: lost.phase,
@@ -7595,6 +7597,91 @@ function installProbe() {
       };
 }
 
+// ------------------------------------------------------------------ the hidden restart dump
+
+/**
+ * The Lab's restart dump (debug info: the start, the turns, a solve with its steps, Lost?
+ * and an edit in progress), kept on this device so a reload (iOS drops a page in the
+ * background when short of memory) doesn't lose a solve: after one, the Lab offers to pick
+ * up where it left off. Saved a moment after things settle, only when it has changed, and at
+ * once when the page is hidden; never while something turns.
+ */
+const SESSION_KEY = "xcube.session";
+const SESSION_DELAY_MS = 1500;
+const SESSION_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+let sessionTimer: ReturnType<typeof setTimeout> | undefined;
+let sessionLast = "";
+/** While the offer to pick up is open, nothing is saved over the dump it would restore. */
+let sessionOffered = false;
+
+function scheduleSession() {
+  if (sessionTimer !== undefined || sessionOffered) return;
+  sessionTimer = setTimeout(() => {
+    sessionTimer = undefined;
+    saveSession();
+  }, SESSION_DELAY_MS);
+}
+
+/** Whether there is anything worth picking up: turns, a start other than solved, a solve, Lost? or an edit. */
+function sessionWorthKeeping(): boolean {
+  return !!(app.history.length || solving || lost || lostEdit || edit || !isSolved(app.base));
+}
+
+function saveSession(now = false) {
+  if (sessionOffered || restoring) return;
+  if (!now && (anim || queue.length || live || settle || working)) return scheduleSession();
+  try {
+    if (!sessionWorthKeeping()) {
+      if (sessionLast !== "none") localStorage.removeItem(SESSION_KEY);
+      sessionLast = "none";
+      return;
+    }
+    const json = debugInfo();
+    const key = json.replace(/"at": "[^"]*",?/, "");
+    if (key === sessionLast) return;
+    sessionLast = key;
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ savedAt: Date.now(), json }));
+  } catch {
+    // No storage on this device (a private window): nothing to keep.
+  }
+}
+
+/** After a reload, offers the dump kept from before it, if there is a recent one. */
+function offerSession() {
+  let saved: { savedAt: number; json: string } | null = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(SESSION_KEY) ?? "null");
+  } catch {
+    saved = null;
+  }
+  if (!saved?.json || !(Date.now() - saved.savedAt < SESSION_MAX_AGE_MS)) return;
+  let what = "";
+  try {
+    const d = JSON.parse(saved.json);
+    const step = Array.isArray(d.steps) && d.steps.length ? d.steps[d.steps.length - 1].index : 0;
+    what = d.lost ? `Lost? during step ${step}` : d.edit ? "Edit puzzle" : d.solving && step ? `Solving, step ${step}` : `${parseAlg(d.turns ?? "").length} turns`;
+  } catch {
+    return;
+  }
+  sessionOffered = true;
+  $("resume-what").textContent = `${what} · ${keptTime(saved.savedAt)}`;
+  $("resume").hidden = false;
+  const close = (pick: boolean) => {
+    if (!sessionOffered) return;
+    sessionOffered = false;
+    $("resume").hidden = true;
+    document.removeEventListener("pointerdown", outside, true);
+    if (pick) restoreDebug(saved!.json);
+    else saveSession(true);
+  };
+  const outside = (e: Event) => {
+    if (!(e.target as HTMLElement).closest("#resume")) close(false);
+  };
+  $("resume-yes").onclick = () => close(true);
+  $("resume-no").onclick = () => close(false);
+  document.addEventListener("pointerdown", outside, true);
+}
+
 function hotBoot() {
   const hot = (window as any).claude?.hot;
   const start = (data: any) => {
@@ -7614,6 +7701,11 @@ function hotBoot() {
     installProbe();
     render();
     initStore();
+    if (!data?.base) offerSession();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") saveSession(true);
+    });
+    addEventListener("pagehide", () => saveSession(true));
   };
   hot?.snapshot?.(() => ({ base: encodeState(app.base), baseLabel: app.baseLabel, history: formatAlg(app.history), cursor: app.cursor }));
   if (hot?.ready) hot.ready(start);

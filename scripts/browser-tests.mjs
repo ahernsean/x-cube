@@ -2850,6 +2850,39 @@ labTest("lost: Undo can't turn the puzzle under Edit puzzle, the ordinary one or
   check(!(await page.evaluate(() => document.getElementById("undo").inert)), "Undo is back once the editor closes");
 });
 
+labTest("session: after a reload the Lab offers to pick up where it left off, solve and all", async ({ page, check, probe, settle, play }) => {
+  await play("R U R' F");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  const before = JSON.parse(await probe("debugInfo"));
+  // Saved a moment after things settle; time how long building and keeping the dump takes.
+  const ms = await page.evaluate(() => {
+    const t = performance.now();
+    for (let i = 0; i < 20; i++) window.xcubeProbe.saveSession();
+    return (performance.now() - t) / 20;
+  });
+  check(ms < 8, `saving the restart dump takes ${ms.toFixed(2)} ms`);
+  await page.waitForTimeout(1800);
+  await page.reload();
+  await page.waitForFunction(() => window.xcubeProbe?.idle(), null, { timeout: 60000 });
+  const offer = await page.evaluate(() => ({ shown: !document.getElementById("resume").hidden, what: document.getElementById("resume-what").textContent }));
+  check(offer.shown && /^Solving, step 1 · /.test(offer.what), `after the reload it offers to pick up (${JSON.stringify(offer)})`);
+  await page.click("#resume-yes");
+  await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 1, null, { timeout: 30000 });
+  await settle();
+  const after = JSON.parse(await probe("debugInfo"));
+  check(after.solving && after.turns === before.turns && after.cursor === before.cursor && JSON.stringify(after.steps) === JSON.stringify(before.steps), `Pick up puts back the turns and the solve (${after.steps.length} step, at ${after.cursor})`);
+  // Start fresh drops it: the next reload offers nothing until something worth keeping happens again.
+  await page.evaluate(() => document.getElementById("reset").click());
+  await page.evaluate(() => document.getElementById("confirm-yes")?.click());
+  await settle();
+  await page.waitForTimeout(1800);
+  await page.reload();
+  await page.waitForFunction(() => window.xcubeProbe?.idle(), null, { timeout: 60000 });
+  check(await page.$eval("#resume", (e) => e.hidden), "with nothing worth keeping (solved, no turns), a reload offers nothing");
+});
+
 labTest("lost: Cancel puts the turn list and the step back as they were", async ({ page, check, probe, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);
