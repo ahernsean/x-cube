@@ -391,10 +391,8 @@ function initScene(canvas: HTMLCanvasElement) {
       // One gray for every color at each level, so a gray white can't be taken for a white.
       const v = level === 1 ? 0.55 : 0.24;
       const gray = new THREE.Color(v, v, v);
-      const sticker = matFor(c).clone();
-      sticker.color = gray;
-      stickerMats.push(sticker);
-      applyGloss();
+      // Matte, with no film: a gray catching the light, or the film's glints, read as white.
+      const sticker = new THREE.MeshPhysicalMaterial({ color: gray, vertexColors: true, roughness: 1, metalness: 0, specularIntensity: 0 });
       grayMats.set(key, { sticker, tile: shadeFlat(new THREE.MeshBasicMaterial({ color: gray, vertexColors: true })), glow: [0, 1, 2, 3].map((open) => makeGlowMaterial(glowTex, gray, open)) });
     }
     return grayMats.get(key)!;
