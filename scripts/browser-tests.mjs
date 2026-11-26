@@ -913,6 +913,23 @@ labTest("edge labels: each arrow, in its center's color, points out along its fa
   check(marks.U === "toward" && marks.D === "away" && marks.F === "arrow", `from the top, U shows a dot, D a cross, F an arrow (${JSON.stringify(marks)})`);
 });
 
+labTest("edge labels: a face 26 degrees from head-on still has an arrow; the help says what a dot and a cross mean", async ({ page, check, settle }) => {
+  // The owner's view, with the right face 26 degrees from pointing straight at the viewer:
+  // a red disc with a dot there read as a record button, not as a direction.
+  const view = [-0.07815, 0.81378, 0.11261, -0.56478];
+  const solved = "VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS";
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({ lab: "x-cube debug 1", base: solved, turns: "", cursor: 0, current: solved, view, solving: false, order: "kinds", steps: [], lost: null, edit: null }));
+  await settle();
+  const marks = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".cmp")].map((el) => {
+    const g = el.querySelector("svg").children;
+    return [el.textContent[0], g[0].style.display !== "none" ? "arrow" : g[1].style.display !== "none" ? "toward" : "away"];
+  })));
+  check(marks.R === "arrow" && marks.L === "arrow", `Right and Left, 26 degrees from head-on, have arrows (${JSON.stringify(marks)})`);
+  await page.click("#info-btn");
+  const help = await page.$eval("#info-text", (e) => e.textContent);
+  check(/A dot means that face points straight at you; a cross, straight away\./.test(help), `the help says what a dot and a cross mean (${help})`);
+});
+
 labTest("edge labels: one per face, inside the 3D view; tapping one turns that face to you", async ({ page, check, probe, settle }) => {
   await page.waitForTimeout(200);
   const labels = await page.evaluate(() => {

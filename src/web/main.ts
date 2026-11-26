@@ -1355,7 +1355,7 @@ let compassKey = "";
 /** Label scale for an axis pointing straight away from you and straight at you. */
 const COMPASS_MIN = 0.85, COMPASS_MAX = 1.5;
 /** An axis whose projection is shorter than this (sine of its angle from the line of sight) shows head-on: a dot or a cross, not an arrow. */
-const COMPASS_HEAD_ON = 0.45;
+const COMPASS_HEAD_ON = 0.26; // about 15 degrees from straight at you or away
 /**
  * Edge labels that move with the cube: each face's label sits where that face's axis
  * (its outward normal from the center), as seen on screen, meets the edge of the 3D
@@ -3165,9 +3165,11 @@ function infoHelp(): string[] {
     ];
   }
   const gestures = "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn.";
-  if (!solving) return [gestures];
+  const labels = "The labels around the edge name the faces, each with an arrow the way that face points. A dot means that face points straight at you; a cross, straight away. Tap a label to turn that face toward you.";
+  if (!solving) return [gestures, labels];
   return [
     gestures,
+    labels,
     "<strong>During a solve step</strong>, only the pieces the step applies to keep their colors; gray ones end the step just as they started, and dark gray ones may end up anywhere. Each colored piece has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the piece flies along it. A solid path that ends in a ring: the piece ends up solved. A dashed path: it is passing through and moves again later. A solid path with no ring: a shape or core step moves it, and it is solved later.",
   ];
 }

@@ -274,8 +274,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   screen, meets the edge of the 3D view; tapping one turns the view to that face. Beside
   each letter, an arrow in the color of that face's center points the way the face's axis
   points on screen, shorter as the axis turns toward or away from the viewer; nearly
-  head-on (its projection under `COMPASS_HEAD_ON`, 0.45) it is a disc with a dot (toward the
-  viewer) or a cross (away), as on a diagram. The arrows have no dark outline, only the
+  head-on (its projection under `COMPASS_HEAD_ON`, 0.26: within about 15 degrees; at 27 a dot
+  surprised the owner, and read as a record button) it is a disc with a dot (toward the
+  viewer) or a cross (away), as on a diagram, which the 3D view's ⓘ help explains. The arrows have no dark outline, only the
   faint `--tile-edge` hairline, without which a white arrow vanished on the pale pill (a
   play-tester turning a tipped-over puzzle asked for arrows to tell which way each face
   points; arrows standing out of the puzzle itself were mocked up too, and set aside
