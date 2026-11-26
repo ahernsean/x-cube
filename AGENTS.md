@@ -285,9 +285,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   slides along its edge only to clear another label or a corner button, so it stays near
   where its axis meets the edge. Once the view has rested for 2.5 seconds
   (`COMPASS_QUIET_MS`: no input, no turn, the view not turning; a step's flying pieces
-  don't count), each label spells out its face ("Right", "Up", "Back"), and the next touch,
-  key or movement brings back the letters (a play-tester's idea: words for someone looking,
-  letters out of the way while turning).
+  don't count), each label spells out its face ("Right", "Up", "Back"), the rest of the
+  word unfolding from the letter, and the next touch, key or movement folds it back
+  (`COMPASS_FOLD_MS`, 0.4 s; a play-tester's idea: words for someone looking, letters out
+  of the way while turning). The letter is bolder and darker than the rest of the word,
+  since it is the face's letter in turn notation. On the left and right edges the word sits
+  under the arrow, which keeps the label narrow; on the top and bottom, beside it.
 - **Corner buttons** of the 3D view, round icons with no button edge (drawn as SVG, so the
   ⓘ and ◐ circles match): ⓘ (help) top right, ◐ (Display) bottom right, and ↶ (Undo, the
   last turn however it was made) top left, shown only while there is a turn to undo.

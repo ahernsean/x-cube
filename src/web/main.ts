@@ -1331,17 +1331,22 @@ const COMPASS_NAMES = ["Right", "Left", "Up", "Down", "Front", "Back"];
  */
 const COMPASS_QUIET_MS = 2500;
 let compassSpelled = false;
+/** Until when the labels' words are unfolding or folding (CSS), so the labels are placed each frame meanwhile. */
+let compassFoldUntil = 0;
+const COMPASS_FOLD_MS = 400;
 let compassQuiet: ReturnType<typeof setTimeout> | undefined;
 function compassStir() {
   if (compassSpelled) {
     compassSpelled = false;
     document.querySelector(".compass")?.classList.remove("spelled");
+    compassFoldUntil = performance.now() + COMPASS_FOLD_MS + 50;
     requestDraw();
   }
   clearTimeout(compassQuiet);
   compassQuiet = setTimeout(() => {
     compassSpelled = true;
     document.querySelector(".compass")?.classList.add("spelled");
+    compassFoldUntil = performance.now() + COMPASS_FOLD_MS + 50;
     requestDraw();
   }, COMPASS_QUIET_MS);
 }
@@ -1380,7 +1385,7 @@ function updateCompass() {
     if (!el) continue;
     if (refreshText) {
       const c = faceCenterColor(app.current, d);
-      el.innerHTML = `<svg class="cmp-dir" viewBox="-13 -13 26 26" aria-hidden="true" style="color:${c ? NET_COLOR[c] : "transparent"}"><path class="cmp-arrow" d="M-11,-3.6 L1,-3.6 L1,-8.5 L12,0 L1,8.5 L1,3.6 L-11,3.6Z"/><g class="cmp-toward"><circle r="8"/><circle class="cmp-mark" r="2.6"/></g><g class="cmp-away"><circle r="8"/><path class="cmp-mark" d="M-4.5,-4.5 L4.5,4.5 M4.5,-4.5 L-4.5,4.5"/></g></svg><span>${COMPASS_FACES[d]}<span class="cmp-rest">${COMPASS_NAMES[d].slice(1)}</span></span>`;
+      el.innerHTML = `<svg class="cmp-dir" viewBox="-13 -13 26 26" aria-hidden="true" style="color:${c ? NET_COLOR[c] : "transparent"}"><path class="cmp-arrow" d="M-11,-3.6 L1,-3.6 L1,-8.5 L12,0 L1,8.5 L1,3.6 L-11,3.6Z"/><g class="cmp-toward"><circle r="8"/><circle class="cmp-mark" r="2.6"/></g><g class="cmp-away"><circle r="8"/><path class="cmp-mark" d="M-4.5,-4.5 L4.5,4.5 M4.5,-4.5 L-4.5,4.5"/></g></svg><span class="cmp-word"><span class="cmp-key">${COMPASS_FACES[d]}</span><span class="cmp-rest">${COMPASS_NAMES[d].slice(1)}</span></span>`;
       el.setAttribute("aria-label", `Look at the ${COMPASS_FACES[d]} face`);
     }
     const dir = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(pivot.quaternion); // world
@@ -1393,6 +1398,8 @@ function updateCompass() {
       dx /= len;
       dy /= len;
     }
+    // On the left or right edge the word goes under the arrow (the label is narrower); on the top or bottom, beside it.
+    el.classList.toggle("stack", len >= 1e-3 && (dx ? w / 2 / Math.abs(dx) : Infinity) < (dy ? h / 2 / Math.abs(dy) : Infinity));
     const svg = el.firstElementChild as SVGElement | null;
     if (svg) {
       const headOn = inPlane < COMPASS_HEAD_ON;
@@ -1513,7 +1520,8 @@ function frame() {
   const canvas = renderer.domElement as HTMLCanvasElement;
   const q = pivot.quaternion;
   const viewKey = `${q.x},${q.y},${q.z},${q.w}|${canvas.clientWidth}x${canvas.clientHeight}`;
-  if (moving || arrowMoving || drawRequested || viewKey !== drawnViewKey) {
+  const folding = performance.now() < compassFoldUntil;
+  if (moving || arrowMoving || drawRequested || folding || viewKey !== drawnViewKey) {
     drawRequested = false;
     // A turn, a gesture or the view turning counts as interaction (a step's flying pieces don't).
     if (tween || anim || queue.length || settle || live || viewKey !== drawnViewKey) compassStir();
@@ -7253,6 +7261,8 @@ function probe3d() {
 function installProbe() {
   const canvas = () => renderer.domElement as HTMLCanvasElement;
   (window as any).xcubeProbe = {
+    /** The view's turn in progress: its length, and how far it turns, in quarter turns. */
+    viewTurn: () => tween && { ms: tween.ms, quarters: tween.from.angleTo(tween.to) / (Math.PI / 2) },
     idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim && !working && !planner.running,
     /** Where the step guide's plan is made ("worker" or "page"), and making it on the page from now on. */
     planWhere: () => planner.where,
@@ -7261,8 +7271,6 @@ function installProbe() {
     debugInfo: () => debugInfo(),
     restoreDebug: (json: string) => restoreDebug(json),
     /** For each view Show weighs for a core piece (slot name): its direction, tilt and the share of the halo it shows. */
-    /** The view's turn in progress: its length, and how far it turns, in quarter turns. */
-    viewTurn: () => tween && { ms: tween.ms, quarters: tween.from.angleTo(tween.to) / (Math.PI / 2) },
     coreViewShares: (name: string) => coreViews(slotByName(name)).map(({ v, tilt }) => ({ v: v.toArray().map((x: number) => +x.toFixed(2)), tilt, share: +haloShare(edit!.shown, haloSlots(), v).toFixed(2) })),
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),

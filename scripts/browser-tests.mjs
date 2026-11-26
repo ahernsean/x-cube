@@ -915,7 +915,7 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
     const r = document.getElementById("scene").getBoundingClientRect();
     return [...document.querySelectorAll(".cmp")].map((el) => {
       const b = el.getBoundingClientRect();
-      return { text: el.textContent[0], height: Math.round(b.height * 10) / 10, shown: Number(getComputedStyle(el).opacity) > 0.05, inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1 };
+      return { text: el.textContent[0], height: Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 0), shown: Number(getComputedStyle(el).opacity) > 0.05, inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1 };
     });
   });
   const letters = labels.map((l) => l.text).sort().join("");
@@ -937,24 +937,41 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
   check(!moved(frontView, labelView) && fxHit?.slot === "Fx", "tapping the F label turns to the Front view, front center in sight");
 });
 
-labTest("edge labels: spelled out once the view rests, back to letters at a touch", async ({ page, check, settle }) => {
-  const texts = () => page.$$eval(".cmp", (els) => els.filter((e) => Number(getComputedStyle(e).opacity) > 0.05).map((e) => e.innerText.trim()));
+labTest("edge labels: spelled out once the view rests, back to letters at a touch, the letter bolder", async ({ page, check, settle }) => {
+  // Each shown label: its text, how wide the rest of the word is drawn, its layout, and the letter's weight against the rest's.
+  const labels = () =>
+    page.$$eval(".cmp", (els) =>
+      els
+        .filter((e) => Number(getComputedStyle(e).opacity) > 0.05)
+        .map((e) => {
+          const key = e.querySelector(".cmp-key"), rest = e.querySelector(".cmp-rest");
+          return { text: e.textContent, rest: rest.getBoundingClientRect().width, column: getComputedStyle(e).flexDirection === "column", keyWeight: Number(getComputedStyle(key).fontWeight), restWeight: Number(getComputedStyle(rest).fontWeight), keyColor: getComputedStyle(key).color, restColor: getComputedStyle(rest).color };
+        }),
+    );
   await page.click('[data-view="home"]');
   await settle();
-  const busy = await texts();
-  check(busy.every((t) => t.length === 1), `right after a tap the labels are letters (${busy})`);
-  await page.waitForTimeout(3200);
-  const rested = await texts();
-  check(rested.length >= 3 && rested.every((t) => ["Right", "Left", "Up", "Down", "Front", "Back"].includes(t)), `after a rest they spell out their faces (${rested})`);
+  const busy = await labels();
+  check(busy.every((l) => l.rest < 1), `right after a tap the labels are letters (${busy.map((l) => l.text[0])})`);
+  await page.waitForTimeout(3300);
+  const rested = await labels();
+  check(rested.length >= 3 && rested.every((l) => ["Right", "Left", "Up", "Down", "Front", "Back"].includes(l.text) && l.rest > 5), `after a rest they spell out their faces (${rested.map((l) => `${l.text} ${Math.round(l.rest)}px`)})`);
+  check(rested.every((l) => l.keyWeight > l.restWeight && l.keyColor !== l.restColor), `the first letter, the turn's letter, is bolder and darker than the rest (${JSON.stringify(rested[0])})`);
+  // From Home, Right and Left sit on the sides of the view, the word under the arrow; Up and Down on the top and bottom, beside it.
+  const by = Object.fromEntries(rested.map((l) => [l.text, l.column]));
+  check(by.Right === true && by.Up === false, `on the left and right edges the word is under the arrow, on the top and bottom beside it (${JSON.stringify(by)})`);
   const inside = await page.evaluate(() => {
     const r = document.getElementById("scene").getBoundingClientRect();
     return [...document.querySelectorAll(".cmp")].filter((e) => Number(getComputedStyle(e).opacity) > 0.05).every((e) => { const b = e.getBoundingClientRect(); return b.left >= r.left - 1 && b.right <= r.right + 1; });
   });
   check(inside, "the spelled-out labels stay inside the view");
   await page.mouse.click(5, 5);
-  await settle();
-  const again = await texts();
-  check(again.every((t) => t.length === 1), `a touch brings back the letters (${again})`);
+  // The word folds back into its letter over a moment, not at once.
+  await page.waitForTimeout(120);
+  const folding = await labels();
+  check(folding.some((l) => l.rest > 1), `the word folds back gradually (${folding.map((l) => Math.round(l.rest))})`);
+  await page.waitForTimeout(600);
+  const again = await labels();
+  check(again.every((l) => l.rest < 1), `a touch brings back the letters (${again.map((l) => Math.round(l.rest))})`);
 });
 
 // ---- Shuffle, playback and the hold line.
@@ -2644,8 +2661,11 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
     }
     const a = await probe("lostAnswer");
     await page.click(`#lost-opts [data-lost="${a}"]`);
+    const turn = await probe("viewTurn");
+    if (turn && turn.quarters > 0.1 && (await probe("lost"))?.phase === "ask") slowest = Math.min(slowest, turn.ms / turn.quarters);
     await settle();
   }
+  check(isFinite(slowest) && slowest >= 1500, `the view turns to each spot as slowly as the slowest turn (${Math.round(slowest)} ms a quarter turn)`);
   const found = await probe("lost");
   check(found.phase === "confirm" && found.gray === 0 && !found.marked && (await probe("lostAnswer")) === "yes", `after ${asked} questions it shows the puzzle found, in color (${JSON.stringify(found)})`);
   await page.click(`#lost-opts [data-lost="yes"]`);
@@ -2661,11 +2681,8 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
   const again = await probe("guide");
   check(again.index === 1 && again.stage !== "recover", `once undone, Next step gives the first step again (step ${again.index}, ${again.stage})`);
   const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-    const turn = await probe("viewTurn");
-    if (turn && turn.quarters > 0.1 && (await probe("lost"))?.phase === "ask") slowest = Math.min(slowest, turn.ms / turn.quarters);
   check(fits, "the page is no wider than the screen");
 });
-  check(isFinite(slowest) && slowest >= 1500, `the view turns to each spot as slowly as the slowest turn (${Math.round(slowest)} ms a quarter turn)`);
 
 labTest("lost: giving up says so, and Edit puzzle opens Edit puzzle in full color with the solve kept", async ({ page, check, probe, settle }) => {
   // A play-tester's solve, restored from debug info, then a sticker with a color no way gives.
