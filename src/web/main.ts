@@ -94,9 +94,11 @@ export const VIEWS: Record<string, Quat> = {
 };
 let tween: { from: any; to: any; start: number; ms: number } | null = null;
 
-function goToView(q: Quat) {
+/** Turns the view to q: in 350 ms, or, given msPerQuarter, at that many milliseconds per quarter turn of the view. */
+function goToView(q: Quat, msPerQuarter?: number) {
   const to = new THREE.Quaternion(q[0], q[1], q[2], q[3]);
-  tween = { from: pivot.quaternion.clone(), to, start: performance.now(), ms: reduceMotionView() ? 0 : 350 };
+  const ms = msPerQuarter ? (msPerQuarter * pivot.quaternion.angleTo(to)) / (Math.PI / 2) : 350;
+  tween = { from: pivot.quaternion.clone(), to, start: performance.now(), ms: reduceMotionView() ? 0 : ms };
 }
 function reduceMotionView() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -4753,19 +4755,23 @@ function lostTurnStep(l: Lost, k: number): [Guide, number] {
 }
 
 /** Each direction's side of the puzzle as the person holds it (DIRS order: right, left, up, down, front, back). */
-const LOST_SIDES = ["the right side", "the left side", "the top", "the bottom", "the side facing you", "the back"];
+/** Lost?'s turns of the view to each spot asked about: the slowest turn speed (the speed slider's slow end). */
+const LOST_VIEW_MS_PER_QUARTER = 1600;
+const LOST_SIDES = ["Over on the right side", "Over on the left side", "Up on the top", "Down on the bottom", "On the side facing you", "Around on the back"];
 
 /**
- * Where a question's spot is, by how the person holds their puzzle: the side it is on and
- * that side's center color ("Look at your puzzle, not this screen: the right side, the one
- * with the orange center."). The centers' colors are the same in every candidate held that way.
+ * A question put by how the person holds their puzzle: the side its spot is on and that
+ * side's center color, then the question ("Look at your puzzle, not the screen. Over on
+ * the right side, the one with a red center, what color is the sticker shown in the
+ * ring?"). The centers' colors are the same in every candidate held that way.
  */
-function lostSideWords(l: Lost, q: Question): string {
+function lostQuestionWords(l: Lost, q: Question): string {
   const p = SLOT_POS[q.slot];
   const d = q.kind === "color" ? q.dir : DIRS.findIndex((v) => v.every((c, i) => c === (Math.abs(p[i]) === 2 ? Math.sign(p[i]) : 0)));
   const c = d >= 0 ? centerColor(l.expected.state, d) : null;
-  if (d < 0) return "Look at your puzzle, not this screen.";
-  return `Look at your puzzle, not this screen: ${LOST_SIDES[d]}, the one with the ${c ? COLOR_NAME[c].toLowerCase() : "?"} center.`;
+  const ask = q.kind === "color" ? "what color is the sticker shown in the ring?" : "is there a piece here?";
+  if (d < 0 || !c) return `Look at your puzzle, not the screen. ${ask[0].toUpperCase()}${ask.slice(1)}`;
+  return `Look at your puzzle, not the screen. ${LOST_SIDES[d]}, the one with a ${COLOR_NAME[c].toLowerCase()} center, ${ask}`;
 }
 
 /** What a candidate's slip was, in words. */
@@ -4985,7 +4991,8 @@ function lookAtSpot(q: Question) {
   const v = new THREE.Vector3(...out).multiplyScalar(2).add(new THREE.Vector3(0.35, 0.45, 0.35));
   if (Math.abs(out[1]) === 1) v.set(out[0] * 2 + 0.3, out[1] * 2, out[2] * 2 + 0.6);
   const q4 = lookFrom(v);
-  goToView([q4.x, q4.y, q4.z, q4.w]);
+  // As slowly as the slowest turn, so the person can follow which way the puzzle goes.
+  goToView([q4.x, q4.y, q4.z, q4.w], LOST_VIEW_MS_PER_QUARTER);
 }
 
 /**
@@ -5055,7 +5062,7 @@ function renderLost() {
     answers = colors.filter((c) => c !== l.up && c !== opposite[l.up!]);
   } else if (l.phase === "ask") {
     const q = l.question!;
-    text = `${lostSideWords(l, q)} ${q.kind === "color" ? "What color is the sticker in the ring?" : "Is there a piece here?"}`;
+    text = lostQuestionWords(l, q);
     answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? [...(canBeEmpty(q.slot) ? ["empty"] : []), "none"] : [])];
   } else if (l.phase === "giveup") {
     text = `I can't find how your puzzle got this way. ${l.why} Edit the puzzle on this screen to match yours, then tap Continue search, and I'll look again from there.`;
@@ -7254,6 +7261,8 @@ function installProbe() {
     debugInfo: () => debugInfo(),
     restoreDebug: (json: string) => restoreDebug(json),
     /** For each view Show weighs for a core piece (slot name): its direction, tilt and the share of the halo it shows. */
+    /** The view's turn in progress: its length, and how far it turns, in quarter turns. */
+    viewTurn: () => tween && { ms: tween.ms, quarters: tween.from.angleTo(tween.to) / (Math.PI / 2) },
     coreViewShares: (name: string) => coreViews(slotByName(name)).map(({ v, tilt }) => ({ v: v.toArray().map((x: number) => +x.toFixed(2)), tilt, share: +haloShare(edit!.shown, haloSlots(), v).toFixed(2) })),
     state: () => encodeState(app.current),
     turns: () => formatAlg(app.history.slice(0, app.cursor)),

@@ -2628,7 +2628,7 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
   // The person's puzzle: one of the slips (not the right result).
   const slip = await probe("lostPick", Math.max(1, Math.floor(up.answers.length / 2)));
   check(slip && slip !== "none", `a slipped puzzle is picked (${slip})`);
-  let asked = 0;
+  let asked = 0, slowest = Infinity;
   for (let k = 0; k < 12; k++) {
     const l = await probe("lost");
     if (l.phase === "confirm") break;
@@ -2636,9 +2636,9 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
       if (l.question.endsWith("?")) {
         // The halo's outline, which the puzzle in front hides: around the piece there, or a glass box in an empty spot.
         const o = await probe("outlineOver");
-        check(/Is there a piece here\?/.test(l.text) && l.outlined && o.purple > 30, `a question about a spot asks about "here", outlined by the halo (${l.text}; ${o.purple} purple pixels)`);
+        check(/is there a piece here\?/.test(l.text) && l.outlined && o.purple > 30, `a question about a spot asks about "here", outlined by the halo (${l.text}; ${o.purple} purple pixels)`);
       }
-      check(/^Look at your puzzle, not this screen: (the right side|the left side|the top|the bottom|the side facing you|the back), the one with the (white|yellow|green|blue|red|orange) center\. /.test(l.text), `the question says which side of the puzzle as held, by its center (${l.text})`);
+      check(/^Look at your puzzle, not the screen\. (Over on the right side|Over on the left side|Up on the top|Down on the bottom|On the side facing you|Around on the back), the one with a (white|yellow|green|blue|red|orange) center, (what color is the sticker shown in the ring|is there a piece here)\?$/.test(l.text), `the question says which side of the puzzle as held, by its center (${l.text})`);
       asked++;
       check(l.marked, `question ${asked} marks its spot (${l.question})`);
     }
@@ -2661,8 +2661,11 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
   const again = await probe("guide");
   check(again.index === 1 && again.stage !== "recover", `once undone, Next step gives the first step again (step ${again.index}, ${again.stage})`);
   const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+    const turn = await probe("viewTurn");
+    if (turn && turn.quarters > 0.1 && (await probe("lost"))?.phase === "ask") slowest = Math.min(slowest, turn.ms / turn.quarters);
   check(fits, "the page is no wider than the screen");
 });
+  check(isFinite(slowest) && slowest >= 1500, `the view turns to each spot as slowly as the slowest turn (${Math.round(slowest)} ms a quarter turn)`);
 
 labTest("lost: giving up says so, and Edit puzzle opens Edit puzzle in full color with the solve kept", async ({ page, check, probe, settle }) => {
   // A play-tester's solve, restored from debug info, then a sticker with a color no way gives.
