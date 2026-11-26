@@ -937,7 +937,7 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
   check(!moved(frontView, labelView) && fxHit?.slot === "Fx", "tapping the F label turns to the Front view, front center in sight");
 });
 
-labTest("edge labels: spelled out once the view rests, back to letters at a touch, the letter bolder", async ({ page, check, settle }) => {
+labTest("edge labels: spelled out once the view rests, back to letters only at a touch on the puzzle, the letter bolder", async ({ page, check, settle }) => {
   // Each shown label: its text, how wide the rest of the word is drawn, its layout, and the letter's weight against the rest's.
   const labels = () =>
     page.$$eval(".cmp", (els) =>
@@ -964,7 +964,18 @@ labTest("edge labels: spelled out once the view rests, back to letters at a touc
     return [...document.querySelectorAll(".cmp")].filter((e) => Number(getComputedStyle(e).opacity) > 0.05).every((e) => { const b = e.getBoundingClientRect(); return b.left >= r.left - 1 && b.right <= r.right + 1; });
   });
   check(inside, "the spelled-out labels stay inside the view");
-  await page.mouse.click(5, 5);
+  // Turns played and taps elsewhere on the page leave the words spelled out.
+  await page.fill("#alg", "R U");
+  await page.click("#load");
+  await page.click("#last");
+  await settle();
+  await page.click('[data-view="home"]');
+  await settle();
+  const stayed = await labels();
+  check(stayed.length >= 3 && stayed.every((l) => l.rest > 5), `turns played and taps off the puzzle leave the words (${stayed.map((l) => l.text)})`);
+  // A touch on the puzzle folds them back.
+  const box = await page.locator("#scene").boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   // The word folds back into its letter over a moment, not at once.
   await page.waitForTimeout(120);
   const folding = await labels();

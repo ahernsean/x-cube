@@ -1325,9 +1325,10 @@ const COMPASS_FACES = ["R", "L", "U", "D", "F", "B"];
 const COMPASS_NAMES = ["Right", "Left", "Up", "Down", "Front", "Back"];
 
 /**
- * The edge labels spell out their faces' names ("Back" for B) once the view has rested
- * for COMPASS_QUIET_MS (no input, no turn, the view not turning), and go back to letters
- * at the next touch, key or movement, so while someone works they stay small.
+ * The edge labels spell out their faces' names ("Back" for B) once the puzzle has gone
+ * untouched for COMPASS_QUIET_MS, and go back to letters only at the next touch on the
+ * puzzle (the 3D view): a turn played, a view turned or a tap elsewhere on the page
+ * leaves them as they are, so they don't flip back and forth while someone follows a solve.
  */
 const COMPASS_QUIET_MS = 2500;
 let compassSpelled = false;
@@ -1475,9 +1476,15 @@ let drawnViewKey = "";
 let arrowWasShown = false;
 for (const type of ["pointerdown", "pointerup", "pointercancel", "click", "keydown", "input", "change", "wheel", "touchstart", "touchend"]) {
   document.addEventListener(type, requestDraw, { capture: true, passive: true });
-  document.addEventListener(type, compassStir, { capture: true, passive: true });
 }
 document.addEventListener("pointermove", (e) => (e.buttons || e.pointerType === "touch") && requestDraw(), { capture: true, passive: true });
+// Only a touch on the puzzle folds the edge labels' words back (and a drag keeps them folded).
+{
+  const scene3d = document.getElementById("scene");
+  for (const type of ["pointerdown", "wheel", "touchstart"]) scene3d?.addEventListener(type, compassStir, { passive: true });
+  scene3d?.addEventListener("pointermove", (e) => (e.buttons || e.pointerType === "touch") && compassStir(), { passive: true });
+}
+compassStir(); // the first quiet spell starts with the page
 for (const type of ["resize", "pageshow", "focus"]) window.addEventListener(type, requestDraw);
 document.addEventListener("visibilitychange", requestDraw);
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", requestDraw);
@@ -1523,8 +1530,6 @@ function frame() {
   const folding = performance.now() < compassFoldUntil;
   if (moving || arrowMoving || drawRequested || folding || viewKey !== drawnViewKey) {
     drawRequested = false;
-    // A turn, a gesture or the view turning counts as interaction (a step's flying pieces don't).
-    if (tween || anim || queue.length || settle || live || viewKey !== drawnViewKey) compassStir();
     drawnViewKey = viewKey;
     placeHidePill();
     showMarks();

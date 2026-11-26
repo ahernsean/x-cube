@@ -283,12 +283,13 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   foreshortened: a label on an axis toward the viewer is drawn larger, one pointing away
   smaller (scale 0.85 to 1.5, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top. A label
   slides along its edge only to clear another label or a corner button, so it stays near
-  where its axis meets the edge. Once the view has rested for 2.5 seconds
-  (`COMPASS_QUIET_MS`: no input, no turn, the view not turning; a step's flying pieces
-  don't count), each label spells out its face ("Right", "Up", "Back"), the rest of the
-  word unfolding from the letter, and the next touch, key or movement folds it back
-  (`COMPASS_FOLD_MS`, 0.4 s; a play-tester's idea: words for someone looking, letters out
-  of the way while turning). The letter is bolder and darker than the rest of the word,
+  where its axis meets the edge. Once the puzzle has gone untouched for 2.5 seconds
+  (`COMPASS_QUIET_MS`), each label spells out its face ("Right", "Up", "Back"), the rest of
+  the word unfolding from the letter, and only the next touch on the puzzle (the 3D view)
+  folds it back (`COMPASS_FOLD_MS`, 0.4 s; a play-tester's idea: words for someone
+  looking, letters out of the way while turning). A turn played, the view turning or a tap
+  elsewhere on the page leaves the labels as they are: the owner found them flipping back
+  and forth too often while following a solve. The letter is bolder and darker than the rest of the word,
   since it is the face's letter in turn notation. On the left and right edges the word sits
   under the arrow, which keeps the label narrow; on the top and bottom, beside it.
 - **Corner buttons** of the 3D view, round icons with no button edge (drawn as SVG, so the
