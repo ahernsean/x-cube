@@ -775,9 +775,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   (answers: the colors some candidate shows there, "No sticker", **No piece here** where
   the spot can be empty, which is an extension spot and never a core one (`canBeEmpty`),
   and **None of these**), or whether there is a piece at an extension spot ("Is there a piece here?", as Edit
-  puzzle's hints say "here"), marked by a box drawn over everything in the halo's purple,
-  with a dark casing and a faint fill, so it shows against the gray puzzle as well as the
-  background. Meanwhile
+  puzzle's hints say "here"), marked as Edit puzzle marks a piece: the halo's outline around
+  the piece there, or around a glass box in the spot when it is empty (the Shape tool's,
+  1.4 times as large, `LOST_GHOST_SCALE`), hidden where the puzzle is in front of it (a box
+  drawn over everything confused a play-tester where it marked a piece already there). Meanwhile
   the puzzle shown is where the step should leave it, all gray (matte, as the step guide's
   grays are: the stickers' film made a gray seen face-on look white; so it can't be read for
   theirs) except what the person has told: the two centers in the colors named, and each

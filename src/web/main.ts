@@ -1498,7 +1498,7 @@ function frame() {
     if (view3dOpen) {
       renderer.render(scene, camera);
       drawCount.view++;
-      if (edit?.highlight) {
+      if (edit?.highlight || lostOutlined()) {
         const size = renderer.getDrawingBufferSize(new THREE.Vector2());
         drawOutline(camera, null, size.x, size.y, renderer.getPixelRatio());
       }
@@ -4962,7 +4962,13 @@ function lookAtSpot(q: Question) {
   goToView([q4.x, q4.y, q4.z, q4.w]);
 }
 
-/** The mark on the spot asked about: a ring on a face, or a box around an extension spot. Drawn over everything. */
+/**
+ * The mark on the spot asked about: a ring on a face (drawn over everything), or for
+ * "Is there a piece here?" the halo's outline around the piece there, or around a glass
+ * box in it when it is empty (`lostOutlined`), which the puzzle in front hides as it
+ * hides any halo.
+ */
+const LOST_GHOST_SCALE = 1.4;
 function placeLostMarker() {
   if (lostMarker) {
     pivot.remove(lostMarker);
@@ -4983,29 +4989,11 @@ function placeLostMarker() {
     }
     group.position.copy(p.add(n.clone().multiplyScalar(0.53)));
     group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
-  } else {
-    // A box drawn over everything, in the halo's purple with a dark casing and a faint fill, so it
-    // shows against the gray puzzle as well as against the background.
-    const fill = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: HALO.color, depthTest: false, transparent: true, opacity: 0.22 }));
-    fill.renderOrder = 10;
-    group.add(fill);
-    const h = 0.5;
-    const corners: [number, number, number][] = [];
-    for (const x of [-h, h]) for (const y of [-h, h]) for (const z of [-h, h]) corners.push([x, y, z]);
-    for (const [r, c, order] of [[0.06, 0x111111, 11], [0.035, HALO.color, 12]] as const) {
-      const m = mat(c);
-      for (let i = 0; i < 8; i++)
-        for (let j = i + 1; j < 8; j++) {
-          const [a, b] = [corners[i], corners[j]];
-          if ([0, 1, 2].filter((k) => a[k] !== b[k]).length !== 1) continue;
-          const edge = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1 + r * 2, 10), m);
-          edge.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
-          if (a[0] !== b[0]) edge.rotation.z = Math.PI / 2;
-          else if (a[2] !== b[2]) edge.rotation.x = Math.PI / 2;
-          edge.renderOrder = order;
-          group.add(edge);
-        }
-    }
+  } else if (app.current.occ[q.slot] < 0) {
+    // An empty spot: the Shape tool's glass box, larger, which the halo then outlines (`lostOutlined`).
+    const g = ghostBox();
+    g.scale.setScalar(LOST_GHOST_SCALE);
+    group.add(g);
     group.position.copy(p);
   }
   group.userData.question = q;
@@ -6142,8 +6130,18 @@ function haloMesh(kind: "glow") {
   return m;
 }
 
+/** What Lost?'s "Is there a piece here?" outlines: the piece in that spot, or the glass box in it. */
+function lostOutlined(): any {
+  const q = lost?.phase === "ask" ? lost.question : null;
+  if (q?.kind !== "filled" || !lostMarker) return null;
+  const id = app.current.occ[q.slot];
+  return id >= 0 ? meshes[id] : (lostMarker.children[0] ?? null);
+}
+
 /** The drawn pieces (or blanks) the 3D view outlines now. */
 function outlined(): any[] {
+  const l = lostOutlined();
+  if (l) return [l];
   if (!edit?.highlight) return [];
   return haloSlots().map((s) => drawnAt(edit!.shown, s)).filter((o) => o);
 }
@@ -7433,6 +7431,7 @@ function installProbe() {
         question: lost.question && (lost.question.kind === "color" ? `${slotName(lost.question.slot)}/${COMPASS_FACES[lost.question.dir]}` : `${slotName(lost.question.slot)}?`),
         answers: [...document.querySelectorAll<HTMLElement>("#lost-opts [data-lost]")].map((b) => b.dataset.lost),
         marked: !!lostMarker,
+        outlined: !!lostOutlined(),
         known: lostKnown().size,
         text: $("lost-q").textContent,
         gray: guideDimmed.filter((m) => stickerMesh3d.includes(m)).length,

@@ -2613,7 +2613,11 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
     const l = await probe("lost");
     if (l.phase === "confirm") break;
     if (l.phase === "ask") {
-      if (l.question.endsWith("?")) check(/Is there a piece here\?/.test(l.text) && l.marked, `a question about a spot asks about "here", marked by the box (${l.text})`);
+      if (l.question.endsWith("?")) {
+        // The halo's outline, which the puzzle in front hides: around the piece there, or a glass box in an empty spot.
+        const o = await probe("outlineOver");
+        check(/Is there a piece here\?/.test(l.text) && l.outlined && o.purple > 30, `a question about a spot asks about "here", outlined by the halo (${l.text}; ${o.purple} purple pixels)`);
+      }
       check(/^Look at your puzzle, not this screen: (the right side|the left side|the top|the bottom|the side facing you|the back), the one with the (white|yellow|green|blue|red|orange) center\. /.test(l.text), `the question says which side of the puzzle as held, by its center (${l.text})`);
       asked++;
       check(l.marked, `question ${asked} marks its spot (${l.question})`);
