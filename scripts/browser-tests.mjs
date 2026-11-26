@@ -706,6 +706,10 @@ labTest("drawing: the 3D view draws every sticker in place and in the model's co
 
 labTest("drawing: the views are drawn only when something in them changes", async ({ page, check, probe, settle }) => {
   // At rest nothing is drawn; a turn draws until it settles, and the last frame shows it.
+  // The edge labels unfold once, 2.5 s after the page opens (drawn while they unfold); let
+  // that pass first, so it can't fall in a window measured below.
+  await page.waitForFunction(() => document.querySelector(".compass.spelled"), null, { timeout: 10000 });
+  await page.waitForTimeout(600);
   await settle();
   const frames = async (ms) => {
     const a = await probe("drawCount");
