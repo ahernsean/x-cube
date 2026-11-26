@@ -271,7 +271,15 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Views:** Home (three-quarter), Front, Back, Left, Right, Up, Down. The side views tip
   the top 16.6 degrees toward the viewer (from the owner's saved view).
 - **Edge labels:** the six face letters, each placed where that face's axis, as projected on
-  screen, meets the edge of the 3D view; tapping one turns the view to that face. They are
+  screen, meets the edge of the 3D view; tapping one turns the view to that face. Beside
+  each letter, an arrow in the color of that face's center points the way the face's axis
+  points on screen, shorter as the axis turns toward or away from the viewer; nearly
+  head-on (its projection under `COMPASS_HEAD_ON`, 0.45) it is a disc with a dot (toward the
+  viewer) or a cross (away), as on a diagram. The arrows have no dark outline, only the
+  faint `--tile-edge` hairline, without which a white arrow vanished on the pale pill (a
+  play-tester turning a tipped-over puzzle asked for arrows to tell which way each face
+  points; arrows standing out of the puzzle itself were mocked up too, and set aside
+  because they covered pieces). They are
   foreshortened: a label on an axis toward the viewer is drawn larger, one pointing away
   smaller (scale 0.85 to 1.5, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top. A label
   slides along its edge only to clear another label or a corner button, so it stays near

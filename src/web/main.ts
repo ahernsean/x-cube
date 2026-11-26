@@ -1323,12 +1323,16 @@ const COMPASS_FACES = ["R", "L", "U", "D", "F", "B"];
 let compassKey = "";
 /** Label scale for an axis pointing straight away from you and straight at you. */
 const COMPASS_MIN = 0.85, COMPASS_MAX = 1.5;
+/** An axis whose projection is shorter than this (sine of its angle from the line of sight) shows head-on: a dot or a cross, not an arrow. */
+const COMPASS_HEAD_ON = 0.45;
 /**
  * Edge labels that move with the cube: each face's label sits where that face's axis
  * (its outward normal from the center), as seen on screen, meets the edge of the 3D
  * view. Axes pointing toward you get a solid label, axes pointing away a dimmer one;
  * an axis pointing almost straight at you (or away) projects to almost nothing, so its
- * label fades out.
+ * label fades out. Each label's arrow, in the color of that face's center, points the way
+ * the face's axis points on screen, shortened as the axis turns toward or away from you;
+ * nearly head-on it is a dot in a disc (toward you) or a cross (away), as on a diagram.
  */
 function updateCompass() {
   const canvas = renderer.domElement as HTMLCanvasElement;
@@ -1351,7 +1355,7 @@ function updateCompass() {
     if (!el) continue;
     if (refreshText) {
       const c = faceCenterColor(app.current, d);
-      el.innerHTML = `<i style="background:${c ? NET_COLOR[c] : "transparent"}"></i>${COMPASS_FACES[d]}`;
+      el.innerHTML = `<svg class="cmp-dir" viewBox="-13 -13 26 26" aria-hidden="true" style="color:${c ? NET_COLOR[c] : "transparent"}"><path class="cmp-arrow" d="M-11,-3.6 L1,-3.6 L1,-8.5 L12,0 L1,8.5 L1,3.6 L-11,3.6Z"/><g class="cmp-toward"><circle r="8"/><circle class="cmp-mark" r="2.6"/></g><g class="cmp-away"><circle r="8"/><path class="cmp-mark" d="M-4.5,-4.5 L4.5,4.5 M4.5,-4.5 L-4.5,4.5"/></g></svg>${COMPASS_FACES[d]}`;
       el.setAttribute("aria-label", `Look at the ${COMPASS_FACES[d]} face`);
     }
     const dir = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(pivot.quaternion); // world
@@ -1363,6 +1367,15 @@ function updateCompass() {
     if (len >= 1e-3) {
       dx /= len;
       dy /= len;
+    }
+    const svg = el.firstElementChild as SVGElement | null;
+    if (svg) {
+      const headOn = inPlane < COMPASS_HEAD_ON;
+      const arrow = svg.children[0] as SVGElement;
+      arrow.style.display = headOn ? "none" : "";
+      (svg.children[1] as SVGElement).style.display = headOn && dir.z > 0 ? "" : "none";
+      (svg.children[2] as SVGElement).style.display = headOn && dir.z <= 0 ? "" : "none";
+      if (!headOn) arrow.setAttribute("transform", `rotate(${((Math.atan2(dy, dx) * 180) / Math.PI).toFixed(1)}) scale(${Math.max(0.35, inPlane).toFixed(3)},1)`);
     }
     // Foreshortened: a label on an axis toward you is drawn larger, one away from you
     // smaller (no smaller than COMPASS_MIN, so it stays legible).

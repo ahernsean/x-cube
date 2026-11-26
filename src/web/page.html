@@ -79,7 +79,11 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .cmp { position: absolute; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 0; border-radius: 999px; font: inherit; color: inherit; letter-spacing: inherit; background: color-mix(in srgb, var(--panel) 75%, transparent); pointer-events: auto; cursor: pointer; }
 .cmp:hover { color: var(--ink); }
 .cmp:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.cmp i { width: 9px; height: 9px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--tile-edge); }
+.cmp-dir { width: 18px; height: 18px; flex: none; overflow: visible; fill: currentColor; }
+/* The faint edge today's squares had, so a white or yellow arrow shows on the pale pill. */
+.cmp-dir .cmp-arrow, .cmp-dir circle:first-child { stroke: var(--tile-edge); stroke-width: 1; }
+.cmp-dir .cmp-mark { fill: #161616; }
+.cmp-dir path.cmp-mark { stroke: #161616; stroke-width: 2.2; }
 /* Positioned each frame where the face's axis meets the edge of the view. */
 .cmp { left: 0; top: 0; will-change: transform; transition: opacity 0.15s; }
 .cmp.away { background: transparent; box-shadow: inset 0 0 0 1px var(--muted); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--muted) 60%, transparent); }

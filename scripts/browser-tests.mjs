@@ -876,6 +876,39 @@ labTest("turn buttons: a tap turns, a long press turns the inverse", async ({ pa
   check((await probe("turns")) === "U U'", `tap on U turns U, a long press turns U' (turns "${await probe("turns")}")`);
 });
 
+labTest("edge labels: each arrow, in its center's color, points out along its face's axis; head-on, a dot or a cross", async ({ page, check, probe, settle }) => {
+  await page.waitForTimeout(200);
+  // From Home, every label's arrow points from the middle of the view toward the label (the
+  // label sits where the face's axis meets the edge), in the color of that face's center.
+  const arrows = await page.evaluate(() => {
+    const r = document.getElementById("scene").getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    return [...document.querySelectorAll(".cmp")].map((el) => {
+      const b = el.getBoundingClientRect();
+      const svg = el.querySelector("svg");
+      const arrow = svg.children[0];
+      const m = /rotate\(([-\d.]+)\)/.exec(arrow.getAttribute("transform") ?? "");
+      return { face: el.textContent, color: getComputedStyle(svg).color, shown: arrow.style.display !== "none", stroke: getComputedStyle(arrow).stroke, angle: m ? Number(m[1]) : null, toward: (Math.atan2(b.top + b.height / 2 - cy, b.left + b.width / 2 - cx) * 180) / Math.PI };
+    });
+  });
+  const off = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+  const bad = arrows.filter((a) => a.shown && off(a.angle, a.toward) > 25);
+  check(arrows.filter((a) => a.shown).length >= 4 && !bad.length, `each arrow points from the middle toward its label (${JSON.stringify(arrows.map((a) => [a.face, a.angle, Math.round(a.toward)]))})`);
+  // No dark outline: only the faint edge today's squares had (so white shows on the pale pill).
+  const faint = (c) => { const m = /rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)/.exec(c); return !!m && Number(m[4] ?? 1) <= 0.3; };
+  check(arrows.every((a) => faint(a.stroke)), `the arrows have only a faint edge, no dark outline (${arrows.map((a) => a.stroke)})`);
+  const u = arrows.find((a) => a.face === "U");
+  check(u && /243, 243, 238|f3f3ee/i.test(u.color), `U's arrow is white, as the up center (${u?.color})`);
+  // Straight down at the top: U points at you (a dot), D away (a cross).
+  await page.evaluate(() => document.querySelector('[data-view="top"]').click());
+  await settle();
+  const marks = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".cmp")].map((el) => {
+    const g = el.querySelector("svg").children;
+    return [el.textContent, g[0].style.display !== "none" ? "arrow" : g[1].style.display !== "none" ? "toward" : "away"];
+  })));
+  check(marks.U === "toward" && marks.D === "away" && marks.F === "arrow", `from the top, U shows a dot, D a cross, F an arrow (${JSON.stringify(marks)})`);
+});
+
 labTest("edge labels: one per face, inside the 3D view; tapping one turns that face to you", async ({ page, check, probe, settle }) => {
   await page.waitForTimeout(200);
   const labels = await page.evaluate(() => {
