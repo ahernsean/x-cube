@@ -2592,8 +2592,8 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
   const last = await probe("lost");
   const stepTurns = (await probe("guide")).turns;
   if (stepTurns > 1) {
-    check(last.phase === "last" && last.answers.length === stepTurns && last.gray > 0 && /Which turn of step 2 did you make last\?/.test(last.text), `it first asks which turn of the step was made last, one button a turn (${JSON.stringify(last)})`);
-    await page.click(`#lost-opts [data-lost="${last.answers[last.answers.length - 1]}"]`);
+    check(last.phase === "last" && last.answers.length === stepTurns + 1 && last.answers.at(-1) === "unknown" && last.gray > 0 && /Which turn of step 2 did you make last\?/.test(last.text), `it first asks which turn of the step was made last, one button a turn (${JSON.stringify(last)})`);
+    await page.click(`#lost-opts [data-lost="${last.answers[last.answers.length - 2]}"]`);
     await settle();
   } else check(last.phase === "up", `with a step of one turn, there is no asking which was last (${last.phase})`);
   const up = await probe("lost");
@@ -2648,7 +2648,7 @@ labTest("lost: giving up says so, and Edit puzzle opens Edit puzzle in full colo
   await page.click("#lost");
   await settle();
   const first = await probe("lost");
-  check(first.phase === "last" && /Which turn of step 10 did you make last\?/.test(first.text) && first.answers.length === 12, `it first asks which turn of step 10 was made last (${JSON.stringify(first)})`);
+  check(first.phase === "last" && /Which turn of step 10 did you make last\?/.test(first.text) && first.answers.length === 13 && first.answers.at(-1) === "unknown", `it first asks which turn of step 10 was made last, or I don't know (${JSON.stringify(first)})`);
   await probe("lostPick", 1);
   for (let k = 0; k < 10 && !(await probe("lost")).answers.includes("none"); k++) {
     await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
@@ -2907,7 +2907,7 @@ labTest("lost: a slip, then two more while putting it right, is still found (two
   await settle();
   // Back on track's fifth turn from the end made the other way, and its third from the end left out.
   const n = back.turns;
-  await page.click(`#lost-opts [data-lost="${(await probe("lost")).answers.at(-1)}"]`);
+  await page.click(`#lost-opts [data-lost="${(await probe("lost")).answers.at(-2)}"]`);
   await settle();
   await probe("lostTruthTwo", n - 5, n - 3);
   await answerAll();
@@ -2917,6 +2917,26 @@ labTest("lost: a slip, then two more while putting it right, is still found (two
   await settle();
   const again = await probe("guide");
   check(again?.stage === "recover" && again.turns > 0, `Yes loads a Back on track step for them (${again?.stage}, ${again?.turns} turns)`);
+});
+
+labTest("lost: I don't know the last turn: any turn of the step may have been, and the puzzle is still found", async ({ page, check, probe, settle }) => {
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
+  await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 10, null, { timeout: 20000 });
+  await page.click(`[data-tab="solve"]`);
+  await settle();
+  await page.click("#lost");
+  await settle();
+  const named = (await probe("lost")).cands;
+  await page.click(`#lost-opts [data-lost="unknown"]`);
+  await settle();
+  const unknown = await probe("lost");
+  check(unknown.phase === "up" && unknown.cands > named, `"I don't know" goes on to the centers, with more ways to look among (${named} then ${unknown.cands})`);
+  await probe("lostPick", 40);
+  for (let k = 0; k < 20 && (await probe("lost"))?.phase !== "confirm"; k++) {
+    await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
+    await settle();
+  }
+  check((await probe("lost"))?.phase === "confirm", `the puzzle is found (${(await probe("lost"))?.text})`);
 });
 
 labTest("lost: Cancel puts the turn list and the step back as they were", async ({ page, check, probe, settle, play, counter }) => {

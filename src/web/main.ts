@@ -4668,8 +4668,8 @@ function answerLost(a: string) {
   if (a === "empty") return giveUpLost("Your puzzle has no piece there, and every way I looked at has one.");
   if (a === "none") return giveUpLost("None of the ways I looked at gives your puzzle that color there.");
   if (l.phase === "last") {
-    const k = Number(a.slice(2));
-    if (!a.startsWith("t:") || !(k >= 0 && k < l.all.length)) return;
+    const k = a === "unknown" ? -1 : Number(a.slice(2));
+    if (a !== "unknown" && (!a.startsWith("t:") || !(k >= 0 && k < l.all.length))) return;
     setLostLast(l, k);
     showCandidate(l.expected);
     l.phase = "up";
@@ -4829,9 +4829,13 @@ const LOST_TWO_SLIP_TURNS = 14;
  * one slip up to it or up to a turn or two either side, and no slip up to any turn of the step.
  */
 function setLostLast(l: Lost, k: number) {
+  // Not known (-1): any turn of the step may have been the last, the step's own last first.
+  const unknown = k < 0;
+  if (unknown) k = l.all.length - 1;
   l.last = k;
   l.turns = l.all.slice(0, k + 1);
-  l.cands = endCandidates(l.from, l.all, [k, k - 1, k + 1, k - 2, k + 2], lostStepTurns(l));
+  const ends = unknown ? [...lostStepTurns(l)].reverse() : [k, k - 1, k + 1, k - 2, k + 2];
+  l.cands = endCandidates(l.from, l.all, ends, lostStepTurns(l));
   // Asked from a Back on track step: a slip putting a slip right is two stacked mistakes.
   const g = l.steps[l.steps.length - 1];
   // Within its last LOST_TWO_SLIP_TURNS turns up to the one named, which keeps the interview short.
@@ -5011,7 +5015,7 @@ function renderLost() {
     const g = l.steps[l.steps.length - 1];
     text = `Let's find where your puzzle went another way. Which turn of step ${g.index} did you make last? If you made them all, it's the last one.`;
     const off = g.start - l.start;
-    answers = g.step.turns.map((_, k) => `t:${off + k}`);
+    answers = [...g.step.turns.map((_, k) => `t:${off + k}`), "unknown"];
   } else if (l.phase === "up") {
     const intro = l.steps[l.steps.length - 1].step.turns.length > 1 ? "" : "Let's find where your puzzle went another way. ";
     text = `${intro}Hold your puzzle as you have been, without turning anything. Which center color is on top?`;
@@ -5038,6 +5042,7 @@ function renderLost() {
         const k = Number(a.slice(2));
         return `<button class="btn small lost-text lost-turn${k === l.all.length - 1 ? " primary" : ""}" data-lost="${a}">${turnName(l.all[k])}</button>`;
       }
+      if (a === "unknown") return `<span class="lost-break"></span><button class="btn small lost-text" data-lost="unknown">I don't know</button>`;
       if (a === "empty") return `<button class="btn small lost-text" data-lost="empty">No piece here</button>`;
       if (a === "none") return `<button class="btn small lost-text" data-lost="none">None of these</button>`;
       if (a === "color") return `<button class="btn small lost-text primary" data-lost="color">Edit puzzle</button>`;

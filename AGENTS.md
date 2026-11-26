@@ -748,7 +748,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   (a play-tester read a turn's ' wrong and couldn't get back). It asks about their puzzle
   instead of having them repaint it (`src/core/lost.ts`). It first asks which turn of the
   step shown (or the newest step) they made last, one button a turn, the last one
-  highlighted (not asked for a step of one turn). The person may misremember it, so the
+  highlighted (not asked for a step of one turn), and **I don't know** under them, which
+  takes any turn of the step as the last (sampled: found every time, 6.5 questions on
+  average and 10 at most against 5.3 and 9 with the turn named, 12 cases; about 0.25 s to
+  build). The person may misremember it, so the
   candidates (`endCandidates`) are what one slip in the turns up to that one, or up to a
   turn or two either side of it, gives, and no slip up to any turn of the step; the slip
   anywhere in the step and in every step back to back before it, as far back as the solve
