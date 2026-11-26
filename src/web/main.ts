@@ -1320,6 +1320,29 @@ function resize() {
 
 // Edge labels: which face of the puzzle points up, down, left, right and at you.
 const COMPASS_FACES = ["R", "L", "U", "D", "F", "B"];
+const COMPASS_NAMES = ["Right", "Left", "Up", "Down", "Front", "Back"];
+
+/**
+ * The edge labels spell out their faces' names ("Back" for B) once the view has rested
+ * for COMPASS_QUIET_MS (no input, no turn, the view not turning), and go back to letters
+ * at the next touch, key or movement, so while someone works they stay small.
+ */
+const COMPASS_QUIET_MS = 2500;
+let compassSpelled = false;
+let compassQuiet: ReturnType<typeof setTimeout> | undefined;
+function compassStir() {
+  if (compassSpelled) {
+    compassSpelled = false;
+    document.querySelector(".compass")?.classList.remove("spelled");
+    requestDraw();
+  }
+  clearTimeout(compassQuiet);
+  compassQuiet = setTimeout(() => {
+    compassSpelled = true;
+    document.querySelector(".compass")?.classList.add("spelled");
+    requestDraw();
+  }, COMPASS_QUIET_MS);
+}
 let compassKey = "";
 /** Label scale for an axis pointing straight away from you and straight at you. */
 const COMPASS_MIN = 0.85, COMPASS_MAX = 1.5;
@@ -1355,7 +1378,7 @@ function updateCompass() {
     if (!el) continue;
     if (refreshText) {
       const c = faceCenterColor(app.current, d);
-      el.innerHTML = `<svg class="cmp-dir" viewBox="-13 -13 26 26" aria-hidden="true" style="color:${c ? NET_COLOR[c] : "transparent"}"><path class="cmp-arrow" d="M-11,-3.6 L1,-3.6 L1,-8.5 L12,0 L1,8.5 L1,3.6 L-11,3.6Z"/><g class="cmp-toward"><circle r="8"/><circle class="cmp-mark" r="2.6"/></g><g class="cmp-away"><circle r="8"/><path class="cmp-mark" d="M-4.5,-4.5 L4.5,4.5 M4.5,-4.5 L-4.5,4.5"/></g></svg>${COMPASS_FACES[d]}`;
+      el.innerHTML = `<svg class="cmp-dir" viewBox="-13 -13 26 26" aria-hidden="true" style="color:${c ? NET_COLOR[c] : "transparent"}"><path class="cmp-arrow" d="M-11,-3.6 L1,-3.6 L1,-8.5 L12,0 L1,8.5 L1,3.6 L-11,3.6Z"/><g class="cmp-toward"><circle r="8"/><circle class="cmp-mark" r="2.6"/></g><g class="cmp-away"><circle r="8"/><path class="cmp-mark" d="M-4.5,-4.5 L4.5,4.5 M4.5,-4.5 L-4.5,4.5"/></g></svg><span>${COMPASS_FACES[d]}<span class="cmp-rest">${COMPASS_NAMES[d].slice(1)}</span></span>`;
       el.setAttribute("aria-label", `Look at the ${COMPASS_FACES[d]} face`);
     }
     const dir = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(pivot.quaternion); // world
@@ -1443,6 +1466,7 @@ let drawnViewKey = "";
 let arrowWasShown = false;
 for (const type of ["pointerdown", "pointerup", "pointercancel", "click", "keydown", "input", "change", "wheel", "touchstart", "touchend"]) {
   document.addEventListener(type, requestDraw, { capture: true, passive: true });
+  document.addEventListener(type, compassStir, { capture: true, passive: true });
 }
 document.addEventListener("pointermove", (e) => (e.buttons || e.pointerType === "touch") && requestDraw(), { capture: true, passive: true });
 for (const type of ["resize", "pageshow", "focus"]) window.addEventListener(type, requestDraw);
@@ -1489,6 +1513,8 @@ function frame() {
   const viewKey = `${q.x},${q.y},${q.z},${q.w}|${canvas.clientWidth}x${canvas.clientHeight}`;
   if (moving || arrowMoving || drawRequested || viewKey !== drawnViewKey) {
     drawRequested = false;
+    // A turn, a gesture or the view turning counts as interaction (a step's flying pieces don't).
+    if (tween || anim || queue.length || settle || live || viewKey !== drawnViewKey) compassStir();
     drawnViewKey = viewKey;
     placeHidePill();
     showMarks();

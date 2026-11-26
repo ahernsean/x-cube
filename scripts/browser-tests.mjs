@@ -888,7 +888,7 @@ labTest("edge labels: each arrow, in its center's color, points out along its fa
       const svg = el.querySelector("svg");
       const arrow = svg.children[0];
       const m = /rotate\(([-\d.]+)\)/.exec(arrow.getAttribute("transform") ?? "");
-      return { face: el.textContent, color: getComputedStyle(svg).color, shown: arrow.style.display !== "none", stroke: getComputedStyle(arrow).stroke, angle: m ? Number(m[1]) : null, toward: (Math.atan2(b.top + b.height / 2 - cy, b.left + b.width / 2 - cx) * 180) / Math.PI };
+      return { face: el.textContent[0], color: getComputedStyle(svg).color, shown: arrow.style.display !== "none", stroke: getComputedStyle(arrow).stroke, angle: m ? Number(m[1]) : null, toward: (Math.atan2(b.top + b.height / 2 - cy, b.left + b.width / 2 - cx) * 180) / Math.PI };
     });
   });
   const off = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
@@ -904,7 +904,7 @@ labTest("edge labels: each arrow, in its center's color, points out along its fa
   await settle();
   const marks = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".cmp")].map((el) => {
     const g = el.querySelector("svg").children;
-    return [el.textContent, g[0].style.display !== "none" ? "arrow" : g[1].style.display !== "none" ? "toward" : "away"];
+    return [el.textContent[0], g[0].style.display !== "none" ? "arrow" : g[1].style.display !== "none" ? "toward" : "away"];
   })));
   check(marks.U === "toward" && marks.D === "away" && marks.F === "arrow", `from the top, U shows a dot, D a cross, F an arrow (${JSON.stringify(marks)})`);
 });
@@ -915,7 +915,7 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
     const r = document.getElementById("scene").getBoundingClientRect();
     return [...document.querySelectorAll(".cmp")].map((el) => {
       const b = el.getBoundingClientRect();
-      return { text: el.textContent, height: Math.round(b.height * 10) / 10, shown: Number(getComputedStyle(el).opacity) > 0.05, inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1 };
+      return { text: el.textContent[0], height: Math.round(b.height * 10) / 10, shown: Number(getComputedStyle(el).opacity) > 0.05, inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1 };
     });
   });
   const letters = labels.map((l) => l.text).sort().join("");
@@ -935,6 +935,26 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
   const fx = await probe("sticker", "Fx", "F");
   const fxHit = await probe("at3d", fx.x, fx.y);
   check(!moved(frontView, labelView) && fxHit?.slot === "Fx", "tapping the F label turns to the Front view, front center in sight");
+});
+
+labTest("edge labels: spelled out once the view rests, back to letters at a touch", async ({ page, check, settle }) => {
+  const texts = () => page.$$eval(".cmp", (els) => els.filter((e) => Number(getComputedStyle(e).opacity) > 0.05).map((e) => e.innerText.trim()));
+  await page.click('[data-view="home"]');
+  await settle();
+  const busy = await texts();
+  check(busy.every((t) => t.length === 1), `right after a tap the labels are letters (${busy})`);
+  await page.waitForTimeout(3200);
+  const rested = await texts();
+  check(rested.length >= 3 && rested.every((t) => ["Right", "Left", "Up", "Down", "Front", "Back"].includes(t)), `after a rest they spell out their faces (${rested})`);
+  const inside = await page.evaluate(() => {
+    const r = document.getElementById("scene").getBoundingClientRect();
+    return [...document.querySelectorAll(".cmp")].filter((e) => Number(getComputedStyle(e).opacity) > 0.05).every((e) => { const b = e.getBoundingClientRect(); return b.left >= r.left - 1 && b.right <= r.right + 1; });
+  });
+  check(inside, "the spelled-out labels stay inside the view");
+  await page.mouse.click(5, 5);
+  await settle();
+  const again = await texts();
+  check(again.every((t) => t.length === 1), `a touch brings back the letters (${again})`);
 });
 
 // ---- Shuffle, playback and the hold line.

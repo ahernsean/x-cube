@@ -283,7 +283,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   foreshortened: a label on an axis toward the viewer is drawn larger, one pointing away
   smaller (scale 0.85 to 1.5, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top. A label
   slides along its edge only to clear another label or a corner button, so it stays near
-  where its axis meets the edge.
+  where its axis meets the edge. Once the view has rested for 2.5 seconds
+  (`COMPASS_QUIET_MS`: no input, no turn, the view not turning; a step's flying pieces
+  don't count), each label spells out its face ("Right", "Up", "Back"), and the next touch,
+  key or movement brings back the letters (a play-tester's idea: words for someone looking,
+  letters out of the way while turning).
 - **Corner buttons** of the 3D view, round icons with no button edge (drawn as SVG, so the
   ⓘ and ◐ circles match): ⓘ (help) top right, ◐ (Display) bottom right, and ↶ (Undo, the
   last turn however it was made) top left, shown only while there is a turn to undo.
