@@ -4726,6 +4726,22 @@ function lostTurnStep(l: Lost, k: number): [Guide, number] {
   return [g, k - (g.start - l.start)];
 }
 
+/** Each direction's side of the puzzle as the person holds it (DIRS order: right, left, up, down, front, back). */
+const LOST_SIDES = ["the right side", "the left side", "the top", "the bottom", "the side facing you", "the back"];
+
+/**
+ * Where a question's spot is, by how the person holds their puzzle: the side it is on and
+ * that side's center color ("Look at your puzzle, not this screen: the right side, the one
+ * with the orange center."). The centers' colors are the same in every candidate held that way.
+ */
+function lostSideWords(l: Lost, q: Question): string {
+  const p = SLOT_POS[q.slot];
+  const d = q.kind === "color" ? q.dir : DIRS.findIndex((v) => v.every((c, i) => c === (Math.abs(p[i]) === 2 ? Math.sign(p[i]) : 0)));
+  const c = d >= 0 ? centerColor(l.expected.state, d) : null;
+  if (d < 0) return "Look at your puzzle, not this screen.";
+  return `Look at your puzzle, not this screen: ${LOST_SIDES[d]}, the one with the ${c ? COLOR_NAME[c].toLowerCase() : "?"} center.`;
+}
+
 /** What a candidate's slip was, in words. */
 function slipWords(c: Candidate): string {
   const l = lost!;
@@ -5025,7 +5041,7 @@ function renderLost() {
     answers = colors.filter((c) => c !== l.up && c !== opposite[l.up!]);
   } else if (l.phase === "ask") {
     const q = l.question!;
-    text = q.kind === "color" ? `Look at your puzzle, not this screen. What color is the sticker in the ring?` : `Look at your puzzle, not this screen. Is there a piece here?`;
+    text = `${lostSideWords(l, q)} ${q.kind === "color" ? "What color is the sticker in the ring?" : "Is there a piece here?"}`;
     answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? [...(canBeEmpty(q.slot) ? ["empty"] : []), "none"] : [])];
   } else if (l.phase === "giveup") {
     text = `I can't find how your puzzle got this way. ${l.why} Edit the puzzle on this screen to match yours, then tap Continue search, and I'll look again from there.`;

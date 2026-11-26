@@ -2614,6 +2614,7 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
     if (l.phase === "confirm") break;
     if (l.phase === "ask") {
       if (l.question.endsWith("?")) check(/Is there a piece here\?/.test(l.text) && l.marked, `a question about a spot asks about "here", marked by the box (${l.text})`);
+      check(/^Look at your puzzle, not this screen: (the right side|the left side|the top|the bottom|the side facing you|the back), the one with the (white|yellow|green|blue|red|orange) center\. /.test(l.text), `the question says which side of the puzzle as held, by its center (${l.text})`);
       asked++;
       check(l.marked, `question ${asked} marks its spot (${l.question})`);
     }

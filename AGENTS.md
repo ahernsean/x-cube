@@ -767,7 +767,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   person, and turns every candidate whole to be held that way, and the puzzle shown with
   them (the turns' result with no slip); then, one at a time, the
   question whose answers split the candidates left most evenly (then the spot easiest to
-  look at: top, front and right before bottom and back): the color in a ring on one face
+  look at: top, front and right before bottom and back), each saying where to look on the
+  puzzle as the person holds it, by the side and its center (`lostSideWords`: "Look at your
+  puzzle, not this screen: the right side, the one with the red center. What color is the
+  sticker in the ring?"; the centers' colors are the same in every candidate held that way;
+  a play-tester lost track of which way was up as the view turned to each spot): the color in a ring on one face
   (answers: the colors some candidate shows there, "No sticker", **No piece here** where
   the spot can be empty, which is an extension spot and never a core one (`canBeEmpty`),
   and **None of these**), or whether there is a piece at an extension spot ("Is there a piece here?", as Edit
