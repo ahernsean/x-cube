@@ -26,6 +26,8 @@ export interface Candidate {
   made: Turn[];
   /** What the slipped turn was made as (nothing for a turn left out or no slip). */
   as: Turn[];
+  /** A second slip, later in the turns (two stacked mistakes), if this candidate has one. */
+  second?: { at: number; slip: Exclude<Candidate["slip"], "none">; as: Turn[] };
   /** Which turn slipped (an index into the turns followed), or -1 for none. */
   at: number;
   /** What happened to that turn. */
@@ -69,28 +71,61 @@ function otherFaces(t: Turn): Turn[] {
  * Every distinct-looking position one slip (or none) in `turns` from `start` gives, the
  * right one first. Slips are looked for in the turns from index `from` on.
  */
-export function slipCandidates(start: State, turns: readonly Turn[], from = 0): Candidate[] {
+/** Every way turn t can slip: what it is made as instead (nothing for left out). */
+function slipsOf(t: Turn): { slip: Exclude<Candidate["slip"], "none">; as: Turn[] }[] {
+  const out: { slip: Exclude<Candidate["slip"], "none">; as: Turn[] }[] = [];
+  for (const a of [1, 2, 3] as const) if (a !== t.amount) out.push({ slip: "amount", as: [{ def: t.def, amount: a }] });
+  out.push({ slip: "skipped", as: [] });
+  out.push({ slip: "twice", as: [t, t] });
+  const o = otherLayer(t);
+  if (o) out.push({ slip: "layer", as: [o] });
+  for (const f of otherFaces(t)) out.push({ slip: "face", as: [f] });
+  return out;
+}
+
+export function slipCandidates(start: State, turns: readonly Turn[], from = 0, seen = new Set<string>()): Candidate[] {
   const out: Candidate[] = [];
-  const seen = new Set<string>();
-  const add = (tried: Turn[], at: number, slip: Candidate["slip"], as: Turn[]) => {
+  const add = (tried: Turn[], at: number, slip: Candidate["slip"], as: Turn[], second?: Candidate["second"]) => {
     const state = start.clone();
     const made = tried.filter((t) => applyTurn(state, t));
     const key = state.appearanceKey();
     if (seen.has(key)) return;
     seen.add(key);
-    out.push({ made, as, at, slip, state, grip: [], last: turns.length - 1 });
+    out.push({ made, as, at, slip, state, grip: [], last: turns.length - 1, ...(second ? { second } : {}) });
   };
   add([...turns], -1, "none", []);
   turns.forEach((t, i) => {
     if (i < from) return;
-    const put = (slip: Candidate["slip"], ...r: Turn[]) => add([...turns.slice(0, i), ...r, ...turns.slice(i + 1)], i, slip, r);
-    for (const a of [1, 2, 3] as const) if (a !== t.amount) put("amount", { def: t.def, amount: a });
-    put("skipped");
-    put("twice", t, t);
-    const o = otherLayer(t);
-    if (o) put("layer", o);
-    for (const f of otherFaces(t)) put("face", f);
+    for (const v of slipsOf(t)) add([...turns.slice(0, i), ...v.as, ...turns.slice(i + 1)], i, v.slip, v.as);
   });
+  return out;
+}
+
+/**
+ * Two slips in the turns from index `from` on (two stacked mistakes: a slip, then another
+ * while putting it right). Looks already in `seen` (from one slip, say) are left out.
+ */
+export function twoSlipCandidates(start: State, turns: readonly Turn[], from = 0, seen = new Set<string>()): Candidate[] {
+  const out: Candidate[] = [];
+  for (let i = Math.max(0, from); i < turns.length; i++) {
+    // The position before turn i, once: the second slip's variants share it.
+    const before = start.clone();
+    for (const t of turns.slice(0, i)) applyTurn(before, t);
+    for (const a of slipsOf(turns[i])) {
+      for (let j = i + 1; j < turns.length; j++) {
+        for (const b of slipsOf(turns[j])) {
+          const state = before.clone();
+          const head = turns.slice(0, i);
+          const rest = [...a.as, ...turns.slice(i + 1, j), ...b.as, ...turns.slice(j + 1)];
+          const made = [...head, ...rest.filter((t) => applyTurn(state, t))];
+          const key = state.appearanceKey();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push({ made, as: a.as, at: i, slip: a.slip, second: { at: j, slip: b.slip, as: b.as }, state, grip: [], last: turns.length - 1 });
+        }
+      }
+    }
+  }
   return out;
 }
 

@@ -801,8 +801,15 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   of these means a slip it doesn't list (two slips, for one). Starting Lost? drops a
   question still waiting ("End the solve in progress?"), and Edit puzzle ends an
   interview: answered under one, it left the editor gray.
-  **Not handled yet:** two slips: those end in Edit puzzle, where Continue search
-  looks only among the one-slip candidates.
+  **Two stacked mistakes:** asked from a Back on track step (a slip, then another while
+  putting it right), the candidates also take two slips in that step's last 14 turns up to
+  the one named (`twoSlipCandidates`, `LOST_TWO_SLIP_TURNS`; about 1,700 candidates, 0.1 s;
+  sampled, found every time in 7.1 questions on average and 9 at most, 12 cases), and the
+  words name both ("Two turns went another way: turn 26 of step 1, F', was made as F, and
+  turn 28, R', was left out."). Continue search, knowing the puzzle exactly, tries two slips
+  over the whole step asked from (a 30-turn step: about 13,000, 0.7 s) once one slip finds
+  nothing. Elsewhere the interview takes one mistake, which keeps it short; more than that
+  ends in Edit puzzle.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.

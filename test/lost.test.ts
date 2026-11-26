@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { MOVE_DEFS, State, applyTurn, type Turn } from "../src/core/puzzle.ts";
 import { parseAlg } from "../src/core/notation.ts";
 import { solveSteps } from "../src/core/solve.ts";
-import { answerOf, bestQuestion, centerColor, endCandidates, holdAs, narrow, slipCandidates, wayBack } from "../src/core/lost.ts";
+import { answerOf, bestQuestion, centerColor, endCandidates, holdAs, narrow, slipCandidates, twoSlipCandidates, wayBack } from "../src/core/lost.ts";
 
 const random = (seed: number) => (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), (seed >>> 12) % n);
 const UP = 2, FRONT = 4;
@@ -157,4 +157,42 @@ test("lost: a candidate's turns and its way back hold only turns the puzzle take
   const f2 = cands.find((c) => c.at === 0 && c.as[0]?.amount === 2);
   assert.ok(f2 && !f2.made.some((t) => MOVE_DEFS[t.def].kind === "outer"), "with F2 first, the refused r turns are left out");
   assert.ok(checked > 10);
+});
+
+test("lost: two stacked mistakes in a step's turns are found from a few answers", () => {
+  const rnd = random(3);
+  let interviews = 0, total = 0, most = 0;
+  for (let k = 0; k < 4; k++) {
+    const st = State.solved();
+    for (let i = 30; i > 0; i--) applyTurn(st, { def: rnd(MOVE_DEFS.length), amount: (1 + rnd(3)) as 1 | 2 | 3 });
+    const steps = solveSteps(st, "kinds");
+    const m = steps.findIndex((s, i) => i >= 4 && s.turns.length >= 8);
+    const at = st.clone();
+    for (const s of steps.slice(0, m)) for (const t of s.turns) applyTurn(at, t);
+    const turns = steps[m].turns;
+    const seen = new Set<string>();
+    const all = [...slipCandidates(at, turns, 0, seen), ...twoSlipCandidates(at, turns, 0, seen)];
+    const two = all.filter((c) => c.second);
+    for (let r = 0; r < 3; r++) {
+      const truth = two[rnd(two.length)];
+      const up = centerColor(truth.state, UP)!, front = centerColor(truth.state, FRONT)!;
+      let group = holdAs(all, up, front);
+      const held = holdAs([truth], up, front)[0];
+      let asked = 0;
+      for (let q = bestQuestion(group); q; q = bestQuestion(group)) {
+        group = narrow(group, q, answerOf(held.state, q)!);
+        asked++;
+      }
+      assert.equal(group.length, 1);
+      assert.equal(group[0].state.appearanceKey(), held.state.appearanceKey());
+      const back = group[0].state.clone();
+      for (const t of wayBack(group[0])) assert.ok(applyTurn(back, t), "the way back takes only turns the puzzle makes");
+      assert.equal(back.appearanceKey(), at.appearanceKey(), "and it returns to where the step began");
+      interviews++;
+      total += asked;
+      most = Math.max(most, asked);
+    }
+  }
+  assert.ok(most <= 10, `${interviews} interviews, at most ${most} questions`);
+  console.log(`two stacked mistakes: ${interviews} interviews, ${(total / interviews).toFixed(1)} questions on average, ${most} at most`);
 });

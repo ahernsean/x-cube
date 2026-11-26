@@ -2883,6 +2883,42 @@ labTest("session: after a reload the Lab offers to pick up where it left off, so
   check(await page.$eval("#resume", (e) => e.hidden), "with nothing worth keeping (solved, no turns), a reload offers nothing");
 });
 
+labTest("lost: a slip, then two more while putting it right, is still found (two stacked mistakes)", async ({ page, check, probe, settle }) => {
+  // A play-tester's solve: a slip in step 10, found; then, following the Back on track step, two more.
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
+  await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 10, null, { timeout: 20000 });
+  await page.click(`[data-tab="solve"]`);
+  await settle();
+  const answerAll = async () => {
+    for (let k = 0; k < 20 && (await probe("lost"))?.phase !== "confirm"; k++) {
+      await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
+      await settle();
+    }
+  };
+  await page.click("#lost");
+  await settle();
+  await probe("lostPick", 5);
+  await answerAll();
+  await page.click(`#lost-opts [data-lost="yes"]`);
+  await settle();
+  const back = await probe("guide");
+  check(back?.stage === "recover" && back.turns >= 4, `the first slip is found, and a Back on track step loaded (${back?.stage}, ${back?.turns} turns)`);
+  await page.click("#lost");
+  await settle();
+  // Back on track's fifth turn from the end made the other way, and its third from the end left out.
+  const n = back.turns;
+  await page.click(`#lost-opts [data-lost="${(await probe("lost")).answers.at(-1)}"]`);
+  await settle();
+  await probe("lostTruthTwo", n - 5, n - 3);
+  await answerAll();
+  const found = await probe("lost");
+  check(found?.phase === "confirm" && new RegExp(`^Two turns went another way: turn ${n - 4} of step \\d+, .*, and turn ${n - 2}, `).test(found.text), `both are found and named (${found?.text})`);
+  await page.click(`#lost-opts [data-lost="yes"]`);
+  await settle();
+  const again = await probe("guide");
+  check(again?.stage === "recover" && again.turns > 0, `Yes loads a Back on track step for them (${again?.stage}, ${again?.turns} turns)`);
+});
+
 labTest("lost: Cancel puts the turn list and the step back as they were", async ({ page, check, probe, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);

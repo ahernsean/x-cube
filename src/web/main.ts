@@ -30,7 +30,7 @@ import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTa
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 import { Planner, type Plan } from "./planner.ts";
-import { answerOf, answersTo, bestQuestion, canBeEmpty, centerColor, endCandidates, holdAs, narrow, slipCandidates, wayBack, type Answer, type Candidate, type Question } from "../core/lost.ts";
+import { answerOf, answersTo, bestQuestion, canBeEmpty, centerColor, endCandidates, twoSlipCandidates, holdAs, narrow, slipCandidates, wayBack, type Answer, type Candidate, type Question } from "../core/lost.ts";
 
 declare const THREE: any;
 
@@ -4741,6 +4741,12 @@ function slipWords(c: Candidate): string {
   const [lastStep, lastAt] = lostTurnStep(l, c.last);
   const also = c.last === l.last ? "" : ` The last turn you made was turn ${lastAt + 1} of step ${lastStep.index}, ${turnName(l.all[c.last])}.`;
   const madeAs = c.as[0];
+  if (c.second) {
+    const [step2, at2] = lostTurnStep(l, c.second.at);
+    const how2 = c.second.slip === "skipped" ? "was left out" : c.second.slip === "twice" ? "was made twice" : `was made as ${turnName(c.second.as[0])}`;
+    const how1 = c.slip === "skipped" ? "was left out" : c.slip === "twice" ? "was made twice" : `was made as ${turnName(madeAs)}`;
+    return `Two turns went another way: turn ${at + 1} of step ${step.index}, ${want}, ${how1}, and turn ${at2 + 1}${step2 === step ? "" : ` of step ${step2.index}`}, ${turnName(l.all[c.second.at])}, ${how2}.${also}`;
+  }
   switch (c.slip) {
     case "amount":
     case "layer":
@@ -4815,6 +4821,9 @@ function acceptLost(c: Candidate) {
   render();
 }
 
+/** How many turns, up to the last one named, the interview looks in for two stacked mistakes (about 1,700 candidates, 0.1 s). */
+const LOST_TWO_SLIP_TURNS = 14;
+
 /**
  * The turn the person says they made last. They may misremember it, so the candidates take
  * one slip up to it or up to a turn or two either side, and no slip up to any turn of the step.
@@ -4823,6 +4832,10 @@ function setLostLast(l: Lost, k: number) {
   l.last = k;
   l.turns = l.all.slice(0, k + 1);
   l.cands = endCandidates(l.from, l.all, [k, k - 1, k + 1, k - 2, k + 2], lostStepTurns(l));
+  // Asked from a Back on track step: a slip putting a slip right is two stacked mistakes.
+  const g = l.steps[l.steps.length - 1];
+  // Within its last LOST_TWO_SLIP_TURNS turns up to the one named, which keeps the interview short.
+  if (g.step.stage === "recover") l.cands.push(...twoSlipCandidates(l.from, l.turns, Math.max(g.start - l.start, k + 1 - LOST_TWO_SLIP_TURNS), new Set(l.cands.map((c) => c.state.appearanceKey()))));
   l.expected = l.cands[0];
 }
 
@@ -4888,7 +4901,13 @@ function lostFromEdit(l: Lost, target: State) {
   const key = target.appearanceKey();
   // Known exactly, every last turn from a few before the one named to the end is cheap to try.
   const ends = [...l.all.keys()].filter((j) => j >= l.last - 6).sort((a, b) => Math.abs(a - l.last) - Math.abs(b - l.last));
-  const found = up && front ? holdAs(endCandidates(l.from, l.all, ends, lostStepTurns(l)), up, front).find((c) => c.state.appearanceKey() === key) : undefined;
+  let found = up && front ? holdAs(endCandidates(l.from, l.all, ends, lostStepTurns(l)), up, front).find((c) => c.state.appearanceKey() === key) : undefined;
+  // Two stacked mistakes in the step asked from, up to the turn named or the step's end.
+  const g = l.steps[l.steps.length - 1];
+  for (const end of [l.last, l.all.length - 1]) {
+    if (found || !up || !front) break;
+    found = holdAs(twoSlipCandidates(l.from, l.all.slice(0, end + 1), g.start - l.start), up, front).find((c) => c.state.appearanceKey() === key);
+  }
   if (found) {
     lost = l;
     return acceptLost(found);
@@ -7374,6 +7393,17 @@ function installProbe() {
     /** How many stickers are drawn gray (a step's or Lost?'s). */
     grayStickers: () => guideDimmed.filter((m) => stickerMesh3d.includes(m)).length,
     lostEdit: () => !!lostEdit,
+    /** Makes the person's puzzle the turns followed with turn i made the other way and turn j left out (indices into the step asked from). */
+    lostTruthTwo: (i: number, j: number) => {
+      const l = lost;
+      if (!l) return null;
+      const off = l.steps[l.steps.length - 1].start - l.start;
+      const turns = l.all.map((t, k) => (k === off + i ? { def: t.def, amount: (4 - t.amount) as 1 | 2 | 3 } : t)).filter((_, k) => k !== off + j);
+      const state = l.from.clone();
+      const made = turns.filter((t) => applyTurn(state, t));
+      lostTruth = { made, as: [], at: off + i, slip: "amount", state, grip: [], last: l.all.length - 1 };
+      return made.length;
+    },
     saveSession: () => saveSession(true),
     lost: () =>
       lost && {
