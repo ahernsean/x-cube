@@ -4931,9 +4931,28 @@ function placeLostMarker() {
     group.position.copy(p.add(n.clone().multiplyScalar(0.53)));
     group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
   } else {
-    const box = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(0.98, 0.98, 0.98)), new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true }));
-    box.renderOrder = 11;
-    group.add(box);
+    // A box drawn over everything, in the halo's purple with a dark casing and a faint fill, so it
+    // shows against the gray puzzle as well as against the background.
+    const fill = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: HALO.color, depthTest: false, transparent: true, opacity: 0.22 }));
+    fill.renderOrder = 10;
+    group.add(fill);
+    const h = 0.5;
+    const corners: [number, number, number][] = [];
+    for (const x of [-h, h]) for (const y of [-h, h]) for (const z of [-h, h]) corners.push([x, y, z]);
+    for (const [r, c, order] of [[0.06, 0x111111, 11], [0.035, HALO.color, 12]] as const) {
+      const m = mat(c);
+      for (let i = 0; i < 8; i++)
+        for (let j = i + 1; j < 8; j++) {
+          const [a, b] = [corners[i], corners[j]];
+          if ([0, 1, 2].filter((k) => a[k] !== b[k]).length !== 1) continue;
+          const edge = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1 + r * 2, 10), m);
+          edge.position.set((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+          if (a[0] !== b[0]) edge.rotation.z = Math.PI / 2;
+          else if (a[2] !== b[2]) edge.rotation.x = Math.PI / 2;
+          edge.renderOrder = order;
+          group.add(edge);
+        }
+    }
     group.position.copy(p);
   }
   group.userData.question = q;
@@ -4969,7 +4988,7 @@ function renderLost() {
     answers = colors.filter((c) => c !== l.up && c !== opposite[l.up!]);
   } else if (l.phase === "ask") {
     const q = l.question!;
-    text = q.kind === "color" ? `Look at your puzzle, not this screen. What color is the sticker in the ring?` : `Look at your puzzle, not this screen. Is there a piece in the box?`;
+    text = q.kind === "color" ? `Look at your puzzle, not this screen. What color is the sticker in the ring?` : `Look at your puzzle, not this screen. Is there a piece in the purple box?`;
     answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? [...(canBeEmpty(q.slot) ? ["empty"] : []), "none"] : [])];
   } else if (l.phase === "giveup") {
     text = `I can't find how your puzzle got this way. ${l.why} Edit the puzzle on this screen to match yours, then tap Continue search, and I'll look again from there.`;

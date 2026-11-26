@@ -750,8 +750,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   look at: top, front and right before bottom and back): the color in a ring on one face
   (answers: the colors some candidate shows there, "No sticker", **No piece here** where
   the spot can be empty, which is an extension spot and never a core one (`canBeEmpty`),
-  and **None of these**), or whether there is a piece in a box at an extension spot. Meanwhile
-  the puzzle shown is where the step should leave it, all gray (so it can't be read for
+  and **None of these**), or whether there is a piece in a box at an extension spot ("in
+  the purple box": drawn over everything in the halo's purple, with a dark casing and a
+  faint fill, so it shows against the gray puzzle as well as the background). Meanwhile
+  the puzzle shown is where the step should leave it, all gray (matte, as the step guide's
+  grays are: the stickers' film made a gray seen face-on look white; so it can't be read for
   theirs) except what the person has told: the two centers in the colors named, and each
   sticker answered in its color, kept as the view turns (`lostKnown`); the view
   turns to each spot, the turn list and the tabs are set aside, and swipes on the cube
