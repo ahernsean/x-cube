@@ -2580,7 +2580,7 @@ labTest("lost: the interview finds a slip from a few answers, and Yes loads a st
     const l = await probe("lost");
     if (l.phase === "confirm") break;
     if (l.phase === "ask") {
-      if (l.question.endsWith("?")) check(/purple box/.test(l.text), `a question about a spot names the purple box it is in (${l.text})`);
+      if (l.question.endsWith("?")) check(/Is there a piece here\?/.test(l.text) && l.marked, `a question about a spot asks about "here", marked by the box (${l.text})`);
       asked++;
       check(l.marked, `question ${asked} marks its spot (${l.question})`);
     }

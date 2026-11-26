@@ -4988,7 +4988,7 @@ function renderLost() {
     answers = colors.filter((c) => c !== l.up && c !== opposite[l.up!]);
   } else if (l.phase === "ask") {
     const q = l.question!;
-    text = q.kind === "color" ? `Look at your puzzle, not this screen. What color is the sticker in the ring?` : `Look at your puzzle, not this screen. Is there a piece in the purple box?`;
+    text = q.kind === "color" ? `Look at your puzzle, not this screen. What color is the sticker in the ring?` : `Look at your puzzle, not this screen. Is there a piece here?`;
     answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? [...(canBeEmpty(q.slot) ? ["empty"] : []), "none"] : [])];
   } else if (l.phase === "giveup") {
     text = `I can't find how your puzzle got this way. ${l.why} Edit the puzzle on this screen to match yours, then tap Continue search, and I'll look again from there.`;
