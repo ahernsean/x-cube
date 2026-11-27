@@ -280,7 +280,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   up when only its length showed the tip); nearly
   head-on (its projection under `COMPASS_HEAD_ON`, 0.26: within about 15 degrees; at 27 a dot
   surprised the owner, and read as a record button) it is a disc with a dot (toward the
-  viewer) or a cross (away), as on a diagram, which the 3D view's ⓘ help explains. The arrows have no dark outline, only the
+  viewer) or a cross (away), as on a diagram, which the 3D view's ⓘ help explains. Every
+  label shows, head-on ones too (one pointing away at 60% opacity); exactly head-on, where
+  its direction on screen is undefined, it goes toward the bottom left, the corner without a
+  button (head-on labels once faded out entirely, from before they had a dot or a cross). The arrows have no dark outline, only the
   faint `--tile-edge` hairline, without which a white arrow vanished on the pale pill (a
   play-tester turning a tipped-over puzzle asked for arrows to tell which way each face
   points; arrows standing out of the puzzle itself were mocked up too, and set aside

@@ -911,6 +911,16 @@ labTest("edge labels: each arrow, in its center's color, points out along its fa
     return [el.textContent[0], g[0].style.display !== "none" ? "arrow" : g[1].style.display !== "none" ? "toward" : "away"];
   })));
   check(marks.U === "toward" && marks.D === "away" && marks.F === "arrow", `from the top, U shows a dot, D a cross, F an arrow (${JSON.stringify(marks)})`);
+  // And they can be seen: shown, inside the view, apart from each other.
+  const seen = await page.evaluate(() => {
+    const r = document.getElementById("scene").getBoundingClientRect();
+    return Object.fromEntries([...document.querySelectorAll(".cmp")].filter((el) => "UD".includes(el.textContent[0])).map((el) => {
+      const b = el.getBoundingClientRect();
+      return [el.textContent[0], { opacity: Number(getComputedStyle(el).opacity), inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1, box: [b.left, b.top, b.right, b.bottom] }];
+    }));
+  });
+  const overlap = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  check(seen.U.opacity === 1 && seen.D.opacity >= 0.5 && seen.U.inside && seen.D.inside && !overlap(seen.U.box, seen.D.box), `the head-on labels show, inside the view and apart (${JSON.stringify(seen)})`);
 });
 
 labTest("edge labels: a face 26 degrees from head-on still has an arrow; the help says what a dot and a cross mean", async ({ page, check, settle }) => {

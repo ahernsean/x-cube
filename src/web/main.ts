@@ -1413,13 +1413,16 @@ function updateCompass() {
     let dx = tx - ox, dy = ty - oy;
     const len = Math.hypot(dx, dy);
     const inPlane = Math.sqrt(Math.max(0, 1 - dir.z * dir.z)); // 1 when the axis lies in the screen plane
-    const vis = len < 1e-3 ? 0 : Math.min(1, Math.max(0, (inPlane - 0.18) / 0.3));
+    // Every label shows, head-on ones too (their dot or cross says which way the face points).
+    // Exactly head-on its direction on screen is undefined: it goes toward the bottom left,
+    // the corner without a button.
+    const vis = inPlane; // the order labels are placed in: the most in the screen's plane first
     if (len >= 1e-3) {
       dx /= len;
       dy /= len;
-    }
+    } else [dx, dy] = [-0.8, 0.6];
     // On the left or right edge the word goes under the arrow (the label is narrower); on the top or bottom, beside it.
-    el.classList.toggle("stack", len >= 1e-3 && (dx ? w / 2 / Math.abs(dx) : Infinity) < (dy ? h / 2 / Math.abs(dy) : Infinity));
+    el.classList.toggle("stack", (dx ? w / 2 / Math.abs(dx) : Infinity) < (dy ? h / 2 / Math.abs(dy) : Infinity));
     const svg = el.firstElementChild as SVGElement | null;
     if (svg) {
       const headOn = inPlane < COMPASS_HEAD_ON;
@@ -1450,7 +1453,7 @@ function updateCompass() {
     if (r.width) placed.push({ x: r.left - cr.left + r.width / 2, y: r.top - cr.top + r.height / 2, hw: r.width / 2, hh: r.height / 2 });
   }
   for (const it of items) {
-    if (it.vis > 0.05) {
+    {
       for (let tries = 0; tries < 8; tries++) {
         const hit = placed.find((o) => Math.abs(o.x - it.x) < o.hw + it.hw && Math.abs(o.y - it.y) < o.hh + it.hh);
         if (!hit) break;
@@ -1464,8 +1467,8 @@ function updateCompass() {
     }
     it.el.style.transform = `translate(${it.x}px, ${it.y}px) translate(-50%, -50%) scale(${it.scale.toFixed(3)})`;
     it.el.style.zIndex = String(Math.round((it.z + 1) * 10)); // nearer labels over farther ones
-    it.el.style.opacity = String(it.vis * (it.away ? 0.6 : 1));
-    it.el.style.pointerEvents = it.vis > 0.3 ? "auto" : "none";
+    it.el.style.opacity = it.away ? "0.6" : "1";
+    it.el.style.pointerEvents = "auto";
     it.el.classList.toggle("away", it.away);
   }
 }
