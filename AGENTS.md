@@ -291,7 +291,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   foreshortened: a label on an axis toward the viewer is drawn larger, one pointing away
   smaller (scale 0.85 to 1.5, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top. A label
   slides along its edge only to clear another label or a corner button, so it stays near
-  where its axis meets the edge. Once the puzzle has gone untouched for 2.5 seconds
+  where its axis meets the edge. Its arrow is drawn once it is placed (`compassArrowAngle`):
+  a slid label is off the line its axis makes through the middle, and in perspective a line
+  parallel to the axis under it runs at another angle (the owner noticed Left, slid clear
+  of Undo, 3.4 degrees off), so the arrow takes the turn between the axis's direction on
+  screen under the two spots (only the turn, so an arrow beyond its vanishing point, a face
+  tipped well away, doesn't flip; the probe's `axisAt` checks it with three.js's projection). Once the puzzle has gone untouched for 2.5 seconds
   (`COMPASS_QUIET_MS`), each label spells out its face ("Right", "Up", "Back"), the rest of
   the word unfolding from the letter, and only the next touch on the puzzle (the 3D view)
   folds it back (`COMPASS_FOLD_MS`, 0.4 s; a play-tester's idea: words for someone

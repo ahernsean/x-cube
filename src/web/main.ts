@@ -1374,6 +1374,27 @@ function compassArrowPath(ux: number, uy: number, len: number, z: number): strin
     }).join(" ") + "Z"
   );
 }
+/**
+ * The angle on screen (radians, y down) of an edge label's arrow. A line along the face's
+ * axis through the middle of the puzzle projects to the line the label sits on, so a label
+ * that stays there points along it (`dx`, `dy`). One slid along the edge to clear another
+ * label or a corner button is off that line: a line parallel to the axis under it runs
+ * toward the same vanishing point from elsewhere, at another angle. The arrow takes the
+ * turn between the two, the axis's direction on screen at a point under each spot, in the
+ * plane through the puzzle's middle facing the camera (`focal`, the camera's focal length in
+ * CSS pixels): (f dx + sx dz, -f dy + sy dz) for a point sx, sy from the middle. Only the
+ * turn is used, so an arrow beyond the vanishing point (a face tipped well away) doesn't flip.
+ */
+function compassArrowAngle(it: { x: number; y: number; x0: number; y0: number; dir: any; dx: number; dy: number }, ox: number, oy: number, focal: number): number {
+  const base = Math.atan2(it.dy, it.dx);
+  if (Math.abs(it.x - it.x0) < 0.5 && Math.abs(it.y - it.y0) < 0.5) return base;
+  const at = (x: number, y: number) => [focal * it.dir.x + (x - ox) * it.dir.z, -focal * it.dir.y + (y - oy) * it.dir.z];
+  const [ax, ay] = at(it.x0, it.y0), [bx, by] = at(it.x, it.y);
+  if (Math.hypot(ax, ay) < 0.05 * focal || Math.hypot(bx, by) < 0.05 * focal) return base; // too near the vanishing point to tell
+  let turn = Math.atan2(by, bx) - Math.atan2(ay, ax);
+  turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+  return base + turn;
+}
 const COMPASS_HEAD_ON = 0.26; // about 15 degrees from straight at you or away
 /**
  * Edge labels that move with the cube: each face's label sits where that face's axis
@@ -1399,7 +1420,9 @@ function updateCompass() {
   const [ox, oy] = toScreenXY(new THREE.Vector3(0, 0, 0));
   // Work out each label's spot on the edge, then place the most visible first and slide
   // any label that would cover an already placed one along its edge.
-  const items: { el: HTMLElement; x: number; y: number; vis: number; away: boolean; vertical: boolean; hw: number; hh: number; scale: number; z: number }[] = [];
+  const items: { el: HTMLElement; x: number; y: number; x0: number; y0: number; dir: any; dx: number; dy: number; inPlane: number; vis: number; away: boolean; vertical: boolean; hw: number; hh: number; scale: number; z: number }[] = [];
+  // The camera's focal length in CSS pixels, for the arrows' perspective (compassArrowAngle).
+  const focal = h / 2 / Math.tan((camera.fov * Math.PI) / 360);
   for (let d = 0; d < 6; d++) {
     const el = document.getElementById(`compass-${d}`);
     if (!el) continue;
@@ -1430,10 +1453,6 @@ function updateCompass() {
       arrow.style.display = headOn ? "none" : "";
       (svg.children[1] as SVGElement).style.display = headOn && dir.z > 0 ? "" : "none";
       (svg.children[2] as SVGElement).style.display = headOn && dir.z <= 0 ? "" : "none";
-      if (!headOn) {
-        arrow.setAttribute("d", compassArrowPath(dx, dy, Math.max(0.35, inPlane), dir.z));
-        arrow.dataset.angle = ((Math.atan2(dy, dx) * 180) / Math.PI).toFixed(1);
-      }
     }
     // Foreshortened: a label on an axis toward you is drawn larger, one away from you
     // smaller (no smaller than COMPASS_MIN, so it stays legible).
@@ -1442,7 +1461,7 @@ function updateCompass() {
     const t = Math.min(dx ? (w / 2 - hw) / Math.abs(dx) : Infinity, dy ? (h / 2 - hh) / Math.abs(dy) : Infinity);
     const x = w / 2 + dx * (isFinite(t) ? t : 0), y = h / 2 + dy * (isFinite(t) ? t : 0);
     const vertical = Math.abs(Math.abs(x - w / 2) - (w / 2 - hw)) < 1; // on the left or right edge
-    items.push({ el, x, y, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4, scale, z: dir.z });
+    items.push({ el, x, y, x0: x, y0: y, dir, dx, dy, inPlane, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4, scale, z: dir.z });
   }
   items.sort((a, b) => b.vis - a.vis);
   // The buttons in the view's corners are in place first, so a label slides clear of them.
@@ -1464,6 +1483,14 @@ function updateCompass() {
         it.y = Math.min(h - it.hh, Math.max(it.hh, it.y));
       }
       placed.push(it);
+    }
+    // The arrow, drawn now that the label is where it stays: in perspective, a slid label's
+    // arrow follows the face's axis as it runs under the label, not as it leaves the middle.
+    const arrow = it.el.querySelector<SVGElement>(".cmp-arrow");
+    if (arrow && it.inPlane >= COMPASS_HEAD_ON) {
+      const a = compassArrowAngle(it, ox, oy, focal);
+      arrow.setAttribute("d", compassArrowPath(Math.cos(a), Math.sin(a), Math.max(0.35, it.inPlane), it.dir.z));
+      arrow.dataset.angle = ((a * 180) / Math.PI).toFixed(1);
     }
     it.el.style.transform = `translate(${it.x}px, ${it.y}px) translate(-50%, -50%) scale(${it.scale.toFixed(3)})`;
     it.el.style.zIndex = String(Math.round((it.z + 1) * 10)); // nearer labels over farther ones
@@ -7558,6 +7585,23 @@ function installProbe() {
     resync: () => syncMeshes(app.current),
     /** Milliseconds per quarter turn, as the speed slider sets it. */
     speed: () => speedMs,
+    /**
+     * The angle on screen (degrees, y down) of a line along face `face`'s axis through the
+     * world point under client point (x, y) in the plane through the puzzle's middle facing
+     * the camera: by three.js's own projection, to check the edge labels' arrows against.
+     */
+    axisAt: (face: string, x: number, y: number) => {
+      const r = canvas().getBoundingClientRect();
+      const ndc = new THREE.Vector3(((x - r.left) / r.width) * 2 - 1, -(((y - r.top) / r.height) * 2 - 1), 0.5);
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera);
+      const hit = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), new THREE.Vector3());
+      if (!hit) return null;
+      const d = COMPASS_FACES.indexOf(face);
+      const dir = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(pivot.quaternion);
+      const a = hit.clone().project(camera), b = hit.clone().addScaledVector(dir, 0.01).project(camera);
+      return (Math.atan2(-(b.y - a.y) * r.height, (b.x - a.x) * r.width) * 180) / Math.PI;
+    },
     /** The turn in progress, how far along (0 to 1), and whether the turns are paused. */
     turning: () => ({ done: anim ? Math.min(1, ((pausedAt ?? performance.now()) - anim.start) / (anim.duration || 1)) : null, paused: pausedAt !== null, queued: queue.length }),
     /** While editing colors: how the painted colors fit, and the color of a painted face. */
