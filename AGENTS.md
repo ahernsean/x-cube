@@ -536,7 +536,13 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     and is drawn as a dashed outline on the plastic, with no edge glow; the line counts
     them ("6 stickers have no color yet", with a halo on their pieces), and Done waits
     for them. Where a piece's stickers are follows from the shape around it alone
-    (`draftColors`), so a sticker can be painted while the shape is still wrong. Until
+    (`draftColors`), so a sticker can be painted while the shape is still wrong. A core
+    piece with more bare faces than its one sticker (a corner with one extension) has its
+    sticker on the face the shape hint leaves bare, not one the hint's glass box covers
+    (`hintedSpots`; it was drawn where the piece had it before the edit, under the box, and
+    the owner couldn't color the face it would end up on); a tap with a color on one of its
+    plastic bare faces moves the sticker there and colors it (`stickerChoice`,
+    `Draft.faces`, kept in debug info). Until
     every center is painted, the center arrangement isn't checked.
   - **Painting:** pick a color, then tap stickers; a tap on a sticker that already shows the
     picked color clears it (no color yet). A painted sticker's edge glow takes the

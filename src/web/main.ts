@@ -26,7 +26,7 @@ import {
   SLOT_NEIGHBOR,
 } from "../core/puzzle.ts";
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
-import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
+import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, stickerChoice, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 import { Planner, type Plan } from "./planner.ts";
@@ -3236,6 +3236,7 @@ function debugInfo(): string {
         shape: encodeState(edit.shape),
         removed: [...edit.removed].map(name),
         added: [...edit.added].map(name),
+        faces: Object.fromEntries([...edit.faces].map(([c, t]) => [name(c), name(t)])),
         // One character per face, slot by slot: a painted color, or "." for none.
         colors: edit.colors.map((c) => c ?? ".").join(""),
         tool: edit.paint,
@@ -3577,6 +3578,7 @@ function restoreEdit(de: any, open = true) {
   e.shown = e.shape.clone();
   e.removed = new Set(de.removed.map(slotByName));
   e.added = new Set(de.added.map(slotByName));
+  e.faces = new Map(Object.entries(de.faces ?? {}).map(([c, t]) => [slotByName(c), slotByName(t as string)]));
   e.colors = [...de.colors].map((c: string) => (c === "." ? undefined : (c as Color)));
   e.paint = de.tool;
   e.selected = de.selected ?? "";
@@ -4018,6 +4020,7 @@ interface Edit {
   // while there are any, the shape is wrong.
   removed: Set<number>;
   added: Set<number>;
+  faces: Map<number, number>; // a core piece's sticker spot, chosen by a tap on a bare face (Draft.faces)
   painted: any[]; // meshes currently drawn in a color other than their own
   highlight: number[] | null; // slots shown with a halo: the first problem's, unless hidden
   marks: { slot: number; face: number }[]; // stickers the shown problem's hint circles
@@ -4035,7 +4038,7 @@ function startEdit() {
   const st = app.current.clone();
   const view = visibleColors(st);
   const colors = view.map((c) => (c && c !== UNPAINTED ? c : undefined));
-  edit = { shape: st, colors, view, fit: fitColors(st, view), shown: st.clone(), paint: "W", removed: new Set(), added: new Set(), painted: [], highlight: null, marks: [], hidden: null, selected: "" };
+  edit = { shape: st, colors, view, fit: fitColors(st, view), shown: st.clone(), paint: "W", removed: new Set(), added: new Set(), faces: new Map(), painted: [], highlight: null, marks: [], hidden: null, selected: "" };
   document.body.classList.add("editing");
   for (const id of ["stack-col", "dock", "tabs", "undo"]) ($(id) as HTMLElement & { inert: boolean }).inert = true;
   renderEdit();
@@ -4045,6 +4048,14 @@ function startEdit() {
 function paintSticker(slot: number, dir: number) {
   if (!edit || edit.paint === "shape") return;
   const i = slot * 6 + dir;
+  // Plastic on a core piece with more bare faces than its one sticker: the tap puts the
+  // sticker on this face (the other goes back to plastic), then colors it.
+  if (edit.view[i] === null) {
+    const spot = stickerChoice(edit, slot, dir);
+    if (spot < 0) return;
+    edit.faces.set(slot, spot);
+    edit.view = draftColors(edit, edit.colors);
+  }
   if (!edit.view[i]) return; // hidden, or bare plastic
   // A tap with the color a sticker already has takes its color off.
   edit.colors[i] = edit.view[i] === edit.paint ? undefined : edit.paint;
@@ -7531,6 +7542,11 @@ function installProbe() {
      * stickers show as not painted yet and how many dashed outlines are drawn, and where
      * the halo's Hide pill is (client coordinates; null while hidden).
      */
+    /** While editing: what face `face` of slot `slot` shows: a color, "unpainted" (a sticker not colored yet), "plastic", or null where nothing shows. */
+    editFace: (slot: string, face: string) => {
+      const c = edit?.view[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)];
+      return c === UNPAINTED ? "unpainted" : c === null ? "plastic" : (c ?? null);
+    },
     shapeEdit: () => {
       if (!edit) return null;
       const pill = $("halo-hide");
@@ -7642,7 +7658,7 @@ function installProbe() {
       const s = slotByName(slot);
       return app.current.occ[s] < 0 ? null : app.current.colorAt(s, COMPASS_FACES.indexOf(face));
     },
-    sticker(slot: string, face: string) {
+    sticker(slot: string, face: string, anyFace = false) {
       const s = slotByName(slot);
       const drawn = edit?.shown ?? app.current; // while editing colors, the state drawn underneath
       const id = drawn.occ[s];
@@ -7650,7 +7666,7 @@ function installProbe() {
       if (id < 0 || dir < 0) return null;
       const o = drawn.ori[s];
       const d = [0, 1, 2, 3, 4, 5].find((k) => ROT_DIR[o * 6 + k] === dir)!;
-      if (!PIECES[id].stickers[d]) return null;
+      if (!PIECES[id].stickers[d] && !anyFace) return null;
       const p = meshes[id].localToWorld(new THREE.Vector3(DIRS[d][0] * 0.4945, DIRS[d][1] * 0.4945, DIRS[d][2] * 0.4945)).project(camera);
       const r = canvas().getBoundingClientRect();
       return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };

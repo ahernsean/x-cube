@@ -1967,6 +1967,25 @@ labTest("color editing: a hint circles the sticker it means when its color can't
   check(hidden.list.length === 0 && hidden.px === 0, `Hide takes the ring away with the halo (${JSON.stringify(hidden)})`);
 });
 
+// A play-tester's edit (the owner's): a core corner with one extension, its old sticker face
+// where the shape hint says to add the second one.
+const TWO_BARE_FACES = {"lab": "x-cube debug 1", "base": "ILTM DXAJ WSWD CZQG RYFO FCYC WCCH HOKS BJYM HRFZ KKUS", "turns": "", "cursor": 0, "current": "ILTM DXAJ WSWD CZQG RYFO FCYC WCCH HOKS BJYM HRFZ KKUS", "view": [0.29241, 0.06687, -0.0205, -0.95373], "solving": false, "order": "kinds", "steps": [], "lost": null, "edit": {"shape": "ILTM DXAJ WSWD CZQG RYFO FCYC WCCH HOKS BJYM HRFZ KKUS", "removed": ["Bx.UL", "Bx.UR", "Fx.L", "Fx.DL", "Fx.D", "Fx.DR", "Fx.R"], "added": ["Ux.L", "Ux.BL", "Ux.B", "Ux.BR", "Ux.F", "Dx.F", "Dx.FR"], "colors": ".G.W.R.G.W...G.WY..G...R.G.....G..W..GY..R.GG....GW.R....................G.W.R...W.....W.....W......O..GY..R................W.....O......R..Y.....Y.....W....GW.R...O.....G..............................W.R...W.....W.....WY.....O......R............BG.WO.BGO..R..Y.....Y.....Y.....B.R...O...........B.....................B..W.R...W.....W.....WY.....O.B.Y..R................W.....O......R..Y.....Y.....W...B.WWR...B...............B..W.RB..W..B..WY.B....RB.....B...W.B.B..RB.Y...B.W.R.", "tool": "Y", "selected": "", "hidden": null}};
+
+labTest("shape editing: a core corner with two bare faces takes a color on the face the shape hint leaves bare", async ({ page, check, probe, settle, gesture }) => {
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(TWO_BARE_FACES));
+  await settle();
+  // The face that was plastic, with no sticker to color.
+  const at = await probe("sticker", "DFL", "F", true);
+  const faces = { F: await probe("editFace", "DFL", "F"), D: await probe("editFace", "DFL", "D") };
+  const drawn = await probe("at3d", at.x, at.y);
+  // The dashed outline of a sticker not colored yet is drawn over the plastic there.
+  check(faces.F === "unpainted" && faces.D === "plastic" && drawn?.slot === "editor", `the corner's front face has a sticker to color, and the face the hint covers is plastic (${JSON.stringify({ faces, drawn })})`);
+  await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+  await settle();
+  const painted = await probe("editFace", "DFL", "F");
+  check(painted === "Y", `a tap with yellow colors it (${painted})`);
+});
+
 labTest("shape editing: Show looks at a core edge and its spots at a slight angle", async ({ page, check, probe, settle }) => {
   // From play-testers' edits: a core edge with no extensions, at the top right and at the
   // bottom left among other empty spots. Straight at its sticker showed the spots on it
