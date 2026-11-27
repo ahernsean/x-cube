@@ -1111,6 +1111,12 @@ labTest("playback: play then stop plays no queued turn; the speed slider's range
   await page.$eval("#speed", (el) => el.dispatchEvent(new Event("change")));
   await page.waitForTimeout(1600);
   const after = await tip();
+  await page.$eval("#speed", (el) => {
+    el.value = "100";
+    el.dispatchEvent(new Event("input"));
+  });
+  const edge = await page.$eval("#speed-tip", (el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, width: innerWidth }; });
+  check(edge.left >= 0 && edge.right <= edge.width, `at the slider's end the tip stays on the screen (${JSON.stringify(edge)})`);
   check(moving.text === "0.20 s per turn" && moving.on && !after.on && after.opacity < 0.05, `the tip shows the seconds a turn takes while it moves, and fades after (${JSON.stringify({ moving, after })})`);
 });
 

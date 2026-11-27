@@ -2049,7 +2049,9 @@ function showSpeedTip() {
   // Over the thumb: the track's length less the thumb's width, by the value.
   const r = input.getBoundingClientRect(), host = tip.parentElement!.getBoundingClientRect();
   const thumb = 20, v = (Number(input.value) - Number(input.min)) / (Number(input.max) - Number(input.min));
-  tip.style.left = `${r.left - host.left + thumb / 2 + v * (r.width - thumb)}px`;
+  // Kept inside the row: at either end of the slider it would hang off the screen.
+  const half = tip.offsetWidth / 2, at = r.left - host.left + thumb / 2 + v * (r.width - thumb);
+  tip.style.left = `${Math.min(host.width - half, Math.max(half, at))}px`;
   tip.classList.add("on");
 }
 function hideSpeedTip() {
