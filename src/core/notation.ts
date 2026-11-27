@@ -158,7 +158,8 @@ export interface NotationRow {
 }
 
 /**
- * The notation a puzzle reads, for the Lab's help (user-facing wording, WORDING.md), and a
+ * The notation a puzzle offers, for the Lab's help (moves read only when typed, as the
+ * 3x3x3's wide turns, are left out) (user-facing wording, WORDING.md), and a
  * note on which of it is the WCA's standard (WCA Regulations, Article 12) and which isn't.
  */
 export function notationHelp(puzzle: PuzzleDef): { rows: NotationRow[]; note: string } {
@@ -170,7 +171,6 @@ export function notationHelp(puzzle: PuzzleDef): { rows: NotationRow[]; note: st
   } else {
     rows.push({ notation: "R L U D F B", meaning: "One side's layer, clockwise, looking at that side." });
   }
-  if (has("Rw")) rows.push({ notation: "Rw Lw Uw Dw Fw Bw", meaning: "Two layers at once: a side's layer and the middle slice next to it, turned like that side. Also written 2Rw and so on." });
   if (has("H")) rows.push({ notation: "H", meaning: "The horizontal middle slice, turned like U." });
   if (has("E")) rows.push({ notation: "E", meaning: has("H") ? "The same slice turned like D: E is H′." : "The horizontal middle slice, turned like D." });
   if (has("M")) rows.push({ notation: "M", meaning: "The middle slice between L and R, turned like L." });
@@ -179,8 +179,8 @@ export function notationHelp(puzzle: PuzzleDef): { rows: NotationRow[]; note: st
   rows.push({ notation: "R′  R2", meaning: "′ is counterclockwise, 2 a half turn." });
   rows.push({ notation: "(R U)3  (R U)′", meaning: "A group repeated, or undone: its turns in reverse order, each the other way." });
   rows.push({ notation: "[A, B]  [A: B]", meaning: "A B A′ B′, and A B A′." });
-  const wca = has("Rw")
-    ? "Face turns, Rw and 2Rw, rotations, ′ and 2 are the WCA's standard notation. M, E and S are common, but not the WCA's. A lowercase r isn't standard for two layers (the WCA reads it as R), so the Lab asks for Rw."
+  const wca = !has("H")
+    ? "Face turns, rotations, ′ and 2 are the WCA's standard notation. M, E and S are common, but not the WCA's."
     : "R L U D F B, x y z, ′ and 2 come from the WCA's standard notation for a 3x3x3. M, E and S are common, but not the WCA's; H is this Lab's own. Lowercase letters here are the X-Cube's extensions, not two layers as some write them on a 3x3x3.";
   return { rows, note: wca };
 }

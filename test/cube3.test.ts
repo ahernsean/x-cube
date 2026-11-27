@@ -69,11 +69,14 @@ test("cube3: wide turns are Rw and 2Rw, as the WCA writes them; a lowercase r is
   assert.throws(() => parseAlg("2R", XCUBE), /unexpected character '2'/);
 });
 
-test("cube3: the notation help says what is the WCA's and what isn't", () => {
+test("cube3: the notation help says what is the WCA's and what isn't, and offers no wide turns", () => {
   const cube = notationHelp(CUBE3), x = notationHelp(XCUBE);
-  assert.ok(cube.rows.some((r) => r.notation.startsWith("Rw")));
+  // Wide turns are read when typed but never offered.
+  assert.ok(!cube.rows.some((r) => /w/.test(r.notation)) && !/Rw/.test(cube.note));
   assert.ok(!cube.rows.some((r) => r.notation.startsWith("r ")));
-  assert.match(cube.note, /WCA reads it as R/);
+  assert.match(cube.note, /M, E and S are common, but not the WCA's/);
+  assert.deepEqual(CUBE3.moves.filter((m) => m.typedOnly).map((m) => m.name).sort(), ["2Bw", "2Dw", "2Fw", "2Lw", "2Rw", "2Uw", "Bw", "Dw", "Fw", "Lw", "Rw", "Uw"]);
+  assert.ok(!XCUBE.moves.some((m) => m.typedOnly));
   assert.ok(x.rows.some((r) => r.notation === "r l u d f b"));
   assert.ok(x.rows.some((r) => r.notation === "H"));
   assert.ok(!x.rows.some((r) => r.notation.startsWith("Rw")));

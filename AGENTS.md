@@ -83,11 +83,14 @@ in the version of April 1, 2026) define a turn, the Lab writes it their way: fac
 `R L U D F B` (12a1), outer block turns `Rw` (12a2; `2Rw` is the same turn on a 3x3x3,
 12a2+), rotations `x y z` (12a4: `x` turns like `R`, or `L'`), `'` and `2`. The rest is
 outside that standard, and the Lab's help says so: `M`, `E` and `S` are common but not the
-WCA's; `H` is the owner's; the X-Cube's outer turns `r l u d f b` have no standard. The
-WCA defines no lowercase wide turns (it reads a lowercase `r` as `R`, E2c6+), so the 3x3x3
-refuses lowercase letters and writes a wide turn `Rw`. A wide turn is the face and the
-inner slice next to it: on a 3x3x3 `Rw` is `R M'`, or `L x`. Each puzzle has its own move
-names (`PuzzleDef.moves`); `notationHelp` gives them in words for the Turn panel's ⓘ.
+WCA's; `H` is the owner's; the X-Cube's outer turns `r l u d f b` have no standard. On the
+3x3x3, wide turns `Rw` and `2Rw` (the face and the inner slice next to it: `Rw` is `R M'`,
+or `L x`; `2Rw` is the same turn with its two layers counted, 12a2+) are read when typed,
+so standard algorithms paste as written, but the Lab never offers them (`typedOnly`): no
+turn button, help line, shuffle or solver step uses them. The WCA defines no lowercase wide
+turns (it reads a lowercase `r` as `R`, E2c6+), so the 3x3x3 refuses lowercase letters.
+Each puzzle has its own move names (`PuzzleDef.moves`); `notationHelp` gives the ones it
+offers in words for the Turn panel's ⓘ.
 
 **Dave Baum's page** (a common online source) holds the X-faces at front and back, so his
 letters differ. Translated to our grip: his `F U B D` are our `U B D F`; `L R` unchanged;
@@ -252,7 +255,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   `XCUBE` and `CUBE3`, a traditional 3x3x3 on the X-Cube's core grid (the first step of the
   "One Lab, many puzzles" design). Every `State` carries its `puzzle`, so code that has a
   state reads the slots, pieces and moves from it; notation takes the puzzle too (on the
-  3x3x3 a wide turn is `Rw` and there is no `r`; see "Standard notation is honored"). The module's `PIECES`, `SLOT_POS`,
+  3x3x3 a typed wide turn is `Rw` and there is no `r`; see "Standard notation is honored"). The module's `PIECES`, `SLOT_POS`,
   `MOVE_DEFS` and the like are the X-Cube's, for the code that is the X-Cube's alone: its
   state codes (`serialize.ts`), editor (`edit.ts`) and solver (`solve.ts`). The Lab reads
   the puzzle it shows from `P` in `main.ts` (always the X-Cube so far); its drawing still

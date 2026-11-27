@@ -67,6 +67,8 @@ export interface MoveDef {
    * outer turns): the word for that layer in the message when it isn't ("extension").
    */
   needsFull?: string;
+  /** Accepted when typed or pasted, but never offered: no turn button, help line, shuffle or solver step uses it (the 3x3x3's wide turns). */
+  typedOnly?: boolean;
 }
 
 /** How one move is written in a puzzle's spec: its layer is the slots whose coordinate on `axis` passes `layer`. */
@@ -79,6 +81,7 @@ export interface MoveSpec {
   layerOrder: number;
   description: string;
   needsFull?: string;
+  typedOnly?: boolean;
 }
 
 /** What makes a puzzle: its grid of slots, which of them are filled when solved, and its moves. */
@@ -183,6 +186,7 @@ export function buildPuzzle<K extends string>(spec: PuzzleSpec<K>): PuzzleDef<K>
     for (let s = 0; s < numSlots; s++) if (m.layer(slotPos[s][m.axis])) slots.push(s);
     const def: MoveDef = { name: m.name, kind: m.kind, axis: m.axis, ccw: m.ccw, slots, layerOrder: m.layerOrder, description: m.description };
     if (m.needsFull) def.needsFull = m.needsFull;
+    if (m.typedOnly) def.typedOnly = true;
     return def;
   });
 
@@ -359,8 +363,9 @@ export const XCUBE: PuzzleDef<Kind> = buildPuzzle<Kind>({
 
 /**
  * A traditional 3x3x3, on the same grid as the X-Cube's core: 26 slots, every one filled.
- * Its notation is the WCA's (Regulations, Article 12): face turns, wide turns Rw (also
- * written 2Rw, Article 12a2+), rotations, plus the common slices M, E and S. Lowercase r
+ * Its notation is the WCA's (Regulations, Article 12): face turns, rotations, plus the
+ * common slices M, E and S. Wide turns Rw (also written 2Rw, Article 12a2+) are read when
+ * typed, so standard algorithms paste as written, but the Lab never offers them. Lowercase r
  * is refused: the WCA has no lowercase wide turns (it reads r as R, Regulation E2c6+), and
  * on the X-Cube r is an outer turn, so here it would mean something else in each place.
  */
@@ -377,8 +382,8 @@ export const CUBE3: PuzzleDef<CubeKind> = buildPuzzle<CubeKind>({
   moves: [
     ...FACE_AXES.flatMap(([n, axis, sgn]): MoveSpec[] => [
       { name: n, kind: "inner", axis, ccw: faceCcw(sgn), layer: (c) => c * sgn === 1, layerOrder: sgn > 0 ? 0 : 4, description: `${n} face layer` },
-      { name: `${n}w`, kind: "wide", axis, ccw: faceCcw(sgn), layer: (c) => c * sgn >= 0, layerOrder: sgn > 0 ? 1 : 3, description: `${n} face layer and the middle slice with it (wide turn)` },
-      { name: `2${n}w`, kind: "wide", axis, ccw: faceCcw(sgn), layer: (c) => c * sgn >= 0, layerOrder: sgn > 0 ? 1 : 3, description: `${n}w by its other name: two layers, the face and the middle slice` },
+      { name: `${n}w`, kind: "wide", axis, ccw: faceCcw(sgn), layer: (c) => c * sgn >= 0, layerOrder: sgn > 0 ? 1 : 3, description: `${n} face layer and the middle slice with it (wide turn)`, typedOnly: true },
+      { name: `2${n}w`, kind: "wide", axis, ccw: faceCcw(sgn), layer: (c) => c * sgn >= 0, layerOrder: sgn > 0 ? 1 : 3, description: `${n}w by its other name: two layers, the face and the middle slice`, typedOnly: true },
     ]),
     ...MIDDLE_AND_ROTATIONS,
   ],
