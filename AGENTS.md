@@ -765,6 +765,13 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   now ("now blue is up"). A regrip step may flip the puzzle over (`x2`); the Hold line then
   says yellow is up. Stages are named by color, not place ("Yellow core edges", "White
   corners"), since the puzzle may be held either way up.
+  **Big buttons:** during a solve a row of them sits under the playback strip
+  (`updateSolveBar`), for following a step a turn at a time on a puzzle in hand: ◀₁ backs
+  up one turn, and the wide one makes the next turn, written large on it ("▶₁ R'"), and
+  waits, so a puzzle that jams never falls behind (play-testers fell behind a step playing
+  on its own, not having found ▶₁). While turns play it reads Pause (as a tap on the 3D view
+  does) and while paused Go on; once the turns have all played it loads the next step.
+  Hidden outside a solve, during Lost? and while editing.
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag
   ("3. Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
   undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows

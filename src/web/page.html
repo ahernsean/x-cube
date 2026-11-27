@@ -396,6 +396,15 @@ details[open] summary { margin-bottom: 8px; }
 .speed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); flex: 1 1 auto; min-width: 0; }
 .speed input { flex: 1 1 auto; min-width: 0; }
 .speed { position: relative; }
+/* During a solve: big buttons to follow a step a turn at a time (updateSolveBar). */
+.solve-bar { display: flex; gap: 8px; align-items: stretch; }
+.solve-bar[hidden] { display: none; }
+.solve-bar .btn { min-height: 48px; border-radius: 10px; font-size: 20px; }
+.big-back { flex: 0 0 72px; }
+.big-back sub, .big-next sub { font-size: 11px; margin-left: 1px; }
+.big-next { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.big-turn { font: 700 28px var(--f-display); letter-spacing: 0.02em; }
+.big-word { font-size: 18px; font-weight: 700; }
 /* Over the 3D view while the turns playing are paused (a tap pauses, another goes on). */
 .paused-pill { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 82%, transparent); color: var(--panel); font-size: 14px; font-weight: 600; pointer-events: none; z-index: 4; }
 .paused-pill[hidden] { display: none; }
@@ -544,6 +553,10 @@ details[open] summary { margin-bottom: 8px; }
         </div>
         <span class="counter" id="counter">0 / 0</span>
         <div class="status" id="status" aria-live="polite"><span class="chip" id="shape-chip"></span><span class="outer-grid" id="outer-grid" aria-label="Outer turns"></span></div>
+      </div>
+      <div class="solve-bar" id="solve-bar" hidden>
+        <button class="btn big-back" id="big-back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
+        <button class="btn primary big-next" id="big-next" data-kind=""></button>
       </div>
       <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="63"><output class="speed-tip" id="speed-tip" for="speed" aria-live="polite"></output></label>
     </div>

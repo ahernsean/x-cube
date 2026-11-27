@@ -3166,6 +3166,52 @@ labTest("guide: a tap on the 3D view pauses the turns playing at once, another g
   check(after.counter === before.counter && JSON.stringify(after.view) !== JSON.stringify(before.view), `during the step a swipe on the puzzle tumbles the view and turns nothing (${before.counter} then ${after.counter})`);
 });
 
+labTest("guide: during a solve, big buttons make the next turn, written on it, or back one up; pause while playing; load the next step", async ({ page, check, probe, settle, play, counter }) => {
+  await play("R U R' F");
+  const before = await page.$eval("#solve-bar", (e) => e.hidden);
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  const big = () => page.$eval("#big-next", (b) => ({ kind: b.dataset.kind, text: b.textContent.trim(), disabled: b.disabled }));
+  const next = (await probe("debugInfo")) && JSON.parse(await probe("debugInfo"));
+  const want = next.turns.split(" ")[next.cursor];
+  const first = await big();
+  const c0 = await counter();
+  check(before && first.kind === "turn" && first.text.endsWith(want) && !first.disabled, `the big button shows the next turn, ${want} (${JSON.stringify(first)}; hidden before solving: ${before})`);
+  await page.click("#big-next");
+  await settle();
+  const c1 = await counter();
+  await page.click("#big-back");
+  await settle();
+  const c2 = await counter();
+  check(c1 !== c0 && c2 === c0, `a tap makes that turn, and ◀₁ backs it up (${c0}, ${c1}, ${c2})`);
+  // Playing the step: it pauses, and goes on.
+  await page.$eval("#speed", (el) => {
+    el.value = "0";
+    el.dispatchEvent(new Event("input"));
+  });
+  await page.click("#guide-start"); // Play step
+  await page.waitForTimeout(300);
+  const playingNow = await big();
+  await page.click("#big-next");
+  const pausedNow = { big: await big(), turning: await probe("turning") };
+  await page.click("#big-next");
+  const going = await big();
+  check(playingNow.kind === "pause" && pausedNow.big.kind === "resume" && pausedNow.turning.paused && going.kind === "pause", `while the step plays it pauses, then goes on (${playingNow.text}, ${pausedNow.big.text}, ${going.text})`);
+  await page.$eval("#speed", (el) => {
+    el.value = "100";
+    el.dispatchEvent(new Event("input"));
+  });
+  await settle();
+  const end = await big();
+  await page.click("#big-next");
+  await settle();
+  const g = await probe("guide");
+  check(end.kind === "step" && /Next step/.test(end.text) && g?.index === 2, `once the turns have played it loads the next step (${JSON.stringify(end)}, step ${g?.index})`);
+  const size = await page.evaluate(() => ({ w: [document.documentElement.scrollWidth, document.documentElement.clientWidth], h: [document.documentElement.scrollHeight, innerHeight] }));
+  check(size.w[0] <= size.w[1] && size.h[0] <= size.h[1], `with the row of big buttons the page is still one screen, and doesn't scroll sideways (${JSON.stringify(size)})`);
+});
+
 labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ probe, page, check, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);

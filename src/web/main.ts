@@ -3794,6 +3794,8 @@ function bindUI() {
     if (b) answerLost(b.dataset.lost!);
   });
   $("strip-next").addEventListener("click", () => nextStep());
+  $("big-next").addEventListener("click", () => bigNext());
+  $("big-back").addEventListener("click", () => step(-1));
   // Asked first: one tap on Stop solving, near the step list, threw a play-tester out of the solve.
   $("guide-stop").addEventListener("click", () => endingSolve(() => {}));
   $("guide-colors").addEventListener("click", () => setGuideFullColor(!guideFullColor));
@@ -5417,6 +5419,42 @@ function turnListHtml(): string {
   return out;
 }
 
+/**
+ * During a solve, a row of big buttons under the playback strip, for following a step a
+ * turn at a time on a puzzle in hand: ◀₁ backs up one turn, and the wide one makes the next
+ * turn, written large on it ("R'"), and then waits, so a puzzle that jams never falls
+ * behind. While turns play it pauses them (as a tap on the 3D view does), and while they
+ * are paused it goes on; once the turns have all played it loads the next step.
+ */
+function updateSolveBar(showNext: boolean, solvedNow: boolean) {
+  const bar = $("solve-bar");
+  bar.hidden = !solving || !!lost || !!edit;
+  if (bar.hidden) return;
+  const next = $("big-next") as HTMLButtonElement, back = $("big-back") as HTMLButtonElement;
+  back.disabled = app.cursor === 0 || shuffling;
+  const busy = playing || pausedAt !== null;
+  let kind: string, label: string;
+  if (busy && pausedAt !== null) [kind, label] = ["resume", `<span class="big-icon">▶</span><span class="big-word">Go on</span>`];
+  else if (busy) [kind, label] = ["pause", `<span class="big-icon">❚❚</span><span class="big-word">Pause</span>`];
+  else if (app.cursor < app.history.length) [kind, label] = ["turn", `<span class="big-icon">▶<sub>1</sub></span><span class="big-turn">${turnName(app.history[app.cursor])}</span>`];
+  else [kind, label] = ["step", `<span class="big-word">${working ? "Working…" : "Next step"}</span>`];
+  if (next.dataset.kind !== kind || next.innerHTML !== label) {
+    next.dataset.kind = kind;
+    next.innerHTML = label;
+  }
+  next.setAttribute("aria-label", kind === "turn" ? `Next turn, ${turnName(app.history[app.cursor])}` : kind === "step" ? "Next step" : kind === "pause" ? "Pause" : "Go on");
+  next.disabled = shuffling || (kind === "step" && (!!working || !showNext || solvedNow));
+}
+
+/** The big wide button under the strip during a solve (updateSolveBar says what it does now). */
+function bigNext() {
+  const kind = $("big-next").dataset.kind;
+  if (kind === "resume") resumePlayback();
+  else if (kind === "pause") pausePlayback();
+  else if (kind === "turn") step(1);
+  else if (kind === "step") nextStep();
+}
+
 /** Drops the guide when its turns are gone from the list, redraws its grays and arrows, and writes its line. */
 function refreshGuide() {
   trail = trail.filter(guideHolds);
@@ -5443,6 +5481,7 @@ function refreshGuide() {
   ($("strip-next") as HTMLButtonElement).disabled = !!working;
   $("strip-next").hidden = !showNext;
   $("last").hidden = showNext;
+  updateSolveBar(showNext, solvedNow);
   // At the step's start the button plays the step; anywhere else it goes back to the start.
   const atStepStart = !!guide && app.cursor === guide.start;
   $("guide-start").textContent = atStepStart ? "Play step" : "Step start";
