@@ -2275,9 +2275,13 @@ labTest("controls: the color rule: blue for a selected control, green for a good
       const good = resolve("color: var(--good)").color;
       const picks = [...document.querySelectorAll(".mods button")].map((b) => ({ sel: b.classList.contains("sel"), blue: getComputedStyle(b).backgroundColor === accent }));
       const chips = [document.getElementById("shape-chip"), ...document.querySelectorAll("#outer-grid .chip")].map((c) => ({ name: c.textContent, good: c.classList.contains("good") || c.classList.contains("on"), green: getComputedStyle(c).color === good }));
-      return { picks, chips };
+      const accentText = resolve("color: var(--accent)").color;
+      // The Start panel's buttons start things; none is selected, so none is blue.
+      const starts = ["edit-start", "shuffle", "reset", "clear"].map((id) => ({ id, blue: getComputedStyle(document.getElementById(id)).color === accentText }));
+      return { picks, chips, starts };
     });
   const solved = await colors();
+  check(solved.starts.every((b) => !b.blue), `Edit puzzle, Shuffle, Reset and Start from here aren't blue (${JSON.stringify(solved.starts)})`);
   check(solved.picks.length > 2 && solved.picks.some((p) => p.sel) && solved.picks.every((p) => p.sel === p.blue), `the selected turn amount and Order are blue, the others aren't (${JSON.stringify(solved.picks)})`);
   check(solved.chips.every((x) => x.good === x.green) && solved.chips[0].green && solved.chips.filter((x) => x.green).length === 5, `solved: the shape chip and the four outer turns that can turn are green, u and d aren't (${JSON.stringify(solved.chips)})`);
   await play("R");
