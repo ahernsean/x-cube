@@ -1,7 +1,8 @@
 # X-Cube simulator
 
 **New here (person or agent)? Start with [AGENTS.md](AGENTS.md)** for the terminology,
-notation, piece names and code map. Solving algorithms are in [ALGORITHMS.md](ALGORITHMS.md).
+how to hold the puzzle, the notation, the model, piece and slot names, and the code map.
+This file covers where the Lab runs and the commands. Solving algorithms are in [ALGORITHMS.md](ALGORITHMS.md).
 
 A simulator and algorithm-search toolkit for the X-Cube (Moving Parts, 2013): a 3x3x3
 with 3x3 extensions on four sides that turn on their own only when complete.
@@ -10,58 +11,6 @@ with 3x3 extensions on four sides that turn on their own only when complete.
 - `src/cli/xc.ts` is the command-line driver.
 - `src/web/` is the browser viewer ("X-Cube Lab"). It is built into one HTML file.
 - `test/` holds the tests. They encode the behavior confirmed on the physical puzzle.
-
-## Orientation and colors
-
-Hold the puzzle with the X-faces up and down: white up, green front. That leaves
-red right, orange left and blue back. The colors are set in `FACE_COLOR` in
-`src/core/puzzle.ts`, so change them there if your cube differs.
-
-## Notation
-
-| Notation | Meaning |
-|---|---|
-| `R L U D F B` | Inner turns: the 3x3x3 layer plus everything beyond it, including the extension. Clockwise looking at that face. Always allowed. |
-| `r l f b` (`u d`) | Outer turns: the extension alone. Allowed only when all 9 of its pieces are present. |
-| `H` | The horizontal middle layer, turned like `U`. `E` is accepted as `H'`. |
-| `M` | The middle layer between L and R, turned like `L`. |
-| `S` | The middle layer between F and B, turned like `F`. |
-| `x y z` | The whole puzzle, turned like `R`, `U` and `F`. |
-| `'` and `2` | Counterclockwise and half turn. |
-| `(A)5`, `(A)x5`, `(A)*5` | Repeat a group. |
-| `(A)'` | Inverse of a group. |
-| `[A, B]` | Commutator: `A B A' B'`. |
-| `[A: B]` | Conjugate: `A B A'`. |
-
-Face turns, rotations, `'` and `2` are the WCA's standard notation (WCA Regulations,
-Article 12). `M`, `E` and `S` are common but not the WCA's; `H` and the outer turns are
-this project's own. On the 3x3x3 (`--puzzle cube3`), a wide turn is written `Rw` or `2Rw`,
-as the WCA writes it, and lowercase letters are refused: the WCA reads a lowercase `r` as
-`R`, and on the X-Cube `r` is an outer turn.
-
-**Grip difference from Dave Baum's page.** Baum holds the X-faces front and back, so his
-letters name different layers. Translated to the white-up grip:
-- his `F U B D` are our `U B D F`, and `L R` are unchanged;
-- his `u` is our `b`;
-- his `H` is our `S'`.
-
-His edge 3-cycle becomes `R' S' R b R' S R b'`, and his corner 3-cycle becomes
-`R' F' R b R' F R b'`. Both are verified in the tests.
-
-## Model
-
-- **Slots.** There are 80 slots: every lattice point in -2..2 with at most one coordinate equal to ±2, minus the solid center.
-- **Pieces.** There are 62:
-  - 8 core corners and 8 core single edges, each with one white or yellow sticker;
-  - 4 core double edges, with no stickers;
-  - 16 outer corners and 16 outer edges;
-  - 6 core centers and 4 extension centers. Each extension center is fused to the core center behind it.
-- **Solved.** The puzzle is in an X shape, and every exposed face in each direction shows one color.
-
-The tests check these invariants:
-- An outer piece's outward color never changes. That's why two outer pieces with the same three colors are not interchangeable.
-- Outer turns never change the shape.
-- Fused centers never separate.
 
 ## Where to run it
 
@@ -180,15 +129,13 @@ node src/cli/xc.ts solve  "R U F' l"              # steps from that position to 
 node src/cli/xc.ts solve  "R U F' l" --mode layers   # ... solving the outer pieces top to bottom
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
 node src/cli/xc.ts show "U" --state "VLTM DWOP ..."        # start from a saved state code
-node src/cli/xc.ts show "R U Rw'" --puzzle cube3            # a traditional 3x3x3 (turning only, so far)
+node src/cli/xc.ts show "R U M'" --puzzle cube3             # a traditional 3x3x3 (turning only, so far)
 node scripts/build-web.ts                         # build dist/index.html and dist/x-cube-lab.html
 node --test scripts/browser-tests.mjs             # browser tests of the built Lab (needs Playwright;
                                                   # BROWSER=webkit for WebKit)
 ```
 
-In cycle output, `A -> B` means the piece that was in slot A is now in slot B. Slot names:
-- Core slots use standard names: `UFR`, `UF`, `U`.
-- Extension slots are named `<face>x.<position>`. For example, `Fx.UR` is the up-right piece of the front extension, and `Ux.F` is the front spot of the (normally empty) top extension.
+The notation, slot names and how to read cycle output are in [AGENTS.md](AGENTS.md).
 
 ## Search
 
