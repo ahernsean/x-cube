@@ -34,6 +34,7 @@ test("cli: show prints the status, flat view and effect of Baum's edge 3-cycle",
 
 test("cli: --puzzle cube3 turns a 3x3x3, reading its own notation", () => {
   const r = xc("show", "Rw U2", "--puzzle", "cube3");
+  assert.notEqual(xc("show", "r", "--puzzle", "cube3").status, 0, "the 3x3x3 has no lowercase r");
   assert.equal(r.status, 0, r.err);
   assert.match(r.out, /^alg: Rw U2 {2}\(2 turns\)$/m);
   assert.match(r.out, /^not solved$/m);

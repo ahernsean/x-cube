@@ -1,6 +1,6 @@
 // Move notation parser.
 //
-//   R U R' U2         face turns; ' = counterclockwise, 2 = half turn (2' is accepted too)
+//   R U R' U2         face turns; ' = counterclockwise (’ and ′ too), 2 = half turn (2' is accepted too)
 //   r l f b (u d)     outer turns of an extension alone
 //   M S H E           slices (H turns like U, E turns like D)
 //   x y z             whole-puzzle rotations
@@ -10,8 +10,9 @@
 //   [A: B]            conjugate   = A B A'
 // Commas and periods outside brackets are treated as spaces.
 //
-// Move names are each puzzle's own (PuzzleDef.moves): on the X-Cube r is an outer turn, on
-// the 3x3x3 a wide turn. A name is matched longest first, so a 3x3x3 reads Rw as one turn.
+// Move names are each puzzle's own (PuzzleDef.moves): on the X-Cube r is an outer turn; the
+// 3x3x3 has no r, and writes a wide turn Rw or 2Rw. A name is matched longest first, so Rw
+// is one turn. A name may start with a digit (2Rw): a count is read only right after a turn.
 
 import { XCUBE, invertTurns, turnName, type PuzzleDef, type Turn } from "./puzzle.ts";
 
@@ -53,7 +54,7 @@ export function parseAlg(src: string, puzzle: PuzzleDef = XCUBE): Turn[] {
     let n = 1;
     const c = readCount();
     if (c !== null) n = c;
-    if (peek() === "'" || peek() === "’") {
+    if (peek() === "'" || peek() === "’" || peek() === "′") {
       i++;
       n = -n;
     }
@@ -63,7 +64,7 @@ export function parseAlg(src: string, puzzle: PuzzleDef = XCUBE): Turn[] {
   // Suffix after a group: optional prime, optional repeat count.
   const groupSuffix = (seq: Turn[]): Turn[] => {
     let out = seq;
-    if (peek() === "'" || peek() === "’") {
+    if (peek() === "'" || peek() === "’" || peek() === "′") {
       i++;
       out = invertTurns(out);
     }
@@ -116,9 +117,8 @@ export function parseAlg(src: string, puzzle: PuzzleDef = XCUBE): Turn[] {
         const expanded = sep === "," ? [...a, ...b, ...ai, ...invertTurns(b)] : [...a, ...b, ...ai];
         out.push(...groupSuffix(expanded));
       } else {
-        if (!/[A-Za-z]/.test(c)) throw new ParseError(`unexpected character '${c}'`, i);
         const name = namesByLength(puzzle).find((n) => src.startsWith(n, i));
-        if (name === undefined) throw new ParseError(`unknown move '${c}'`, i);
+        if (name === undefined) throw new ParseError(/[A-Za-z]/.test(c) ? `unknown move '${c}'` : `unexpected character '${c}'`, i);
         const def = puzzle.moveByName.get(name)!;
         i += name.length;
         const n = readAmount();
@@ -149,4 +149,38 @@ export function simplify(turns: readonly Turn[]): Turn[] {
     } else out.push({ ...t });
   }
   return out;
+}
+
+/** One line of a puzzle's notation help: how it is written, and what it does. */
+export interface NotationRow {
+  notation: string;
+  meaning: string;
+}
+
+/**
+ * The notation a puzzle reads, for the Lab's help (user-facing wording, WORDING.md), and a
+ * note on which of it is the WCA's standard (WCA Regulations, Article 12) and which isn't.
+ */
+export function notationHelp(puzzle: PuzzleDef): { rows: NotationRow[]; note: string } {
+  const has = (n: string) => puzzle.moveByName.has(n);
+  const rows: NotationRow[] = [];
+  if (has("r") && puzzle.moves[puzzle.moveByName.get("r")!].kind === "outer") {
+    rows.push({ notation: "R L U D F B", meaning: "A side's layer of the 3x3x3 inside, with everything beyond it on that side. Clockwise, looking at that side." });
+    rows.push({ notation: "r l u d f b", meaning: "An extension alone. Only when it has all 9 pieces." });
+  } else {
+    rows.push({ notation: "R L U D F B", meaning: "One side's layer, clockwise, looking at that side." });
+  }
+  if (has("Rw")) rows.push({ notation: "Rw Lw Uw Dw Fw Bw", meaning: "Two layers at once: a side's layer and the middle slice next to it, turned like that side. Also written 2Rw and so on." });
+  if (has("H")) rows.push({ notation: "H", meaning: "The horizontal middle slice, turned like U." });
+  if (has("E")) rows.push({ notation: "E", meaning: has("H") ? "The same slice turned like D: E is H′." : "The horizontal middle slice, turned like D." });
+  if (has("M")) rows.push({ notation: "M", meaning: "The middle slice between L and R, turned like L." });
+  if (has("S")) rows.push({ notation: "S", meaning: "The middle slice between F and B, turned like F." });
+  rows.push({ notation: "x y z", meaning: "The whole puzzle, rotated like R, U and F." });
+  rows.push({ notation: "R′  R2", meaning: "′ is counterclockwise, 2 a half turn." });
+  rows.push({ notation: "(R U)3  (R U)′", meaning: "A group repeated, or undone: its turns in reverse order, each the other way." });
+  rows.push({ notation: "[A, B]  [A: B]", meaning: "A B A′ B′, and A B A′." });
+  const wca = has("Rw")
+    ? "Face turns, Rw and 2Rw, rotations, ′ and 2 are the WCA's standard notation. M, E and S are common, but not the WCA's. A lowercase r isn't standard for two layers (the WCA reads it as R), so the Lab asks for Rw."
+    : "R L U D F B, x y z, ′ and 2 come from the WCA's standard notation for a 3x3x3. M, E and S are common, but not the WCA's; H is this Lab's own. Lowercase letters here are the X-Cube's extensions, not two layers as some write them on a 3x3x3.";
+  return { rows, note: wca };
 }

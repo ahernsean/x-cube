@@ -359,8 +359,10 @@ export const XCUBE: PuzzleDef<Kind> = buildPuzzle<Kind>({
 
 /**
  * A traditional 3x3x3, on the same grid as the X-Cube's core: 26 slots, every one filled.
- * Lowercase letters are wide turns (r is R and the middle slice with it), as is usual on a
- * 3x3x3; on the X-Cube they are outer turns. Each puzzle reads its own notation.
+ * Its notation is the WCA's (Regulations, Article 12): face turns, wide turns Rw (also
+ * written 2Rw, Article 12a2+), rotations, plus the common slices M, E and S. Lowercase r
+ * is refused: the WCA has no lowercase wide turns (it reads r as R, Regulation E2c6+), and
+ * on the X-Cube r is an outer turn, so here it would mean something else in each place.
  */
 export const CUBE3: PuzzleDef<CubeKind> = buildPuzzle<CubeKind>({
   id: "cube3",
@@ -375,8 +377,8 @@ export const CUBE3: PuzzleDef<CubeKind> = buildPuzzle<CubeKind>({
   moves: [
     ...FACE_AXES.flatMap(([n, axis, sgn]): MoveSpec[] => [
       { name: n, kind: "inner", axis, ccw: faceCcw(sgn), layer: (c) => c * sgn === 1, layerOrder: sgn > 0 ? 0 : 4, description: `${n} face layer` },
-      { name: n.toLowerCase(), kind: "wide", axis, ccw: faceCcw(sgn), layer: (c) => c * sgn >= 0, layerOrder: sgn > 0 ? 1 : 3, description: `${n} face layer and the middle slice with it (wide turn, also written ${n}w)` },
       { name: `${n}w`, kind: "wide", axis, ccw: faceCcw(sgn), layer: (c) => c * sgn >= 0, layerOrder: sgn > 0 ? 1 : 3, description: `${n} face layer and the middle slice with it (wide turn)` },
+      { name: `2${n}w`, kind: "wide", axis, ccw: faceCcw(sgn), layer: (c) => c * sgn >= 0, layerOrder: sgn > 0 ? 1 : 3, description: `${n}w by its other name: two layers, the face and the middle slice` },
     ]),
     ...MIDDLE_AND_ROTATIONS,
   ],

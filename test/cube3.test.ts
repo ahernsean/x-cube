@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CUBE3, XCUBE, State, applyTurns } from "../src/core/puzzle.ts";
-import { formatAlg, parseAlg } from "../src/core/notation.ts";
+import { formatAlg, notationHelp, parseAlg } from "../src/core/notation.ts";
 import { effect, faceView, isSolved, netView, statusLine } from "../src/core/analyze.ts";
 import { search } from "../src/core/search.ts";
 import { looksLike } from "../src/core/goals.ts";
@@ -52,16 +52,34 @@ test("cube3: the superflip turns every edge over in place and leaves the corners
   for (let s = 0; s < CUBE3.numSlots; s++) assert.equal(st.occ[s], solved.occ[s]);
 });
 
-test("cube3: lowercase letters and Rw are wide turns, not the X-Cube's outer turns", () => {
-  assert.ok(after("r").equals(after("R M'")));
-  assert.ok(after("Rw2").equals(after("r2")));
+test("cube3: wide turns are Rw and 2Rw, as the WCA writes them; a lowercase r is refused", () => {
+  assert.ok(after("Rw").equals(after("R M'")));
+  assert.ok(after("2Rw2").equals(after("Rw2")));
+  assert.ok(after("R 2Rw'").equals(after("R Rw'")));
+  assert.ok(after("R2Rw").equals(after("R2 Rw")), "a count right after a turn is its amount");
+  assert.ok(after("Rw").appearanceKey() === after("L x").appearanceKey());
+  assert.ok(after("Rw").appearanceKey() !== after("L' x").appearanceKey());
   assert.ok(after("x").equals(after("R M' L'")));
-  assert.ok(after("u").equals(after("U E'")));
-  assert.equal(formatAlg(parseAlg("Rw U' r2", CUBE3), CUBE3), "Rw U' r2");
-  // On the X-Cube, r is the extension alone.
+  assert.ok(after("Uw").equals(after("U E'")));
+  assert.equal(formatAlg(parseAlg("Rw U' 2Fw2", CUBE3), CUBE3), "Rw U' 2Fw2");
+  for (const lower of ["r", "u", "f", "l", "d", "b"]) assert.throws(() => parseAlg(lower, CUBE3), /unknown move/);
+  // On the X-Cube, r is the extension alone, and it has no wide turns.
   assert.equal(XCUBE.moves[XCUBE.moveByName.get("r")!].kind, "outer");
-  assert.equal(CUBE3.moves[CUBE3.moveByName.get("r")!].kind, "wide");
   assert.throws(() => parseAlg("Rw", XCUBE));
+  assert.throws(() => parseAlg("2R", XCUBE), /unexpected character '2'/);
+});
+
+test("cube3: the notation help says what is the WCA's and what isn't", () => {
+  const cube = notationHelp(CUBE3), x = notationHelp(XCUBE);
+  assert.ok(cube.rows.some((r) => r.notation.startsWith("Rw")));
+  assert.ok(!cube.rows.some((r) => r.notation.startsWith("r ")));
+  assert.match(cube.note, /WCA reads it as R/);
+  assert.ok(x.rows.some((r) => r.notation === "r l u d f b"));
+  assert.ok(x.rows.some((r) => r.notation === "H"));
+  assert.ok(!x.rows.some((r) => r.notation.startsWith("Rw")));
+  assert.match(x.note, /H is this Lab's own/);
+  // What the help shows parses: ′ is read as '.
+  assert.ok(after("R′ U2").equals(after("R' U2")));
 });
 
 test("cube3: face views are 3 by 3", () => {
