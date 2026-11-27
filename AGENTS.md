@@ -833,7 +833,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   **Two stacked mistakes:** asked from a Back on track step (a slip, then another while
   putting it right), the candidates also take two slips in that step's last 14 turns up to
   the one named (`twoSlipCandidates`, `LOST_TWO_SLIP_TURNS`; about 1,700 candidates, 0.1 s;
-  sampled, found every time in 7.1 questions on average and 9 at most, 12 cases), and the
+  sampled, found every time in 7.1 questions on average and 9 at most, 12 cases), or with
+  **I don't know**, up to each turn of that step as the one they stopped at, both slips
+  within the 6 turns before it (`LOST_TWO_SLIP_UNKNOWN`; a 29-turn step gives about 9,500
+  candidates in 0.4 s, where 14 turns gave 44,000 in 2.2 s), and the
   words name both ("Two turns went another way: turn 26 of step 1, F', was made as F, and
   turn 28, R', was left out."). Continue search, knowing the puzzle exactly, tries two slips
   over the whole step asked from (a 30-turn step: about 13,000, 0.7 s) once one slip finds

@@ -4919,6 +4919,12 @@ function acceptLost(c: Candidate) {
 
 /** How many turns, up to the last one named, the interview looks in for two stacked mistakes (about 1,700 candidates, 0.1 s). */
 const LOST_TWO_SLIP_TURNS = 14;
+/**
+ * The same when the last turn isn't known, for each turn of the step it may have been: both
+ * slips within this many turns of it (a 29-turn step: about 9,500 candidates, 0.4 s, where
+ * 14 gave 44,000 and 2.2 s).
+ */
+const LOST_TWO_SLIP_UNKNOWN = 6;
 
 /**
  * The turn the person says they made last. They may misremember it, so the candidates take
@@ -4934,8 +4940,10 @@ function setLostLast(l: Lost, k: number) {
   l.cands = endCandidates(l.from, l.all, ends, lostStepTurns(l));
   // Asked from a Back on track step: a slip putting a slip right is two stacked mistakes.
   const g = l.steps[l.steps.length - 1];
-  // Within its last LOST_TWO_SLIP_TURNS turns up to the one named, which keeps the interview short.
-  if (g.step.stage === "recover") l.cands.push(...twoSlipCandidates(l.from, l.turns, Math.max(g.start - l.start, k + 1 - LOST_TWO_SLIP_TURNS), new Set(l.cands.map((c) => c.state.appearanceKey()))));
+  // Within its last LOST_TWO_SLIP_TURNS turns up to the one named, which keeps the interview
+  // short; not knowing the last turn, up to each turn of the step, within LOST_TWO_SLIP_UNKNOWN.
+  if (g.step.stage === "recover")
+    l.cands.push(...twoSlipCandidates(l.from, l.all, g.start - l.start, new Set(l.cands.map((c) => c.state.appearanceKey())), unknown ? lostStepTurns(l) : [k], unknown ? LOST_TWO_SLIP_UNKNOWN : LOST_TWO_SLIP_TURNS));
   l.expected = l.cands[0];
 }
 

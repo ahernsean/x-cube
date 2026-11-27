@@ -196,3 +196,17 @@ test("lost: two stacked mistakes in a step's turns are found from a few answers"
   assert.ok(most <= 10, `${interviews} interviews, at most ${most} questions`);
   console.log(`two stacked mistakes: ${interviews} interviews, ${(total / interviews).toFixed(1)} questions on average, ${most} at most`);
 });
+
+test("lost: two stacked mistakes are found wherever the person stopped, when the last turn isn't known", () => {
+  // Codex's example: a Back on track step's turns, the first two made the other way round,
+  // and the person stopping after the third.
+  const start = State.solved();
+  const turns = parseAlg("R' B' L' F' U2 R' D' U'");
+  const truth = State.solved();
+  for (const t of parseAlg("R B L'")) applyTurn(truth, t);
+  const key = truth.appearanceKey();
+  const has = (ends?: number[]) => twoSlipCandidates(start, turns, 0, new Set(), ends, 6).some((c) => c.state.appearanceKey() === key && c.last === 2);
+  assert.ok(!has(), "stopping at the last turn alone doesn't give it");
+  assert.ok(has(turns.map((_, i) => i)), "any turn of the step as the stop does");
+  assert.ok(has([2]), "as does the turn named");
+});

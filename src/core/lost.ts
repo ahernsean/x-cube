@@ -103,25 +103,35 @@ export function slipCandidates(start: State, turns: readonly Turn[], from = 0, s
 
 /**
  * Two slips in the turns from index `from` on (two stacked mistakes: a slip, then another
- * while putting it right). Looks already in `seen` (from one slip, say) are left out.
+ * while putting it right), the person stopping after each of `ends` (indices into `turns`;
+ * the last turn if none are given), with both slips within `window` turns up to where they
+ * stopped. Looks already in `seen` (from one slip, say) are left out.
  */
-export function twoSlipCandidates(start: State, turns: readonly Turn[], from = 0, seen = new Set<string>()): Candidate[] {
+export function twoSlipCandidates(start: State, turns: readonly Turn[], from = 0, seen = new Set<string>(), ends: readonly number[] = [turns.length - 1], window = Infinity): Candidate[] {
   const out: Candidate[] = [];
-  for (let i = Math.max(0, from); i < turns.length; i++) {
+  const stops = [...new Set(ends)].filter((e) => e >= 0 && e < turns.length).sort((x, y) => x - y);
+  if (!stops.length) return out;
+  const last = stops[stops.length - 1];
+  for (let i = Math.max(0, from, stops[0] + 1 - window); i < last; i++) {
     // The position before turn i, once: the second slip's variants share it.
     const before = start.clone();
     for (const t of turns.slice(0, i)) applyTurn(before, t);
+    // The stops this first slip is within `window` turns of.
+    const far = Math.min(last, i + window - 1);
     for (const a of slipsOf(turns[i])) {
-      for (let j = i + 1; j < turns.length; j++) {
+      for (let j = i + 1; j <= far; j++) {
         for (const b of slipsOf(turns[j])) {
+          // Turn by turn after the second slip, a candidate at each stop it may have been.
           const state = before.clone();
-          const head = turns.slice(0, i);
-          const rest = [...a.as, ...turns.slice(i + 1, j), ...b.as, ...turns.slice(j + 1)];
-          const made = [...head, ...rest.filter((t) => applyTurn(state, t))];
-          const key = state.appearanceKey();
-          if (seen.has(key)) continue;
-          seen.add(key);
-          out.push({ made, as: a.as, at: i, slip: a.slip, second: { at: j, slip: b.slip, as: b.as }, state, grip: [], last: turns.length - 1 });
+          const made = [...turns.slice(0, i), ...[...a.as, ...turns.slice(i + 1, j), ...b.as].filter((t) => applyTurn(state, t))];
+          for (let e = j; e <= far; e++) {
+            if (e > j && applyTurn(state, turns[e])) made.push(turns[e]);
+            if (!stops.includes(e) || i < e + 1 - window) continue;
+            const key = state.appearanceKey();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({ made: [...made], as: a.as, at: i, slip: a.slip, second: { at: j, slip: b.slip, as: b.as }, state: state.clone(), grip: [], last: e });
+          }
         }
       }
     }
