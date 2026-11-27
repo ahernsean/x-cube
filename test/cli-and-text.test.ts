@@ -32,6 +32,19 @@ test("cli: show prints the status, flat view and effect of Baum's edge 3-cycle",
   assert.equal((r.out.match(/^ {2}cycle: /gm) ?? []).length, 1);
 });
 
+test("cli: --puzzle cube3 turns a 3x3x3, reading its own notation", () => {
+  const r = xc("show", "Rw U2", "--puzzle", "cube3");
+  assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^alg: Rw U2 {2}\(2 turns\)$/m);
+  assert.match(r.out, /^not solved$/m);
+  assert.match(r.out, /^ {2}L {6}F {6}R {6}B$/m, "a net of 3 by 3 faces");
+  assert.equal(xc("order", "R U", "--puzzle", "cube3").out.trim(), "looks identical to the start after 105 repetitions");
+  const no = xc("solve", "R", "--puzzle", "cube3");
+  assert.notEqual(no.status, 0);
+  assert.match(no.err, /X-Cube's only/);
+  assert.match(xc("show", "R", "--puzzle", "megaminx").err, /unknown puzzle megaminx/);
+});
+
 test("cli: steps prints a status line per turn, stopping at a refused turn", () => {
   const r = xc("steps", "R f U");
   assert.equal(r.status, 0, r.err);

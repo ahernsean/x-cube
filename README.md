@@ -174,6 +174,7 @@ node src/cli/xc.ts solve  "R U F' l"              # steps from that position to 
 node src/cli/xc.ts solve  "R U F' l" --mode layers   # ... solving the outer pieces top to bottom
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
 node src/cli/xc.ts show "U" --state "VLTM DWOP ..."        # start from a saved state code
+node src/cli/xc.ts show "R U Rw'" --puzzle cube3            # a traditional 3x3x3 (turning only, so far)
 node scripts/build-web.ts                         # build dist/index.html and dist/x-cube-lab.html
 node --test scripts/browser-tests.mjs             # browser tests of the built Lab (needs Playwright;
                                                   # BROWSER=webkit for WebKit)

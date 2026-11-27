@@ -235,7 +235,16 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 ## Code map
 
 - `src/core/geometry.ts`: rotations, directions.
-- `src/core/puzzle.ts`: slots, pieces, state, move definitions, applying turns.
+- `src/core/puzzle.ts`: puzzles as data (`PuzzleDef`, made by `buildPuzzle` from a grid,
+  the slots filled when solved, and the moves), states, applying turns. Two definitions:
+  `XCUBE` and `CUBE3`, a traditional 3x3x3 on the X-Cube's core grid (the first step of the
+  "One Lab, many puzzles" design). Every `State` carries its `puzzle`, so code that has a
+  state reads the slots, pieces and moves from it; notation takes the puzzle too (on the
+  3x3x3, `r` and `Rw` are wide turns, not outer turns). The module's `PIECES`, `SLOT_POS`,
+  `MOVE_DEFS` and the like are the X-Cube's, for the code that is the X-Cube's alone: its
+  state codes (`serialize.ts`), editor (`edit.ts`) and solver (`solve.ts`). The Lab reads
+  the puzzle it shows from `P` in `main.ts` (always the X-Cube so far); its drawing still
+  assumes the X-Cube's 5 by 5 by 5 grid in places (shading, paths, Show).
 - `src/core/notation.ts`: parser and formatter.
 - `src/core/analyze.ts`: shape and solved tests, effect (cycles and twists), text face views,
   flat-view rim data (`faceRimView`).

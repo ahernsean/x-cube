@@ -7,15 +7,25 @@
 //   node src/cli/xc.ts encode "<alg>"                  print a state code for solved + alg
 //   node src/cli/xc.ts solve "<alg>" [--state <code>] [--mode kinds|layers]
 //                                                      steps from the position after alg to solved
+//   --puzzle xcube|cube3                               which puzzle (default xcube); state codes and
+//                                                      solve are the X-Cube's only, for now
 
 import { effect, isHomeX, netView, statusLine } from "../core/analyze.ts";
-import { formatAlg, parseAlg } from "../core/notation.ts";
-import { State, applyTurns, turnName } from "../core/puzzle.ts";
+import { formatAlg as formatAlgOf, parseAlg as parseAlgOf } from "../core/notation.ts";
+import { PUZZLES, State, XCUBE, applyTurns, turnName as turnNameOf, type PuzzleDef, type Turn } from "../core/puzzle.ts";
 import { decodeState, encodeState } from "../core/serialize.ts";
 import { solveSteps } from "../core/solve.ts";
 
+let P: PuzzleDef = XCUBE;
+const parseAlg = (src: string) => parseAlgOf(src, P);
+const formatAlg = (turns: readonly Turn[]) => formatAlgOf(turns, P);
+const turnName = (t: Turn) => turnNameOf(t, P);
+/** Only the X-Cube has state codes and a solver so far. */
+const xcubeOnly = (what: string) => P === XCUBE || fail(`${what} is the X-Cube's only, for now`);
+
 function startState(args: Map<string, string>): State {
-  const st = args.has("--state") ? decodeState(args.get("--state")!) : State.solved();
+  if (args.has("--state")) xcubeOnly("--state");
+  const st = args.has("--state") ? decodeState(args.get("--state")!) : State.solved(P);
   if (args.has("--from")) {
     const r = applyTurns(st, parseAlg(args.get("--from")!));
     if (!r.ok) fail(`setup failed: ${r.error}`);
@@ -32,7 +42,11 @@ function main(argv: string[]) {
   const [cmd, alg = "", ...rest] = argv;
   const args = new Map<string, string>();
   for (let i = 0; i < rest.length; i += 2) args.set(rest[i], rest[i + 1]);
-  if (!cmd) fail("usage: xc <show|steps|effect|order|encode|solve> \"<alg>\" [--from \"<alg>\"] [--state <code>]");
+  if (!cmd) fail("usage: xc <show|steps|effect|order|encode|solve> \"<alg>\" [--from \"<alg>\"] [--state <code>] [--puzzle xcube|cube3]");
+  if (args.has("--puzzle")) {
+    const want = args.get("--puzzle");
+    P = PUZZLES.find((p) => p.id === want) ?? fail(`unknown puzzle ${want} (use ${PUZZLES.map((p) => p.id).join(" or ")})`);
+  }
   const turns = parseAlg(alg);
   const start = startState(args);
   const st = start.clone();
@@ -74,6 +88,7 @@ function main(argv: string[]) {
       break;
     }
     case "encode": {
+      xcubeOnly("encode");
       const r = applyTurns(st, turns);
       if (!r.ok) fail(r.error!);
       console.log(encodeState(st));
@@ -81,6 +96,7 @@ function main(argv: string[]) {
       break;
     }
     case "solve": {
+      xcubeOnly("solve");
       const r = applyTurns(st, turns);
       if (!r.ok) fail(r.error!);
       let steps;
