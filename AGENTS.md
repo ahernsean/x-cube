@@ -75,7 +75,19 @@ colors are **not** interchangeable, because of the outward-color rule below.
 | `[A, B]` | **Commutator**: `A B A' B'`. |
 | `[A: B]` | **Conjugate**: `A B A'` (set up, do, undo the setup). |
 
-Commas and periods outside brackets are treated as spaces. Parser: `src/core/notation.ts`.
+Commas and periods outside brackets are treated as spaces. `′` and `’` are read as `'`.
+Parser: `src/core/notation.ts`.
+
+**Standard notation is honored.** Where the WCA Regulations (Article 12, "Notation"; read
+in the version of April 1, 2026) define a turn, the Lab writes it their way: face turns
+`R L U D F B` (12a1), outer block turns `Rw` (12a2; `2Rw` is the same turn on a 3x3x3,
+12a2+), rotations `x y z` (12a4: `x` turns like `R`, or `L'`), `'` and `2`. The rest is
+outside that standard, and the Lab's help says so: `M`, `E` and `S` are common but not the
+WCA's; `H` is the owner's; the X-Cube's outer turns `r l u d f b` have no standard. The
+WCA defines no lowercase wide turns (it reads a lowercase `r` as `R`, E2c6+), so the 3x3x3
+refuses lowercase letters and writes a wide turn `Rw`. A wide turn is the face and the
+inner slice next to it: on a 3x3x3 `Rw` is `R M'`, or `L x`. Each puzzle has its own move
+names (`PuzzleDef.moves`); `notationHelp` gives them in words for the Turn panel's ⓘ.
 
 **Dave Baum's page** (a common online source) holds the X-faces at front and back, so his
 letters differ. Translated to our grip: his `F U B D` are our `U B D F`; `L R` unchanged;
@@ -893,6 +905,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.
+- **Notation help:** the Turn panel's ⓘ, beside its heading, opens a panel over the turn
+  buttons with how turns are written on the puzzle shown (`notationHelp`), and which of it
+  is the WCA's standard notation and which isn't.
 - **Turn field:** in the Turn panel, under the turn buttons. Load adds the typed turns at
   the current step (replacing any after it) and empties the field, so the turn list is the
   one record of the turns. Edit puts the whole turn list in the field and Load reads Update:

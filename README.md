@@ -33,6 +33,12 @@ red right, orange left and blue back. The colors are set in `FACE_COLOR` in
 | `[A, B]` | Commutator: `A B A' B'`. |
 | `[A: B]` | Conjugate: `A B A'`. |
 
+Face turns, rotations, `'` and `2` are the WCA's standard notation (WCA Regulations,
+Article 12). `M`, `E` and `S` are common but not the WCA's; `H` and the outer turns are
+this project's own. On the 3x3x3 (`--puzzle cube3`), a wide turn is written `Rw` or `2Rw`,
+as the WCA writes it, and lowercase letters are refused: the WCA reads a lowercase `r` as
+`R`, and on the X-Cube `r` is an outer turn.
+
 **Grip difference from Dave Baum's page.** Baum holds the X-faces front and back, so his
 letters name different layers. Translated to the white-up grip:
 - his `F U B D` are our `U B D F`, and `L R` are unchanged;

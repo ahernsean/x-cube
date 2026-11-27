@@ -3,7 +3,7 @@
 
 import { isHomeX, isSolved, isXShape, isExposed, outerAvailability } from "../core/analyze.ts";
 import { DIRS, axisRotation, ROT_DIR, ROT_INV, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
-import { formatAlg as formatAlgOf, parseAlg as parseAlgOf, ParseError } from "../core/notation.ts";
+import { formatAlg as formatAlgOf, notationHelp, parseAlg as parseAlgOf, ParseError } from "../core/notation.ts";
 import { COLOR_NAME, XCUBE, State, applyTurn, blockedReason, turnName as turnNameOf, type Color, type PuzzleDef, type Turn, applyTurns, invertTurns } from "../core/puzzle.ts";
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
 import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, stickerChoice, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
@@ -3771,13 +3771,25 @@ function restoreNext() {
   r.then?.();
 }
 
-/** The ⓘ and Display buttons beside the 3D and flat views' headings each open a small panel over the view. */
+/** The Turn panel's ⓘ: how turns are written on the puzzle shown, and which notation is the WCA's. */
+function fillNotationHelp() {
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const { rows, note } = notationHelp(P);
+  $("turn-info-pop").innerHTML =
+    `<p class="hint">How turns are written in the turn list, the turn field and algorithms.</p>` +
+    `<dl>${rows.map((r) => `<dt>${esc(r.notation)}</dt><dd>${esc(r.meaning)}</dd>`).join("")}</dl>` +
+    `<p class="hint">${esc(note)}</p>`;
+}
+
+/** The ⓘ and Display buttons beside the 3D and flat views' headings, and the Turn panel's ⓘ, each open a small panel. */
 function bindViewTools() {
   const pairs: [string, string][] = [
     ["info-btn", "info-pop"],
     ["render-btn", "render-pop"],
     ["flat-info-btn", "flat-info-pop"],
+    ["turn-info-btn", "turn-info-pop"],
   ];
+  fillNotationHelp();
   const close = (except?: string) => {
     for (const [b, p] of pairs)
       if (p !== except) {

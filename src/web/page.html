@@ -309,7 +309,11 @@ input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); 
 /* A button that doesn't apply right now is grayed out. */
 .btn:disabled, .btn:disabled:hover { opacity: 0.4; cursor: not-allowed; border-color: var(--line); }
 .tp-group > .btn.tp:disabled { opacity: 1; color: color-mix(in srgb, var(--muted) 45%, transparent); }
-.turn-head { display: flex; align-items: center; gap: 8px; }
+.turn-head { position: relative; display: flex; align-items: center; gap: 8px; }
+.notation-pop { left: 0; right: auto; max-width: min(360px, 100%); max-height: 60vh; overflow-y: auto; }
+.notation-pop dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 10px; }
+.notation-pop dt { font-family: ui-monospace, Menlo, monospace; font-size: 13px; white-space: nowrap; }
+.notation-pop dd { margin: 0; font-size: 13px; }
 /* Heading and Undo line up with the 40px-tall turn-amount selector (its first row). */
 .turn-head h2 { margin: 0; line-height: 40px; }
 .turn-head #undo { margin: 0; }
@@ -605,6 +609,8 @@ details[open] summary { margin-bottom: 8px; }
     <section class="panel" data-sec="turn" id="panel-turn" role="tabpanel">
       <div class="turn-head">
         <h2>Turn the puzzle</h2>
+        <button class="btn small tool-btn info" id="turn-info-btn" aria-label="How turns are written" aria-expanded="false" aria-controls="turn-info-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="7.4" r="1.3" fill="currentColor"/><path d="M12 10.6v6.6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+        <div class="pop notation-pop" id="turn-info-pop" hidden></div>
         <div class="mod-col">
           <label class="hint keep" for="sticky-mod" title="Keep ′ or 2 selected after a turn"><input type="checkbox" id="sticky-mod"> Keep ′ or 2</label>
           <div class="mods" role="group" aria-label="Turn amount">

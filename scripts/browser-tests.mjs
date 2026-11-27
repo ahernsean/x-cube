@@ -449,7 +449,7 @@ labTest(
     const infoLook = await page.$$eval(".tool-btn.info", (els) =>
       els.map((e) => { const cs = getComputedStyle(e); return [cs.borderTopColor, cs.backgroundColor].join("/"); }),
     );
-    check(infoLook.length === 4 && infoLook.every((v) => v === "rgba(0, 0, 0, 0)/rgba(0, 0, 0, 0)"), "the ⓘ, Display and Undo buttons show just their icons, with no button edge or fill");
+    check(infoLook.length === 5 && infoLook.every((v) => v === "rgba(0, 0, 0, 0)/rgba(0, 0, 0, 0)"), "the ⓘ buttons (3D view, flat view, Turn panel), Display and Undo show just their icons, with no button edge or fill");
     check(unitsWhole, "the notes break lines only between units like \"M like L,\", never inside one");
     check(notes.every(Boolean) && (await page.$$eval("[data-sec=turn] .legend", (els) => els.length)) === 0, `the H/M/S and x/y/z notes sit beside their buttons (${notes})`);
     // The turn field's example text fits inside it at phone width.
@@ -576,6 +576,37 @@ labTest(
       };
     });
     check(flat.whole && flat.infoInside && flat.clear, `the flat view shows whole, with its ⓘ inside it and clear of the faces (${JSON.stringify(flat)})`);
+  },
+  { expand: false, context: { viewport: { width: 390, height: 844 } } },
+);
+
+labTest(
+  "turn buttons: the Turn panel's ⓘ explains the notation, with what is the WCA's, and fits a phone",
+  async ({ page, check }) => {
+    await page.click(`[data-tab="turn"]`);
+    await page.waitForTimeout(800);
+    const before = await page.$$eval(".mv", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)).join());
+    await page.click("#turn-info-btn");
+    const pop = await page.evaluate(() => {
+      const p = document.getElementById("turn-info-pop");
+      const r = p.getBoundingClientRect();
+      return {
+        shown: !p.hidden && r.height > 0,
+        rows: [...p.querySelectorAll("dt")].map((e) => e.textContent),
+        text: p.textContent,
+        inside: r.left >= 0 && r.right <= innerWidth,
+        scroll: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        expanded: document.getElementById("turn-info-btn").getAttribute("aria-expanded"),
+      };
+    });
+    check(pop.shown && pop.expanded === "true", "a tap on the Turn panel's ⓘ opens the notation help");
+    check(["R L U D F B", "r l u d f b", "H", "E", "M", "S", "x y z"].every((n) => pop.rows.includes(n)), `it lists the X-Cube's turns (${pop.rows.join(" | ")})`);
+    check(/WCA/.test(pop.text) && /H is this Lab's own/.test(pop.text), "it says which notation is the WCA's standard and which isn't");
+    check(pop.inside && pop.scroll, "it fits the phone's width, with no sideways scrolling");
+    const after = await page.$$eval(".mv", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)).join());
+    check(after === before, "the ⓘ's panel opens over the turn buttons without moving them");
+    await page.mouse.click(5, 5);
+    check(await page.$eval("#turn-info-pop", (e) => e.hidden), "a tap elsewhere closes it");
   },
   { expand: false, context: { viewport: { width: 390, height: 844 } } },
 );
