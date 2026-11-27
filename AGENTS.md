@@ -668,7 +668,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   step is added the older ones slide down to make room; on phones the list scrolls between
   the step's line and Stop solving. The order can't change during a solve. Anything that
   sets a new start (Shuffle, Reset, Edit puzzle, a code, a saved position, an algorithm,
-  clearing the turn list) asks "End the solve in progress?" first, and ends it. In the
+  clearing the turn list) asks "End the solve in progress?" first, and ends it; so does
+  Stop solving itself (a play-tester tapped it by mistake and was thrown out of the solve). In the
   playback strip, once a solve's turns have all played, ▶ gives way to a **Next step**
   button (two dots with an arrow from one to the other), which
   loads the next step; ▶ comes back with it. **Next

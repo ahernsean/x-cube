@@ -154,7 +154,10 @@ async function resetToSolved(page) {
 
 /** Picks the solve's order, stopping a solve under way first (the order is chosen between solves). */
 async function setOrder(page, mode) {
-  if (!(await page.$eval("#guide-stop", (b) => b.disabled))) await page.click("#guide-stop");
+  if (!(await page.$eval("#guide-stop", (b) => b.disabled))) {
+    await page.click("#guide-stop");
+    await page.click("#confirm-yes");
+  }
   await page.click(`[data-guide-mode="${mode}"]`);
 }
 
@@ -1762,6 +1765,7 @@ labTest("info: the help says what taps and drags do in each mode, and Copy debug
   await settle();
   const solve = await help();
   await page.click("#guide-stop");
+  await page.click("#confirm-yes");
   await page.click(`[data-tab="start"]`);
   await page.click("#edit-start");
   const paint = await help();
@@ -2428,6 +2432,7 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   // back keeps the step.
   const before = await turnList();
   await page.click("#guide-stop");
+  await page.click("#confirm-yes");
   const stopped = { g: await probe("guide"), line: await line(), list: await turnList(), off: await page.$eval("#guide-stop", (b) => b.disabled) };
   await next();
   const again = await probe("guide");
@@ -2533,6 +2538,7 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   // started: here a corner hops along the front face, and its front sticker is followed,
   // not the one on its side, whose path would have to turn back on itself.
   await page.click("#guide-stop");
+  await page.click("#confirm-yes");
   await setOrder(page, "kinds");
   for (let i = 0; i < 3; i++) {
     await page.click("#next-step");
@@ -2588,6 +2594,7 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   // One corner cycle from solved: a white X-face corner hops along the top, white up at
   // both ends, and its flying copy keeps white up all the way.
   await page.click("#guide-stop");
+  await page.click("#confirm-yes");
   await resetToSolved(page);
   await settle();
   await setOrder(page, "kinds");
@@ -3099,7 +3106,7 @@ labTest("lost: Cancel puts the turn list and the step back as they were", async 
   check(after.counter === before.counter && after.guide === before.guide && !after.lost, `Cancel restores the turn list and the step (${JSON.stringify(before)} then ${JSON.stringify(after)})`);
 });
 
-labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ page, check, settle, play, counter }) => {
+labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ probe, page, check, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);
   const idle = await page.evaluate(() => ({ order: !!document.querySelector(".guide-modes").getClientRects().length, btn: document.getElementById("next-step").textContent, stop: !!document.getElementById("guide-stop").getClientRects().length }));
@@ -3117,7 +3124,14 @@ labTest("guide: the order is chosen between solves; once a step has played, Next
   await settle();
   const next = { g: await page.evaluate(() => window.xcubeProbe.guide()?.index), counter: await counter(), play: !(await page.$eval("#last", (b) => b.hidden)) };
   check(played.play && next.g === 2 && next.counter !== played.counter && next.play, `the step played through (${before} to ${played.counter}), Next step took ▶'s place and loaded step 2 (${next.counter}), and ▶ is back`);
+  // Stop solving asks first; Keep solving keeps the solve.
   await page.click("#guide-stop");
+  const asked = { shown: !(await page.$eval("#confirm", (e) => e.hidden)), text: await page.$eval("#confirm-text", (e) => e.textContent), solving: JSON.parse(await probe("debugInfo")).solving };
+  await page.click("#confirm-no");
+  const kept = JSON.parse(await probe("debugInfo")).solving;
+  check(asked.shown && asked.text === "End the solve in progress?" && asked.solving && kept, `Stop solving asks first, and Keep solving keeps the solve (${JSON.stringify({ ...asked, kept })})`);
+  await page.click("#guide-stop");
+  await page.click("#confirm-yes");
   const stopped = await page.evaluate(() => ({ order: !!document.querySelector(".guide-modes").getClientRects().length, btn: document.getElementById("next-step").textContent, next: !document.getElementById("strip-next").hidden }));
   check(stopped.order && stopped.btn === "Start solving" && !stopped.next, `Stop ends the solve: the order and Start solving are back (${JSON.stringify(stopped)})`);
 });
@@ -3252,6 +3266,7 @@ labTest("guide: dropping a step frees its paths' graphics memory", async ({ page
     await page.waitForTimeout(200); // a few frames, so the paths are drawn and their geometry uploaded
     const shown = await probe("geometries");
     await page.click("#guide-stop");
+    await page.click("#confirm-yes");
     await settle();
     counts.push([shown, await probe("geometries")]);
   }

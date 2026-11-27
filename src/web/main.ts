@@ -3733,7 +3733,8 @@ function bindUI() {
     if (b) answerLost(b.dataset.lost!);
   });
   $("strip-next").addEventListener("click", () => nextStep());
-  $("guide-stop").addEventListener("click", () => stopGuide());
+  // Asked first: one tap on Stop solving, near the step list, threw a play-tester out of the solve.
+  $("guide-stop").addEventListener("click", () => endingSolve(() => {}));
   $("guide-colors").addEventListener("click", () => setGuideFullColor(!guideFullColor));
   $("guide-start").addEventListener("click", () => {
     if (guide && app.cursor === guide.start) playToEnd(guide.start + guide.step.turns.length);
