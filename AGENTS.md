@@ -771,7 +771,9 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   waits, so a puzzle that jams never falls behind (play-testers fell behind a step playing
   on its own, not having found ▶₁). While turns play it reads Pause (as a tap on the 3D view
   does) and while paused Go on; once the turns have all played it loads the next step.
-  Hidden outside a solve, during Lost? and while editing.
+  Hidden outside a solve, during Lost? and while editing. On a wide screen (an iPad) they
+  sit straight under the 3D view, as wide as it, and larger (`placeSolveBar`): as near the
+  puzzle as they can be without covering it (over the view they would hide the step's paths).
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag
   ("3. Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
   undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows

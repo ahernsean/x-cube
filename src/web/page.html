@@ -405,6 +405,12 @@ details[open] summary { margin-bottom: 8px; }
 .big-next { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 12px; }
 .big-turn { font: 700 28px var(--f-display); letter-spacing: 0.02em; }
 .big-word { font-size: 18px; font-weight: 700; }
+/* On a wide screen, straight under the 3D view and larger (placeSolveBar). */
+.solve-bar.by-view { margin-top: 10px; }
+.solve-bar.by-view .btn { min-height: 64px; font-size: 24px; }
+.solve-bar.by-view .big-back { flex-basis: 96px; }
+.solve-bar.by-view .big-turn { font-size: 36px; }
+.solve-bar.by-view .big-word { font-size: 22px; }
 /* Over the 3D view while the turns playing are paused (a tap pauses, another goes on). */
 .paused-pill { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 82%, transparent); color: var(--panel); font-size: 14px; font-weight: 600; pointer-events: none; z-index: 4; }
 .paused-pill[hidden] { display: none; }

@@ -3212,6 +3212,23 @@ labTest("guide: during a solve, big buttons make the next turn, written on it, o
   check(size.w[0] <= size.w[1] && size.h[0] <= size.h[1], `with the row of big buttons the page is still one screen, and doesn't scroll sideways (${JSON.stringify(size)})`);
 });
 
+labTest("guide: on a wide screen the big buttons sit straight under the 3D view, larger", async ({ page, check, settle, play }) => {
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await play("R U R' F");
+  await page.click("#next-step");
+  await settle();
+  const m = await page.evaluate(() => {
+    const stage = document.querySelector(".stage").getBoundingClientRect(), bar = document.getElementById("solve-bar").getBoundingClientRect();
+    return { gap: Math.round(bar.top - stage.bottom), height: Math.round(bar.height), left: Math.round(bar.left - stage.left), right: Math.round(stage.right - bar.right) };
+  });
+  check(m.gap >= 0 && m.gap <= 16 && m.height >= 60 && Math.abs(m.left) <= 1 && Math.abs(m.right) <= 1, `the big buttons sit straight under the 3D view, as wide, and larger (${JSON.stringify(m)})`);
+  // Back to a phone's width, they go back under the playback strip.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  const inDock = await page.evaluate(() => document.getElementById("solve-bar").parentElement.id);
+  check(inDock === "dock", `on a phone they are under the playback strip (${inDock})`);
+});
+
 labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ probe, page, check, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);

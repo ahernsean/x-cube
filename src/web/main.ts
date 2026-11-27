@@ -3796,6 +3796,8 @@ function bindUI() {
   $("strip-next").addEventListener("click", () => nextStep());
   $("big-next").addEventListener("click", () => bigNext());
   $("big-back").addEventListener("click", () => step(-1));
+  placeSolveBar();
+  WIDE.addEventListener("change", placeSolveBar);
   // Asked first: one tap on Stop solving, near the step list, threw a play-tester out of the solve.
   $("guide-stop").addEventListener("click", () => endingSolve(() => {}));
   $("guide-colors").addEventListener("click", () => setGuideFullColor(!guideFullColor));
@@ -5444,6 +5446,19 @@ function updateSolveBar(showNext: boolean, solvedNow: boolean) {
   }
   next.setAttribute("aria-label", kind === "turn" ? `Next turn, ${turnName(app.history[app.cursor])}` : kind === "step" ? "Next step" : kind === "pause" ? "Pause" : "Go on");
   next.disabled = shuffling || (kind === "step" && (!!working || !showNext || solvedNow));
+}
+
+/**
+ * Where the big buttons sit: on a phone, in the playback dock, under the strip; on a wide
+ * screen (an iPad), straight under the 3D view and larger, as near the puzzle as they can be
+ * without covering it (over the view they would hide the step's paths).
+ */
+function placeSolveBar() {
+  const bar = $("solve-bar"), stage = document.querySelector(".stage")!;
+  if (WIDE.matches) {
+    if (bar.previousElementSibling !== stage) stage.after(bar);
+  } else if (bar.parentElement !== $("dock")) $("dock").insertBefore(bar, $("dock").querySelector(".speed"));
+  bar.classList.toggle("by-view", WIDE.matches);
 }
 
 /** The big wide button under the strip during a solve (updateSolveBar says what it does now). */
