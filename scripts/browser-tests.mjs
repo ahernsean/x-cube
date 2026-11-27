@@ -997,7 +997,7 @@ labTest("edge labels: each arrow runs along its face's axis where the arrow is, 
   }
 });
 
-labTest("edge labels: a label sliding clear of another stays on its own side of it, so opposite faces' labels stay apart", async ({ page, check, settle }) => {
+labTest("edge labels: a label sliding clear of another stays on its own side of it, faces toward the viewer placed first", async ({ page, check, settle }) => {
   // The owner's iPhone views. In the third, Right's spot is just right of Down and Left's just
   // left of Up: each once slid over that label to the other half of the view.
   await page.setViewportSize({ width: 440, height: 956 });
@@ -1020,9 +1020,20 @@ labTest("edge labels: a label sliding clear of another stays on its own side of 
         const r = document.getElementById("scene").getBoundingClientRect();
         return [...document.querySelectorAll(".cmp")].map((el) => {
           const b = el.getBoundingClientRect(), [x0, y0] = el.dataset.axisSpot.split(",").map(Number);
-          return { face: el.textContent[0], x: b.left + b.width / 2 - r.left, y: b.top + b.height / 2 - r.top, x0, y0, hw: b.width / 2, hh: b.height / 2, cx: r.width / 2, cy: r.height / 2 };
+          const shown = el.querySelector(".cmp-arrow").style.display !== "none";
+          return { face: el.textContent[0], x: b.left + b.width / 2 - r.left, y: b.top + b.height / 2 - r.top, x0, y0, hw: b.width / 2, hh: b.height / 2, cx: r.width / 2, cy: r.height / 2, first: shown && !el.classList.contains("away"),
+            corners: [...document.querySelectorAll(".stage > .corner:not([hidden])")].map((c) => c.getBoundingClientRect()).filter((c) => c.width).map((c) => ({ x: c.left + c.width / 2 - r.left, y: c.top + c.height / 2 - r.top, hw: c.width / 2, hh: c.height / 2 })) };
         });
       });
+      // A label for a face toward the viewer (with an arrow) slides only to clear a corner
+      // button or another such label, never for one pointing away or head-on.
+      const pushed = [];
+      for (const a of labels) {
+        if (!a.first || Math.hypot(a.x - a.x0, a.y - a.y0) < 1.5) continue;
+        const inWay = [...a.corners, ...labels.filter((o) => o !== a && o.first)].some((o) => Math.abs(o.x - a.x0) < o.hw + a.hw - 4 && Math.abs(o.y - a.y0) < o.hh + a.hh - 4);
+        if (!inWay) pushed.push(a.face);
+      }
+      check(pushed.length === 0, `view ${i + 1}, ${spelled ? "words" : "letters"}: faces toward the viewer keep their spots against faces away (${pushed.join("") || "none pushed"}; ${labels.map((l) => l.face + (l.first ? "+" : "-") + Math.round(Math.hypot(l.x - l.x0, l.y - l.y0))).join(" ")})`);
       // Along a shared edge, a label is on the same side of each other label as its axis's spot.
       const crossed = [];
       for (const a of labels)

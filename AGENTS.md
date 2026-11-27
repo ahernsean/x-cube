@@ -294,7 +294,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   where its axis meets the edge: to the nearest spot clear of everything placed before it,
   just before or just after one of them, so it stays on its own side of a label in its way
   (always sliding toward the middle of the edge sent Right over Down and Left over Up, both
-  onto the same half of the view, which the owner noticed). Its arrow is drawn once it is placed (`compassArrowAngle`):
+  onto the same half of the view, which the owner noticed). Labels are placed faces toward
+  the viewer first, then faces away, each the most in the screen's plane first, and head-on
+  ones (a dot or a cross) last, so a label pointing at you keeps its spot and one pointing
+  away slides (the owner's priority). Its arrow is drawn once it is placed (`compassArrowAngle`):
   a slid label is off the line its axis makes through the middle, and in perspective a line
   parallel to the axis under it runs at another angle (the owner noticed Left, slid clear
   of Undo, 3.4 degrees off), so the arrow takes the turn between the axis's direction on

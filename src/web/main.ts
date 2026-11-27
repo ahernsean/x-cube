@@ -1450,7 +1450,10 @@ function updateCompass() {
     // Every label shows, head-on ones too (their dot or cross says which way the face points).
     // Exactly head-on its direction on screen is undefined: it goes toward the bottom left,
     // the corner without a button.
-    const vis = inPlane; // the order labels are placed in: the most in the screen's plane first
+    // The order labels are placed in, so the first stay where their axes meet the edge and
+    // later ones slide clear: faces toward the viewer, then faces away, each the most in the
+    // screen's plane first; head-on labels (a dot or a cross, no direction to keep) last.
+    const vis = inPlane < COMPASS_HEAD_ON ? inPlane - 2 : dir.z > 0 ? inPlane + 1 : inPlane;
     if (len >= 1e-3) {
       dx /= len;
       dy /= len;
