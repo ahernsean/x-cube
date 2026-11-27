@@ -34,7 +34,7 @@ faces, so the puzzle changes shape.
 ## Pieces
 
 The owner says **piece**, the twisty-puzzle community's word for one of the movable parts
-(not "piece" or "cubie", which fit only cubes). A piece is the unit the model tracks:
+(not "cubelet" or "cubie", which fit only cubes). A piece is the unit the model tracks:
 an extension center and the core center behind it are fused, one part in the hand, but two
 pieces here. There are 62 in the model; 52 matter for solving. Kinds by connectivity (`Kind` in `src/core/puzzle.ts`):
 
