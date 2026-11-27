@@ -296,7 +296,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   parallel to the axis under it runs at another angle (the owner noticed Left, slid clear
   of Undo, 3.4 degrees off), so the arrow takes the turn between the axis's direction on
   screen under the two spots (only the turn, so an arrow beyond its vanishing point, a face
-  tipped well away, doesn't flip; the probe's `axisAt` checks it with three.js's projection). Once the puzzle has gone untouched for 2.5 seconds
+  tipped well away, doesn't flip; the probe's `axisAt` checks it with three.js's projection).
+  The angle is taken where the arrow itself is (`compassArrowOffset`, measured from the
+  label as drawn), not at the label's middle: the arrow sits above the word or beside the
+  letter, and near a vanishing point the direction turns fast (the owner saw Left, its axis
+  well away, 3 degrees off parallel with the puzzle's edges once spelled out). Once the puzzle has gone untouched for 2.5 seconds
   (`COMPASS_QUIET_MS`), each label spells out its face ("Right", "Up", "Back"), the rest of
   the word unfolding from the letter, and only the next touch on the puzzle (the 3D view)
   folds it back (`COMPASS_FOLD_MS`, 0.4 s; a play-tester's idea: words for someone

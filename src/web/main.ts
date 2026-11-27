@@ -1385,15 +1385,26 @@ function compassArrowPath(ux: number, uy: number, len: number, z: number): strin
  * CSS pixels): (f dx + sx dz, -f dy + sy dz) for a point sx, sy from the middle. Only the
  * turn is used, so an arrow beyond the vanishing point (a face tipped well away) doesn't flip.
  */
-function compassArrowAngle(it: { x: number; y: number; x0: number; y0: number; dir: any; dx: number; dy: number }, ox: number, oy: number, focal: number): number {
+function compassArrowAngle(it: { x0: number; y0: number; dir: any; dx: number; dy: number }, x: number, y: number, ox: number, oy: number, focal: number): number {
   const base = Math.atan2(it.dy, it.dx);
-  if (Math.abs(it.x - it.x0) < 0.5 && Math.abs(it.y - it.y0) < 0.5) return base;
+  if (Math.abs(x - it.x0) < 0.5 && Math.abs(y - it.y0) < 0.5) return base;
   const at = (x: number, y: number) => [focal * it.dir.x + (x - ox) * it.dir.z, -focal * it.dir.y + (y - oy) * it.dir.z];
-  const [ax, ay] = at(it.x0, it.y0), [bx, by] = at(it.x, it.y);
+  const [ax, ay] = at(it.x0, it.y0), [bx, by] = at(x, y);
   if (Math.hypot(ax, ay) < 0.05 * focal || Math.hypot(bx, by) < 0.05 * focal) return base; // too near the vanishing point to tell
   let turn = Math.atan2(by, bx) - Math.atan2(ay, ax);
   turn = Math.atan2(Math.sin(turn), Math.cos(turn));
   return base + turn;
+}
+/**
+ * Where a label's arrow sits from the label's middle, in the label's own unscaled pixels:
+ * measured from the label as drawn, undoing the scale it is drawn at.
+ */
+function compassArrowOffset(el: HTMLElement): [number, number] {
+  const svg = el.firstElementChild as SVGElement | null;
+  if (!svg) return [0, 0];
+  const s = Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 1) || 1;
+  const a = svg.getBoundingClientRect(), b = el.getBoundingClientRect();
+  return [(a.left + a.width / 2 - (b.left + b.width / 2)) / s, (a.top + a.height / 2 - (b.top + b.height / 2)) / s];
 }
 const COMPASS_HEAD_ON = 0.26; // about 15 degrees from straight at you or away
 /**
@@ -1486,9 +1497,12 @@ function updateCompass() {
     }
     // The arrow, drawn now that the label is where it stays: in perspective, a slid label's
     // arrow follows the face's axis as it runs under the label, not as it leaves the middle.
+    // Its angle is taken where the arrow itself is, off the label's middle (above the word,
+    // or beside it), since near a vanishing point the axis's direction on screen turns fast.
     const arrow = it.el.querySelector<SVGElement>(".cmp-arrow");
     if (arrow && it.inPlane >= COMPASS_HEAD_ON) {
-      const a = compassArrowAngle(it, ox, oy, focal);
+      const [lx, ly] = compassArrowOffset(it.el);
+      const a = compassArrowAngle(it, it.x + lx * it.scale, it.y + ly * it.scale, ox, oy, focal);
       arrow.setAttribute("d", compassArrowPath(Math.cos(a), Math.sin(a), Math.max(0.35, it.inPlane), it.dir.z));
       arrow.dataset.angle = ((a * 180) / Math.PI).toFixed(1);
     }

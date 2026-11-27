@@ -959,25 +959,42 @@ labTest("edge labels: an arrow is drawn in perspective, its head wider than its 
   check(taper.U > 1.15 && taper.D < 0.87, `Up, tipped toward you, widens toward its head; Down narrows (${JSON.stringify(taper)})`);
 });
 
-labTest("edge labels: a label slid clear of a corner button keeps its arrow along the face's axis as it runs under the label", async ({ page, check, probe, settle }) => {
-  // The owner's view at an iPhone's size: Left slides down clear of Undo, Right up clear of Display.
+labTest("edge labels: each arrow runs along its face's axis where the arrow is, slid or not, letters or words", async ({ page, check, probe, settle }) => {
+  // The owner's views at an iPhone's size: Left slides down clear of Undo, Right up clear of
+  // Display. In the second, Left's axis points well away, so its vanishing point is near the
+  // label and the arrow, above the word once it is spelled out, needs its own angle.
   await page.setViewportSize({ width: 440, height: 956 });
   const solved = "VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS";
-  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({ lab: "x-cube debug 1", base: solved, turns: "R R'", cursor: 2, current: solved, view: [-0.24385, 0.41303, 0.11579, -0.86979], solving: false, order: "kinds", steps: [], lost: null, edit: null }));
-  await settle();
-  const labels = await page.evaluate(() => {
-    const r = document.getElementById("scene").getBoundingClientRect();
-    return [...document.querySelectorAll(".cmp")].map((el) => {
-      const b = el.getBoundingClientRect(), a = el.querySelector(".cmp-arrow");
-      return { face: el.textContent[0], x: b.left + b.width / 2, y: b.top + b.height / 2, arrow: a.style.display === "none" ? null : Number(a.getAttribute("data-angle")), fromMiddle: (Math.atan2(b.top + b.height / 2 - (r.top + r.height / 2), b.left + b.width / 2 - (r.left + r.width / 2)) * 180) / Math.PI };
-    });
-  });
   const off = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
-  const rows = [];
-  for (const l of labels) if (l.arrow !== null) rows.push({ face: l.face, arrow: l.arrow, axis: +(await probe("axisAt", l.face, l.x, l.y)).toFixed(1), slid: off(l.fromMiddle, l.arrow) > 2 });
-  const slid = rows.filter((r) => r.slid).map((r) => r.face).sort().join("");
-  check(slid === "LR", `Left and Right slid clear of the corner buttons (${slid})`);
-  check(rows.every((r) => off(r.arrow, r.axis) < 1), `every arrow runs along its face's axis under the label (${JSON.stringify(rows)})`);
+  const views = [
+    { turns: "R R'", cursor: 2, current: solved, view: [-0.24385, 0.41303, 0.11579, -0.86979], slid: "LR" },
+    { turns: "R' S' R b R' S R b' y r F' M' F r' F' M F", cursor: 17, current: "NWPD MOED TCWD UTUM IXBH LIEA SVBG RWHC YIQX QCDI ICUS", view: [-0.19057, 0.52563, 0.12215, -0.82005], slid: null },
+  ];
+  for (const v of views) {
+    await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({ lab: "x-cube debug 1", base: solved, turns: v.turns, cursor: v.cursor, current: v.current, view: v.view, solving: false, order: "kinds", steps: [], lost: null, edit: null }));
+    await settle();
+    for (const spelled of [false, true]) {
+      if (spelled) {
+        await page.waitForSelector(".compass.spelled", { timeout: 8000 });
+        await page.waitForTimeout(600);
+      }
+      const labels = await page.evaluate(() => {
+        const r = document.getElementById("scene").getBoundingClientRect();
+        return [...document.querySelectorAll(".cmp")].map((el) => {
+          const b = el.getBoundingClientRect(), a = el.querySelector(".cmp-arrow"), s = el.querySelector(".cmp-dir").getBoundingClientRect();
+          return { face: el.textContent[0], x: s.left + s.width / 2, y: s.top + s.height / 2, arrow: a.style.display === "none" ? null : Number(a.getAttribute("data-angle")), fromMiddle: (Math.atan2(b.top + b.height / 2 - (r.top + r.height / 2), b.left + b.width / 2 - (r.left + r.width / 2)) * 180) / Math.PI };
+        });
+      });
+      const rows = [];
+      for (const l of labels) if (l.arrow !== null) rows.push({ face: l.face, arrow: l.arrow, axis: +(await probe("axisAt", l.face, l.x, l.y)).toFixed(1), slid: off(l.fromMiddle, l.arrow) > 2 });
+      const tag = `${v.turns ? "view " + (views.indexOf(v) + 1) : ""}, ${spelled ? "words" : "letters"}`;
+      if (v.slid && !spelled) {
+        const slid = rows.filter((r) => r.slid).map((r) => r.face).sort().join("");
+        check(slid === v.slid, `Left and Right slid clear of the corner buttons (${slid})`);
+      }
+      check(rows.every((r) => off(r.arrow, r.axis) < 1), `${tag}: every arrow runs along its face's axis where the arrow is (${JSON.stringify(rows)})`);
+    }
+  }
 });
 
 labTest("edge labels: one per face, inside the 3D view; tapping one turns that face to you", async ({ page, check, probe, settle }) => {
