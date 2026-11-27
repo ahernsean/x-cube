@@ -1977,6 +1977,10 @@ labTest("shape editing: a core corner with two bare faces takes a color on the f
   // The face that was plastic, with no sticker to color.
   const at = await probe("sticker", "DFL", "F", true);
   const faces = { F: await probe("editFace", "DFL", "F"), D: await probe("editFace", "DFL", "D") };
+  // The face it had its sticker on before is drawn as plastic, not with that sticker.
+  const old = await probe("sticker", "DFL", "D", true);
+  const oldDrawn = await probe("at3d", old.x, old.y);
+  check(oldDrawn?.slot === "DFL" && oldDrawn.plastic, `the face the hint covers is drawn as plastic (${JSON.stringify(oldDrawn)})`);
   const drawn = await probe("at3d", at.x, at.y);
   // The dashed outline of a sticker not colored yet is drawn over the plastic there.
   check(faces.F === "unpainted" && faces.D === "plastic" && drawn?.slot === "editor", `the corner's front face has a sticker to color, and the face the hint covers is plastic (${JSON.stringify({ faces, drawn })})`);

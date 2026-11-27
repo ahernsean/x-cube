@@ -4344,7 +4344,7 @@ function endShapeAnim() {
 function drawEdit() {
   requestDraw();
   if (!edit || !paintMaterial) return;
-  for (const m of edit.painted) m.material = m.userData.ownMaterial;
+  for (const m of edit.painted) (m.material = m.userData.ownMaterial), (m.visible = true);
   edit.painted = [];
   clearGlowPaint();
   // A piece taken away is not drawn, and what it covered is drawn as open.
@@ -4360,10 +4360,23 @@ function drawEdit() {
   const over: [number, number, Color | typeof UNPAINTED][] = [];
   for (let i = 0; i < edit.view.length; i++) {
     const want = edit.view[i];
-    if (!want) continue;
+    if (want === undefined) continue;
     const s = Math.floor(i / 6), dir = i % 6;
     const id = drawn.occ[s];
     const local = id < 0 ? -1 : ROT_DIR[ROT_INV[drawn.ori[s]] * 6 + dir];
+    // Plastic where the piece drawn has a sticker (a core piece's sticker moved to another
+    // bare face): its sticker, tile and glow are hidden.
+    if (want === null) {
+      if (id < 0 || !stickerMesh3d[id * 6 + local]) continue;
+      for (const mesh of [stickerMesh3d[id * 6 + local], tileMesh[id * 6 + local]]) {
+        if (!mesh) continue;
+        mesh.userData.ownMaterial ??= mesh.material;
+        mesh.visible = false;
+        edit.painted.push(mesh);
+      }
+      for (const gl of glows[id] ?? []) if (gl.b === local) gl.paint = noGlow;
+      continue;
+    }
     const look = want === UNPAINTED ? blank : { sticker: paintMaterial.sticker(want), tile: paintMaterial.tile(want), glow: paintMaterial.glow(want) };
     if (id < 0 || !stickerMesh3d[id * 6 + local]) {
       over.push([s, dir, want]);
@@ -7166,7 +7179,7 @@ function endEdit(apply: boolean) {
   const e = edit;
   shapeAnim = null;
   for (const m of meshes) if (m) m.visible = true;
-  for (const m of e.painted) m.material = m.userData.ownMaterial;
+  for (const m of e.painted) (m.material = m.userData.ownMaterial), (m.visible = true);
   clearGlowPaint();
   edit = null;
   placeGhosts();
