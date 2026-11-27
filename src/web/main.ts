@@ -30,7 +30,7 @@ import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTa
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 import { Planner, type Plan } from "./planner.ts";
-import { answerOf, answersTo, bestQuestion, canBeEmpty, centerColor, endCandidates, twoSlipCandidates, holdAs, narrow, slipCandidates, wayBack, type Answer, type Candidate, type Question } from "../core/lost.ts";
+import { answerOf, answersTo, bestQuestion, canBeEmpty, centerColor, endCandidates, findAsHeld, twoSlipCandidates, twoSlips, holdAs, narrow, slipCandidates, wayBack, type Answer, type Candidate, type Question } from "../core/lost.ts";
 
 declare const THREE: any;
 
@@ -5023,12 +5023,10 @@ function lostFromEdit(l: Lost, target: State) {
   // Known exactly, every last turn from a few before the one named to the end is cheap to try.
   const ends = [...l.all.keys()].filter((j) => j >= l.last - 6).sort((a, b) => Math.abs(a - l.last) - Math.abs(b - l.last));
   let found = up && front ? holdAs(endCandidates(l.from, l.all, ends, lostStepTurns(l)), up, front).find((c) => c.state.appearanceKey() === key) : undefined;
-  // Two stacked mistakes in the step asked from, up to the turn named or the step's end.
+  // Two stacked mistakes in the step asked from, stopping after any of its turns (the turn
+  // named may be wrong, or not known): the first that looks like the puzzle edited.
   const g = l.steps[l.steps.length - 1];
-  for (const end of [l.last, l.all.length - 1]) {
-    if (found || !up || !front) break;
-    found = holdAs(twoSlipCandidates(l.from, l.all.slice(0, end + 1), g.start - l.start), up, front).find((c) => c.state.appearanceKey() === key);
-  }
+  found ??= findAsHeld(twoSlips(l.from, l.all, g.start - l.start, null, lostStepTurns(l)), target);
   if (found) {
     lost = l;
     return acceptLost(found);

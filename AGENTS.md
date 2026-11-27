@@ -839,8 +839,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   candidates in 0.4 s, where 14 turns gave 44,000 in 2.2 s), and the
   words name both ("Two turns went another way: turn 26 of step 1, F', was made as F, and
   turn 28, R', was left out."). Continue search, knowing the puzzle exactly, tries two slips
-  over the whole step asked from (a 30-turn step: about 13,000, 0.7 s) once one slip finds
-  nothing. Elsewhere the interview takes one mistake, which keeps it short; more than that
+  anywhere in the step asked from, stopping after any of its turns, once one slip finds
+  nothing: it stops at the first that looks like the puzzle edited, held any way
+  (`twoSlips`, `findAsHeld`, which compares the colors facing away on the extension spots
+  before the whole look; a 29-turn step that finds nothing takes about 1 s). Elsewhere the interview takes one mistake, which keeps it short; more than that
   ends in Edit puzzle.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side

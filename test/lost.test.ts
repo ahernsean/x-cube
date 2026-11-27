@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { MOVE_DEFS, State, applyTurn, type Turn } from "../src/core/puzzle.ts";
 import { parseAlg } from "../src/core/notation.ts";
 import { solveSteps } from "../src/core/solve.ts";
-import { answerOf, bestQuestion, centerColor, endCandidates, holdAs, narrow, slipCandidates, twoSlipCandidates, wayBack } from "../src/core/lost.ts";
+import { answerOf, bestQuestion, centerColor, endCandidates, findAsHeld, holdAs, narrow, slipCandidates, twoSlipCandidates, twoSlips, wayBack } from "../src/core/lost.ts";
 
 const random = (seed: number) => (n: number) => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff), (seed >>> 12) % n);
 const UP = 2, FRONT = 4;
@@ -209,4 +209,22 @@ test("lost: two stacked mistakes are found wherever the person stopped, when the
   assert.ok(!has(), "stopping at the last turn alone doesn't give it");
   assert.ok(has(turns.map((_, i) => i)), "any turn of the step as the stop does");
   assert.ok(has([2]), "as does the turn named");
+});
+
+test("lost: knowing the puzzle exactly, two slips are found wherever the person stopped, however they hold it", () => {
+  // Codex's example for Continue search: made as R B' L' F' U2 R' D, two slips seven turns
+  // apart, and stopped there; then held turned a quarter about the vertical.
+  const start = State.solved();
+  const turns = parseAlg("R' B' L' F' U2 R' D' U'");
+  const target = State.solved();
+  for (const t of parseAlg("R B' L' F' U2 R' D y")) applyTurn(target, t);
+  const found = findAsHeld(twoSlips(start, turns, 0, null, turns.map((_, i) => i)), target);
+  assert.ok(found, "found");
+  assert.equal(found!.last, 6, "stopped after turn 7");
+  assert.equal(found!.state.appearanceKey(), target.appearanceKey(), "held as the puzzle is");
+  // A search that finds nothing goes through every stop of a long step in reasonable time.
+  const long = parseAlg("l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F'");
+  const t0 = performance.now();
+  assert.equal(findAsHeld(twoSlips(start, long, 0, null, long.map((_, i) => i)), parseAlg("R U F D L B R2 U2").reduce((st, t) => (applyTurn(st, t), st), State.solved())), undefined);
+  console.log(`no match over ${long.length} turns: ${Math.round(performance.now() - t0)} ms`);
 });

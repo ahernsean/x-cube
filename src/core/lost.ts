@@ -108,9 +108,13 @@ export function slipCandidates(start: State, turns: readonly Turn[], from = 0, s
  * stopped. Looks already in `seen` (from one slip, say) are left out.
  */
 export function twoSlipCandidates(start: State, turns: readonly Turn[], from = 0, seen = new Set<string>(), ends: readonly number[] = [turns.length - 1], window = Infinity): Candidate[] {
-  const out: Candidate[] = [];
+  return [...twoSlips(start, turns, from, seen, ends, window)];
+}
+
+/** `twoSlipCandidates` one at a time, so a search for one of them can stop when it finds it (`seen` null: no looks left out). */
+export function* twoSlips(start: State, turns: readonly Turn[], from = 0, seen: Set<string> | null = new Set<string>(), ends: readonly number[] = [turns.length - 1], window = Infinity): Generator<Candidate> {
   const stops = [...new Set(ends)].filter((e) => e >= 0 && e < turns.length).sort((x, y) => x - y);
-  if (!stops.length) return out;
+  if (!stops.length) return;
   const last = stops[stops.length - 1];
   for (let i = Math.max(0, from, stops[0] + 1 - window); i < last; i++) {
     // The position before turn i, once: the second slip's variants share it.
@@ -127,16 +131,47 @@ export function twoSlipCandidates(start: State, turns: readonly Turn[], from = 0
           for (let e = j; e <= far; e++) {
             if (e > j && applyTurn(state, turns[e])) made.push(turns[e]);
             if (!stops.includes(e) || i < e + 1 - window) continue;
-            const key = state.appearanceKey();
-            if (seen.has(key)) continue;
-            seen.add(key);
-            out.push({ made: [...made], as: a.as, at: i, slip: a.slip, second: { at: j, slip: b.slip, as: b.as }, state: state.clone(), grip: [], last: e });
+            // Looks seen before are left out (`seen` null: every one, for a search that stops at the first it wants).
+            if (seen) {
+              const key = state.appearanceKey();
+              if (seen.has(key)) continue;
+              seen.add(key);
+            }
+            yield { made: [...made], as: a.as, at: i, slip: a.slip, second: { at: j, slip: b.slip, as: b.as }, state: state.clone(), grip: [], last: e };
           }
         }
       }
     }
   }
-  return out;
+}
+
+/**
+ * The first of `cands` that looks like `target` held some way, turned to be held as the
+ * target is (by its up and front centers): one search, without turning every candidate.
+ */
+export function findAsHeld(cands: Iterable<Candidate>, target: State): Candidate | undefined {
+  const up = centerColor(target, UP), front = centerColor(target, FRONT);
+  if (!up || !front) return undefined;
+  const held = HOLDS.map((h) => run(target, h));
+  // A cheap first look (the colors facing away on the extension spots) before the full one.
+  const prints = new Set(held.map(outerPrint));
+  const keys = new Set(held.map((st) => st.appearanceKey()));
+  const want = target.appearanceKey();
+  for (const c of cands) if (prints.has(outerPrint(c.state)) && keys.has(c.state.appearanceKey())) return holdAs([c], up, front).find((h) => h.state.appearanceKey() === want);
+  return undefined;
+}
+
+/** Each extension spot and the direction its face away from the core points. */
+const OUTER_FACES: [number, number][] = [...Array(NUM_SLOTS).keys()].flatMap((s) => {
+  const p = SLOT_POS[s];
+  const axis = p.findIndex((c) => Math.abs(c) === 2);
+  return axis < 0 ? [] : [[s, axis * 2 + (p[axis] < 0 ? 1 : 0)] as [number, number]];
+});
+/** What the extension spots show facing away from the core: equal for positions that look alike. */
+function outerPrint(st: State): string {
+  let k = "";
+  for (const [s, d] of OUTER_FACES) k += st.occ[s] < 0 ? "_" : (st.colorAt(s, d) ?? "-");
+  return k;
 }
 
 /**
