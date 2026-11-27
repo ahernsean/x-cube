@@ -273,7 +273,11 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Edge labels:** the six face letters, each placed where that face's axis, as projected on
   screen, meets the edge of the 3D view; tapping one turns the view to that face. Beside
   each letter, an arrow in the color of that face's center points the way the face's axis
-  points on screen, shorter as the axis turns toward or away from the viewer; nearly
+  points on screen, shorter as the axis turns toward or away from the viewer, and drawn in
+  perspective (`compassArrowPath`, `COMPASS_EYE`): a flat arrow lying along the axis, seen
+  from 30 arrow units away, so one tipped toward the viewer widens toward its head and one
+  tipped away narrows (the owner saw Up, tipped 28 degrees toward him, as pointing straight
+  up when only its length showed the tip); nearly
   head-on (its projection under `COMPASS_HEAD_ON`, 0.26: within about 15 degrees; at 27 a dot
   surprised the owner, and read as a record button) it is a disc with a dot (toward the
   viewer) or a cross (away), as on a diagram, which the 3D view's ⓘ help explains. The arrows have no dark outline, only the

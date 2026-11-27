@@ -1355,6 +1355,25 @@ let compassKey = "";
 /** Label scale for an axis pointing straight away from you and straight at you. */
 const COMPASS_MIN = 0.85, COMPASS_MAX = 1.5;
 /** An axis whose projection is shorter than this (sine of its angle from the line of sight) shows head-on: a dot or a cross, not an arrow. */
+/**
+ * An edge label's arrow, drawn as a flat arrow lying along the face's axis and seen in
+ * perspective (`COMPASS_EYE` arrow units away), so an axis tipped toward the viewer has
+ * its head wider than its tail, and one tipped away the reverse: the in-or-out part of the
+ * axis shows, not just its length on screen. (ux, uy): the axis's direction on screen, a
+ * unit vector, y down; len: how much of the arrow's length shows on screen; z: the axis's
+ * part toward the viewer.
+ */
+const COMPASS_ARROW: [number, number][] = [[-11, -3.6], [1, -3.6], [1, -8.5], [12, 0], [1, 8.5], [1, 3.6], [-11, 3.6]];
+const COMPASS_EYE = 30;
+function compassArrowPath(ux: number, uy: number, len: number, z: number): string {
+  return (
+    COMPASS_ARROW.map(([t, w], i) => {
+      const k = COMPASS_EYE / (COMPASS_EYE - z * t);
+      const x = (ux * len * t - uy * w) * k, y = (uy * len * t + ux * w) * k;
+      return `${i ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(" ") + "Z"
+  );
+}
 const COMPASS_HEAD_ON = 0.26; // about 15 degrees from straight at you or away
 /**
  * Edge labels that move with the cube: each face's label sits where that face's axis
@@ -1386,7 +1405,7 @@ function updateCompass() {
     if (!el) continue;
     if (refreshText) {
       const c = faceCenterColor(app.current, d);
-      el.innerHTML = `<svg class="cmp-dir" viewBox="-13 -13 26 26" aria-hidden="true" style="color:${c ? NET_COLOR[c] : "transparent"}"><path class="cmp-arrow" d="M-11,-3.6 L1,-3.6 L1,-8.5 L12,0 L1,8.5 L1,3.6 L-11,3.6Z"/><g class="cmp-toward"><circle r="8"/><circle class="cmp-mark" r="2.6"/></g><g class="cmp-away"><circle r="8"/><path class="cmp-mark" d="M-4.5,-4.5 L4.5,4.5 M4.5,-4.5 L-4.5,4.5"/></g></svg><span class="cmp-word"><span class="cmp-key">${COMPASS_FACES[d]}</span><span class="cmp-rest">${COMPASS_NAMES[d].slice(1)}</span></span>`;
+      el.innerHTML = `<svg class="cmp-dir" viewBox="-13 -13 26 26" aria-hidden="true" style="color:${c ? NET_COLOR[c] : "transparent"}"><path class="cmp-arrow"/><g class="cmp-toward"><circle r="8"/><circle class="cmp-mark" r="2.6"/></g><g class="cmp-away"><circle r="8"/><path class="cmp-mark" d="M-4.5,-4.5 L4.5,4.5 M4.5,-4.5 L-4.5,4.5"/></g></svg><span class="cmp-word"><span class="cmp-key">${COMPASS_FACES[d]}</span><span class="cmp-rest">${COMPASS_NAMES[d].slice(1)}</span></span>`;
       el.setAttribute("aria-label", `Look at the ${COMPASS_FACES[d]} face`);
     }
     const dir = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(pivot.quaternion); // world
@@ -1408,7 +1427,10 @@ function updateCompass() {
       arrow.style.display = headOn ? "none" : "";
       (svg.children[1] as SVGElement).style.display = headOn && dir.z > 0 ? "" : "none";
       (svg.children[2] as SVGElement).style.display = headOn && dir.z <= 0 ? "" : "none";
-      if (!headOn) arrow.setAttribute("transform", `rotate(${((Math.atan2(dy, dx) * 180) / Math.PI).toFixed(1)}) scale(${Math.max(0.35, inPlane).toFixed(3)},1)`);
+      if (!headOn) {
+        arrow.setAttribute("d", compassArrowPath(dx, dy, Math.max(0.35, inPlane), dir.z));
+        arrow.dataset.angle = ((Math.atan2(dy, dx) * 180) / Math.PI).toFixed(1);
+      }
     }
     // Foreshortened: a label on an axis toward you is drawn larger, one away from you
     // smaller (no smaller than COMPASS_MIN, so it stays legible).

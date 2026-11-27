@@ -891,7 +891,7 @@ labTest("edge labels: each arrow, in its center's color, points out along its fa
       const b = el.getBoundingClientRect();
       const svg = el.querySelector("svg");
       const arrow = svg.children[0];
-      const m = /rotate\(([-\d.]+)\)/.exec(arrow.getAttribute("transform") ?? "");
+      const m = /^([-\d.]+)$/.exec(arrow.getAttribute("data-angle") ?? "");
       return { face: el.textContent[0], color: getComputedStyle(svg).color, shown: arrow.style.display !== "none", stroke: getComputedStyle(arrow).stroke, angle: m ? Number(m[1]) : null, toward: (Math.atan2(b.top + b.height / 2 - cy, b.left + b.width / 2 - cx) * 180) / Math.PI };
     });
   });
@@ -928,6 +928,22 @@ labTest("edge labels: a face 26 degrees from head-on still has an arrow; the hel
   await page.click("#info-btn");
   const help = await page.$eval("#info-text", (e) => e.textContent);
   check(/A dot means that face points straight at you; a cross, straight away\./.test(help), `the help says what a dot and a cross mean (${help})`);
+});
+
+labTest("edge labels: an arrow is drawn in perspective, its head wider than its tail when its face tips toward you", async ({ page, check, settle }) => {
+  // The owner's view: Up tips 28 degrees toward the viewer, which a flat arrow showed only as
+  // a little shorter, as if it pointed straight up. Each arrow's widths: across its head's
+  // barbs and across its tail.
+  const solved = "VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS";
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({ lab: "x-cube debug 1", base: solved, turns: "", cursor: 0, current: solved, view: [0.21975, -0.39139, -0.09682, 0.88834], solving: false, order: "kinds", steps: [], lost: null, edit: null }));
+  await settle();
+  const taper = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".cmp")].map((el) => {
+    const pts = [...(el.querySelector(".cmp-arrow").getAttribute("d") ?? "").matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    return [el.textContent[0], pts.length === 7 ? +(dist(pts[2], pts[4]) / (dist(pts[0], pts[6]) / 3.6 * 8.5)).toFixed(2) : null];
+  })));
+  // 1 is a flat arrow; above 1 the head is nearer the viewer than the tail, below 1 farther.
+  check(taper.U > 1.15 && taper.D < 0.87, `Up, tipped toward you, widens toward its head; Down narrows (${JSON.stringify(taper)})`);
 });
 
 labTest("edge labels: one per face, inside the 3D view; tapping one turns that face to you", async ({ page, check, probe, settle }) => {
