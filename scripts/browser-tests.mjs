@@ -1761,6 +1761,7 @@ labTest("info: the help says what taps and drags do in each mode, and Copy debug
     /Swipe on the puzzle to turn a layer/.test(plain) && !/During a solve step/.test(plain) && /During a solve step/.test(solve) && /Editing the puzzle\. Tap a sticker to give it the picked color/.test(paint) && !/Swipe on the puzzle/.test(paint) && /Tap a piece to remove it, or tap a gray box to add one/.test(shape),
     `the help follows the mode (${[plain, solve, paint, shape].map((t) => t.slice(0, 40)).join(" | ")})`,
   );
+  check(/circled has a purple ring around it/.test(paint) && !/white ring/.test(paint), "the editing help gives the circling ring's color, purple");
   // An edit whose shape isn't valid, copied and put back.
   const at = await probe("sticker", "Fx.U", "F");
   await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);

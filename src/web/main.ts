@@ -3183,7 +3183,7 @@ function infoHelp(): string[] {
         : "Tap a sticker to give it the picked color. Tap one that already has that color to clear it.";
     return [
       `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it.`,
-      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid pieces are marked in purple, and a sticker the message calls circled has a white ring around it. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
+      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid pieces are marked in purple, and a sticker the message calls circled has a purple ring around it. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
     ];
   }
   const gestures = "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn.";
