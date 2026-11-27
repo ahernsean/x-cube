@@ -1541,7 +1541,7 @@ function frame() {
       r.copy.quaternion.copy(r.turns[k]).slerp(r.turns[k + 1], at - k);
     }
   }
-  const moving = !!(tween || anim || queue.length || settle || live || shapeAnim || guideArrows?.visible);
+  const moving = !!(tween || ((anim || queue.length) && pausedAt === null) || settle || live || shapeAnim || guideArrows?.visible);
   stepShapeAnim();
   placeHaloArrow();
   // The arrow's chevrons run along it while it shows, and it fades in and out.
@@ -1882,7 +1882,8 @@ function bindOrbit(el: HTMLElement) {
       const busy = anim || queue.length || settle;
       // While editing colors, a drag anywhere tumbles the view and a tap paints (below).
       // While Lost? asks its questions, the puzzle shown can't be turned: a drag tumbles the view.
-      const hit = busy || edit || lost ? null : pickCube(el, e.clientX, e.clientY);
+      // So too during a step of a solve: a turn made on the screen would leave the step.
+      const hit = busy || edit || lost || stepUnderway() ? null : pickCube(el, e.clientX, e.clientY);
       if (hit) {
         const id = e.pointerId;
         pending = {
@@ -1984,7 +1985,12 @@ function bindOrbit(el: HTMLElement) {
         const h = pickCube(el, e.clientX, e.clientY);
         if (edit.paint === "shape") tapShape(el, e.clientX, e.clientY, h);
         else if (!shapeFirst(el, e.clientX, e.clientY, h) && h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
-      } else if (isTap && !lost) {
+      } else if (isTap && !lost && (pausedAt !== null || ((anim || queue.length) && !shuffling))) {
+        // A tap while turns play pauses them, at once; a tap while paused goes on.
+        if (pausedAt !== null) resumePlayback();
+        else pausePlayback();
+        lastTap = null;
+      } else if (isTap && !lost && !stepUnderway()) {
         if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DOUBLE_TAP_PX) {
           lastTap = null;
           undoLast();
@@ -2052,6 +2058,25 @@ function hideSpeedTip() {
 }
 /** True while "play" is running through the remaining turns. */
 let playing = false;
+/**
+ * When the turns playing were paused (a tap on the 3D view), or null: the turn in progress
+ * stops where it is, part-way, and nothing more starts until a tap goes on. For someone
+ * whose puzzle jams and falls behind the screen.
+ */
+let pausedAt: number | null = null;
+function pausePlayback() {
+  if (pausedAt !== null || (!anim && !queue.length) || shuffling) return;
+  pausedAt = performance.now();
+  $("paused").hidden = false;
+  render();
+}
+function resumePlayback() {
+  if (pausedAt === null) return;
+  if (anim) anim.start += performance.now() - pausedAt;
+  pausedAt = null;
+  $("paused").hidden = true;
+  render();
+}
 let playingBack = false; // playing toward the start (◀) rather than the end (▶)
 
 function enqueue(turn: Turn, forward: boolean) {
@@ -2205,6 +2230,7 @@ function renderNetAnimation() {
 }
 
 function tickAnimation() {
+  if (pausedAt !== null) return;
   if (!anim && queue.length) startNext();
   if (!anim) return;
   const t = anim.duration ? Math.min(1, (performance.now() - anim.start) / anim.duration) : 1;
@@ -2222,6 +2248,10 @@ function tickAnimation() {
 }
 
 function flushAnimations() {
+  if (pausedAt !== null) {
+    pausedAt = null;
+    $("paused").hidden = true;
+  }
   shuffling = false;
   cancelLiveTurn();
   queue.length = 0;
@@ -2398,6 +2428,7 @@ function playToStart() {
   render();
 }
 function stopPlaying() {
+  resumePlayback(); // the turn in progress finishes
   queue.length = 0;
   playing = false;
   shuffling = false;
@@ -3215,7 +3246,9 @@ function infoHelp(): string[] {
       'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid pieces are marked in purple, and a sticker the message calls circled has a purple ring around it. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
     ];
   }
-  const gestures = "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn.";
+  const gestures = solving
+    ? "During a step, drag to tumble the view (a turn made on the screen would leave the step). While turns play, a tap pauses them at once, and another tap goes on. Two fingers spin the view."
+    : "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn. While turns play, a tap pauses them, and another tap goes on.";
   const labels = "The labels around the edge name the faces, each with an arrow the way that face points. A dot means that face points straight at you; a cross, straight away. Tap a label to turn that face toward you.";
   if (!solving) return [gestures, labels];
   return [
@@ -5211,6 +5244,12 @@ function stepColors(st: State, step: SolveStep): { focus: Set<number>; free: Set
 }
 
 /** Whether the guide's step is still in the turn list where it was put, starting from the position it was worked out for. */
+/** A step of a solve is shown with turns of it still to make: the puzzle on the screen isn't turned by hand then. */
+function stepUnderway(): boolean {
+  const g = guide;
+  return !!(solving && g && app.cursor >= g.start && app.cursor < g.start + g.step.turns.length && guideHolds(g));
+}
+
 function guideHolds(g: Guide): boolean {
   const there = app.history.slice(g.start, g.start + g.step.turns.length);
   if (there.length !== g.step.turns.length || !there.every((t, i) => turnName(t) === turnName(g.step.turns[i]))) return false;
@@ -7463,6 +7502,8 @@ function installProbe() {
     resync: () => syncMeshes(app.current),
     /** Milliseconds per quarter turn, as the speed slider sets it. */
     speed: () => speedMs,
+    /** The turn in progress, how far along (0 to 1), and whether the turns are paused. */
+    turning: () => ({ done: anim ? Math.min(1, ((pausedAt ?? performance.now()) - anim.start) / (anim.duration || 1)) : null, paused: pausedAt !== null, queued: queue.length }),
     /** While editing colors: how the painted colors fit, and the color of a painted face. */
     editing: () => edit && { level: edit.fit.level, problems: edit.fit.problems.map((p) => p.text), paint: edit.paint },
     // The slots with a halo, how many of a slot's faces the 3D view shows unblocked, and

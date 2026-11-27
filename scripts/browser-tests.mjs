@@ -3114,6 +3114,52 @@ labTest("lost: Cancel puts the turn list and the step back as they were", async 
   check(after.counter === before.counter && after.guide === before.guide && !after.lost, `Cancel restores the turn list and the step (${JSON.stringify(before)} then ${JSON.stringify(after)})`);
 });
 
+labTest("guide: a tap on the 3D view pauses the turns playing at once, another goes on; during a step a swipe tumbles", async ({ page, check, probe, settle, play, swipe, counter }) => {
+  await play("R U R' F");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  await page.$eval("#speed", (el) => {
+    el.value = "0"; // 5 s a turn
+    el.dispatchEvent(new Event("input"));
+  });
+  await page.click("#guide-start"); // Play step
+  await page.waitForTimeout(800);
+  const box = await page.locator("#scene").boundingBox();
+  const corner = { x: box.x + 30, y: box.y + box.height - 30 }; // background, clear of the puzzle
+  // A tap, sent from inside the page (the gesture helper waits for the Lab to be idle, which it isn't while paused).
+  const tapScene = () =>
+    page.evaluate(([x, y]) => {
+      const c = document.getElementById("scene");
+      for (const type of ["pointerdown", "pointerup"]) c.dispatchEvent(new PointerEvent(type, { pointerId: 7, pointerType: "touch", isPrimary: true, clientX: x, clientY: y, buttons: type === "pointerup" ? 0 : 1, bubbles: true, cancelable: true }));
+    }, [corner.x, corner.y]);
+  await tapScene();
+  const paused = await probe("turning");
+  await page.waitForTimeout(1200);
+  const still = await probe("turning");
+  const pill = await page.$eval("#paused", (e) => !e.hidden);
+  check(paused.paused && paused.done > 0 && paused.done < 1 && still.done === paused.done && pill, `a tap pauses the turn part-way, and it stays there (${JSON.stringify({ paused, still, pill })})`);
+  await tapScene();
+  const going = await probe("turning");
+  await page.waitForTimeout(600);
+  const later = await probe("turning");
+  check(!going.paused && later.done > going.done && (await page.$eval("#paused", (e) => e.hidden)), `another tap goes on from there (${going.done.toFixed(2)} then ${later.done?.toFixed(2)})`);
+  // Fast again, and back to the step's start: a swipe on the puzzle tumbles the view, turning nothing.
+  await page.$eval("#speed", (el) => {
+    el.value = "100";
+    el.dispatchEvent(new Event("input"));
+  });
+  await settle();
+  await page.click("#guide-start"); // Step start
+  await settle();
+  const before = { counter: await counter(), view: await probe("view") };
+  const at = await probe("sticker", "Fx", "F");
+  await swipe(at, 0, -70);
+  await settle();
+  const after = { counter: await counter(), view: await probe("view") };
+  check(after.counter === before.counter && JSON.stringify(after.view) !== JSON.stringify(before.view), `during the step a swipe on the puzzle tumbles the view and turns nothing (${before.counter} then ${after.counter})`);
+});
+
 labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ probe, page, check, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);

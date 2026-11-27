@@ -312,7 +312,13 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   in CSS (the browser's own marker is hidden).
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
-  two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ in the
+  two fingers spin it; double tap (cube or background) undoes the last turn. While turns
+  play, a tap pauses them at once, the turn in progress stopped part-way (`pausedAt`; a
+  "Paused · tap to go on" pill over the view), and another tap goes on from there; ■ while
+  paused lets the turn in progress finish and stops (play-testers whose puzzle jams fell
+  behind a step playing on its own). During a step of a solve, with turns of it still to
+  make (`stepUnderway`), the puzzle on the screen isn't turned by hand: a swipe tumbles the
+  view and a double tap undoes nothing, since a turn made there would leave the step. The ⓘ in the
   3D view's corner shows help for the mode the Lab is in (`infoHelp`), since taps and drags
   do different things in each: turning the puzzle (the gestures above), a solve (those,
   and how to read a step's grays and paths), and Edit puzzle (what a tap does with the
