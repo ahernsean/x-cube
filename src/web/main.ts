@@ -1484,15 +1484,18 @@ function updateCompass() {
   }
   for (const it of items) {
     {
-      for (let tries = 0; tries < 8; tries++) {
-        const hit = placed.find((o) => Math.abs(o.x - it.x) < o.hw + it.hw && Math.abs(o.y - it.y) < o.hh + it.hh);
-        if (!hit) break;
-        // Slide along this label's edge, toward the middle of the edge (away from corners).
-        if (it.vertical) it.y = hit.y + (it.y < h / 2 ? 1 : -1) * (hit.hh + it.hh + 2);
-        else it.x = hit.x + (it.x < w / 2 ? 1 : -1) * (hit.hw + it.hw + 2);
-        it.x = Math.min(w - it.hw, Math.max(it.hw, it.x));
-        it.y = Math.min(h - it.hh, Math.max(it.hh, it.y));
-      }
+      // Slide along this label's edge to the nearest spot clear of every label and corner
+      // button placed so far: just before or just after one of them. The nearest keeps it on
+      // its own side of a label in its way, which keeps opposite faces' labels apart.
+      const clamp = (x: number, y: number): [number, number] => [Math.min(w - it.hw, Math.max(it.hw, x)), Math.min(h - it.hh, Math.max(it.hh, y))];
+      const clear = ([x, y]: [number, number]) => !placed.some((o) => Math.abs(o.x - x) < o.hw + it.hw && Math.abs(o.y - y) < o.hh + it.hh);
+      const spots: [number, number][] = [clamp(it.x, it.y)];
+      for (const o of placed)
+        for (const side of [-1, 1])
+          spots.push(it.vertical ? clamp(it.x, o.y + side * (o.hh + it.hh + 2)) : clamp(o.x + side * (o.hw + it.hw + 2), it.y));
+      let best: [number, number] | null = null;
+      for (const p of spots) if (clear(p) && (!best || Math.hypot(p[0] - it.x0, p[1] - it.y0) < Math.hypot(best[0] - it.x0, best[1] - it.y0))) best = p;
+      [it.x, it.y] = best ?? spots[0];
       placed.push(it);
     }
     // The arrow, drawn now that the label is where it stays: in perspective, a slid label's
@@ -1507,6 +1510,7 @@ function updateCompass() {
       arrow.dataset.angle = ((a * 180) / Math.PI).toFixed(1);
     }
     it.el.style.transform = `translate(${it.x}px, ${it.y}px) translate(-50%, -50%) scale(${it.scale.toFixed(3)})`;
+    it.el.dataset.axisSpot = `${Math.round(it.x0)},${Math.round(it.y0)}`; // where its axis meets the edge, for the browser tests
     it.el.style.zIndex = String(Math.round((it.z + 1) * 10)); // nearer labels over farther ones
     it.el.style.opacity = it.away ? "0.6" : "1";
     it.el.style.pointerEvents = "auto";

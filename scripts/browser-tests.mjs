@@ -997,6 +997,49 @@ labTest("edge labels: each arrow runs along its face's axis where the arrow is, 
   }
 });
 
+labTest("edge labels: a label sliding clear of another stays on its own side of it, so opposite faces' labels stay apart", async ({ page, check, settle }) => {
+  // The owner's iPhone views. In the third, Right's spot is just right of Down and Left's just
+  // left of Up: each once slid over that label to the other half of the view.
+  await page.setViewportSize({ width: 440, height: 956 });
+  const solved = "VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS", scrambled = "NWPD MOED TCWD UTUM IXBH LIEA SVBG RWHC YIQX QCDI ICUS";
+  const turns = "R' S' R b R' S R b' y r F' M' F r' F' M F";
+  const views = [
+    { turns: "R R'", cursor: 2, current: solved, view: [-0.24385, 0.41303, 0.11579, -0.86979] },
+    { turns, cursor: 17, current: scrambled, view: [-0.19057, 0.52563, 0.12215, -0.82005] },
+    { turns, cursor: 17, current: scrambled, view: [0.12292, -0.64595, -0.10645, 0.74586] },
+  ];
+  for (const [i, v] of views.entries()) {
+    await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({ lab: "x-cube debug 1", base: solved, turns: v.turns, cursor: v.cursor, current: v.current, view: v.view, solving: false, order: "kinds", steps: [], lost: null, edit: null }));
+    await settle();
+    for (const spelled of [false, true]) {
+      if (spelled) {
+        await page.waitForSelector(".compass.spelled", { timeout: 8000 });
+        await page.waitForTimeout(600);
+      }
+      const labels = await page.evaluate(() => {
+        const r = document.getElementById("scene").getBoundingClientRect();
+        return [...document.querySelectorAll(".cmp")].map((el) => {
+          const b = el.getBoundingClientRect(), [x0, y0] = el.dataset.axisSpot.split(",").map(Number);
+          return { face: el.textContent[0], x: b.left + b.width / 2 - r.left, y: b.top + b.height / 2 - r.top, x0, y0, hw: b.width / 2, hh: b.height / 2, cx: r.width / 2, cy: r.height / 2 };
+        });
+      });
+      // Along a shared edge, a label is on the same side of each other label as its axis's spot.
+      const crossed = [];
+      for (const a of labels)
+        for (const o of labels) {
+          if (a === o) continue;
+          const sameRow = Math.abs(a.y - o.y) < a.hh + o.hh, sameColumn = Math.abs(a.x - o.x) < a.hw + o.hw;
+          if (sameRow && Math.abs(a.x0 - o.x) > 2 && Math.sign(a.x - o.x) !== Math.sign(a.x0 - o.x)) crossed.push(a.face + " over " + o.face);
+          if (sameColumn && Math.abs(a.y0 - o.y) > 2 && Math.sign(a.y - o.y) !== Math.sign(a.y0 - o.y)) crossed.push(a.face + " over " + o.face);
+        }
+      check(crossed.length === 0, `view ${i + 1}, ${spelled ? "words" : "letters"}: no label slid over another (${crossed.join(", ") || "none"})`);
+      const at = Object.fromEntries(labels.map((l) => [l.face, [l.x - l.cx, l.y - l.cy]]));
+      const apart = ["RL", "UD", "FB"].filter(([a, b]) => at[a][0] * at[b][0] + at[a][1] * at[b][1] < 0).join(" ");
+      check(apart === "RL UD FB", `view ${i + 1}, ${spelled ? "words" : "letters"}: each pair of opposite faces' labels on opposite sides of the middle (${apart})`);
+    }
+  }
+});
+
 labTest("edge labels: one per face, inside the 3D view; tapping one turns that face to you", async ({ page, check, probe, settle }) => {
   await page.waitForTimeout(200);
   const labels = await page.evaluate(() => {
