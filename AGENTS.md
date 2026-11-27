@@ -403,7 +403,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   turn just before it; only if the step is too long does its right end go off the edge. The turn list ends in a ✕ (while there are turns): one tap turns
   it into "Clear?", a second within 3 seconds clears the list as Start from here does. ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
   draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1
-  forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
+  forward one, ▶ play to the end; the slider sets 5000 to 30 ms per quarter turn (about
+  200 by default; play-testers whose puzzle jams fell behind even at 1600), and while it
+  moves a tip over its thumb says how long a turn takes ("0.20 s per turn"), fading a
+  moment after it is let go.
 - **Start from here** (`#clear`, in the Start panel): empties the turn list; the position
   shown becomes the start ("Current position").
 - **Shuffle:** 30 random legal turns (inner, slices, outer when complete; never the same

@@ -2019,11 +2019,37 @@ let anim: Anim | null = null;
  */
 const queue: { turn: Turn; forward: boolean; from?: State }[] = [];
 const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-// Speed slider 0..100 maps logarithmically from 800 ms (slowest) to 30 ms (fastest) per quarter turn.
-// Milliseconds per quarter turn: 1600 at the slow end, 30 at the fast end; the default
-// (52) is about 200.
-const speedFromSlider = (v: number) => 1600 * Math.pow(30 / 1600, v / 100);
-let speedMs = speedFromSlider(52);
+// The speed slider, 0..100, in milliseconds per quarter turn, logarithmically: 5000 at the
+// slow end (for someone whose puzzle jams and falls behind), 30 at the fast end; the
+// default (63) is about 200.
+const SPEED_SLOWEST_MS = 5000, SPEED_FASTEST_MS = 30, SPEED_DEFAULT = 63;
+const speedFromSlider = (v: number) => SPEED_SLOWEST_MS * Math.pow(SPEED_FASTEST_MS / SPEED_SLOWEST_MS, v / 100);
+let speedMs = speedFromSlider(SPEED_DEFAULT);
+
+/**
+ * While the speed slider moves, a tip over its thumb says how long a turn takes ("1.5 s
+ * per turn"), and fades a moment after it is let go.
+ */
+const SPEED_TIP_HIDE_MS = 900;
+let speedTipTimer: ReturnType<typeof setTimeout> | undefined;
+function speedTipText(ms: number): string {
+  const s = ms / 1000;
+  return `${s >= 1 ? s.toFixed(1) : s.toFixed(2)} s per turn`;
+}
+function showSpeedTip() {
+  const input = $("speed") as HTMLInputElement, tip = $("speed-tip");
+  clearTimeout(speedTipTimer);
+  tip.textContent = speedTipText(speedMs);
+  // Over the thumb: the track's length less the thumb's width, by the value.
+  const r = input.getBoundingClientRect(), host = tip.parentElement!.getBoundingClientRect();
+  const thumb = 20, v = (Number(input.value) - Number(input.min)) / (Number(input.max) - Number(input.min));
+  tip.style.left = `${r.left - host.left + thumb / 2 + v * (r.width - thumb)}px`;
+  tip.classList.add("on");
+}
+function hideSpeedTip() {
+  clearTimeout(speedTipTimer);
+  speedTipTimer = setTimeout(() => $("speed-tip").classList.remove("on"), SPEED_TIP_HIDE_MS);
+}
 /** True while "play" is running through the remaining turns. */
 let playing = false;
 let playingBack = false; // playing toward the start (◀) rather than the end (▶)
@@ -3882,7 +3908,11 @@ function bindUI() {
       const d = Number(el.id.replace("compass-", ""));
       if (Number.isInteger(d)) goToView(VIEWS[FACE_VIEW[d]]);
     });
-  $("speed").addEventListener("input", (e) => (speedMs = speedFromSlider(Number((e.target as HTMLInputElement).value))));
+  $("speed").addEventListener("input", (e) => {
+    speedMs = speedFromSlider(Number((e.target as HTMLInputElement).value));
+    showSpeedTip();
+  });
+  for (const t of ["pointerup", "pointercancel", "change", "blur"]) $("speed").addEventListener(t, () => hideSpeedTip());
   bindMoveButtons();
   // One switch each for glow and shading; each applies to both the 3D and flat views.
   const shade = $("shade") as HTMLInputElement;

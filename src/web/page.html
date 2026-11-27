@@ -395,6 +395,10 @@ details[open] summary { margin-bottom: 8px; }
 .legend code { font-family: var(--f-mono); color: var(--ink); }
 .speed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); flex: 1 1 auto; min-width: 0; }
 .speed input { flex: 1 1 auto; min-width: 0; }
+.speed { position: relative; }
+/* Over the slider's thumb while it moves: how long a turn takes. */
+.speed-tip { position: absolute; bottom: calc(100% + 4px); transform: translateX(-50%); padding: 3px 8px; border-radius: 6px; background: var(--ink); color: var(--panel); font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.4s ease; z-index: 5; }
+.speed-tip.on { opacity: 1; transition: opacity 0.1s ease; }
 @media (prefers-reduced-motion: reduce) { .mv:active { transform: none; } }
 /* Wide screens: the 3D view and the playback strip on the left, the panels stacked in a
    column on the right, each collapsing from its heading. */
@@ -537,7 +541,7 @@ details[open] summary { margin-bottom: 8px; }
         <span class="counter" id="counter">0 / 0</span>
         <div class="status" id="status" aria-live="polite"><span class="chip" id="shape-chip"></span><span class="outer-grid" id="outer-grid" aria-label="Outer turns"></span></div>
       </div>
-      <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
+      <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="63"><output class="speed-tip" id="speed-tip" for="speed" aria-live="polite"></output></label>
     </div>
     <p class="message" id="message" hidden></p>
     <div class="confirm resume" id="resume" role="dialog" aria-labelledby="resume-text" hidden><p id="resume-text">Pick up where you left off?</p><span class="resume-what" id="resume-what"></span><div class="row"><button class="btn small primary" id="resume-yes">Pick up</button><button class="btn small" id="resume-no">Start fresh</button></div></div>

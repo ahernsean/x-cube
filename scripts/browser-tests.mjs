@@ -1085,7 +1085,7 @@ labTest("playback: play then stop plays no queued turn; the speed slider's range
   // them): no queued turn may play afterward. The slowest speed gives a broken stop
   // plenty of time to show.
   await page.$eval("#speed", (el) => {
-    el.value = "0"; // about 1600 ms a turn
+    el.value = "0"; // 5000 ms a turn
     el.dispatchEvent(new Event("input"));
   });
   const slowest = await probe("speed");
@@ -1097,13 +1097,21 @@ labTest("playback: play then stop plays no queued turn; the speed slider's range
   await settle();
   const stoppedAt = await counter();
   check(stoppedAt === "0/3", `play, then stop, plays none of the queued turns (${stoppedAt})`);
+  const startValue = await page.$eval("#speed", (el) => el.defaultValue);
   await page.$eval("#speed", (el) => {
-    el.value = "52";
+    el.value = "63";
     el.dispatchEvent(new Event("input"));
   });
   const usual = await probe("speed");
   const sliderWidth = await page.$eval("#speed", (el) => el.getBoundingClientRect().width);
-  check(Math.round(slowest) === 1600 && Math.round(usual) === 202 && sliderWidth >= 150, `the speed slider runs from 1600 ms a turn, default 202 ms, and is ${Math.round(sliderWidth)} px wide`);
+  check(Math.round(slowest) === 5000 && Math.round(usual) === 199 && startValue === "63" && sliderWidth >= 150, `the speed slider runs from 5000 ms a turn, default 199 ms, and is ${Math.round(sliderWidth)} px wide`);
+  // While it moves, a tip over the thumb says how long a turn takes; it fades once let go.
+  const tip = () => page.$eval("#speed-tip", (el) => ({ text: el.textContent, on: el.classList.contains("on"), opacity: Number(getComputedStyle(el).opacity) }));
+  const moving = await tip();
+  await page.$eval("#speed", (el) => el.dispatchEvent(new Event("change")));
+  await page.waitForTimeout(1600);
+  const after = await tip();
+  check(moving.text === "0.20 s per turn" && moving.on && !after.on && after.opacity < 0.05, `the tip shows the seconds a turn takes while it moves, and fades after (${JSON.stringify({ moving, after })})`);
 });
 
 labTest("playback: ◀ plays the turns backward to the start and keeps them listed", async ({ page, check, probe, settle, status, waitForCounter }) => {
