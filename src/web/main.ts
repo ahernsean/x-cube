@@ -7094,6 +7094,7 @@ function clearGlowPaint() {
 
 function renderEdit() {
   requestDraw();
+  scheduleSession(); // the editor's changes are kept on the device too (render() isn't called for them)
   endShapeAnim();
   renderInfo();
   $("edit-bar").hidden = !edit;

@@ -3000,6 +3000,21 @@ labTest("session: after a reload the Lab offers to pick up where it left off, so
   check(await page.$eval("#resume", (e) => e.hidden), "with nothing worth keeping (solved, no turns), a reload offers nothing");
 });
 
+labTest("session: an edit is kept on the device as it changes, not only when the page is hidden", async ({ page, check, play, settle }) => {
+  await play("R U");
+  await page.waitForTimeout(1800);
+  const saved = () => page.evaluate(() => { const item = JSON.parse(localStorage.getItem("xcube.session") ?? "null"); return item ? JSON.parse(item.json).edit : null; });
+  await page.click("#edit-start");
+  await settle();
+  await page.waitForTimeout(1800);
+  const opened = await saved();
+  await page.click('[data-paint="shape"]');
+  await page.evaluate(() => document.querySelector('[data-paint="Y"]').click());
+  await page.waitForTimeout(1800);
+  const tool = (await saved())?.tool;
+  check(!!opened && tool === "Y", `opening Edit puzzle and picking a color are each saved a moment later (${JSON.stringify({ opened: !!opened, tool })})`);
+});
+
 labTest("lost: a slip, then two more while putting it right, is still found (two stacked mistakes)", async ({ page, check, probe, settle }) => {
   // A play-tester's solve: a slip in step 10, found; then, following the Back on track step, two more.
   await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
