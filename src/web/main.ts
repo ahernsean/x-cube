@@ -26,10 +26,11 @@ import {
   SLOT_NEIGHBOR,
 } from "../core/puzzle.ts";
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
-import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
+import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, stickerChoice, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
 import { solveSteps, type Mode, type SolveStep } from "../core/solve.ts";
 import { Planner, type Plan } from "./planner.ts";
+import { answerOf, answersTo, bestQuestion, canBeEmpty, centerColor, endCandidates, findAsHeld, twoSlipCandidates, twoSlips, holdAs, narrow, slipCandidates, wayBack, type Answer, type Candidate, type Question } from "../core/lost.ts";
 
 declare const THREE: any;
 
@@ -93,9 +94,11 @@ export const VIEWS: Record<string, Quat> = {
 };
 let tween: { from: any; to: any; start: number; ms: number } | null = null;
 
-function goToView(q: Quat) {
+/** Turns the view to q: in 350 ms, or, given msPerQuarter, at that many milliseconds per quarter turn of the view. */
+function goToView(q: Quat, msPerQuarter?: number) {
   const to = new THREE.Quaternion(q[0], q[1], q[2], q[3]);
-  tween = { from: pivot.quaternion.clone(), to, start: performance.now(), ms: reduceMotionView() ? 0 : 350 };
+  const ms = msPerQuarter ? (msPerQuarter * pivot.quaternion.angleTo(to)) / (Math.PI / 2) : 350;
+  tween = { from: pivot.quaternion.clone(), to, start: performance.now(), ms: reduceMotionView() ? 0 : ms };
 }
 function reduceMotionView() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -390,10 +393,8 @@ function initScene(canvas: HTMLCanvasElement) {
       // One gray for every color at each level, so a gray white can't be taken for a white.
       const v = level === 1 ? 0.55 : 0.24;
       const gray = new THREE.Color(v, v, v);
-      const sticker = matFor(c).clone();
-      sticker.color = gray;
-      stickerMats.push(sticker);
-      applyGloss();
+      // Matte, with no film: a gray catching the light, or the film's glints, read as white.
+      const sticker = new THREE.MeshPhysicalMaterial({ color: gray, vertexColors: true, roughness: 1, metalness: 0, specularIntensity: 0 });
       grayMats.set(key, { sticker, tile: shadeFlat(new THREE.MeshBasicMaterial({ color: gray, vertexColors: true })), glow: [0, 1, 2, 3].map((open) => makeGlowMaterial(glowTex, gray, open)) });
     }
     return grayMats.get(key)!;
@@ -1321,15 +1322,99 @@ function resize() {
 
 // Edge labels: which face of the puzzle points up, down, left, right and at you.
 const COMPASS_FACES = ["R", "L", "U", "D", "F", "B"];
+const COMPASS_NAMES = ["Right", "Left", "Up", "Down", "Front", "Back"];
+
+/**
+ * The edge labels spell out their faces' names ("Back" for B) once the puzzle has gone
+ * untouched for COMPASS_QUIET_MS, and go back to letters only at the next touch on the
+ * puzzle (the 3D view): a turn played, a view turned or a tap elsewhere on the page
+ * leaves them as they are, so they don't flip back and forth while someone follows a solve.
+ */
+const COMPASS_QUIET_MS = 2500;
+let compassSpelled = false;
+/** Until when the labels' words are unfolding or folding (CSS), so the labels are placed each frame meanwhile. */
+let compassFoldUntil = 0;
+const COMPASS_FOLD_MS = 400;
+let compassQuiet: ReturnType<typeof setTimeout> | undefined;
+function compassStir() {
+  if (compassSpelled) {
+    compassSpelled = false;
+    document.querySelector(".compass")?.classList.remove("spelled");
+    compassFoldUntil = performance.now() + COMPASS_FOLD_MS + 50;
+    requestDraw();
+  }
+  clearTimeout(compassQuiet);
+  compassQuiet = setTimeout(() => {
+    compassSpelled = true;
+    document.querySelector(".compass")?.classList.add("spelled");
+    compassFoldUntil = performance.now() + COMPASS_FOLD_MS + 50;
+    requestDraw();
+  }, COMPASS_QUIET_MS);
+}
 let compassKey = "";
 /** Label scale for an axis pointing straight away from you and straight at you. */
 const COMPASS_MIN = 0.85, COMPASS_MAX = 1.5;
+/** An axis whose projection is shorter than this (sine of its angle from the line of sight) shows head-on: a dot or a cross, not an arrow. */
+/**
+ * An edge label's arrow, drawn as a flat arrow lying along the face's axis and seen in
+ * perspective (`COMPASS_EYE` arrow units away), so an axis tipped toward the viewer has
+ * its head wider than its tail, and one tipped away the reverse: the in-or-out part of the
+ * axis shows, not just its length on screen. (ux, uy): the axis's direction on screen, a
+ * unit vector, y down; len: how much of the arrow's length shows on screen; z: the axis's
+ * part toward the viewer.
+ */
+const COMPASS_ARROW: [number, number][] = [[-11, -3.6], [1, -3.6], [1, -8.5], [12, 0], [1, 8.5], [1, 3.6], [-11, 3.6]];
+const COMPASS_EYE = 30;
+function compassArrowPath(ux: number, uy: number, len: number, z: number): string {
+  return (
+    COMPASS_ARROW.map(([t, w], i) => {
+      const k = COMPASS_EYE / (COMPASS_EYE - z * t);
+      const x = (ux * len * t - uy * w) * k, y = (uy * len * t + ux * w) * k;
+      return `${i ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(" ") + "Z"
+  );
+}
+/**
+ * The angle on screen (radians, y down) of an edge label's arrow. A line along the face's
+ * axis through the middle of the puzzle projects to the line the label sits on, so a label
+ * that stays there points along it (`dx`, `dy`). One slid along the edge to clear another
+ * label or a corner button is off that line: a line parallel to the axis under it runs
+ * toward the same vanishing point from elsewhere, at another angle. The arrow takes the
+ * turn between the two, the axis's direction on screen at a point under each spot, in the
+ * plane through the puzzle's middle facing the camera (`focal`, the camera's focal length in
+ * CSS pixels): (f dx + sx dz, -f dy + sy dz) for a point sx, sy from the middle. Only the
+ * turn is used, so an arrow beyond the vanishing point (a face tipped well away) doesn't flip.
+ */
+function compassArrowAngle(it: { x0: number; y0: number; dir: any; dx: number; dy: number }, x: number, y: number, ox: number, oy: number, focal: number): number {
+  const base = Math.atan2(it.dy, it.dx);
+  if (Math.abs(x - it.x0) < 0.5 && Math.abs(y - it.y0) < 0.5) return base;
+  const at = (x: number, y: number) => [focal * it.dir.x + (x - ox) * it.dir.z, -focal * it.dir.y + (y - oy) * it.dir.z];
+  const [ax, ay] = at(it.x0, it.y0), [bx, by] = at(x, y);
+  if (Math.hypot(ax, ay) < 0.05 * focal || Math.hypot(bx, by) < 0.05 * focal) return base; // too near the vanishing point to tell
+  let turn = Math.atan2(by, bx) - Math.atan2(ay, ax);
+  turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+  return base + turn;
+}
+/**
+ * Where a label's arrow sits from the label's middle, in the label's own unscaled pixels:
+ * measured from the label as drawn, undoing the scale it is drawn at.
+ */
+function compassArrowOffset(el: HTMLElement): [number, number] {
+  const svg = el.firstElementChild as SVGElement | null;
+  if (!svg) return [0, 0];
+  const s = Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 1) || 1;
+  const a = svg.getBoundingClientRect(), b = el.getBoundingClientRect();
+  return [(a.left + a.width / 2 - (b.left + b.width / 2)) / s, (a.top + a.height / 2 - (b.top + b.height / 2)) / s];
+}
+const COMPASS_HEAD_ON = 0.26; // about 15 degrees from straight at you or away
 /**
  * Edge labels that move with the cube: each face's label sits where that face's axis
  * (its outward normal from the center), as seen on screen, meets the edge of the 3D
  * view. Axes pointing toward you get a solid label, axes pointing away a dimmer one;
  * an axis pointing almost straight at you (or away) projects to almost nothing, so its
- * label fades out.
+ * label fades out. Each label's arrow, in the color of that face's center, points the way
+ * the face's axis points on screen, shortened as the axis turns toward or away from you;
+ * nearly head-on it is a dot in a disc (toward you) or a cross (away), as on a diagram.
  */
 function updateCompass() {
   const canvas = renderer.domElement as HTMLCanvasElement;
@@ -1346,13 +1431,15 @@ function updateCompass() {
   const [ox, oy] = toScreenXY(new THREE.Vector3(0, 0, 0));
   // Work out each label's spot on the edge, then place the most visible first and slide
   // any label that would cover an already placed one along its edge.
-  const items: { el: HTMLElement; x: number; y: number; vis: number; away: boolean; vertical: boolean; hw: number; hh: number; scale: number; z: number }[] = [];
+  const items: { el: HTMLElement; x: number; y: number; x0: number; y0: number; dir: any; dx: number; dy: number; inPlane: number; vis: number; away: boolean; vertical: boolean; hw: number; hh: number; scale: number; z: number }[] = [];
+  // The camera's focal length in CSS pixels, for the arrows' perspective (compassArrowAngle).
+  const focal = h / 2 / Math.tan((camera.fov * Math.PI) / 360);
   for (let d = 0; d < 6; d++) {
     const el = document.getElementById(`compass-${d}`);
     if (!el) continue;
     if (refreshText) {
       const c = faceCenterColor(app.current, d);
-      el.innerHTML = `<i style="background:${c ? NET_COLOR[c] : "transparent"}"></i>${COMPASS_FACES[d]}`;
+      el.innerHTML = `<svg class="cmp-dir" viewBox="-13 -13 26 26" aria-hidden="true" style="color:${c ? NET_COLOR[c] : "transparent"}"><path class="cmp-arrow"/><g class="cmp-toward"><circle r="8"/><circle class="cmp-mark" r="2.6"/></g><g class="cmp-away"><circle r="8"/><path class="cmp-mark" d="M-4.5,-4.5 L4.5,4.5 M4.5,-4.5 L-4.5,4.5"/></g></svg><span class="cmp-word"><span class="cmp-key">${COMPASS_FACES[d]}</span><span class="cmp-rest">${COMPASS_NAMES[d].slice(1)}</span></span>`;
       el.setAttribute("aria-label", `Look at the ${COMPASS_FACES[d]} face`);
     }
     const dir = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(pivot.quaternion); // world
@@ -1360,10 +1447,26 @@ function updateCompass() {
     let dx = tx - ox, dy = ty - oy;
     const len = Math.hypot(dx, dy);
     const inPlane = Math.sqrt(Math.max(0, 1 - dir.z * dir.z)); // 1 when the axis lies in the screen plane
-    const vis = len < 1e-3 ? 0 : Math.min(1, Math.max(0, (inPlane - 0.18) / 0.3));
+    // Every label shows, head-on ones too (their dot or cross says which way the face points).
+    // Exactly head-on its direction on screen is undefined: it goes toward the bottom left,
+    // the corner without a button.
+    // The order labels are placed in, so the first stay where their axes meet the edge and
+    // later ones slide clear: faces toward the viewer, then faces away, each the most in the
+    // screen's plane first; head-on labels (a dot or a cross, no direction to keep) last.
+    const vis = inPlane < COMPASS_HEAD_ON ? inPlane - 2 : dir.z > 0 ? inPlane + 1 : inPlane;
     if (len >= 1e-3) {
       dx /= len;
       dy /= len;
+    } else [dx, dy] = [-0.8, 0.6];
+    // On the left or right edge the word goes under the arrow (the label is narrower); on the top or bottom, beside it.
+    el.classList.toggle("stack", (dx ? w / 2 / Math.abs(dx) : Infinity) < (dy ? h / 2 / Math.abs(dy) : Infinity));
+    const svg = el.firstElementChild as SVGElement | null;
+    if (svg) {
+      const headOn = inPlane < COMPASS_HEAD_ON;
+      const arrow = svg.children[0] as SVGElement;
+      arrow.style.display = headOn ? "none" : "";
+      (svg.children[1] as SVGElement).style.display = headOn && dir.z > 0 ? "" : "none";
+      (svg.children[2] as SVGElement).style.display = headOn && dir.z <= 0 ? "" : "none";
     }
     // Foreshortened: a label on an axis toward you is drawn larger, one away from you
     // smaller (no smaller than COMPASS_MIN, so it stays legible).
@@ -1372,7 +1475,7 @@ function updateCompass() {
     const t = Math.min(dx ? (w / 2 - hw) / Math.abs(dx) : Infinity, dy ? (h / 2 - hh) / Math.abs(dy) : Infinity);
     const x = w / 2 + dx * (isFinite(t) ? t : 0), y = h / 2 + dy * (isFinite(t) ? t : 0);
     const vertical = Math.abs(Math.abs(x - w / 2) - (w / 2 - hw)) < 1; // on the left or right edge
-    items.push({ el, x, y, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4, scale, z: dir.z });
+    items.push({ el, x, y, x0: x, y0: y, dir, dx, dy, inPlane, vis, away: dir.z < 0, vertical, hw: hw - 4, hh: hh - 4, scale, z: dir.z });
   }
   items.sort((a, b) => b.vis - a.vis);
   // The buttons in the view's corners are in place first, so a label slides clear of them.
@@ -1383,22 +1486,37 @@ function updateCompass() {
     if (r.width) placed.push({ x: r.left - cr.left + r.width / 2, y: r.top - cr.top + r.height / 2, hw: r.width / 2, hh: r.height / 2 });
   }
   for (const it of items) {
-    if (it.vis > 0.05) {
-      for (let tries = 0; tries < 8; tries++) {
-        const hit = placed.find((o) => Math.abs(o.x - it.x) < o.hw + it.hw && Math.abs(o.y - it.y) < o.hh + it.hh);
-        if (!hit) break;
-        // Slide along this label's edge, toward the middle of the edge (away from corners).
-        if (it.vertical) it.y = hit.y + (it.y < h / 2 ? 1 : -1) * (hit.hh + it.hh + 2);
-        else it.x = hit.x + (it.x < w / 2 ? 1 : -1) * (hit.hw + it.hw + 2);
-        it.x = Math.min(w - it.hw, Math.max(it.hw, it.x));
-        it.y = Math.min(h - it.hh, Math.max(it.hh, it.y));
-      }
+    {
+      // Slide along this label's edge to the nearest spot clear of every label and corner
+      // button placed so far: just before or just after one of them. The nearest keeps it on
+      // its own side of a label in its way, which keeps opposite faces' labels apart.
+      const clamp = (x: number, y: number): [number, number] => [Math.min(w - it.hw, Math.max(it.hw, x)), Math.min(h - it.hh, Math.max(it.hh, y))];
+      const clear = ([x, y]: [number, number]) => !placed.some((o) => Math.abs(o.x - x) < o.hw + it.hw && Math.abs(o.y - y) < o.hh + it.hh);
+      const spots: [number, number][] = [clamp(it.x, it.y)];
+      for (const o of placed)
+        for (const side of [-1, 1])
+          spots.push(it.vertical ? clamp(it.x, o.y + side * (o.hh + it.hh + 2)) : clamp(o.x + side * (o.hw + it.hw + 2), it.y));
+      let best: [number, number] | null = null;
+      for (const p of spots) if (clear(p) && (!best || Math.hypot(p[0] - it.x0, p[1] - it.y0) < Math.hypot(best[0] - it.x0, best[1] - it.y0))) best = p;
+      [it.x, it.y] = best ?? spots[0];
       placed.push(it);
     }
+    // The arrow, drawn now that the label is where it stays: in perspective, a slid label's
+    // arrow follows the face's axis as it runs under the label, not as it leaves the middle.
+    // Its angle is taken where the arrow itself is, off the label's middle (above the word,
+    // or beside it), since near a vanishing point the axis's direction on screen turns fast.
+    const arrow = it.el.querySelector<SVGElement>(".cmp-arrow");
+    if (arrow && it.inPlane >= COMPASS_HEAD_ON) {
+      const [lx, ly] = compassArrowOffset(it.el);
+      const a = compassArrowAngle(it, it.x + lx * it.scale, it.y + ly * it.scale, ox, oy, focal);
+      arrow.setAttribute("d", compassArrowPath(Math.cos(a), Math.sin(a), Math.max(0.35, it.inPlane), it.dir.z));
+      arrow.dataset.angle = ((a * 180) / Math.PI).toFixed(1);
+    }
     it.el.style.transform = `translate(${it.x}px, ${it.y}px) translate(-50%, -50%) scale(${it.scale.toFixed(3)})`;
+    it.el.dataset.axisSpot = `${Math.round(it.x0)},${Math.round(it.y0)}`; // where its axis meets the edge, for the browser tests
     it.el.style.zIndex = String(Math.round((it.z + 1) * 10)); // nearer labels over farther ones
-    it.el.style.opacity = String(it.vis * (it.away ? 0.6 : 1));
-    it.el.style.pointerEvents = it.vis > 0.3 ? "auto" : "none";
+    it.el.style.opacity = it.away ? "0.6" : "1";
+    it.el.style.pointerEvents = "auto";
     it.el.classList.toggle("away", it.away);
   }
 }
@@ -1433,6 +1551,13 @@ for (const type of ["pointerdown", "pointerup", "pointercancel", "click", "keydo
   document.addEventListener(type, requestDraw, { capture: true, passive: true });
 }
 document.addEventListener("pointermove", (e) => (e.buttons || e.pointerType === "touch") && requestDraw(), { capture: true, passive: true });
+// Only a touch on the puzzle folds the edge labels' words back (and a drag keeps them folded).
+{
+  const scene3d = document.getElementById("scene");
+  for (const type of ["pointerdown", "wheel", "touchstart"]) scene3d?.addEventListener(type, compassStir, { passive: true });
+  scene3d?.addEventListener("pointermove", (e) => (e.buttons || e.pointerType === "touch") && compassStir(), { passive: true });
+}
+compassStir(); // the first quiet spell starts with the page
 for (const type of ["resize", "pageshow", "focus"]) window.addEventListener(type, requestDraw);
 document.addEventListener("visibilitychange", requestDraw);
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", requestDraw);
@@ -1464,7 +1589,7 @@ function frame() {
       r.copy.quaternion.copy(r.turns[k]).slerp(r.turns[k + 1], at - k);
     }
   }
-  const moving = !!(tween || anim || queue.length || settle || live || shapeAnim || guideArrows?.visible);
+  const moving = !!(tween || ((anim || queue.length) && pausedAt === null) || settle || live || shapeAnim || guideArrows?.visible);
   stepShapeAnim();
   placeHaloArrow();
   // The arrow's chevrons run along it while it shows, and it fades in and out.
@@ -1475,7 +1600,8 @@ function frame() {
   const canvas = renderer.domElement as HTMLCanvasElement;
   const q = pivot.quaternion;
   const viewKey = `${q.x},${q.y},${q.z},${q.w}|${canvas.clientWidth}x${canvas.clientHeight}`;
-  if (moving || arrowMoving || drawRequested || viewKey !== drawnViewKey) {
+  const folding = performance.now() < compassFoldUntil;
+  if (moving || arrowMoving || drawRequested || folding || viewKey !== drawnViewKey) {
     drawRequested = false;
     drawnViewKey = viewKey;
     placeHidePill();
@@ -1486,7 +1612,7 @@ function frame() {
     if (view3dOpen) {
       renderer.render(scene, camera);
       drawCount.view++;
-      if (edit?.highlight) {
+      if (edit?.highlight || lostOutlined()) {
         const size = renderer.getDrawingBufferSize(new THREE.Vector2());
         drawOutline(camera, null, size.x, size.y, renderer.getPixelRatio());
       }
@@ -1734,6 +1860,9 @@ function finishShuffle() {
 
 /** Undo the last turn (Undo button, or a double tap on the 3D view). */
 function undoLast() {
+  // While Lost? asks, the puzzle shown is its guess at the person's, and in Edit puzzle it is
+  // the one being edited: nothing may turn it.
+  if (lost || edit) return;
   if (app.cursor <= 0) {
     setMessage("Nothing to undo", "info");
     render();
@@ -1800,7 +1929,9 @@ function bindOrbit(el: HTMLElement) {
       ignore = false;
       const busy = anim || queue.length || settle;
       // While editing colors, a drag anywhere tumbles the view and a tap paints (below).
-      const hit = busy || edit ? null : pickCube(el, e.clientX, e.clientY);
+      // While Lost? asks its questions, the puzzle shown can't be turned: a drag tumbles the view.
+      // So too during a step of a solve: a turn made on the screen would leave the step.
+      const hit = busy || edit || lost || stepUnderway() ? null : pickCube(el, e.clientX, e.clientY);
       if (hit) {
         const id = e.pointerId;
         pending = {
@@ -1902,7 +2033,12 @@ function bindOrbit(el: HTMLElement) {
         const h = pickCube(el, e.clientX, e.clientY);
         if (edit.paint === "shape") tapShape(el, e.clientX, e.clientY, h);
         else if (!shapeFirst(el, e.clientX, e.clientY, h) && h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
-      } else if (isTap) {
+      } else if (isTap && !lost && (pausedAt !== null || ((anim || queue.length) && !shuffling))) {
+        // A tap while turns play pauses them, at once; a tap while paused goes on.
+        if (pausedAt !== null) resumePlayback();
+        else pausePlayback();
+        lastTap = null;
+      } else if (isTap && !lost && !stepUnderway()) {
         if (lastTap && now - lastTap.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < DOUBLE_TAP_PX) {
           lastTap = null;
           undoLast();
@@ -1937,13 +2073,60 @@ let anim: Anim | null = null;
  */
 const queue: { turn: Turn; forward: boolean; from?: State }[] = [];
 const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-// Speed slider 0..100 maps logarithmically from 800 ms (slowest) to 30 ms (fastest) per quarter turn.
-// Milliseconds per quarter turn: 1600 at the slow end, 30 at the fast end; the default
-// (52) is about 200.
-const speedFromSlider = (v: number) => 1600 * Math.pow(30 / 1600, v / 100);
-let speedMs = speedFromSlider(52);
+// The speed slider, 0..100, in milliseconds per quarter turn, logarithmically: 5000 at the
+// slow end (for someone whose puzzle jams and falls behind), 30 at the fast end; the
+// default (63) is about 200.
+const SPEED_SLOWEST_MS = 5000, SPEED_FASTEST_MS = 30, SPEED_DEFAULT = 63;
+const speedFromSlider = (v: number) => SPEED_SLOWEST_MS * Math.pow(SPEED_FASTEST_MS / SPEED_SLOWEST_MS, v / 100);
+let speedMs = speedFromSlider(SPEED_DEFAULT);
+
+/**
+ * While the speed slider moves, a tip over its thumb says how long a turn takes ("1.5 s
+ * per turn"), and fades a moment after it is let go.
+ */
+const SPEED_TIP_HIDE_MS = 900;
+let speedTipTimer: ReturnType<typeof setTimeout> | undefined;
+function speedTipText(ms: number): string {
+  const s = ms / 1000;
+  return `${s >= 1 ? s.toFixed(1) : s.toFixed(2)} s per turn`;
+}
+function showSpeedTip() {
+  const input = $("speed") as HTMLInputElement, tip = $("speed-tip");
+  clearTimeout(speedTipTimer);
+  tip.textContent = speedTipText(speedMs);
+  // Over the thumb: the track's length less the thumb's width, by the value.
+  const r = input.getBoundingClientRect(), host = tip.parentElement!.getBoundingClientRect();
+  const thumb = 20, v = (Number(input.value) - Number(input.min)) / (Number(input.max) - Number(input.min));
+  // Kept inside the row: at either end of the slider it would hang off the screen.
+  const half = tip.offsetWidth / 2, at = r.left - host.left + thumb / 2 + v * (r.width - thumb);
+  tip.style.left = `${Math.min(host.width - half, Math.max(half, at))}px`;
+  tip.classList.add("on");
+}
+function hideSpeedTip() {
+  clearTimeout(speedTipTimer);
+  speedTipTimer = setTimeout(() => $("speed-tip").classList.remove("on"), SPEED_TIP_HIDE_MS);
+}
 /** True while "play" is running through the remaining turns. */
 let playing = false;
+/**
+ * When the turns playing were paused (a tap on the 3D view), or null: the turn in progress
+ * stops where it is, part-way, and nothing more starts until a tap goes on. For someone
+ * whose puzzle jams and falls behind the screen.
+ */
+let pausedAt: number | null = null;
+function pausePlayback() {
+  if (pausedAt !== null || (!anim && !queue.length) || shuffling) return;
+  pausedAt = performance.now();
+  $("paused").hidden = false;
+  render();
+}
+function resumePlayback() {
+  if (pausedAt === null) return;
+  if (anim) anim.start += performance.now() - pausedAt;
+  pausedAt = null;
+  $("paused").hidden = true;
+  render();
+}
 let playingBack = false; // playing toward the start (◀) rather than the end (▶)
 
 function enqueue(turn: Turn, forward: boolean) {
@@ -2097,6 +2280,7 @@ function renderNetAnimation() {
 }
 
 function tickAnimation() {
+  if (pausedAt !== null) return;
   if (!anim && queue.length) startNext();
   if (!anim) return;
   const t = anim.duration ? Math.min(1, (performance.now() - anim.start) / anim.duration) : 1;
@@ -2114,6 +2298,10 @@ function tickAnimation() {
 }
 
 function flushAnimations() {
+  if (pausedAt !== null) {
+    pausedAt = null;
+    $("paused").hidden = true;
+  }
   shuffling = false;
   cancelLiveTurn();
   queue.length = 0;
@@ -2150,6 +2338,7 @@ function dismissMessage() {
 
 /** Tap a move button: add the turn at the cursor (discarding any "redo" turns). */
 function doTurn(turn: Turn) {
+  if (lost) return;
   flushAnimations();
   const why = blockedReason(app.current, turn);
   if (why) {
@@ -2289,6 +2478,7 @@ function playToStart() {
   render();
 }
 function stopPlaying() {
+  resumePlayback(); // the turn in progress finishes
   queue.length = 0;
   playing = false;
   shuffling = false;
@@ -2603,6 +2793,7 @@ function escapeHtml(s: string) {
 
 function render() {
   requestDraw();
+  scheduleSession();
   const st = app.current;
   refreshGuide();
   renderInfo();
@@ -3102,13 +3293,17 @@ function infoHelp(): string[] {
         : "Tap a sticker to give it the picked color. Tap one that already has that color to clear it.";
     return [
       `<strong>Editing the puzzle.</strong> ${tool} Drag anywhere to tumble the view; two fingers spin it.`,
-      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid pieces are marked in purple, and a sticker the message calls circled has a white ring around it. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
+      'The message under the colors says whether the puzzle as shown is a valid one. The shape or the colors could be invalid. Invalid pieces are marked in purple, and a sticker the message calls circled has a purple ring around it. <span class="ui-name">Show</span> rotates the view to them, and <span class="ui-name">Hide</span> takes the purple mark away.',
     ];
   }
-  const gestures = "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn.";
-  if (!solving) return [gestures];
+  const gestures = solving
+    ? "During a step, drag to tumble the view (a turn made on the screen would leave the step). While turns play, a tap pauses them at once, and another tap goes on. Two fingers spin the view."
+    : "Swipe on the puzzle to turn a layer. Drag the background, or long press the puzzle and drag, to tumble the view. Two fingers spin it. Double tap undoes the last turn. While turns play, a tap pauses them, and another tap goes on.";
+  const labels = "The labels around the edge name the faces, each with an arrow the way that face points. A dot means that face points straight at you; a cross, straight away. Tap a label to turn that face toward you.";
+  if (!solving) return [gestures, labels];
   return [
     gestures,
+    labels,
     "<strong>During a solve step</strong>, only the pieces the step applies to keep their colors; gray ones end the step just as they started, and dark gray ones may end up anywhere. Each colored piece has a path from one of its stickers, in that sticker's color, to where that sticker will be, and a small copy of the piece flies along it. A solid path that ends in a ring: the piece ends up solved. A dashed path: it is passing through and moves again later. A solid path with no ring: a shape or core step moves it, and it is solved later.",
   ];
 }
@@ -3142,11 +3337,18 @@ function debugInfo(): string {
       view: [q.x, q.y, q.z, q.w].map((v) => Math.round(v * 1e5) / 1e5),
       solving,
       order: guideMode,
-      steps: trail.map((g) => ({ index: g.index, stage: g.step.stage, start: g.start, alg: g.step.alg, shown: g === guide })),
+      // During Lost?, the solve's steps are the ones it set aside (the turn list shown is a guess at the person's).
+      steps: ((lost ?? lostEdit)?.saved.trail ?? trail).map((g) => ({ index: g.index, stage: g.step.stage, start: g.start, alg: g.step.alg, shown: g === ((lost ?? lostEdit) ? (lost ?? lostEdit)!.saved.guide : guide) })),
+      // Lost? under way: the solve's own turn list and step shown, and the answers given, which replay the interview.
+      lost: (() => {
+        const l = lost ?? lostEdit;
+        return l && { turns: formatAlg(l.saved.history), cursor: l.saved.cursor, shown: l.saved.guide?.start ?? null, answers: l.log, editing: !!lostEdit };
+      })(),
       edit: edit && {
         shape: encodeState(edit.shape),
         removed: [...edit.removed].map(name),
         added: [...edit.added].map(name),
+        faces: Object.fromEntries([...edit.faces].map(([c, t]) => [name(c), name(t)])),
         // One character per face, slot by slot: a painted color, or "." for none.
         colors: edit.colors.map((c) => c ?? ".").join(""),
         tool: edit.paint,
@@ -3443,27 +3645,143 @@ function slotByName(name: string): number {
 /** Puts back what debugInfo wrote: the start, the turns and the cursor, the view, and an edit in progress. */
 function restoreDebug(json: string) {
   const d = JSON.parse(json);
+  if (lost) cancelLost();
   if (edit) endEdit(false);
   if (solving) stopGuide();
+  // During Lost?, the turn list shown is a guess at the person's; the solve's own is kept with it.
+  const L = d.lost && Array.isArray(d.lost.answers) ? d.lost : null;
   app.base = decodeState(d.base);
-  app.history = parseAlg(d.turns ?? "");
-  jump(d.cursor ?? app.history.length);
+  app.history = parseAlg((L ? L.turns : d.turns) ?? "");
+  jump((L ? L.cursor : d.cursor) ?? app.history.length);
   if (d.view) pivot.quaternion.set(d.view[0], d.view[1], d.view[2], d.view[3]);
-  if (d.edit) {
-    startEdit();
-    const e = edit!;
-    e.shape = decodeState(d.edit.shape);
-    e.shown = e.shape.clone();
-    e.removed = new Set(d.edit.removed.map(slotByName));
-    e.added = new Set(d.edit.added.map(slotByName));
-    e.colors = [...d.edit.colors].map((c: string) => (c === "." ? undefined : (c as Color)));
-    e.paint = d.edit.tool;
-    e.selected = d.edit.selected ?? "";
-    e.hidden = d.edit.hidden ?? null;
-    refitEdit();
-    renderEdit();
-  }
+  trail = [];
+  if (d.solving && (!d.edit || L) && Array.isArray(d.steps) && d.steps.length) restoreSolve(d.order === "layers" ? "layers" : "kinds", d.steps, L ? () => restoreLost(d) : undefined);
+  else if (d.edit) restoreEdit(d.edit);
   render();
+}
+
+/**
+ * Lost? from debug info, once its solve is back: started again from the step it was asked
+ * from, and its answers given again in order, which bring the interview (or its Edit puzzle,
+ * then put back as it was) to where it was.
+ */
+function restoreLost(d: any) {
+  const L = d.lost;
+  guide = trail.find((g) => g.start === L.shown) ?? null;
+  startLost();
+  if (!lost) return setMessage("The solve is back, but Lost? couldn't be started again from it", "error");
+  for (const a of L.answers) {
+    if (!lost) break;
+    answerLost(String(a));
+  }
+  if (L.editing && edit && d.edit) restoreEdit(d.edit, false);
+  // The view as it was, not where the replayed questions turned it.
+  tween = null;
+  if (d.view) pivot.quaternion.set(d.view[0], d.view[1], d.view[2], d.view[3]);
+  if (lost || lostEdit) setMessage(`Solve and Lost? restored: ${trail.length} ${trail.length === 1 ? "step" : "steps"}, ${L.answers.length} ${L.answers.length === 1 ? "answer" : "answers"}`, "ok");
+  render();
+}
+
+/** An edit from debug info: Edit puzzle opened (unless it already is) and set as it was. */
+function restoreEdit(de: any, open = true) {
+  if (open) startEdit();
+  const e = edit!;
+  e.shape = decodeState(de.shape);
+  e.shown = e.shape.clone();
+  e.removed = new Set(de.removed.map(slotByName));
+  e.added = new Set(de.added.map(slotByName));
+  e.faces = new Map(Object.entries(de.faces ?? {}).map(([c, t]) => [slotByName(c), slotByName(t as string)]));
+  e.colors = [...de.colors].map((c: string) => (c === "." ? undefined : (c as Color)));
+  e.paint = de.tool;
+  e.selected = de.selected ?? "";
+  e.hidden = de.hidden ?? null;
+  refitEdit();
+  renderEdit();
+  render();
+}
+
+/** A solve from debug info, being given back a step at a time as plans reach each step's start (`restoreSolve`). */
+type SavedStep = { index: number; stage: string; start: number; alg: string; shown?: boolean };
+let restoring: { steps: SavedStep[]; total: number; got: number; shown: Guide | null; planned: Set<string>; then?: () => void } | null = null;
+
+/**
+ * Puts a solve from debug info back: the guide's steps, each in its box in the turn list,
+ * with the one shown. The solver is deterministic, so each step comes again from a plan made
+ * from where it starts, in the order it was solved in; a step that doesn't (one Lost? made
+ * to undo a slip, which no plan has) keeps its turns without a box.
+ */
+function restoreSolve(mode: Mode, steps: SavedStep[], then?: () => void) {
+  if (guideMode !== mode) setGuideMode(mode);
+  solving = true;
+  const fit = steps.filter((s) => Number.isInteger(s.start) && s.start >= 0 && s.start <= app.history.length && typeof s.alg === "string");
+  restoring = { steps: fit, total: steps.length, got: 0, shown: null, planned: new Set(), then };
+  restoreNext();
+}
+
+function restoreNext() {
+  const r = restoring;
+  if (!r) return;
+  while (r.steps.length) {
+    const s = r.steps[0];
+    const from = app.base.clone();
+    for (let k = 0; k < s.start; k++) applyTurn(from, app.history[k]);
+    if (s.stage === "recover") {
+      // A Back on track step no plan has: its turns undo a slip, back to where a step of a plan begins.
+      const back = parseAlg(s.alg);
+      const after = from.clone();
+      applyTurns(after, back);
+      const goes = encodeState(after);
+      const plan = planner.plan;
+      const at = planner.indexOf(goes, guideMode);
+      const holds = formatAlg(app.history.slice(s.start, s.start + back.length)) === s.alg;
+      if (plan && at >= 0 && holds && back.length) {
+        const g: Guide = { step: recoverStep(back, s.index), plan, at, extra: { steps: 1, turns: back.length }, index: s.index, start: s.start, from: from.clone(), focus: new Set(), free: new Set(), arrows: [] };
+        trail.push(g);
+        r.got++;
+        if (s.shown) r.shown = g;
+        r.steps.shift();
+        continue;
+      }
+      if (holds && back.length && planner.running) return;
+      if (holds && back.length && !r.planned.has(goes)) {
+        r.planned.add(goes);
+        planner.start(after, guideMode);
+        return;
+      }
+      r.steps.shift();
+      continue;
+    }
+    const code = encodeState(from);
+    const plan = planner.plan;
+    const i = planner.indexOf(code, guideMode);
+    if (plan && i >= 0 && i < plan.steps.length) {
+      const step = plan.steps[i];
+      const turns = formatAlg(app.history.slice(s.start, s.start + step.turns.length));
+      if (step.alg === s.alg && turns === formatAlg(step.turns)) {
+        const g: Guide = { step, plan, at: i, index: s.index, start: s.start, from: from.clone(), ...stepColors(from, step), arrows: stickerPaths(from, step) };
+        trail.push(g);
+        r.got++;
+        if (s.shown) r.shown = g;
+      }
+      r.steps.shift();
+      continue;
+    }
+    // A plan still being made may reach this step; once it is done, plan from the step itself.
+    if (planner.running) return;
+    if (!r.planned.has(code)) {
+      r.planned.add(code);
+      planner.start(from, guideMode);
+      return;
+    }
+    r.steps.shift();
+  }
+  restoring = null;
+  guide = r.shown && guideHolds(r.shown) ? r.shown : null;
+  scrollToStep = !!guide;
+  drawGuide();
+  setMessage(r.got === r.total ? `Solve restored: ${r.got} ${r.got === 1 ? "step" : "steps"}` : `Solve restored: ${r.got} of ${r.total} steps`, "ok");
+  render();
+  r.then?.();
 }
 
 /** The ⓘ and Display buttons beside the 3D and flat views' headings each open a small panel over the view. */
@@ -3518,8 +3836,18 @@ function bindUI() {
     const field = $("debug-text") as HTMLTextAreaElement;
     if (!field.readOnly && field.value.trim()) putBackDebug(field.value);
   });
+  $("lost").addEventListener("click", () => startLost());
+  $("lost-box").addEventListener("click", (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-lost]");
+    if (b) answerLost(b.dataset.lost!);
+  });
   $("strip-next").addEventListener("click", () => nextStep());
-  $("guide-stop").addEventListener("click", () => stopGuide());
+  $("big-next").addEventListener("click", () => bigNext());
+  $("big-back").addEventListener("click", () => step(-1));
+  placeSolveBar();
+  WIDE.addEventListener("change", placeSolveBar);
+  // Asked first: one tap on Stop solving, near the step list, threw a play-tester out of the solve.
+  $("guide-stop").addEventListener("click", () => endingSolve(() => {}));
   $("guide-colors").addEventListener("click", () => setGuideFullColor(!guideFullColor));
   $("guide-start").addEventListener("click", () => {
     if (guide && app.cursor === guide.start) playToEnd(guide.start + guide.step.turns.length);
@@ -3667,7 +3995,11 @@ function bindUI() {
       const d = Number(el.id.replace("compass-", ""));
       if (Number.isInteger(d)) goToView(VIEWS[FACE_VIEW[d]]);
     });
-  $("speed").addEventListener("input", (e) => (speedMs = speedFromSlider(Number((e.target as HTMLInputElement).value))));
+  $("speed").addEventListener("input", (e) => {
+    speedMs = speedFromSlider(Number((e.target as HTMLInputElement).value));
+    showSpeedTip();
+  });
+  for (const t of ["pointerup", "pointercancel", "change", "blur"]) $("speed").addEventListener(t, () => hideSpeedTip());
   bindMoveButtons();
   // One switch each for glow and shading; each applies to both the 3D and flat views.
   const shade = $("shade") as HTMLInputElement;
@@ -3809,6 +4141,7 @@ interface Edit {
   // while there are any, the shape is wrong.
   removed: Set<number>;
   added: Set<number>;
+  faces: Map<number, number>; // a core piece's sticker spot, chosen by a tap on a bare face (Draft.faces)
   painted: any[]; // meshes currently drawn in a color other than their own
   highlight: number[] | null; // slots shown with a halo: the first problem's, unless hidden
   marks: { slot: number; face: number }[]; // stickers the shown problem's hint circles
@@ -3819,14 +4152,16 @@ let edit: Edit | null = null;
 
 function startEdit() {
   if (edit) return;
+  // Lost?'s gray puzzle and its locks belong to the interview, not to the editor.
+  if (lost) cancelLost();
   flushAnimations();
   clearGuide();
   const st = app.current.clone();
   const view = visibleColors(st);
   const colors = view.map((c) => (c && c !== UNPAINTED ? c : undefined));
-  edit = { shape: st, colors, view, fit: fitColors(st, view), shown: st.clone(), paint: "W", removed: new Set(), added: new Set(), painted: [], highlight: null, marks: [], hidden: null, selected: "" };
+  edit = { shape: st, colors, view, fit: fitColors(st, view), shown: st.clone(), paint: "W", removed: new Set(), added: new Set(), faces: new Map(), painted: [], highlight: null, marks: [], hidden: null, selected: "" };
   document.body.classList.add("editing");
-  for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = true;
+  for (const id of ["stack-col", "dock", "tabs", "undo"]) ($(id) as HTMLElement & { inert: boolean }).inert = true;
   renderEdit();
 }
 
@@ -3834,6 +4169,14 @@ function startEdit() {
 function paintSticker(slot: number, dir: number) {
   if (!edit || edit.paint === "shape") return;
   const i = slot * 6 + dir;
+  // Plastic on a core piece with more bare faces than its one sticker: the tap puts the
+  // sticker on this face (the other goes back to plastic), then colors it.
+  if (edit.view[i] === null) {
+    const spot = stickerChoice(edit, slot, dir);
+    if (spot < 0) return;
+    edit.faces.set(slot, spot);
+    edit.view = draftColors(edit, edit.colors);
+  }
   if (!edit.view[i]) return; // hidden, or bare plastic
   // A tap with the color a sticker already has takes its color off.
   edit.colors[i] = edit.view[i] === edit.paint ? undefined : edit.paint;
@@ -4122,7 +4465,7 @@ function endShapeAnim() {
 function drawEdit() {
   requestDraw();
   if (!edit || !paintMaterial) return;
-  for (const m of edit.painted) m.material = m.userData.ownMaterial;
+  for (const m of edit.painted) (m.material = m.userData.ownMaterial), (m.visible = true);
   edit.painted = [];
   clearGlowPaint();
   // A piece taken away is not drawn, and what it covered is drawn as open.
@@ -4138,10 +4481,23 @@ function drawEdit() {
   const over: [number, number, Color | typeof UNPAINTED][] = [];
   for (let i = 0; i < edit.view.length; i++) {
     const want = edit.view[i];
-    if (!want) continue;
+    if (want === undefined) continue;
     const s = Math.floor(i / 6), dir = i % 6;
     const id = drawn.occ[s];
     const local = id < 0 ? -1 : ROT_DIR[ROT_INV[drawn.ori[s]] * 6 + dir];
+    // Plastic where the piece drawn has a sticker (a core piece's sticker moved to another
+    // bare face): its sticker, tile and glow are hidden.
+    if (want === null) {
+      if (id < 0 || !stickerMesh3d[id * 6 + local]) continue;
+      for (const mesh of [stickerMesh3d[id * 6 + local], tileMesh[id * 6 + local]]) {
+        if (!mesh) continue;
+        mesh.userData.ownMaterial ??= mesh.material;
+        mesh.visible = false;
+        edit.painted.push(mesh);
+      }
+      for (const gl of glows[id] ?? []) if (gl.b === local) gl.paint = noGlow;
+      continue;
+    }
     const look = want === UNPAINTED ? blank : { sticker: paintMaterial.sticker(want), tile: paintMaterial.tile(want), glow: paintMaterial.glow(want) };
     if (id < 0 || !stickerMesh3d[id * 6 + local]) {
       over.push([s, dir, want]);
@@ -4175,12 +4531,14 @@ function drawEdit() {
 
 // Stages are named by color, not by place: the puzzle may be held either way up.
 const STAGE_NAME: Record<SolveStep["stage"], string> = {
-  hold: "Regrip", regrip: "Regrip", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges",
+  recover: "Back on track", hold: "Regrip", regrip: "Regrip", shape: "Shape", core: "Core", parity: "Parity", corners: "Corners", edges: "Edges",
   coreTop: "White core edges", coreTopC: "White core corners", coreMiddle: "Middle core edges", coreBottom: "Yellow core edges", coreBottomC: "Yellow core corners",
   topEdges: "White edges", topCorners: "White corners", sideEdges: "Side edges", bottomCorners: "Yellow corners", bottomEdges: "Yellow edges",
 };
 /** A step that only turns the whole puzzle: it grays nothing and has no paths to show. */
 const turnsWhole = (step: SolveStep) => step.stage === "hold" || step.stage === "regrip";
+/** A step with nothing to gray and no paths: one that turns the whole puzzle, or one that undoes a slip. */
+const plainStep = (step: SolveStep) => turnsWhole(step) || step.stage === "recover";
 
 interface Guide {
   step: SolveStep;
@@ -4197,6 +4555,8 @@ interface Guide {
   free: Set<number>;
   /** A path for each piece the step moves to another spot. */
   arrows: StickerPath[];
+  /** For a step not in its plan (Lost?'s step undoing a slip, before plan step `at`): the steps and turns it adds. */
+  extra?: { steps: number; turns: number };
 }
 /** Every step the guide has put in the turn list that is still there, in order; `guide` is the one being shown, if any. */
 let trail: Guide[] = [];
@@ -4309,6 +4669,7 @@ function dropWorking(): boolean {
 /** The whole solve, planned off the page's main thread, which Next step takes its steps from. */
 const planner = new Planner();
 planner.onChange = () => {
+  if (restoring) restoreNext();
   if (working) takeStep();
   if (solving) render();
 };
@@ -4353,7 +4714,8 @@ function takeStep(): boolean {
   // Carrying on from the end of a step, the count carries on too.
   trail = trail.filter((g) => guideHolds(g) && g.start + g.step.turns.length <= app.cursor);
   const prev = trail.find((g) => g.start + g.step.turns.length === app.cursor);
-  const index = prev ? prev.index + 1 : 1;
+  // After a step that undid a slip, the step it went back to comes again, with its number.
+  const index = prev ? prev.index + (prev.step.stage === "recover" ? 0 : 1) : 1;
   if (i === plan.steps.length) {
     guideLine = SOLVED_LINE;
     render();
@@ -4374,7 +4736,7 @@ function takeStep(): boolean {
 function guideRest(g: Guide): { after: number; planned: number } | null {
   if (!g.plan.done) return null;
   const rest = g.plan.steps.slice(g.at);
-  return { after: rest.length - 1, planned: rest.reduce((n, s) => n + s.turns.length, 0) };
+  return { after: rest.length - 1 + (g.extra?.steps ?? 0), planned: rest.reduce((n, s) => n + s.turns.length, 0) + (g.extra?.turns ?? 0) };
 }
 
 /** While the plan a guide's step came from is still being made, what it is up to: "Planning: Yellow core corners…". */
@@ -4382,6 +4744,539 @@ function planningText(g: Guide): string {
   if (planner.plan !== g.plan || !planner.running) return "";
   const stage = [...g.plan.steps].reverse().find((s) => !turnsWhole(s));
   return `Planning${stage ? `: ${STAGE_NAME[stage.stage]}` : ""}…`;
+}
+
+// ------------------------------------------------------------------ Lost?
+
+/**
+ * Lost?: someone following a step on their own puzzle made a slip, and the screen no
+ * longer matches it. The Lab asks which center colors are up and in front, then about a
+ * few spots of their puzzle (src/core/lost.ts) until one slip in this step or the one
+ * before it explains what they have. Meanwhile the puzzle shown is the one the step
+ * should give, grayed, so it can't be read for theirs, with the spot asked about marked.
+ * Found, it shows that position in full color and asks whether theirs looks like it. Yes:
+ * the turn list takes the turns they made, and a step that undoes them back to where the
+ * slip's step began, after which Next step gives that step again. No, or none of the
+ * answers fit: Edit puzzle, starting from the nearest position found.
+ */
+interface Lost {
+  /** Where in the turn list the turns followed begin, the position there, and the turns, up to the one the person made last. */
+  start: number;
+  from: State;
+  turns: Turn[];
+  /** Every turn of the steps, the person's last or not, and the one they said they made last. */
+  all: Turn[];
+  last: number;
+  /** The steps those turns are: every step back to back before the one Lost? was asked from, and that one. */
+  steps: Guide[];
+  phase: "last" | "up" | "front" | "ask" | "confirm" | "giveup";
+  up: Color | null;
+  front: Color | null;
+  /** What the person told about their puzzle, as held: each answered sticker's color. */
+  known: { slot: number; dir: number; color: Color }[];
+  /** The turns followed with no slip, held as the person holds the puzzle (once known): the puzzle shown while asking. */
+  expected: Candidate;
+  /** Why it gave up, in words (phase "giveup"). */
+  why: string;
+  /** Every answer given, in order: Lost? is deterministic, so replaying them from the same start gives the same interview (debug info). */
+  log: string[];
+  /** The candidates still left, held as the person holds the puzzle once the grip is known. */
+  cands: Candidate[];
+  question: Question | null;
+  asked: number;
+  /** The turn list, the cursor, the steps so far and the step shown, as they were: Cancel and No go back to them. */
+  saved: { history: Turn[]; cursor: number; trail: Guide[]; guide: Guide | null; guideLine: string };
+}
+let lost: Lost | null = null;
+/** The probe's pick of the person's puzzle, by the turns made. */
+let lostTruth: Candidate | null = null;
+let lostMarker: any = null;
+
+/** The step Lost? asks about: the one shown, or else the newest of the solve. */
+function lostStep(): Guide | null {
+  if (!solving || edit || lost) return null;
+  const g = guide ?? trail[trail.length - 1] ?? null;
+  return g && guideHolds(g) && g.step.turns.length ? g : null;
+}
+
+function startLost() {
+  const g = lostStep();
+  if (!g) return;
+  // A question still waiting from before ("End the solve in progress?") is about something else now.
+  answerConfirm(false);
+  flushAnimations();
+  // The steps back to back before it, as far as the solve goes: a slip may be several turns back.
+  const steps = [g];
+  for (let i = trail.indexOf(g) - 1; i >= 0; i--) {
+    const p = trail[i];
+    if (p.start + p.step.turns.length !== steps[0].start || !guideHolds(p)) break;
+    steps.unshift(p);
+  }
+  const turns = steps.flatMap((s) => s.step.turns);
+  lost = {
+    start: steps[0].start,
+    from: steps[0].from.clone(),
+    turns,
+    all: turns,
+    last: turns.length - 1,
+    steps,
+    phase: g.step.turns.length > 1 ? "last" : "up",
+    up: null,
+    front: null,
+    known: [],
+    log: [],
+    expected: slipCandidates(steps[0].from, turns)[0],
+    why: "",
+    cands: [],
+    question: null,
+    asked: 0,
+    saved: { history: [...app.history], cursor: app.cursor, trail: [...trail], guide, guideLine },
+  };
+  setLostLast(lost, turns.length - 1);
+  // The puzzle shown is where the step should leave it, the nearest guess at the person's.
+  jump(g.start + g.step.turns.length);
+  setLostLock(true);
+  render();
+}
+
+/** While Lost? asks, the turn list, the tabs, the other panels' controls and Undo are set aside (the view still tumbles). */
+function setLostLock(on: boolean) {
+  for (const id of ["dock", "tabs", "panel-start", "panel-turn", "panel-algs", "undo"]) ($(id) as HTMLElement & { inert: boolean }).inert = on;
+  $("guide").classList.toggle("lost-on", on);
+}
+
+/** Ends Lost?, putting the turn list and the steps back as they were. */
+function cancelLost() {
+  if (!lost) return;
+  const { saved } = lost;
+  lost = null;
+  app.history = saved.history;
+  trail = saved.trail;
+  guide = saved.guide;
+  guideLine = saved.guideLine;
+  jump(saved.cursor);
+  placeLostMarker();
+  setLostLock(false);
+  render();
+}
+
+/** Shows a candidate as the current position: the turns before the slip's step, then the turns the person made, held as they hold it. */
+function showCandidate(c: Candidate) {
+  const l = lost!;
+  app.history = [...l.saved.history.slice(0, l.start), ...c.made, ...c.grip];
+  jump(app.history.length);
+}
+
+const LOST_ANSWER_NAME: Record<Answer, string> = { W: "White", Y: "Yellow", G: "Green", B: "Blue", R: "Red", O: "Orange", black: "No sticker", yes: "Yes", no: "No, it's empty" };
+
+function answerLost(a: string) {
+  const l = lost;
+  if (!l) return;
+  if (a === "cancel") return cancelLost();
+  l.log.push(a);
+  if (a === "color") return lostToEdit(l.cands[0] ?? null);
+  if (a === "empty") return giveUpLost("Your puzzle has no piece there, and every way I looked at has one.");
+  if (a === "none") return giveUpLost("None of the ways I looked at gives your puzzle that color there.");
+  if (l.phase === "last") {
+    const k = a === "unknown" ? -1 : Number(a.slice(2));
+    if (a !== "unknown" && (!a.startsWith("t:") || !(k >= 0 && k < l.all.length))) return;
+    setLostLast(l, k);
+    showCandidate(l.expected);
+    l.phase = "up";
+  } else if (l.phase === "up") {
+    l.up = a as Color;
+    l.phase = "front";
+  } else if (l.phase === "front") {
+    l.front = a as Color;
+    l.cands = holdAs(l.cands, l.up!, l.front);
+    // The puzzle shown is the step's, held as the person holds theirs, so the spots asked about are where theirs are.
+    const held = holdAs([l.expected], l.up!, l.front)[0];
+    if (held) {
+      l.expected = held;
+      showCandidate(held);
+    }
+    nextLostQuestion();
+  } else if (l.phase === "ask" && l.question) {
+    const q = l.question;
+    if (q.kind === "color" && a in NET_COLOR) l.known.push({ slot: q.slot, dir: q.dir, color: a as Color });
+    l.cands = narrow(l.cands, q, a as Answer);
+    l.asked++;
+    nextLostQuestion();
+  } else if (l.phase === "confirm") {
+    if (a === "yes") return acceptLost(l.cands[0]);
+    return giveUpLost("So it isn't the way I found, and that was the only one left that fits your answers.");
+  }
+  render();
+}
+
+/** Asks the next question, or, with one candidate left (or none to tell the rest apart), shows it. */
+function nextLostQuestion() {
+  const l = lost!;
+  l.question = bestQuestion(l.cands);
+  if (l.question) {
+    l.phase = "ask";
+    lookAtSpot(l.question);
+  } else if (!l.cands.length) {
+    return giveUpLost("None of the ways I looked at fits your answers.");
+  } else {
+    l.phase = "confirm";
+    showCandidate(l.cands[0]);
+    goToView(VIEWS.home); // the whole puzzle, to compare with theirs
+  }
+  placeLostMarker();
+}
+
+/** The step turn k of Lost?'s turns belongs to, and which of the step's turns it is. */
+function lostTurnStep(l: Lost, k: number): [Guide, number] {
+  for (const g of l.steps) {
+    const off = g.start - l.start;
+    if (k < off + g.step.turns.length) return [g, k - off];
+  }
+  const g = l.steps[l.steps.length - 1];
+  return [g, k - (g.start - l.start)];
+}
+
+/** Each direction's side of the puzzle as the person holds it (DIRS order: right, left, up, down, front, back). */
+/** Lost?'s turns of the view to each spot asked about: the slowest turn speed (the speed slider's slow end). */
+const LOST_VIEW_MS_PER_QUARTER = 1600;
+const LOST_SIDES = ["Over on the right side", "Over on the left side", "Up on the top", "Down on the bottom", "On the side facing you", "Around on the back"];
+
+/**
+ * A question put by how the person holds their puzzle: the side its spot is on and that
+ * side's center color, then the question ("Look at your puzzle, not the screen. Over on
+ * the right side, the one with a red center, what color is the sticker shown in the
+ * ring?"). The centers' colors are the same in every candidate held that way.
+ */
+function lostQuestionWords(l: Lost, q: Question): string {
+  const p = SLOT_POS[q.slot];
+  const d = q.kind === "color" ? q.dir : DIRS.findIndex((v) => v.every((c, i) => c === (Math.abs(p[i]) === 2 ? Math.sign(p[i]) : 0)));
+  const c = d >= 0 ? centerColor(l.expected.state, d) : null;
+  const ask = q.kind === "color" ? "what color is the sticker shown in the ring?" : "is there a piece here?";
+  if (d < 0 || !c) return `Look at your puzzle, not the screen. ${ask[0].toUpperCase()}${ask.slice(1)}`;
+  return `Look at your puzzle, not the screen. ${LOST_SIDES[d]}, the one with a ${COLOR_NAME[c].toLowerCase()} center, ${ask}`;
+}
+
+/** What a candidate's slip was, in words. */
+function slipWords(c: Candidate): string {
+  const l = lost!;
+  if (c.slip === "none") {
+    const [step, at] = lostTurnStep(l, c.made.length - 1);
+    return at === step.step.turns.length - 1 ? "Your puzzle is where the step leaves it: no slip." : `Your puzzle is where turn ${at + 1} of step ${step.index} leaves it: no slip.`;
+  }
+  // Which step and which of its turns.
+  const [step, at] = lostTurnStep(l, c.at);
+  const want = turnName(l.all[c.at]);
+  const which = `Turn ${at + 1} of step ${step.index}, ${want},`;
+  // A last turn other than the one named: say which it was.
+  const [lastStep, lastAt] = lostTurnStep(l, c.last);
+  const also = c.last === l.last ? "" : ` The last turn you made was turn ${lastAt + 1} of step ${lastStep.index}, ${turnName(l.all[c.last])}.`;
+  const madeAs = c.as[0];
+  if (c.second) {
+    const [step2, at2] = lostTurnStep(l, c.second.at);
+    const how2 = c.second.slip === "skipped" ? "was left out" : c.second.slip === "twice" ? "was made twice" : `was made as ${turnName(c.second.as[0])}`;
+    const how1 = c.slip === "skipped" ? "was left out" : c.slip === "twice" ? "was made twice" : `was made as ${turnName(madeAs)}`;
+    return `Two turns went another way: turn ${at + 1} of step ${step.index}, ${want}, ${how1}, and turn ${at2 + 1}${step2 === step ? "" : ` of step ${step2.index}`}, ${turnName(l.all[c.second.at])}, ${how2}.${also}`;
+  }
+  switch (c.slip) {
+    case "amount":
+    case "layer":
+    case "face":
+      return `${which} was made as ${turnName(madeAs)}.${also}`;
+    case "skipped":
+      return `${which} was left out.${also}`;
+    case "twice":
+      return `${which} was made twice.${also}`;
+  }
+}
+
+/** Yes: the turn list takes the turns the person made, and a step that undoes them. */
+function acceptLost(c: Candidate) {
+  const l = lost!;
+  // The step the slip was in: the turns are undone back to where it began.
+  const base = c.slip === "none" ? l.steps[0] : lostTurnStep(l, c.at)[0];
+  const words = slipWords(c);
+  lost = null;
+  placeLostMarker();
+  setLostLock(false);
+  if (c.slip === "none") {
+    guide = null;
+    guideLine = "";
+    if (!c.grip.length) {
+      // Nothing to undo, held as the screen is: carry on from the turn the person made last.
+      app.history = l.saved.history;
+      trail = l.saved.trail;
+      jump(l.start + c.made.length);
+      setMessage(c.made.length === l.all.length ? "Your puzzle matches the step. Carry on with Next step." : `${words} Carry on from there.`, "ok");
+      return render();
+    }
+    // Only the way the puzzle is held differs.
+    trail = l.saved.trail.filter((g) => g.start + g.step.turns.length <= l.start);
+    app.history = [...l.saved.history.slice(0, l.start), ...c.made, ...c.grip];
+    jump(app.history.length);
+    setMessage(`${words} Carry on with Next step.`, "ok");
+    return render();
+  }
+  trail = l.saved.trail.filter((g) => g.start + g.step.turns.length <= base.start);
+  const back = wayBack(c, base.start - l.start);
+  const at = l.start + c.made.length + c.grip.length;
+  if (!back.length) {
+    // Nothing to undo (the step's only turn left out): the puzzle is already where the step begins.
+    app.history = [...l.saved.history.slice(0, l.start), ...c.made, ...c.grip];
+    jump(app.history.length);
+    guide = null;
+    guideLine = "";
+    setMessage(`${words} There is nothing to undo: Next step gives step ${base.index} again.`, "info");
+    return render();
+  }
+  const step = recoverStep(back, base.index);
+  app.history = [...l.saved.history.slice(0, l.start), ...c.made, ...c.grip, ...back];
+  jump(at);
+  // It isn't one of the plan's steps: it stands before the first step of the slip's, which
+  // comes again after it, so it counts as one more step, with its own turns.
+  guide = {
+    step,
+    plan: base.plan,
+    at: base.at,
+    extra: { steps: 1, turns: back.length },
+    index: base.index,
+    start: at,
+    from: app.current.clone(),
+    focus: new Set(),
+    free: new Set(),
+    arrows: [],
+  };
+  trail.push(guide);
+  scrollToStep = true;
+  setMessage(words, "info");
+  render();
+}
+
+/** How many turns, up to the last one named, the interview looks in for two stacked mistakes (about 1,700 candidates, 0.1 s). */
+const LOST_TWO_SLIP_TURNS = 14;
+/**
+ * The same when the last turn isn't known, for each turn of the step it may have been: both
+ * slips within this many turns of it (a 29-turn step: about 9,500 candidates, 0.4 s, where
+ * 14 gave 44,000 and 2.2 s).
+ */
+const LOST_TWO_SLIP_UNKNOWN = 6;
+
+/**
+ * The turn the person says they made last. They may misremember it, so the candidates take
+ * one slip up to it or up to a turn or two either side, and no slip up to any turn of the step.
+ */
+function setLostLast(l: Lost, k: number) {
+  // Not known (-1): any turn of the step may have been the last, the step's own last first.
+  const unknown = k < 0;
+  if (unknown) k = l.all.length - 1;
+  l.last = k;
+  l.turns = l.all.slice(0, k + 1);
+  const ends = unknown ? [...lostStepTurns(l)].reverse() : [k, k - 1, k + 1, k - 2, k + 2];
+  l.cands = endCandidates(l.from, l.all, ends, lostStepTurns(l));
+  // Asked from a Back on track step: a slip putting a slip right is two stacked mistakes.
+  const g = l.steps[l.steps.length - 1];
+  // Within its last LOST_TWO_SLIP_TURNS turns up to the one named, which keeps the interview
+  // short; not knowing the last turn, up to each turn of the step, within LOST_TWO_SLIP_UNKNOWN.
+  if (g.step.stage === "recover")
+    l.cands.push(...twoSlipCandidates(l.from, l.all, g.start - l.start, new Set(l.cands.map((c) => c.state.appearanceKey())), unknown ? lostStepTurns(l) : [k], unknown ? LOST_TWO_SLIP_UNKNOWN : LOST_TWO_SLIP_TURNS));
+  l.expected = l.cands[0];
+}
+
+/** The turns of the step Lost? was asked from, as indices into its turns. */
+function lostStepTurns(l: Lost): number[] {
+  const g = l.steps[l.steps.length - 1];
+  return g.step.turns.map((_, i) => g.start - l.start + i);
+}
+
+/** A Back on track step: the turns that undo a slip, back to where step `index` began. */
+function recoverStep(back: Turn[], index: number): SolveStep {
+  return {
+    stage: "recover",
+    goal: `Undo the turns you made, back to where step ${index} began. Then Next step gives step ${index} again`,
+    alg: formatAlg(back),
+    turns: back,
+    moved: [],
+    free: [],
+    parts: [{ name: "turns", turns: back.length }],
+    lands: [],
+    regrip: "",
+  };
+}
+
+/** Lost? found no way that fits: it says so, and offers to have the person color the puzzle to match theirs. */
+function giveUpLost(why: string) {
+  const l = lost!;
+  l.phase = "giveup";
+  l.why = why;
+  l.question = null;
+  placeLostMarker();
+  render();
+}
+
+/**
+ * Lost? while the puzzle is edited to match the person's: the interview, set aside. The
+ * solve goes on: Continue search looks for the way the edited puzzle was reached (`lostFromEdit`),
+ * Cancel puts the turn list and the steps back.
+ */
+let lostEdit: Lost | null = null;
+
+/** Edit puzzle: Edit puzzle, from the nearest position found, so only what differs needs changing. The solve stays. */
+function lostToEdit(c: Candidate | null) {
+  const l = lost!;
+  lost = null;
+  placeLostMarker();
+  setLostLock(false);
+  if (c) {
+    app.history = [...l.saved.history.slice(0, l.start), ...c.made, ...c.grip];
+    jump(app.history.length);
+  }
+  lostEdit = l;
+  startEdit();
+  $("edit-done").textContent = "Continue search";
+  $("edit-cancel").textContent = "Cancel edit";
+  render();
+}
+
+/** Done in Edit puzzle from Lost?: the person's puzzle is known exactly, so look for the way that gives it. */
+function lostFromEdit(l: Lost, target: State) {
+  lostEdit = null;
+  const up = centerColor(target, 2), front = centerColor(target, 4);
+  const key = target.appearanceKey();
+  // Known exactly, every last turn from a few before the one named to the end is cheap to try.
+  const ends = [...l.all.keys()].filter((j) => j >= l.last - 6).sort((a, b) => Math.abs(a - l.last) - Math.abs(b - l.last));
+  let found = up && front ? holdAs(endCandidates(l.from, l.all, ends, lostStepTurns(l)), up, front).find((c) => c.state.appearanceKey() === key) : undefined;
+  // Two stacked mistakes in the step asked from, stopping after any of its turns (the turn
+  // named may be wrong, or not known): the first that looks like the puzzle edited.
+  const g = l.steps[l.steps.length - 1];
+  found ??= findAsHeld(twoSlips(l.from, l.all, g.start - l.start, null, lostStepTurns(l)), target);
+  if (found) {
+    lost = l;
+    return acceptLost(found);
+  }
+  // No way Lost? knows gives it: solve on from the puzzle as it is.
+  trail = [];
+  guide = null;
+  guideLine = "";
+  stopGuide();
+  setBase(target, "Edited");
+  setMessage("I couldn't find how your puzzle got this way, so the solve starts again from it.", "info");
+  nextStep();
+}
+
+/** Cancel in Edit puzzle from Lost?: the turn list, the steps and the step shown, as they were. */
+function lostEditCancel(l: Lost) {
+  lostEdit = null;
+  app.history = l.saved.history;
+  trail = l.saved.trail;
+  guide = l.saved.guide;
+  guideLine = l.saved.guideLine;
+  jump(l.saved.cursor);
+}
+
+/** Turns the 3D view so the spot asked about faces the viewer, tipped a little toward the top and the right. */
+function lookAtSpot(q: Question) {
+  const p = SLOT_POS[q.slot];
+  const out: readonly number[] = q.kind === "color" ? DIRS[q.dir] : p.map((c) => (Math.abs(c) === 2 ? Math.sign(c) : 0));
+  const v = new THREE.Vector3(...out).multiplyScalar(2).add(new THREE.Vector3(0.35, 0.45, 0.35));
+  if (Math.abs(out[1]) === 1) v.set(out[0] * 2 + 0.3, out[1] * 2, out[2] * 2 + 0.6);
+  const q4 = lookFrom(v);
+  // As slowly as the slowest turn, so the person can follow which way the puzzle goes.
+  goToView([q4.x, q4.y, q4.z, q4.w], LOST_VIEW_MS_PER_QUARTER);
+}
+
+/**
+ * The mark on the spot asked about: a ring on a face (drawn over everything), or for
+ * "Is there a piece here?" the halo's outline around the piece there, or around a glass
+ * box in it when it is empty (`lostOutlined`), which the puzzle in front hides as it
+ * hides any halo.
+ */
+const LOST_GHOST_SCALE = 1.4;
+function placeLostMarker() {
+  if (lostMarker) {
+    pivot.remove(lostMarker);
+    disposeTree(lostMarker);
+    lostMarker = null;
+  }
+  const q = lost?.phase === "ask" ? lost.question : null;
+  if (!q) return;
+  const group = new THREE.Group();
+  const mat = (color: number) => new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true });
+  const p = new THREE.Vector3(...SLOT_POS[q.slot]);
+  if (q.kind === "color") {
+    const n = new THREE.Vector3(...DIRS[q.dir]);
+    for (const [r, w, c] of [[0.42, 0.075, 0x111111], [0.42, 0.045, 0xffffff]] as const) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r, w, 10, 48), mat(c));
+      ring.renderOrder = 10 + (c === 0xffffff ? 1 : 0);
+      group.add(ring);
+    }
+    group.position.copy(p.add(n.clone().multiplyScalar(0.53)));
+    group.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+  } else if (app.current.occ[q.slot] < 0) {
+    // An empty spot: the Shape tool's glass box, larger, which the halo then outlines (`lostOutlined`).
+    const g = ghostBox();
+    g.scale.setScalar(LOST_GHOST_SCALE);
+    group.add(g);
+    group.position.copy(p);
+  }
+  group.userData.question = q;
+  lostMarker = group;
+  pivot.add(group);
+}
+
+/** The interview in the Solve panel: the question and an answer button for each answer some candidate gives. */
+let lostKey = "";
+function renderLost() {
+  const box = $("lost-box");
+  box.hidden = !lost;
+  if (!lost) return void (lostKey = "");
+  const l = lost;
+  const key = `${l.phase}|${l.up}|${l.asked}|${l.cands.length}|${l.why}`;
+  if (key === lostKey) return;
+  lostKey = key;
+  let text = "";
+  let answers: string[] = [];
+  const colors: Color[] = ["W", "Y", "G", "B", "R", "O"];
+  const opposite: Record<Color, Color> = { W: "Y", Y: "W", G: "B", B: "G", R: "O", O: "R" };
+  if (l.phase === "last") {
+    const g = l.steps[l.steps.length - 1];
+    text = `Let's find where your puzzle went another way. Which turn of step ${g.index} did you make last? If you made them all, it's the last one.`;
+    const off = g.start - l.start;
+    answers = [...g.step.turns.map((_, k) => `t:${off + k}`), "unknown"];
+  } else if (l.phase === "up") {
+    const intro = l.steps[l.steps.length - 1].step.turns.length > 1 ? "" : "Let's find where your puzzle went another way. ";
+    text = `${intro}Hold your puzzle as you have been, without turning anything. Which center color is on top?`;
+    answers = colors;
+  } else if (l.phase === "front") {
+    text = "Which center color faces you?";
+    answers = colors.filter((c) => c !== l.up && c !== opposite[l.up!]);
+  } else if (l.phase === "ask") {
+    const q = l.question!;
+    text = lostQuestionWords(l, q);
+    answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? [...(canBeEmpty(q.slot) ? ["empty"] : []), "none"] : [])];
+  } else if (l.phase === "giveup") {
+    text = `I can't find how your puzzle got this way. ${l.why} Edit the puzzle on this screen to match yours, then tap Continue search, and I'll look again from there.`;
+    answers = ["color"];
+  } else {
+    text = `${slipWords(l.cands[0])} Does your puzzle look like this one now?`;
+    answers = ["yes", "no"];
+  }
+  $("lost-q").textContent = text;
+  $("lost-count").textContent = l.phase === "ask" ? `Question ${l.asked + 1}` : l.phase === "giveup" ? "Not found" : "";
+  $("lost-opts").innerHTML = answers
+    .map((a) => {
+      if (a.startsWith("t:")) {
+        const k = Number(a.slice(2));
+        return `<button class="btn small lost-text lost-turn${k === l.all.length - 1 ? " primary" : ""}" data-lost="${a}">${turnName(l.all[k])}</button>`;
+      }
+      if (a === "unknown") return `<span class="lost-break"></span><button class="btn small lost-text" data-lost="unknown">I don't know</button>`;
+      if (a === "empty") return `<button class="btn small lost-text" data-lost="empty">No piece here</button>`;
+      if (a === "none") return `<button class="btn small lost-text" data-lost="none">None of these</button>`;
+      if (a === "color") return `<button class="btn small lost-text primary" data-lost="color">Edit puzzle</button>`;
+      if (a in NET_COLOR) return `<button class="lost-swatch" data-lost="${a}" aria-label="${LOST_ANSWER_NAME[a as Answer]}"><i style="background:${NET_COLOR[a]}"></i>${LOST_ANSWER_NAME[a as Answer]}</button>`;
+      if (a === "black") return `<button class="lost-swatch" data-lost="black" aria-label="No sticker"><i class="bare"></i>No sticker</button>`;
+      const label = l.phase === "confirm" ? (a === "yes" ? "Yes" : "No") : LOST_ANSWER_NAME[a as Answer];
+      return `<button class="btn small lost-text${l.phase === "confirm" && a === "yes" ? " primary" : ""}" data-lost="${a}">${label}</button>`;
+    })
+    .join("");
 }
 
 /**
@@ -4403,6 +5298,12 @@ function stepColors(st: State, step: SolveStep): { focus: Set<number>; free: Set
 }
 
 /** Whether the guide's step is still in the turn list where it was put, starting from the position it was worked out for. */
+/** A step of a solve is shown with turns of it still to make: the puzzle on the screen isn't turned by hand then. */
+function stepUnderway(): boolean {
+  const g = guide;
+  return !!(solving && g && app.cursor >= g.start && app.cursor < g.start + g.step.turns.length && guideHolds(g));
+}
+
 function guideHolds(g: Guide): boolean {
   const there = app.history.slice(g.start, g.start + g.step.turns.length);
   if (there.length !== g.step.turns.length || !there.every((t, i) => turnName(t) === turnName(g.step.turns[i]))) return false;
@@ -4422,6 +5323,7 @@ function stopGuide() {
   if (!solving && !guide && !guideLine) return;
   stopWorking();
   planner.stop();
+  restoring = null;
   solving = false;
   clearGuide();
   guideLine = "";
@@ -4443,7 +5345,7 @@ let showTarget: any = null;
 let showTargetKey = "";
 function updateShowTarget() {
   const g = guide;
-  const key = g && app.cursor === g.start && !turnsWhole(g.step) ? `${g.start}|${encodeState(app.current)}` : "";
+  const key = g && app.cursor === g.start && !plainStep(g.step) ? `${g.start}|${encodeState(app.current)}` : "";
   if (key === showTargetKey) return;
   showTargetKey = key;
   showTarget = key ? bestView(app.current, guideFaces(g!)) : null;
@@ -4567,6 +5469,55 @@ function turnListHtml(): string {
   return out;
 }
 
+/**
+ * During a solve, a row of big buttons under the playback strip, for following a step a
+ * turn at a time on a puzzle in hand: ◀₁ backs up one turn, and the wide one makes the next
+ * turn, written large on it ("R'"), and then waits, so a puzzle that jams never falls
+ * behind. While turns play it pauses them (as a tap on the 3D view does), and while they
+ * are paused it goes on; once the turns have all played it loads the next step.
+ */
+function updateSolveBar(showNext: boolean, solvedNow: boolean) {
+  const bar = $("solve-bar");
+  bar.hidden = !solving || !!lost || !!edit;
+  if (bar.hidden) return;
+  const next = $("big-next") as HTMLButtonElement, back = $("big-back") as HTMLButtonElement;
+  back.disabled = app.cursor === 0 || shuffling;
+  const busy = playing || pausedAt !== null;
+  let kind: string, label: string;
+  if (busy && pausedAt !== null) [kind, label] = ["resume", `<span class="big-icon">▶</span><span class="big-word">Go on</span>`];
+  else if (busy) [kind, label] = ["pause", `<span class="big-icon">❚❚</span><span class="big-word">Pause</span>`];
+  else if (app.cursor < app.history.length) [kind, label] = ["turn", `<span class="big-icon">▶<sub>1</sub></span><span class="big-turn">${turnName(app.history[app.cursor])}</span>`];
+  else [kind, label] = ["step", `<span class="big-word">${working ? "Working…" : "Next step"}</span>`];
+  if (next.dataset.kind !== kind || next.innerHTML !== label) {
+    next.dataset.kind = kind;
+    next.innerHTML = label;
+  }
+  next.setAttribute("aria-label", kind === "turn" ? `Next turn, ${turnName(app.history[app.cursor])}` : kind === "step" ? "Next step" : kind === "pause" ? "Pause" : "Go on");
+  next.disabled = shuffling || (kind === "step" && (!!working || !showNext || solvedNow));
+}
+
+/**
+ * Where the big buttons sit: on a phone, in the playback dock, under the strip; on a wide
+ * screen (an iPad), straight under the 3D view and larger, as near the puzzle as they can be
+ * without covering it (over the view they would hide the step's paths).
+ */
+function placeSolveBar() {
+  const bar = $("solve-bar"), stage = document.querySelector(".stage")!;
+  if (WIDE.matches) {
+    if (bar.previousElementSibling !== stage) stage.after(bar);
+  } else if (bar.parentElement !== $("dock")) $("dock").insertBefore(bar, $("dock").querySelector(".speed"));
+  bar.classList.toggle("by-view", WIDE.matches);
+}
+
+/** The big wide button under the strip during a solve (updateSolveBar says what it does now). */
+function bigNext() {
+  const kind = $("big-next").dataset.kind;
+  if (kind === "resume") resumePlayback();
+  else if (kind === "pause") pausePlayback();
+  else if (kind === "turn") step(1);
+  else if (kind === "step") nextStep();
+}
+
 /** Drops the guide when its turns are gone from the list, redraws its grays and arrows, and writes its line. */
 function refreshGuide() {
   trail = trail.filter(guideHolds);
@@ -4593,6 +5544,7 @@ function refreshGuide() {
   ($("strip-next") as HTMLButtonElement).disabled = !!working;
   $("strip-next").hidden = !showNext;
   $("last").hidden = showNext;
+  updateSolveBar(showNext, solvedNow);
   // At the step's start the button plays the step; anywhere else it goes back to the start.
   const atStepStart = !!guide && app.cursor === guide.start;
   $("guide-start").textContent = atStepStart ? "Play step" : "Step start";
@@ -4601,7 +5553,9 @@ function refreshGuide() {
   ($("guide-start") as HTMLButtonElement).disabled = !guide || (atStepStart && playing);
   // The paths show only before the step's first turn, so Show step applies only there.
   updateShowTarget();
-  ($("guide-show") as HTMLButtonElement).disabled = !guide || turnsWhole(guide.step) || app.cursor !== guide.start;
+  ($("guide-show") as HTMLButtonElement).disabled = !guide || plainStep(guide.step) || app.cursor !== guide.start;
+  ($("lost") as HTMLButtonElement).disabled = !lostStep() || playing || shuffling;
+  renderLost();
   updateShowButton();
   renderSteps();
   const line = $("guide-line");
@@ -4620,15 +5574,48 @@ function refreshGuide() {
   } else line.textContent = guideLine;
 }
 
+/**
+ * The stickers of the puzzle shown that Lost? knows the person's colors of (key: piece id × 6
+ * + the piece's own face): the centers up and in front, once told, and each sticker answered.
+ */
+function lostKnown(): Map<number, Color> {
+  const out = new Map<number, Color>();
+  const l = lost;
+  if (!l) return out;
+  const st = app.current;
+  const put = (slot: number, dir: number, color: Color) => {
+    const id = st.occ[slot];
+    if (id < 0) return;
+    const local = ROT_DIR[ROT_INV[st.ori[slot]] * 6 + dir];
+    if (PIECES[id].stickers[local]) out.set(id * 6 + local, color);
+  };
+  for (const [dir, color] of [[2, l.up], [4, l.front]] as const) {
+    if (!color) continue;
+    const v = DIRS[dir];
+    for (const k of [2, 1]) {
+      const s = slotAt([v[0] * k, v[1] * k, v[2] * k]);
+      if (s >= 0 && st.occ[s] >= 0 && isExposed(st, s, dir)) {
+        put(s, dir, color);
+        break;
+      }
+    }
+  }
+  for (const k of l.known) put(k.slot, k.dir, k.color);
+  return out;
+}
+
 function drawGuide() {
   if (!grayMaterial) return;
   const g = guide;
   // During a turn the cursor is already past it; the grays go by the position the turn started from.
   const at = anim ? app.cursor + (anim.forward ? -1 : 1) : app.cursor;
   // A hold step only turns the whole puzzle, and the center colors are what it goes by: no grays.
-  const within = !!g && !turnsWhole(g.step) && at >= g.start && at < g.start + g.step.turns.length;
-  const key = within ? `${g!.start}/${g!.step.alg}/${guideFullColor}` : "";
-  if (guideArrows) guideArrows.visible = !!g && app.cursor === g.start && !anim && !queue.length;
+  const within = !lost && !!g && !plainStep(g.step) && at >= g.start && at < g.start + g.step.turns.length;
+  // While Lost? asks about the person's puzzle, the screen's is gray, so it can't be read for theirs.
+  const grayAll = !!lost && lost.phase !== "confirm";
+  const known = grayAll ? lostKnown() : new Map<number, Color>();
+  const key = grayAll ? `lost|${[...known].join()}` : within ? `${g!.start}/${g!.step.alg}/${guideFullColor}` : "";
+  if (guideArrows) guideArrows.visible = !lost && !!g && app.cursor === g.start && !anim && !queue.length;
   if (drawGuide.key === key) return;
   drawGuide.key = key;
   for (const m of guideDimmed) m.material = m.userData.ownMaterial;
@@ -4639,12 +5626,25 @@ function drawGuide() {
     disposeTree(guideArrows);
     guideArrows = null;
   }
-  if (within) {
+  if (within || grayAll) {
     for (const c of PIECES) {
-      if (guideFullColor || g!.focus.has(c.id)) continue;
-      const level = g!.free.has(c.id) ? 2 : 1;
+      if (within && (guideFullColor || g!.focus.has(c.id))) continue;
+      const level = within && g!.free.has(c.id) ? 2 : 1;
       c.stickers.forEach((color, d) => {
         if (!color) return;
+        // What the person told about their puzzle shows in its color.
+        const told = known.get(c.id * 6 + d);
+        if (told && paintMaterial) {
+          const look = { sticker: paintMaterial.sticker(told), tile: paintMaterial.tile(told) };
+          for (const [mesh, mat] of [[stickerMesh3d[c.id * 6 + d], look.sticker], [tileMesh[c.id * 6 + d], look.tile]]) {
+            if (!mesh) continue;
+            mesh.userData.ownMaterial ??= mesh.material;
+            mesh.material = mat;
+            guideDimmed.push(mesh);
+          }
+          for (const gl of glows[c.id] ?? []) if (gl.b === d) gl.paint = paintMaterial.glow(told);
+          return;
+        }
         const gray = grayMaterial!(color, level);
         for (const [mesh, mat] of [[stickerMesh3d[c.id * 6 + d], gray.sticker], [tileMesh[c.id * 6 + d], gray.tile]]) {
           if (!mesh) continue;
@@ -4656,9 +5656,11 @@ function drawGuide() {
         for (const gl of glows[c.id] ?? []) if (gl.b === d) gl.paint = noGlow ??= [0, 1, 2, 3].map(() => new THREE.MeshBasicMaterial({ visible: false }));
       });
     }
-    guideArrows = makeArrows(g!.arrows);
-    guideArrows.visible = app.cursor === g!.start && !anim && !queue.length;
-    pivot.add(guideArrows);
+    if (within) {
+      guideArrows = makeArrows(g!.arrows);
+      guideArrows.visible = app.cursor === g!.start && !anim && !queue.length;
+      pivot.add(guideArrows);
+    }
   }
   if (!anim) syncMeshes(app.current);
 }
@@ -5405,8 +6407,18 @@ function haloMesh(kind: "glow") {
   return m;
 }
 
+/** What Lost?'s "Is there a piece here?" outlines: the piece in that spot, or the glass box in it. */
+function lostOutlined(): any {
+  const q = lost?.phase === "ask" ? lost.question : null;
+  if (q?.kind !== "filled" || !lostMarker) return null;
+  const id = app.current.occ[q.slot];
+  return id >= 0 ? meshes[id] : (lostMarker.children[0] ?? null);
+}
+
 /** The drawn pieces (or blanks) the 3D view outlines now. */
 function outlined(): any[] {
+  const l = lostOutlined();
+  if (l) return [l];
   if (!edit?.highlight) return [];
   return haloSlots().map((s) => drawnAt(edit!.shown, s)).filter((o) => o);
 }
@@ -6278,6 +7290,7 @@ function clearGlowPaint() {
 
 function renderEdit() {
   requestDraw();
+  scheduleSession(); // the editor's changes are kept on the device too (render() isn't called for them)
   endShapeAnim();
   renderInfo();
   $("edit-bar").hidden = !edit;
@@ -6341,15 +7354,21 @@ function endEdit(apply: boolean) {
   const e = edit;
   shapeAnim = null;
   for (const m of meshes) if (m) m.visible = true;
-  for (const m of e.painted) m.material = m.userData.ownMaterial;
+  for (const m of e.painted) (m.material = m.userData.ownMaterial), (m.visible = true);
   clearGlowPaint();
   edit = null;
   placeGhosts();
   placeHalos();
   placeOverlays([]);
   document.body.classList.remove("editing");
-  for (const id of ["stack-col", "dock", "tabs"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
-  if (apply && e.fit.level === "reachable" && e.fit.state) {
+  for (const id of ["stack-col", "dock", "tabs", "undo"]) ($(id) as HTMLElement & { inert: boolean }).inert = false;
+  const fromLost = lostEdit;
+  $("edit-done").textContent = "Done";
+  $("edit-cancel").textContent = "Cancel";
+  if (fromLost) {
+    if (apply && e.fit.level === "reachable" && e.fit.state) lostFromEdit(fromLost, e.fit.state);
+    else lostEditCancel(fromLost);
+  } else if (apply && e.fit.level === "reachable" && e.fit.state) {
     const changed = !e.fit.state.equals(app.current);
     if (changed) setBase(e.fit.state, "Edited");
     setMessage(changed ? "The edited position is now the start" : "Nothing changed", "ok");
@@ -6479,6 +7498,8 @@ function probe3d() {
 function installProbe() {
   const canvas = () => renderer.domElement as HTMLCanvasElement;
   (window as any).xcubeProbe = {
+    /** The view's turn in progress: its length, and how far it turns, in quarter turns. */
+    viewTurn: () => tween && { ms: tween.ms, quarters: tween.from.angleTo(tween.to) / (Math.PI / 2) },
     idle: () => !anim && !queue.length && !settle && !live && !tween && !shapeAnim && !working && !planner.running,
     /** Where the step guide's plan is made ("worker" or "page"), and making it on the page from now on. */
     planWhere: () => planner.where,
@@ -6585,6 +7606,25 @@ function installProbe() {
     resync: () => syncMeshes(app.current),
     /** Milliseconds per quarter turn, as the speed slider sets it. */
     speed: () => speedMs,
+    /**
+     * The angle on screen (degrees, y down) of a line along face `face`'s axis through the
+     * world point under client point (x, y) in the plane through the puzzle's middle facing
+     * the camera: by three.js's own projection, to check the edge labels' arrows against.
+     */
+    axisAt: (face: string, x: number, y: number) => {
+      const r = canvas().getBoundingClientRect();
+      const ndc = new THREE.Vector3(((x - r.left) / r.width) * 2 - 1, -(((y - r.top) / r.height) * 2 - 1), 0.5);
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera);
+      const hit = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), new THREE.Vector3());
+      if (!hit) return null;
+      const d = COMPASS_FACES.indexOf(face);
+      const dir = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(pivot.quaternion);
+      const a = hit.clone().project(camera), b = hit.clone().addScaledVector(dir, 0.01).project(camera);
+      return (Math.atan2(-(b.y - a.y) * r.height, (b.x - a.x) * r.width) * 180) / Math.PI;
+    },
+    /** The turn in progress, how far along (0 to 1), and whether the turns are paused. */
+    turning: () => ({ done: anim ? Math.min(1, ((pausedAt ?? performance.now()) - anim.start) / (anim.duration || 1)) : null, paused: pausedAt !== null, queued: queue.length }),
     /** While editing colors: how the painted colors fit, and the color of a painted face. */
     editing: () => edit && { level: edit.fit.level, problems: edit.fit.problems.map((p) => p.text), paint: edit.paint },
     // The slots with a halo, how many of a slot's faces the 3D view shows unblocked, and
@@ -6664,6 +7704,53 @@ function installProbe() {
       };
       return { behind: hiddenHalos().map(slotName).sort(), opacity: Math.round(haloArrowFade.value * 100) / 100, at: shown ? scr(haloArrow.userData.start) : null, mid: shown ? scr(haloArrow.userData.mid) : null };
     },
+    /**
+     * Lost?: its phase, the candidates left, the question (its spot) and the answers
+     * offered, whether the spot is marked, and how many stickers are drawn gray.
+     */
+    /** How many stickers are drawn gray (a step's or Lost?'s). */
+    grayStickers: () => guideDimmed.filter((m) => stickerMesh3d.includes(m)).length,
+    lostEdit: () => !!lostEdit,
+    /** Makes the person's puzzle the turns followed with turn i made the other way and turn j left out (indices into the step asked from). */
+    lostTruthTwo: (i: number, j: number) => {
+      const l = lost;
+      if (!l) return null;
+      const off = l.steps[l.steps.length - 1].start - l.start;
+      const turns = l.all.map((t, k) => (k === off + i ? { def: t.def, amount: (4 - t.amount) as 1 | 2 | 3 } : t)).filter((_, k) => k !== off + j);
+      const state = l.from.clone();
+      const made = turns.filter((t) => applyTurn(state, t));
+      lostTruth = { made, as: [], at: off + i, slip: "amount", state, grip: [], last: l.all.length - 1 };
+      return made.length;
+    },
+    saveSession: () => saveSession(true),
+    lost: () =>
+      lost && {
+        phase: lost.phase,
+        cands: lost.cands.length,
+        question: lost.question && (lost.question.kind === "color" ? `${slotName(lost.question.slot)}/${COMPASS_FACES[lost.question.dir]}` : `${slotName(lost.question.slot)}?`),
+        answers: [...document.querySelectorAll<HTMLElement>("#lost-opts [data-lost]")].map((b) => b.dataset.lost),
+        marked: !!lostMarker,
+        outlined: !!lostOutlined(),
+        known: lostKnown().size,
+        text: $("lost-q").textContent,
+        gray: guideDimmed.filter((m) => stickerMesh3d.includes(m)).length,
+      },
+    /** Picks candidate i of those left as the person's puzzle (by the turns made), for lostAnswer to answer as. */
+    lostPick: (i: number) => {
+      lostTruth = lost?.phase === "up" || lost?.phase === "last" ? (lost.cands[i] ?? null) : null;
+      return lostTruth && lostTruth.slip;
+    },
+    /** The answer the picked candidate's puzzle gives to the question asked now. */
+    lostAnswer: () => {
+      const l = lost;
+      if (!l || !lostTruth) return null;
+      if (l.phase === "last") return `t:${l.all.length - 1}`;
+      if (l.phase === "up") return centerColor(lostTruth.state, 2);
+      if (l.phase === "front") return centerColor(lostTruth.state, 4);
+      const held = holdAs([lostTruth], l.up!, l.front!)[0].state;
+      if (l.phase === "ask") return answerOf(held, l.question!) ?? (held.occ[l.question!.slot] < 0 ? "empty" : "none");
+      return held.appearanceKey() === l.cands[0].state.appearanceKey() ? "yes" : "no";
+    },
     painted: (slot: string, face: string) => edit?.colors[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)] ?? null,
     /**
      * While editing: the shape as tapped so far (spots emptied and filled that no real
@@ -6671,6 +7758,11 @@ function installProbe() {
      * stickers show as not painted yet and how many dashed outlines are drawn, and where
      * the halo's Hide pill is (client coordinates; null while hidden).
      */
+    /** While editing: what face `face` of slot `slot` shows: a color, "unpainted" (a sticker not colored yet), "plastic", or null where nothing shows. */
+    editFace: (slot: string, face: string) => {
+      const c = edit?.view[slotByName(slot) * 6 + COMPASS_FACES.indexOf(face)];
+      return c === UNPAINTED ? "unpainted" : c === null ? "plastic" : (c ?? null);
+    },
     shapeEdit: () => {
       if (!edit) return null;
       const pill = $("halo-hide");
@@ -6782,7 +7874,7 @@ function installProbe() {
       const s = slotByName(slot);
       return app.current.occ[s] < 0 ? null : app.current.colorAt(s, COMPASS_FACES.indexOf(face));
     },
-    sticker(slot: string, face: string) {
+    sticker(slot: string, face: string, anyFace = false) {
       const s = slotByName(slot);
       const drawn = edit?.shown ?? app.current; // while editing colors, the state drawn underneath
       const id = drawn.occ[s];
@@ -6790,7 +7882,7 @@ function installProbe() {
       if (id < 0 || dir < 0) return null;
       const o = drawn.ori[s];
       const d = [0, 1, 2, 3, 4, 5].find((k) => ROT_DIR[o * 6 + k] === dir)!;
-      if (!PIECES[id].stickers[d]) return null;
+      if (!PIECES[id].stickers[d] && !anyFace) return null;
       const p = meshes[id].localToWorld(new THREE.Vector3(DIRS[d][0] * 0.4945, DIRS[d][1] * 0.4945, DIRS[d][2] * 0.4945)).project(camera);
       const r = canvas().getBoundingClientRect();
       return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };
@@ -6859,6 +7951,91 @@ function installProbe() {
       };
 }
 
+// ------------------------------------------------------------------ the hidden restart dump
+
+/**
+ * The Lab's restart dump (debug info: the start, the turns, a solve with its steps, Lost?
+ * and an edit in progress), kept on this device so a reload (iOS drops a page in the
+ * background when short of memory) doesn't lose a solve: after one, the Lab offers to pick
+ * up where it left off. Saved a moment after things settle, only when it has changed, and at
+ * once when the page is hidden; never while something turns.
+ */
+const SESSION_KEY = "xcube.session";
+const SESSION_DELAY_MS = 1500;
+const SESSION_MAX_AGE_MS = 7 * 24 * 3600 * 1000;
+let sessionTimer: ReturnType<typeof setTimeout> | undefined;
+let sessionLast = "";
+/** While the offer to pick up is open, nothing is saved over the dump it would restore. */
+let sessionOffered = false;
+
+function scheduleSession() {
+  if (sessionTimer !== undefined || sessionOffered) return;
+  sessionTimer = setTimeout(() => {
+    sessionTimer = undefined;
+    saveSession();
+  }, SESSION_DELAY_MS);
+}
+
+/** Whether there is anything worth picking up: turns, a start other than solved, a solve, Lost? or an edit. */
+function sessionWorthKeeping(): boolean {
+  return !!(app.history.length || solving || lost || lostEdit || edit || !isSolved(app.base));
+}
+
+function saveSession(now = false) {
+  if (sessionOffered || restoring) return;
+  if (!now && (anim || queue.length || live || settle || working)) return scheduleSession();
+  try {
+    if (!sessionWorthKeeping()) {
+      if (sessionLast !== "none") localStorage.removeItem(SESSION_KEY);
+      sessionLast = "none";
+      return;
+    }
+    const json = debugInfo();
+    const key = json.replace(/"at": "[^"]*",?/, "");
+    if (key === sessionLast) return;
+    sessionLast = key;
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ savedAt: Date.now(), json }));
+  } catch {
+    // No storage on this device (a private window): nothing to keep.
+  }
+}
+
+/** After a reload, offers the dump kept from before it, if there is a recent one. */
+function offerSession() {
+  let saved: { savedAt: number; json: string } | null = null;
+  try {
+    saved = JSON.parse(localStorage.getItem(SESSION_KEY) ?? "null");
+  } catch {
+    saved = null;
+  }
+  if (!saved?.json || !(Date.now() - saved.savedAt < SESSION_MAX_AGE_MS)) return;
+  let what = "";
+  try {
+    const d = JSON.parse(saved.json);
+    const step = Array.isArray(d.steps) && d.steps.length ? d.steps[d.steps.length - 1].index : 0;
+    what = d.lost ? `Lost? during step ${step}` : d.edit ? "Edit puzzle" : d.solving && step ? `Solving, step ${step}` : `${parseAlg(d.turns ?? "").length} turns`;
+  } catch {
+    return;
+  }
+  sessionOffered = true;
+  $("resume-what").textContent = `${what} · ${keptTime(saved.savedAt)}`;
+  $("resume").hidden = false;
+  const close = (pick: boolean) => {
+    if (!sessionOffered) return;
+    sessionOffered = false;
+    $("resume").hidden = true;
+    document.removeEventListener("pointerdown", outside, true);
+    if (pick) restoreDebug(saved!.json);
+    else saveSession(true);
+  };
+  const outside = (e: Event) => {
+    if (!(e.target as HTMLElement).closest("#resume")) close(false);
+  };
+  $("resume-yes").onclick = () => close(true);
+  $("resume-no").onclick = () => close(false);
+  document.addEventListener("pointerdown", outside, true);
+}
+
 function hotBoot() {
   const hot = (window as any).claude?.hot;
   const start = (data: any) => {
@@ -6878,6 +8055,11 @@ function hotBoot() {
     installProbe();
     render();
     initStore();
+    if (!data?.base) offerSession();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") saveSession(true);
+    });
+    addEventListener("pagehide", () => saveSession(true));
   };
   hot?.snapshot?.(() => ({ base: encodeState(app.base), baseLabel: app.baseLabel, history: formatAlg(app.history), cursor: app.cursor }));
   if (hot?.ready) hot.ready(start);

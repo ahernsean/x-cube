@@ -2,9 +2,9 @@
 // editing the shape.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, visibleColors, type Draft } from "../src/core/edit.ts";
+import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, stickerChoice, visibleColors, type Draft } from "../src/core/edit.ts";
 import { parseAlg } from "../src/core/notation.ts";
-import { PIECES, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, slotAt, type Color, type Kind } from "../src/core/puzzle.ts";
+import { PIECES, FACE_COLOR, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, applyTurns, slotAt, slotName, type Color, type Kind } from "../src/core/puzzle.ts";
 import { decodeState, rotsTo, unreachableReason } from "../src/core/serialize.ts";
 
 const [R, L, U, F, B] = [0, 1, 2, 4, 5];
@@ -628,4 +628,33 @@ test("edit: a core corner with no extensions is said to have none, not one", () 
   // It needs two, and the hint says so; the twists keep only the spots they came from.
   assert.equal(draftProblems(d)[0].text, "This core corner has no extensions, but it has to have two. Add two extensions to this corner, probably in these spots");
   assert.deepEqual([...draftProblems(d)[0].taps!].sort(), [at(2, 1, 1), at(1, 1, 2)].sort());
+});
+
+test("edit: a core piece with two bare faces has its sticker where the shape hint leaves bare, or where a tap puts it", () => {
+  // The owner's edit: a core corner with one extension, its old sticker face where the hint
+  // says to add the second. The sticker was drawn there, under the hint's glass box, and
+  // the face it will end up on was plastic that no color could be put on.
+  const byName = (n: string) => [...Array(NUM_SLOTS).keys()].find((t) => slotName(t) === n)!;
+  const d: Draft = {
+    shape: decodeState("ILTM DXAJ WSWD CZQG RYFO FCYC WCCH HOKS BJYM HRFZ KKUS"),
+    removed: new Set(["Bx.UL", "Bx.UR", "Fx.L", "Fx.DL", "Fx.D", "Fx.DR", "Fx.R"].map(byName)),
+    added: new Set(["Ux.L", "Ux.BL", "Ux.B", "Ux.BR", "Ux.F", "Dx.F", "Dx.FR"].map(byName)),
+  };
+  const corner = byName("DFL"), D = 3;
+  const hint = draftProblems(d).find((p) => p.slots.includes(corner))!;
+  assert.match(hint.text, /^This core corner has only one extension, but it has to have two\. Add an extension to this corner, probably here$/);
+  assert.deepEqual(hint.taps, [byName("Dx.FL")], "the hint fills the spot below it");
+  const shows = draftColors(d, []);
+  assert.equal(shows[corner * 6 + F], UNPAINTED, "so its sticker is on the front, to be colored");
+  assert.equal(shows[corner * 6 + D], null, "and the face the hint covers is plastic");
+  // A tap with a color on the plastic face puts the sticker there instead.
+  assert.equal(stickerChoice(d, corner, D), byName("Dx.FL"));
+  assert.equal(stickerChoice(d, corner, F), byName("Fx.DL"));
+  d.faces = new Map([[corner, byName("Dx.FL")]]);
+  const moved = draftColors(d, []);
+  assert.equal(moved[corner * 6 + D], UNPAINTED);
+  assert.equal(moved[corner * 6 + F], null);
+  // A piece with only one bare face has nothing to choose.
+  const edge = byName("DL");
+  assert.equal([0, 1, 2, 3, 4, 5].map((dir) => stickerChoice(d, edge, dir)).filter((n) => n >= 0).length, 0);
 });

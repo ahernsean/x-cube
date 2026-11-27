@@ -999,6 +999,12 @@ export interface Draft {
   removed: Set<number>;
   /** Outer slots empty in `shape` that have been filled. */
   added: Set<number>;
+  /**
+   * For a core piece with more bare spots than its one sticker, the bare spot its sticker
+   * faces, as a tap with a color chose it (core slot → outer spot). Kept while that spot is
+   * bare; see `stickerSpot`.
+   */
+  faces?: Map<number, number>;
 }
 
 /** Whether slot s is filled in the draft's shape. */
@@ -1264,22 +1270,70 @@ function unitOf(s: number): number[] {
  */
 export function draftColors(d: Draft, paint: readonly (Color | undefined)[]): FaceColors {
   const out: FaceColors = new Array(NUM_SLOTS * 6).fill(undefined);
+  const hinted = hintedSpots(d);
   for (const s of ALL_SLOTS()) {
     if (!draftFilled(d, s)) continue;
     const outer = outwardDir(s) >= 0;
-    const bare = outer ? [] : outerOf(s).filter((n) => !draftFilled(d, n));
     const open = (dir: number) => {
       const n = SLOT_NEIGHBOR[s * 6 + dir];
       return n !== -2 && !(n >= 0 && draftFilled(d, n));
     };
-    // Where the piece in the shape has its sticker, if that face is bare.
-    const drawn = outer || d.shape.occ[s] < 0 ? -1 : [0, 1, 2, 3, 4, 5].find((dir) => d.shape.colorAt(s, dir) !== null && open(dir)) ?? -1;
+    const spot = outer ? -1 : stickerSpot(d, s, hinted);
     for (let dir = 0; dir < 6; dir++) {
       const n = SLOT_NEIGHBOR[s * 6 + dir];
       if (!open(dir)) continue;
-      const sticker = outer ? n === -1 : drawn >= 0 ? dir === drawn : bare.length === 1 && n === bare[0];
+      const sticker = outer ? n === -1 : n === spot;
       out[s * 6 + dir] = sticker ? (paint[s * 6 + dir] ?? UNPAINTED) : null;
     }
   }
   return out;
+}
+
+/**
+ * The bare spot a core piece's one sticker faces in the draft, or -1 for none: the one
+ * chosen by a tap (`Draft.faces`); else, where the piece has more bare spots than one,
+ * the one the shape hint leaves bare (`hintedSpots`: the hint fills the others); else the
+ * face the piece in the shape has its sticker on, if bare; else its only bare spot.
+ */
+function stickerSpot(d: Draft, s: number, hinted: Map<number, number>): number {
+  const bare = outerOf(s).filter((n) => !draftFilled(d, n));
+  if (!bare.length) return -1;
+  const chosen = d.faces?.get(s);
+  if (chosen !== undefined && bare.includes(chosen)) return chosen;
+  const hint = hinted.get(s);
+  if (hint !== undefined && bare.includes(hint)) return hint;
+  if (d.shape.occ[s] >= 0) {
+    const was = bare.find((n) => d.shape.colorAt(s, [0, 1, 2, 3, 4, 5].find((dir) => SLOT_NEIGHBOR[s * 6 + dir] === n)!) !== null);
+    if (was !== undefined) return was;
+  }
+  return bare.length === 1 ? bare[0] : -1;
+}
+
+/**
+ * For each core piece with more than one bare spot, the one bare spot the shape hint's
+ * taps leave bare, when there is exactly one (the hint fills the rest): so a sticker isn't
+ * drawn where the hint says to put an extension. Only while the shape is wrong.
+ */
+function hintedSpots(d: Draft): Map<number, number> {
+  const out = new Map<number, number>();
+  const many = ALL_SLOTS().filter((s) => outwardDir(s) < 0 && draftFilled(d, s) && outerOf(s).filter((n) => !draftFilled(d, n)).length > 1);
+  if (!many.length || (!d.removed.size && !d.added.size)) return out;
+  const taps = new Set(shapeTaps(d));
+  for (const s of many) {
+    const left = outerOf(s).filter((n) => !draftFilled(d, n) && !taps.has(n));
+    if (left.length === 1) out.set(s, left[0]);
+  }
+  return out;
+}
+
+/**
+ * The outer spot a tap on face `dir` of core piece s would put its sticker against: that
+ * face's spot when it is bare and the piece has more than one bare spot (so the sticker
+ * could be on either); else -1.
+ */
+export function stickerChoice(d: Draft, s: number, dir: number): number {
+  if (outwardDir(s) >= 0 || !draftFilled(d, s)) return -1;
+  const n = SLOT_NEIGHBOR[s * 6 + dir];
+  const bare = outerOf(s).filter((t) => !draftFilled(d, t));
+  return bare.length > 1 && bare.includes(n) ? n : -1;
 }

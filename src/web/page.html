@@ -71,7 +71,6 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 @media (max-width: 440px) { .views > .btn.small { font-size: 12px; padding: 4px 4px; } }
 @media (max-width: 380px) { .views { gap: 2px; } .views > .btn.small { padding: 4px 2px; letter-spacing: -0.02em; } }
 .hold-row { display: flex; align-items: center; margin-top: 6px; min-width: 0; }
-.btn.edit-btn { color: var(--accent); }
 .btn.edit-btn[hidden] { display: none; }
 .hold { margin: 0; font-size: 13px; min-width: 0; flex: 1 1 auto; }
 /* Orientation labels around the 3D view: the face pointing each way. */
@@ -79,7 +78,18 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .cmp { position: absolute; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border: 0; border-radius: 999px; font: inherit; color: inherit; letter-spacing: inherit; background: color-mix(in srgb, var(--panel) 75%, transparent); pointer-events: auto; cursor: pointer; }
 .cmp:hover { color: var(--ink); }
 .cmp:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.cmp i { width: 9px; height: 9px; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--tile-edge); }
+.cmp.stack { flex-direction: column; gap: 1px; padding: 4px 7px 3px; }
+/* The letter is the face's letter in turn notation, so it stands out from the rest of the word. */
+.cmp-key { color: var(--ink); font-weight: 800; }
+.cmp-word { white-space: nowrap; }
+/* The rest of the word unfolds from the letter while the view rests (COMPASS_FOLD_MS). */
+.cmp-rest { display: inline-block; vertical-align: bottom; overflow: hidden; max-width: 0; opacity: 0; font-weight: 600; transition: max-width 0.4s ease, opacity 0.4s ease; }
+.compass.spelled .cmp-rest { max-width: 4em; opacity: 1; }
+.cmp-dir { width: 18px; height: 18px; flex: none; overflow: visible; fill: currentColor; }
+/* The faint edge today's squares had, so a white or yellow arrow shows on the pale pill. */
+.cmp-dir .cmp-arrow, .cmp-dir circle:first-child { stroke: var(--tile-edge); stroke-width: 1; }
+.cmp-dir .cmp-mark { fill: #161616; }
+.cmp-dir path.cmp-mark { stroke: #161616; stroke-width: 2.2; }
 /* Positioned each frame where the face's axis meets the edge of the view. */
 .cmp { left: 0; top: 0; will-change: transform; transition: opacity 0.15s; }
 .cmp.away { background: transparent; box-shadow: inset 0 0 0 1px var(--muted); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--muted) 60%, transparent); }
@@ -162,6 +172,20 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 @media (prefers-reduced-motion: reduce) { .btn.working { animation: none; } }
 /* The Solve panel: the order and Start solving until a solve starts; then the step's controls. */
 #guide:not(.solving) .solve-only, #guide.solving .solve-idle { display: none; }
+/* Lost?: the interview takes the panel's place while it asks. */
+#guide.lost-on > :not(.lost-box):not(h2) { display: none !important; }
+.lost-box { display: grid; gap: 8px; }
+.lost-box[hidden] { display: none; }
+.lost-q { margin: 0; font-size: 15px; line-height: 1.4; }
+.lost-count { display: block; font-size: 12px; color: var(--muted); }
+.lost-count:empty { display: none; }
+.lost-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.lost-swatch { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 4px 12px 4px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--ink); font: 600 14px var(--f-body); cursor: pointer; }
+.lost-swatch i { width: 26px; height: 26px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--tile-edge); }
+.lost-swatch i.bare { background: var(--unstickered); }
+.btn.lost-text { min-height: 40px; }
+.lost-cancel { justify-self: start; }
+.lost-break { flex-basis: 100%; height: 0; }
 /* The turn list's ✕: one tap arms it ("Clear?"), a second clears. */
 .list-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .list-row > .history { flex: 1 1 auto; min-width: 0; }
@@ -170,6 +194,9 @@ h2 { font-family: var(--f-display); font-weight: 600; font-size: 17px; letter-sp
 .list-clear.armed { background: var(--bad-bg); color: var(--bad); }
 .confirm { position: fixed; z-index: 40; left: 50%; top: 30%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px); padding: 12px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28); display: grid; gap: 10px; }
 .confirm[hidden] { display: none; }
+/* Over the top of the 3D view, where messages float, so it covers none of the controls. */
+.confirm.resume { top: calc(env(safe-area-inset-top, 0px) + 56px); }
+.resume-what { font-size: 13px; color: var(--muted); margin-top: -6px; }
 .confirm p { margin: 0; font-weight: 600; }
 /* The solve's steps, newest at the top, under the shown step's text; Stop solving at the foot. */
 .solve-steps { margin-top: 4px; border-top: 1px solid var(--line); padding-top: 3px; }
@@ -368,6 +395,28 @@ details[open] summary { margin-bottom: 8px; }
 .legend code { font-family: var(--f-mono); color: var(--ink); }
 .speed { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); flex: 1 1 auto; min-width: 0; }
 .speed input { flex: 1 1 auto; min-width: 0; }
+.speed { position: relative; }
+/* During a solve: big buttons to follow a step a turn at a time (updateSolveBar). */
+.solve-bar { display: flex; gap: 8px; align-items: stretch; }
+.solve-bar[hidden] { display: none; }
+.solve-bar .btn { min-height: 48px; border-radius: 10px; font-size: 20px; }
+.big-back { flex: 0 0 72px; }
+.big-back sub, .big-next sub { font-size: 11px; margin-left: 1px; }
+.big-next { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.big-turn { font: 700 28px var(--f-display); letter-spacing: 0.02em; }
+.big-word { font-size: 18px; font-weight: 700; }
+/* On a wide screen, straight under the 3D view and larger (placeSolveBar). */
+.solve-bar.by-view { margin-top: 10px; }
+.solve-bar.by-view .btn { min-height: 64px; font-size: 24px; }
+.solve-bar.by-view .big-back { flex-basis: 96px; }
+.solve-bar.by-view .big-turn { font-size: 36px; }
+.solve-bar.by-view .big-word { font-size: 22px; }
+/* Over the 3D view while the turns playing are paused (a tap pauses, another goes on). */
+.paused-pill { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 82%, transparent); color: var(--panel); font-size: 14px; font-weight: 600; pointer-events: none; z-index: 4; }
+.paused-pill[hidden] { display: none; }
+/* Over the slider's thumb while it moves: how long a turn takes. */
+.speed-tip { position: absolute; bottom: calc(100% + 4px); transform: translateX(-50%); padding: 3px 8px; border-radius: 6px; background: var(--ink); color: var(--panel); font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.4s ease; z-index: 5; }
+.speed-tip.on { opacity: 1; transition: opacity 0.1s ease; }
 @media (prefers-reduced-motion: reduce) { .mv:active { transform: none; } }
 /* Wide screens: the 3D view and the playback strip on the left, the panels stacked in a
    column on the right, each collapsing from its heading. */
@@ -455,6 +504,7 @@ details[open] summary { margin-bottom: 8px; }
       <button class="btn small tool-btn info corner br" id="render-btn" aria-label="Display options" title="Display options" aria-expanded="false" aria-controls="render-pop"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg></button>
       <button class="btn small tool-btn info corner tl" id="undo" aria-label="Undo the last turn" title="Undo the last turn" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
       <button class="halo-hide" id="halo-hide" hidden>Hide</button>
+      <div class="paused-pill" id="paused" hidden aria-live="polite">Paused · tap to go on</div>
       <div class="pop near-top" id="info-pop" hidden>
         <div class="info-text" id="info-text"></div>
         <p class="hint info-debug"><button class="link-btn" id="copy-debug" title="Copies what the Lab is showing and doing, as text, to paste for the developer">Copy debug info</button> · <button class="link-btn" id="paste-debug" title="Puts back what copied debug info shows, even an edit that isn't valid">Paste debug info</button> <button class="debug-history" id="debug-history" aria-label="Saved debug info" title="Puts back a copy saved by Copy debug info" aria-expanded="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3.5 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button> <button class="debug-clear" id="debug-clear" aria-label="Clear saved debug info" title="Clear all saved debug info" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10 11v5M14 11v5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="ask">Clear?</span></button></p>
@@ -510,9 +560,14 @@ details[open] summary { margin-bottom: 8px; }
         <span class="counter" id="counter">0 / 0</span>
         <div class="status" id="status" aria-live="polite"><span class="chip" id="shape-chip"></span><span class="outer-grid" id="outer-grid" aria-label="Outer turns"></span></div>
       </div>
-      <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="52"></label>
+      <div class="solve-bar" id="solve-bar" hidden>
+        <button class="btn big-back" id="big-back" aria-label="Back one turn" title="Back one turn">◀<sub>1</sub></button>
+        <button class="btn primary big-next" id="big-next" data-kind=""></button>
+      </div>
+      <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="63"><output class="speed-tip" id="speed-tip" for="speed" aria-live="polite"></output></label>
     </div>
     <p class="message" id="message" hidden></p>
+    <div class="confirm resume" id="resume" role="dialog" aria-labelledby="resume-text" hidden><p id="resume-text">Pick up where you left off?</p><span class="resume-what" id="resume-what"></span><div class="row"><button class="btn small primary" id="resume-yes">Pick up</button><button class="btn small" id="resume-no">Start fresh</button></div></div>
     <div class="confirm" id="confirm" role="alertdialog" aria-labelledby="confirm-text" hidden><p id="confirm-text">End the solve in progress?</p><div class="row"><button class="btn small primary" id="confirm-yes">End solve</button><button class="btn small" id="confirm-no">Keep solving</button></div></div>
   </div>
 
@@ -595,7 +650,8 @@ details[open] summary { margin-bottom: 8px; }
       <h2>Solve step by step</h2>
       <!-- Not solving: pick the order, then start. Solving: the step's buttons and its text. -->
       <div class="row solve-idle"><span class="pad-label">Order</span><div class="mods guide-modes" role="group" aria-label="Order of the steps"><button data-guide-mode="kinds" title="Every X-face corner, then every extension edge">Corners, then edges</button><button data-guide-mode="layers" title="White X-face edges and corners, the side edges, then the yellow X-face">Top to bottom</button></div></div>
-      <div class="row guide-btns"><button class="btn primary" id="next-step">Start solving</button><button class="btn solve-only" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn solve-only" id="guide-show" title="Turn the view to where this step's paths begin and end">Show step</button></div>
+      <div class="row guide-btns"><button class="btn primary" id="next-step">Start solving</button><button class="btn solve-only" id="guide-start" title="Go back to where this step begins">Step start</button><button class="btn solve-only" id="guide-show" title="Turn the view to where this step's paths begin and end">Show step</button><button class="btn solve-only lost-btn" id="lost" title="Your puzzle doesn't match? Answer a few questions about it to get back on track">Lost?</button></div>
+      <div class="lost-box" id="lost-box" hidden><p class="lost-q"><span class="lost-count" id="lost-count"></span><span id="lost-q"></span></p><div class="lost-opts" id="lost-opts"></div><button class="link-btn lost-cancel" data-lost="cancel">Cancel</button></div>
       <p class="guide-line" id="guide-line" aria-live="polite"></p>
       <div class="solve-steps solve-only"><div class="steps-top"><p class="steps-head" id="steps-head"></p><button class="pill-toggle" id="guide-colors" aria-pressed="false" title="Show every piece in its colors, instead of graying what the step leaves for later">Full color</button></div><ol class="steps-list" id="steps-list" aria-label="The steps of this solve, newest first"></ol></div>
       <button class="btn solve-only stop-solve" id="guide-stop" title="Stop solving: drop the step and its grays; the turn list stays as it is">Stop solving</button>

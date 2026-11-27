@@ -37,7 +37,7 @@ faces, so the puzzle changes shape.
 ## Pieces
 
 The owner says **piece**, the twisty-puzzle community's word for one of the movable parts
-(not "cubelet" or "cubie", which fit only cubes). A piece is the unit the model tracks:
+(not "piece" or "cubie", which fit only cubes). A piece is the unit the model tracks:
 an extension center and the core center behind it are fused, one part in the hand, but two
 pieces here. There are 62 in the model; 52 matter for solving. Kinds by connectivity (`Kind` in `src/core/puzzle.ts`):
 
@@ -247,6 +247,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - `src/core/solve.ts`: the step-by-step solver (see "Solving method" above).
 - `src/web/planner.ts`, `src/web/plan-worker.ts`: the step guide's plan of the whole solve, made
   in a Web Worker.
+- `src/core/lost.ts`: Lost? in the Lab: the positions one slip in followed turns gives, and the questions that tell them apart.
 - `src/cli/xc.ts`: command-line driver (see `README.md`).
 - `src/web/`: **X-Cube Lab**, the browser viewer, built by `scripts/build-web.ts` into
   `dist/x-cube-lab.html` (published as a claude.ai artifact, which supplies the document
@@ -270,11 +271,50 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - **Views:** Home (three-quarter), Front, Back, Left, Right, Up, Down. The side views tip
   the top 16.6 degrees toward the viewer (from the owner's saved view).
 - **Edge labels:** the six face letters, each placed where that face's axis, as projected on
-  screen, meets the edge of the 3D view; tapping one turns the view to that face. They are
+  screen, meets the edge of the 3D view; tapping one turns the view to that face. Beside
+  each letter, an arrow in the color of that face's center points the way the face's axis
+  points on screen, shorter as the axis turns toward or away from the viewer, and drawn in
+  perspective (`compassArrowPath`, `COMPASS_EYE`): a flat arrow lying along the axis, seen
+  from 30 arrow units away, so one tipped toward the viewer widens toward its head and one
+  tipped away narrows (the owner saw Up, tipped 28 degrees toward him, as pointing straight
+  up when only its length showed the tip); nearly
+  head-on (its projection under `COMPASS_HEAD_ON`, 0.26: within about 15 degrees; at 27 a dot
+  surprised the owner, and read as a record button) it is a disc with a dot (toward the
+  viewer) or a cross (away), as on a diagram, which the 3D view's ⓘ help explains. Every
+  label shows, head-on ones too (one pointing away at 60% opacity); exactly head-on, where
+  its direction on screen is undefined, it goes toward the bottom left, the corner without a
+  button (head-on labels once faded out entirely, from before they had a dot or a cross). The arrows have no dark outline, only the
+  faint `--tile-edge` hairline, without which a white arrow vanished on the pale pill (a
+  play-tester turning a tipped-over puzzle asked for arrows to tell which way each face
+  points; arrows standing out of the puzzle itself were mocked up too, and set aside
+  because they covered pieces). They are
   foreshortened: a label on an axis toward the viewer is drawn larger, one pointing away
   smaller (scale 0.85 to 1.5, `COMPASS_MIN`/`COMPASS_MAX`), nearer ones on top. A label
   slides along its edge only to clear another label or a corner button, so it stays near
-  where its axis meets the edge.
+  where its axis meets the edge: to the nearest spot clear of everything placed before it,
+  just before or just after one of them, so it stays on its own side of a label in its way
+  (always sliding toward the middle of the edge sent Right over Down and Left over Up, both
+  onto the same half of the view, which the owner noticed). Labels are placed faces toward
+  the viewer first, then faces away, each the most in the screen's plane first, and head-on
+  ones (a dot or a cross) last, so a label pointing at you keeps its spot and one pointing
+  away slides (the owner's priority). Its arrow is drawn once it is placed (`compassArrowAngle`):
+  a slid label is off the line its axis makes through the middle, and in perspective a line
+  parallel to the axis under it runs at another angle (the owner noticed Left, slid clear
+  of Undo, 3.4 degrees off), so the arrow takes the turn between the axis's direction on
+  screen under the two spots (only the turn, so an arrow beyond its vanishing point, a face
+  tipped well away, doesn't flip; the probe's `axisAt` checks it with three.js's projection).
+  The angle is taken where the arrow itself is (`compassArrowOffset`, measured from the
+  label as drawn), not at the label's middle: the arrow sits above the word or beside the
+  letter, and near a vanishing point the direction turns fast (the owner saw Left, its axis
+  well away, 3 degrees off parallel with the puzzle's edges once spelled out). Once the puzzle has gone untouched for 2.5 seconds
+  (`COMPASS_QUIET_MS`), each label spells out its face ("Right", "Up", "Back"), the rest of
+  the word unfolding from the letter, and only the next touch on the puzzle (the 3D view)
+  folds it back (`COMPASS_FOLD_MS`, 0.4 s; a play-tester's idea: words for someone
+  looking, letters out of the way while turning). A turn played, the view turning or a tap
+  elsewhere on the page leaves the labels as they are: the owner found them flipping back
+  and forth too often while following a solve. The letter is bolder and darker than the rest of the word,
+  since it is the face's letter in turn notation. On the left and right edges the word sits
+  under the arrow, which keeps the label narrow; on the top and bottom, beside it.
 - **Corner buttons** of the 3D view, round icons with no button edge (drawn as SVG, so the
   ⓘ and ◐ circles match): ⓘ (help) top right, ◐ (Display) bottom right, and ↶ (Undo, the
   last turn however it was made) top left, shown only while there is a turn to undo.
@@ -287,7 +327,13 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   in CSS (the browser's own marker is hidden).
 - **Gestures:** swipe on the cube turns the layer under the finger, live, settling to the
   nearest quarter turn; long press then drag, or drag the background, tumbles the view;
-  two fingers spin it; double tap (cube or background) undoes the last turn. The ⓘ in the
+  two fingers spin it; double tap (cube or background) undoes the last turn. While turns
+  play, a tap pauses them at once, the turn in progress stopped part-way (`pausedAt`; a
+  "Paused · tap to go on" pill over the view), and another tap goes on from there; ■ while
+  paused lets the turn in progress finish and stops (play-testers whose puzzle jams fell
+  behind a step playing on its own). During a step of a solve, with turns of it still to
+  make (`stepUnderway`), the puzzle on the screen isn't turned by hand: a swipe tumbles the
+  view and a double tap undoes nothing, since a turn made there would leave the step. The ⓘ in the
   3D view's corner shows help for the mode the Lab is in (`infoHelp`), since taps and drags
   do different things in each: turning the puzzle (the gestures above), a solve (those,
   and how to read a step's grays and paths), and Edit puzzle (what a tap does with the
@@ -303,8 +349,20 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   artifact's database tools: the owner can say "look at the latest debug info" instead of
   pasting it ("Debug info copied, and saved for Claude at Nov 20, 2026, 1:19:52 AM", the
   time as the saved copies' list gives it).
-  **Paste debug info**, beside it, puts the position, the view and the edit back (the
-  probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
+  **Paste debug info**, beside it, puts the position, the view and the edit back, and a
+  solve in progress with its steps (`restoreSolve`: the solver is deterministic, so each
+  step comes again from a plan made from where it starts, in the order it was solved in;
+  a Back on track step, which no plan has, comes back from its own turns, going back to
+  the plan step its turns end at (planned from there if need be); the
+  message says "Solve restored: 10 steps", or how many of them came back), so Next step and
+  Lost? go on from there. Debug info is a restart dump: saved during Lost?, it also holds
+  the solve's own turn list, cursor and shown step (the list shown then is a guess at the
+  person's) and every answer given, in order (`Lost.log`, the last turn named included),
+  and whether Lost?'s Edit puzzle was open; Lost? is deterministic, so once the solve is
+  back, `restoreLost` starts it again from the same step and replays the answers, which
+  brings the interview to the same question with the same colors told, or opens its Edit
+  puzzle, then set as it was, with Continue search ("Solve and Lost? restored: 10 steps,
+  5 answers") (the probe's `restoreDebug` does the same for tests): from the clipboard, or where the browser
   won't read it, from text pasted into the field that opens. Beside it, a clock (shown
   with the shared database) opens a list of the saved copies, newest first, each by the
   date and time it was saved, to the second, in small type, and the device ("Nov 20, 2026,
@@ -316,6 +374,15 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   message holding it can be pasted; text that isn't debug info is
   refused ("That isn't debug info"), and during a solve it asks first, as setting a new
   start does. So the owner can come back to an invalid edit after the Lab is republished.
+- **Hidden restart dump:** the same JSON as Copy debug info is kept on the device
+  (`localStorage`, `xcube.session`) a moment after things settle (`SESSION_DELAY_MS`, 1.5 s),
+  only when it has changed, at once when the page is hidden, and never while something
+  turns; about 0.2 ms a save. iOS drops a page in the background when short of memory, and
+  a play-tester's solve, Lost? and edit were lost that way. After a reload, a small dialog
+  over the top of the 3D view offers it ("Pick up where you left off?", what it was and
+  when: "Solving, step 10 · Nov 26, 2026, 3:46:46 AM"); **Pick up** restores it as Paste
+  debug info does, **Start fresh** (or a tap anywhere else) drops it. Nothing worth keeping
+  (no turns, a solved start, no solve, Lost? or edit) keeps nothing; kept for 7 days.
 - **Display panel:** the ◐ in the 3D view's corner opens the Edge glow, Shading, Shadows
   and Gloss switches, over the view and over the edge labels.
 - **Layout** (narrower than 900 px, a phone): one screen, and the page never scrolls. The
@@ -357,7 +424,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   turn just before it; only if the step is too long does its right end go off the edge. The turn list ends in a ✕ (while there are turns): one tap turns
   it into "Clear?", a second within 3 seconds clears the list as Start from here does. ⏮ back to the start (drawn as a bar and the same ◀ as its neighbors, since iOS
   draws the ⏮ character as an emoji), ◀ play backward to the start, ◀1 back one turn, ▶1
-  forward one, ▶ play to the end; the slider sets 1600 to 30 ms per quarter turn.
+  forward one, ▶ play to the end; the slider sets 5000 to 30 ms per quarter turn (about
+  200 by default; play-testers whose puzzle jams fell behind even at 1600), and while it
+  moves a tip over its thumb says how long a turn takes ("0.20 s per turn"), fading a
+  moment after it is let go.
 - **Start from here** (`#clear`, in the Start panel): empties the turn list; the position
   shown becomes the start ("Current position").
 - **Shuffle:** 30 random legal turns (inner, slices, outer when complete; never the same
@@ -493,7 +563,13 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
     and is drawn as a dashed outline on the plastic, with no edge glow; the line counts
     them ("6 stickers have no color yet", with a halo on their pieces), and Done waits
     for them. Where a piece's stickers are follows from the shape around it alone
-    (`draftColors`), so a sticker can be painted while the shape is still wrong. Until
+    (`draftColors`), so a sticker can be painted while the shape is still wrong. A core
+    piece with more bare faces than its one sticker (a corner with one extension) has its
+    sticker on the face the shape hint leaves bare, not one the hint's glass box covers
+    (`hintedSpots`; it was drawn where the piece had it before the edit, under the box, and
+    the owner couldn't color the face it would end up on); a tap with a color on one of its
+    plastic bare faces moves the sticker there and colors it (`stickerChoice`,
+    `Draft.faces`, kept in debug info). Until
     every center is painted, the center arrangement isn't checked.
   - **Painting:** pick a color, then tap stickers; a tap on a sticker that already shows the
     picked color clears it (no color yet). A painted sticker's edge glow takes the
@@ -616,7 +692,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   step is added the older ones slide down to make room; on phones the list scrolls between
   the step's line and Stop solving. The order can't change during a solve. Anything that
   sets a new start (Shuffle, Reset, Edit puzzle, a code, a saved position, an algorithm,
-  clearing the turn list) asks "End the solve in progress?" first, and ends it. In the
+  clearing the turn list) asks "End the solve in progress?" first, and ends it; so does
+  Stop solving itself (a play-tester tapped it by mistake and was thrown out of the solve). In the
   playback strip, once a solve's turns have all played, ▶ gives way to a **Next step**
   button (two dots with an arrow from one to the other), which
   loads the next step; ▶ comes back with it. **Next
@@ -703,6 +780,15 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   now ("now blue is up"). A regrip step may flip the puzzle over (`x2`); the Hold line then
   says yellow is up. Stages are named by color, not place ("Yellow core edges", "White
   corners"), since the puzzle may be held either way up.
+  **Big buttons:** during a solve a row of them sits under the playback strip
+  (`updateSolveBar`), for following a step a turn at a time on a puzzle in hand: ◀₁ backs
+  up one turn, and the wide one makes the next turn, written large on it ("▶₁ R'"), and
+  waits, so a puzzle that jams never falls behind (play-testers fell behind a step playing
+  on its own, not having found ▶₁). While turns play it reads Pause (as a tap on the 3D view
+  does) and while paused Go on; once the turns have all played it loads the next step.
+  Hidden outside a solve, during Lost? and while editing. On a wide screen (an iPad) they
+  sit straight under the 3D view, as wide as it, and larger (`placeSolveBar`): as near the
+  puzzle as they can be without covering it (over the view they would hide the step's paths).
   Each step the guide has loaded stays in the turn list in a rounded box behind a tag
   ("3. Corners"), the shown step's box outlined, a cycle step's setup turns underlined, their
   undoing underlined in italics, and a regrip ringed (the solver's `parts`); tapping a tag, or **Step start**, shows
@@ -713,6 +799,88 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   takes the step's turns out of the turn list (a turn by hand, Clear, Edit) drops the step,
   its grays and its line; so does Edit puzzle. Going to another panel keeps the step. With
   no step, the line says what Next step does (drawn by CSS, so it isn't in the line's text).
+- **Lost?** (`#lost`, the fourth button of the Solve panel's row during a solve): for
+  someone following a step on their own puzzle whose puzzle no longer matches the screen
+  (a play-tester read a turn's ' wrong and couldn't get back). It asks about their puzzle
+  instead of having them repaint it (`src/core/lost.ts`). It first asks which turn of the
+  step shown (or the newest step) they made last, one button a turn, the last one
+  highlighted (not asked for a step of one turn), and **I don't know** under them, which
+  takes any turn of the step as the last (sampled: found every time, 6.5 questions on
+  average and 10 at most against 5.3 and 9 with the turn named, 12 cases; about 0.25 s to
+  build). The person may misremember it, so the
+  candidates (`endCandidates`) are what one slip in the turns up to that one, or up to a
+  turn or two either side of it, gives, and no slip up to any turn of the step; the slip
+  anywhere in the step and in every step back to back before it, as far back as the solve
+  goes: a turn made by another amount, left out, made twice,
+  as the other layer's turn (r for R, and the reverse), or as another face's inner turn by
+  the same amount (L for R); a turn the puzzle won't make is left out, as the person
+  couldn't make it either; no slip at all is a candidate too, and candidates that look
+  alike are one. Sampled with slips 1 to 5 turns before the last, over 6 to 12 steps, the
+  right one is found every time in 5.2 questions on average and 6 at most (12 cases),
+  besides the centers; 941 candidates for 20 steps take under 0.1 s. With the last turn
+  really up to two either side of the one named, 5.3 on average and 9 at most (12 cases);
+  a slip's words then also say which turn was made last. It then asks which center color is on top and which faces the
+  person, and turns every candidate whole to be held that way, and the puzzle shown with
+  them (the turns' result with no slip); then, one at a time, the
+  question whose answers split the candidates left most evenly (then the spot easiest to
+  look at: top, front and right before bottom and back), each saying where to look on the
+  puzzle as the person holds it, by the side and its center, with no colon (`lostQuestionWords`:
+  "Look at your puzzle, not the screen. Over on the right side, the one with a red center,
+  what color is the sticker shown in the ring?"; the centers' colors are the same in every
+  candidate held that way; a play-tester lost track of which way was up as the view turned
+  to each spot, so the view also turns there as slowly as the slowest turn,
+  `LOST_VIEW_MS_PER_QUARTER`, 1600 ms a quarter turn): the color in a ring on one face
+  (answers: the colors some candidate shows there, "No sticker", **No piece here** where
+  the spot can be empty, which is an extension spot and never a core one (`canBeEmpty`),
+  and **None of these**), or whether there is a piece at an extension spot ("Is there a piece here?", as Edit
+  puzzle's hints say "here"), marked as Edit puzzle marks a piece: the halo's outline around
+  the piece there, or around a glass box in the spot when it is empty (the Shape tool's,
+  1.4 times as large, `LOST_GHOST_SCALE`), hidden where the puzzle is in front of it (a box
+  drawn over everything confused a play-tester where it marked a piece already there). Meanwhile
+  the puzzle shown is where the step should leave it, all gray (matte, as the step guide's
+  grays are: the stickers' film made a gray seen face-on look white; so it can't be read for
+  theirs) except what the person has told: the two centers in the colors named, and each
+  sticker answered in its color, kept as the view turns (`lostKnown`); the view
+  turns to each spot, the turn list and the tabs are set aside, and swipes on the cube
+  tumble the view instead of turning. Sampled over 476 steps (two steps' slips), the
+  right position is found every time, after 3.3 questions about spots on average and 6
+  at most, besides the two about centers. Found, it shows that position in full color,
+  says what the slip was ("Turn 4 of step 5, R', was made as R.") and asks whether their
+  puzzle looks like this. **Yes**: the turn list takes the turns they made (and the
+  regrip to how they hold it), then a **Back on track** step (stage `recover`, numbered
+  as the step it goes back to, graying nothing, with no paths) that undoes them, back to
+  where the step the slip was in began; Next step after it gives that step again with
+  the same number. When there is nothing to undo (a step's only turn left out), no step
+  is loaded: the message says so, and Next step gives the step again (an empty step in the
+  turn list froze the page). With no slip, nothing is undone: held as the screen is, the turn list
+  stays and the position goes to the turn they made last ("Your puzzle is where turn 6
+  of step 10 leaves it"). **No**, No piece here or None of these:
+  it **gives up** and says so, in the first person, as Lost? speaks to the person ("I can't
+  find how your puzzle got this way", why, and what to do), with **Edit puzzle** (not "color": the editor changes the shape too), which opens Edit
+  puzzle, starting from the position found nearest, while the solve stays (no "End the
+  solve?"; `lostEdit`). There Done reads **Continue search** and Cancel **Cancel edit**; Continue search looks
+  again from the puzzle edited, now known exactly, with every last turn from six before
+  the one named to the end of the turns: a way Lost? knows that gives it loads
+  the Back on track step as Yes does; with none, the message says so and the solve starts
+  again from it. **Cancel** there, as in the interview, puts the turn list, the steps and
+  the shown step back as they were. Each candidate's answers come from the model, so None
+  of these means a slip it doesn't list (two slips, for one). Starting Lost? drops a
+  question still waiting ("End the solve in progress?"), and Edit puzzle ends an
+  interview: answered under one, it left the editor gray.
+  **Two stacked mistakes:** asked from a Back on track step (a slip, then another while
+  putting it right), the candidates also take two slips in that step's last 14 turns up to
+  the one named (`twoSlipCandidates`, `LOST_TWO_SLIP_TURNS`; about 1,700 candidates, 0.1 s;
+  sampled, found every time in 7.1 questions on average and 9 at most, 12 cases), or with
+  **I don't know**, up to each turn of that step as the one they stopped at, both slips
+  within the 6 turns before it (`LOST_TWO_SLIP_UNKNOWN`; a 29-turn step gives about 9,500
+  candidates in 0.4 s, where 14 turns gave 44,000 in 2.2 s), and the
+  words name both ("Two turns went another way: turn 26 of step 1, F', was made as F, and
+  turn 28, R', was left out."). Continue search, knowing the puzzle exactly, tries two slips
+  anywhere in the step asked from, stopping after any of its turns, once one slip finds
+  nothing: it stops at the first that looks like the puzzle edited, held any way
+  (`twoSlips`, `findAsHeld`, which compares the colors facing away on the extension spots
+  before the whole look; a 29-turn step that finds nothing takes about 1 s). Elsewhere the interview takes one mistake, which keeps it short; more than that
+  ends in Edit puzzle.
 - **Hold line:** under the view buttons, "Hold: white up, blue front, orange right": the
   center colors up, toward you and on your right as they are now (slice turns move the side
   centers). Tell the owner how to hold the cube from it, never from the solved colors.

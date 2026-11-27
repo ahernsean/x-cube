@@ -154,7 +154,10 @@ async function resetToSolved(page) {
 
 /** Picks the solve's order, stopping a solve under way first (the order is chosen between solves). */
 async function setOrder(page, mode) {
-  if (!(await page.$eval("#guide-stop", (b) => b.disabled))) await page.click("#guide-stop");
+  if (!(await page.$eval("#guide-stop", (b) => b.disabled))) {
+    await page.click("#guide-stop");
+    await page.click("#confirm-yes");
+  }
   await page.click(`[data-guide-mode="${mode}"]`);
 }
 
@@ -706,6 +709,10 @@ labTest("drawing: the 3D view draws every sticker in place and in the model's co
 
 labTest("drawing: the views are drawn only when something in them changes", async ({ page, check, probe, settle }) => {
   // At rest nothing is drawn; a turn draws until it settles, and the last frame shows it.
+  // The edge labels unfold once, 2.5 s after the page opens (drawn while they unfold); let
+  // that pass first, so it can't fall in a window measured below.
+  await page.waitForFunction(() => document.querySelector(".compass.spelled"), null, { timeout: 10000 });
+  await page.waitForTimeout(600);
   await settle();
   const frames = async (ms) => {
     const a = await probe("drawCount");
@@ -876,13 +883,181 @@ labTest("turn buttons: a tap turns, a long press turns the inverse", async ({ pa
   check((await probe("turns")) === "U U'", `tap on U turns U, a long press turns U' (turns "${await probe("turns")}")`);
 });
 
+labTest("edge labels: each arrow, in its center's color, points out along its face's axis; head-on, a dot or a cross", async ({ page, check, probe, settle }) => {
+  await page.waitForTimeout(200);
+  // From Home, every label's arrow points from the middle of the view toward the label (the
+  // label sits where the face's axis meets the edge), in the color of that face's center.
+  const arrows = await page.evaluate(() => {
+    const r = document.getElementById("scene").getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    return [...document.querySelectorAll(".cmp")].map((el) => {
+      const b = el.getBoundingClientRect();
+      const svg = el.querySelector("svg");
+      const arrow = svg.children[0];
+      const m = /^([-\d.]+)$/.exec(arrow.getAttribute("data-angle") ?? "");
+      return { face: el.textContent[0], color: getComputedStyle(svg).color, shown: arrow.style.display !== "none", stroke: getComputedStyle(arrow).stroke, angle: m ? Number(m[1]) : null, toward: (Math.atan2(b.top + b.height / 2 - cy, b.left + b.width / 2 - cx) * 180) / Math.PI };
+    });
+  });
+  const off = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+  const bad = arrows.filter((a) => a.shown && off(a.angle, a.toward) > 25);
+  check(arrows.filter((a) => a.shown).length >= 4 && !bad.length, `each arrow points from the middle toward its label (${JSON.stringify(arrows.map((a) => [a.face, a.angle, Math.round(a.toward)]))})`);
+  // No dark outline: only the faint edge today's squares had (so white shows on the pale pill).
+  const faint = (c) => { const m = /rgba?\(([\d.]+), ([\d.]+), ([\d.]+)(?:, ([\d.]+))?\)/.exec(c); return !!m && Number(m[4] ?? 1) <= 0.3; };
+  check(arrows.every((a) => faint(a.stroke)), `the arrows have only a faint edge, no dark outline (${arrows.map((a) => a.stroke)})`);
+  const u = arrows.find((a) => a.face === "U");
+  check(u && /243, 243, 238|f3f3ee/i.test(u.color), `U's arrow is white, as the up center (${u?.color})`);
+  // Straight down at the top: U points at you (a dot), D away (a cross).
+  await page.evaluate(() => document.querySelector('[data-view="top"]').click());
+  await settle();
+  const marks = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".cmp")].map((el) => {
+    const g = el.querySelector("svg").children;
+    return [el.textContent[0], g[0].style.display !== "none" ? "arrow" : g[1].style.display !== "none" ? "toward" : "away"];
+  })));
+  check(marks.U === "toward" && marks.D === "away" && marks.F === "arrow", `from the top, U shows a dot, D a cross, F an arrow (${JSON.stringify(marks)})`);
+  // And they can be seen: shown, inside the view, apart from each other.
+  const seen = await page.evaluate(() => {
+    const r = document.getElementById("scene").getBoundingClientRect();
+    return Object.fromEntries([...document.querySelectorAll(".cmp")].filter((el) => "UD".includes(el.textContent[0])).map((el) => {
+      const b = el.getBoundingClientRect();
+      return [el.textContent[0], { opacity: Number(getComputedStyle(el).opacity), inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1, box: [b.left, b.top, b.right, b.bottom] }];
+    }));
+  });
+  const overlap = (a, b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  check(seen.U.opacity === 1 && seen.D.opacity >= 0.5 && seen.U.inside && seen.D.inside && !overlap(seen.U.box, seen.D.box), `the head-on labels show, inside the view and apart (${JSON.stringify(seen)})`);
+});
+
+labTest("edge labels: a face 26 degrees from head-on still has an arrow; the help says what a dot and a cross mean", async ({ page, check, settle }) => {
+  // The owner's view, with the right face 26 degrees from pointing straight at the viewer:
+  // a red disc with a dot there read as a record button, not as a direction.
+  const view = [-0.07815, 0.81378, 0.11261, -0.56478];
+  const solved = "VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS";
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({ lab: "x-cube debug 1", base: solved, turns: "", cursor: 0, current: solved, view, solving: false, order: "kinds", steps: [], lost: null, edit: null }));
+  await settle();
+  const marks = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".cmp")].map((el) => {
+    const g = el.querySelector("svg").children;
+    return [el.textContent[0], g[0].style.display !== "none" ? "arrow" : g[1].style.display !== "none" ? "toward" : "away"];
+  })));
+  check(marks.R === "arrow" && marks.L === "arrow", `Right and Left, 26 degrees from head-on, have arrows (${JSON.stringify(marks)})`);
+  await page.click("#info-btn");
+  const help = await page.$eval("#info-text", (e) => e.textContent);
+  check(/A dot means that face points straight at you; a cross, straight away\./.test(help), `the help says what a dot and a cross mean (${help})`);
+});
+
+labTest("edge labels: an arrow is drawn in perspective, its head wider than its tail when its face tips toward you", async ({ page, check, settle }) => {
+  // The owner's view: Up tips 28 degrees toward the viewer, which a flat arrow showed only as
+  // a little shorter, as if it pointed straight up. Each arrow's widths: across its head's
+  // barbs and across its tail.
+  const solved = "VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS";
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({ lab: "x-cube debug 1", base: solved, turns: "", cursor: 0, current: solved, view: [0.21975, -0.39139, -0.09682, 0.88834], solving: false, order: "kinds", steps: [], lost: null, edit: null }));
+  await settle();
+  const taper = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll(".cmp")].map((el) => {
+    const pts = [...(el.querySelector(".cmp-arrow").getAttribute("d") ?? "").matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
+    const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    return [el.textContent[0], pts.length === 7 ? +(dist(pts[2], pts[4]) / (dist(pts[0], pts[6]) / 3.6 * 8.5)).toFixed(2) : null];
+  })));
+  // 1 is a flat arrow; above 1 the head is nearer the viewer than the tail, below 1 farther.
+  check(taper.U > 1.15 && taper.D < 0.87, `Up, tipped toward you, widens toward its head; Down narrows (${JSON.stringify(taper)})`);
+});
+
+labTest("edge labels: each arrow runs along its face's axis where the arrow is, slid or not, letters or words", async ({ page, check, probe, settle }) => {
+  // The owner's views at an iPhone's size: Left slides down clear of Undo, Right up clear of
+  // Display. In the second, Left's axis points well away, so its vanishing point is near the
+  // label and the arrow, above the word once it is spelled out, needs its own angle.
+  await page.setViewportSize({ width: 440, height: 956 });
+  const solved = "VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS";
+  const off = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+  const views = [
+    { turns: "R R'", cursor: 2, current: solved, view: [-0.24385, 0.41303, 0.11579, -0.86979], slid: "LR" },
+    { turns: "R' S' R b R' S R b' y r F' M' F r' F' M F", cursor: 17, current: "NWPD MOED TCWD UTUM IXBH LIEA SVBG RWHC YIQX QCDI ICUS", view: [-0.19057, 0.52563, 0.12215, -0.82005], slid: null },
+  ];
+  for (const v of views) {
+    await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({ lab: "x-cube debug 1", base: solved, turns: v.turns, cursor: v.cursor, current: v.current, view: v.view, solving: false, order: "kinds", steps: [], lost: null, edit: null }));
+    await settle();
+    for (const spelled of [false, true]) {
+      if (spelled) {
+        await page.waitForSelector(".compass.spelled", { timeout: 8000 });
+        await page.waitForTimeout(600);
+      }
+      const labels = await page.evaluate(() => {
+        const r = document.getElementById("scene").getBoundingClientRect();
+        return [...document.querySelectorAll(".cmp")].map((el) => {
+          const b = el.getBoundingClientRect(), a = el.querySelector(".cmp-arrow"), s = el.querySelector(".cmp-dir").getBoundingClientRect();
+          return { face: el.textContent[0], x: s.left + s.width / 2, y: s.top + s.height / 2, arrow: a.style.display === "none" ? null : Number(a.getAttribute("data-angle")), fromMiddle: (Math.atan2(b.top + b.height / 2 - (r.top + r.height / 2), b.left + b.width / 2 - (r.left + r.width / 2)) * 180) / Math.PI };
+        });
+      });
+      const rows = [];
+      for (const l of labels) if (l.arrow !== null) rows.push({ face: l.face, arrow: l.arrow, axis: +(await probe("axisAt", l.face, l.x, l.y)).toFixed(1), slid: off(l.fromMiddle, l.arrow) > 2 });
+      const tag = `${v.turns ? "view " + (views.indexOf(v) + 1) : ""}, ${spelled ? "words" : "letters"}`;
+      if (v.slid && !spelled) {
+        const slid = rows.filter((r) => r.slid).map((r) => r.face).sort().join("");
+        check(slid === v.slid, `Left and Right slid clear of the corner buttons (${slid})`);
+      }
+      check(rows.every((r) => off(r.arrow, r.axis) < 1), `${tag}: every arrow runs along its face's axis where the arrow is (${JSON.stringify(rows)})`);
+    }
+  }
+});
+
+labTest("edge labels: a label sliding clear of another stays on its own side of it, faces toward the viewer placed first", async ({ page, check, settle }) => {
+  // The owner's iPhone views. In the third, Right's spot is just right of Down and Left's just
+  // left of Up: each once slid over that label to the other half of the view.
+  await page.setViewportSize({ width: 440, height: 956 });
+  const solved = "VLTM DWOP YLQZ OLPZ LVKX ZFBX TLFA QRRS EMBD BWPF EWUS", scrambled = "NWPD MOED TCWD UTUM IXBH LIEA SVBG RWHC YIQX QCDI ICUS";
+  const turns = "R' S' R b R' S R b' y r F' M' F r' F' M F";
+  const views = [
+    { turns: "R R'", cursor: 2, current: solved, view: [-0.24385, 0.41303, 0.11579, -0.86979] },
+    { turns, cursor: 17, current: scrambled, view: [-0.19057, 0.52563, 0.12215, -0.82005] },
+    { turns, cursor: 17, current: scrambled, view: [0.12292, -0.64595, -0.10645, 0.74586] },
+  ];
+  for (const [i, v] of views.entries()) {
+    await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({ lab: "x-cube debug 1", base: solved, turns: v.turns, cursor: v.cursor, current: v.current, view: v.view, solving: false, order: "kinds", steps: [], lost: null, edit: null }));
+    await settle();
+    for (const spelled of [false, true]) {
+      if (spelled) {
+        await page.waitForSelector(".compass.spelled", { timeout: 8000 });
+        await page.waitForTimeout(600);
+      }
+      const labels = await page.evaluate(() => {
+        const r = document.getElementById("scene").getBoundingClientRect();
+        return [...document.querySelectorAll(".cmp")].map((el) => {
+          const b = el.getBoundingClientRect(), [x0, y0] = el.dataset.axisSpot.split(",").map(Number);
+          const shown = el.querySelector(".cmp-arrow").style.display !== "none";
+          return { face: el.textContent[0], x: b.left + b.width / 2 - r.left, y: b.top + b.height / 2 - r.top, x0, y0, hw: b.width / 2, hh: b.height / 2, cx: r.width / 2, cy: r.height / 2, first: shown && !el.classList.contains("away"),
+            corners: [...document.querySelectorAll(".stage > .corner:not([hidden])")].map((c) => c.getBoundingClientRect()).filter((c) => c.width).map((c) => ({ x: c.left + c.width / 2 - r.left, y: c.top + c.height / 2 - r.top, hw: c.width / 2, hh: c.height / 2 })) };
+        });
+      });
+      // A label for a face toward the viewer (with an arrow) slides only to clear a corner
+      // button or another such label, never for one pointing away or head-on.
+      const pushed = [];
+      for (const a of labels) {
+        if (!a.first || Math.hypot(a.x - a.x0, a.y - a.y0) < 1.5) continue;
+        const inWay = [...a.corners, ...labels.filter((o) => o !== a && o.first)].some((o) => Math.abs(o.x - a.x0) < o.hw + a.hw - 4 && Math.abs(o.y - a.y0) < o.hh + a.hh - 4);
+        if (!inWay) pushed.push(a.face);
+      }
+      check(pushed.length === 0, `view ${i + 1}, ${spelled ? "words" : "letters"}: faces toward the viewer keep their spots against faces away (${pushed.join("") || "none pushed"}; ${labels.map((l) => l.face + (l.first ? "+" : "-") + Math.round(Math.hypot(l.x - l.x0, l.y - l.y0))).join(" ")})`);
+      // Along a shared edge, a label is on the same side of each other label as its axis's spot.
+      const crossed = [];
+      for (const a of labels)
+        for (const o of labels) {
+          if (a === o) continue;
+          const sameRow = Math.abs(a.y - o.y) < a.hh + o.hh, sameColumn = Math.abs(a.x - o.x) < a.hw + o.hw;
+          if (sameRow && Math.abs(a.x0 - o.x) > 2 && Math.sign(a.x - o.x) !== Math.sign(a.x0 - o.x)) crossed.push(a.face + " over " + o.face);
+          if (sameColumn && Math.abs(a.y0 - o.y) > 2 && Math.sign(a.y - o.y) !== Math.sign(a.y0 - o.y)) crossed.push(a.face + " over " + o.face);
+        }
+      check(crossed.length === 0, `view ${i + 1}, ${spelled ? "words" : "letters"}: no label slid over another (${crossed.join(", ") || "none"})`);
+      const at = Object.fromEntries(labels.map((l) => [l.face, [l.x - l.cx, l.y - l.cy]]));
+      const apart = ["RL", "UD", "FB"].filter(([a, b]) => at[a][0] * at[b][0] + at[a][1] * at[b][1] < 0).join(" ");
+      check(apart === "RL UD FB", `view ${i + 1}, ${spelled ? "words" : "letters"}: each pair of opposite faces' labels on opposite sides of the middle (${apart})`);
+    }
+  }
+});
+
 labTest("edge labels: one per face, inside the 3D view; tapping one turns that face to you", async ({ page, check, probe, settle }) => {
   await page.waitForTimeout(200);
   const labels = await page.evaluate(() => {
     const r = document.getElementById("scene").getBoundingClientRect();
     return [...document.querySelectorAll(".cmp")].map((el) => {
       const b = el.getBoundingClientRect();
-      return { text: el.textContent, height: Math.round(b.height * 10) / 10, shown: Number(getComputedStyle(el).opacity) > 0.05, inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1 };
+      return { text: el.textContent[0], height: Number(/scale\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 0), shown: Number(getComputedStyle(el).opacity) > 0.05, inside: b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1 };
     });
   });
   const letters = labels.map((l) => l.text).sort().join("");
@@ -902,6 +1077,54 @@ labTest("edge labels: one per face, inside the 3D view; tapping one turns that f
   const fx = await probe("sticker", "Fx", "F");
   const fxHit = await probe("at3d", fx.x, fx.y);
   check(!moved(frontView, labelView) && fxHit?.slot === "Fx", "tapping the F label turns to the Front view, front center in sight");
+});
+
+labTest("edge labels: spelled out once the view rests, back to letters only at a touch on the puzzle, the letter bolder", async ({ page, check, settle }) => {
+  // Each shown label: its text, how wide the rest of the word is drawn, its layout, and the letter's weight against the rest's.
+  const labels = () =>
+    page.$$eval(".cmp", (els) =>
+      els
+        .filter((e) => Number(getComputedStyle(e).opacity) > 0.05)
+        .map((e) => {
+          const key = e.querySelector(".cmp-key"), rest = e.querySelector(".cmp-rest");
+          return { text: e.textContent, rest: rest.getBoundingClientRect().width, column: getComputedStyle(e).flexDirection === "column", keyWeight: Number(getComputedStyle(key).fontWeight), restWeight: Number(getComputedStyle(rest).fontWeight), keyColor: getComputedStyle(key).color, restColor: getComputedStyle(rest).color };
+        }),
+    );
+  await page.click('[data-view="home"]');
+  await settle();
+  const busy = await labels();
+  check(busy.every((l) => l.rest < 1), `right after a tap the labels are letters (${busy.map((l) => l.text[0])})`);
+  await page.waitForTimeout(3300);
+  const rested = await labels();
+  check(rested.length >= 3 && rested.every((l) => ["Right", "Left", "Up", "Down", "Front", "Back"].includes(l.text) && l.rest > 5), `after a rest they spell out their faces (${rested.map((l) => `${l.text} ${Math.round(l.rest)}px`)})`);
+  check(rested.every((l) => l.keyWeight > l.restWeight && l.keyColor !== l.restColor), `the first letter, the turn's letter, is bolder and darker than the rest (${JSON.stringify(rested[0])})`);
+  // From Home, Right and Left sit on the sides of the view, the word under the arrow; Up and Down on the top and bottom, beside it.
+  const by = Object.fromEntries(rested.map((l) => [l.text, l.column]));
+  check(by.Right === true && by.Up === false, `on the left and right edges the word is under the arrow, on the top and bottom beside it (${JSON.stringify(by)})`);
+  const inside = await page.evaluate(() => {
+    const r = document.getElementById("scene").getBoundingClientRect();
+    return [...document.querySelectorAll(".cmp")].filter((e) => Number(getComputedStyle(e).opacity) > 0.05).every((e) => { const b = e.getBoundingClientRect(); return b.left >= r.left - 1 && b.right <= r.right + 1; });
+  });
+  check(inside, "the spelled-out labels stay inside the view");
+  // Turns played and taps elsewhere on the page leave the words spelled out.
+  await page.fill("#alg", "R U");
+  await page.click("#load");
+  await page.click("#last");
+  await settle();
+  await page.click('[data-view="home"]');
+  await settle();
+  const stayed = await labels();
+  check(stayed.length >= 3 && stayed.every((l) => l.rest > 5), `turns played and taps off the puzzle leave the words (${stayed.map((l) => l.text)})`);
+  // A touch on the puzzle folds them back.
+  const box = await page.locator("#scene").boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  // The word folds back into its letter over a moment, not at once.
+  await page.waitForTimeout(120);
+  const folding = await labels();
+  check(folding.some((l) => l.rest > 1), `the word folds back gradually (${folding.map((l) => Math.round(l.rest))})`);
+  await page.waitForTimeout(600);
+  const again = await labels();
+  check(again.every((l) => l.rest < 1), `a touch brings back the letters (${again.map((l) => Math.round(l.rest))})`);
 });
 
 // ---- Shuffle, playback and the hold line.
@@ -954,7 +1177,7 @@ labTest("playback: play then stop plays no queued turn; the speed slider's range
   // them): no queued turn may play afterward. The slowest speed gives a broken stop
   // plenty of time to show.
   await page.$eval("#speed", (el) => {
-    el.value = "0"; // about 1600 ms a turn
+    el.value = "0"; // 5000 ms a turn
     el.dispatchEvent(new Event("input"));
   });
   const slowest = await probe("speed");
@@ -966,13 +1189,27 @@ labTest("playback: play then stop plays no queued turn; the speed slider's range
   await settle();
   const stoppedAt = await counter();
   check(stoppedAt === "0/3", `play, then stop, plays none of the queued turns (${stoppedAt})`);
+  const startValue = await page.$eval("#speed", (el) => el.defaultValue);
   await page.$eval("#speed", (el) => {
-    el.value = "52";
+    el.value = "63";
     el.dispatchEvent(new Event("input"));
   });
   const usual = await probe("speed");
   const sliderWidth = await page.$eval("#speed", (el) => el.getBoundingClientRect().width);
-  check(Math.round(slowest) === 1600 && Math.round(usual) === 202 && sliderWidth >= 150, `the speed slider runs from 1600 ms a turn, default 202 ms, and is ${Math.round(sliderWidth)} px wide`);
+  check(Math.round(slowest) === 5000 && Math.round(usual) === 199 && startValue === "63" && sliderWidth >= 150, `the speed slider runs from 5000 ms a turn, default 199 ms, and is ${Math.round(sliderWidth)} px wide`);
+  // While it moves, a tip over the thumb says how long a turn takes; it fades once let go.
+  const tip = () => page.$eval("#speed-tip", (el) => ({ text: el.textContent, on: el.classList.contains("on"), opacity: Number(getComputedStyle(el).opacity) }));
+  const moving = await tip();
+  await page.$eval("#speed", (el) => el.dispatchEvent(new Event("change")));
+  await page.waitForTimeout(1600);
+  const after = await tip();
+  await page.$eval("#speed", (el) => {
+    el.value = "100";
+    el.dispatchEvent(new Event("input"));
+  });
+  const edge = await page.$eval("#speed-tip", (el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, width: innerWidth }; });
+  check(edge.left >= 0 && edge.right <= edge.width, `at the slider's end the tip stays on the screen (${JSON.stringify(edge)})`);
+  check(moving.text === "0.20 s per turn" && moving.on && !after.on && after.opacity < 0.05, `the tip shows the seconds a turn takes while it moves, and fades after (${JSON.stringify({ moving, after })})`);
 });
 
 labTest("playback: ◀ plays the turns backward to the start and keeps them listed", async ({ page, check, probe, settle, status, waitForCounter }) => {
@@ -1597,6 +1834,29 @@ labTest("info: Paste debug info puts back an edit that isn't valid", async ({ pa
   check(field.shown && field.editable && /That isn't debug info/.test(refused) && typed.removed === "Fx.U" && typed.line === line, `without the clipboard the field takes it, refusing other text (${JSON.stringify({ field, refused, typed })})`);
 });
 
+labTest("info: Paste debug info puts a solve's steps back, so Next step and Lost? go on from there", async ({ page, check, probe, settle }) => {
+  // A play-tester's solve, ten steps in (corners, then edges), with the last step shown.
+  const debug = {"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null};
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(debug));
+  const back = await page.waitForFunction(() => {
+    const steps = JSON.parse(window.xcubeProbe.debugInfo()).steps;
+    return steps.length === 10 && steps;
+  }, null, { timeout: 20000 }).then((h) => h.jsonValue(), () => null);
+  await settle();
+  const info = JSON.parse(await probe("debugInfo"));
+  check(JSON.stringify(back) === JSON.stringify(debug.steps) && info.solving && info.cursor === 66 && info.current === debug.current, `the steps, the turns and the position come back (${JSON.stringify({ steps: back?.length, solving: info.solving, cursor: info.cursor })})`);
+  const said = await page.$eval("#message", (e) => e.textContent);
+  check(/Solve restored: 10 steps/.test(said), `a message says so ("${said}")`);
+  await page.evaluate(() => (document.getElementById("guide").open = true));
+  check(await page.$eval("#lost", (b) => !b.disabled && !b.hidden), "Lost? can be asked from there");
+  await guideHelpers(page, settle).next();
+  const next = await page.waitForFunction(() => {
+    const steps = JSON.parse(window.xcubeProbe.debugInfo()).steps;
+    return steps.length === 11 && steps[10];
+  }, null, { timeout: 20000 }).then((h) => h.jsonValue(), () => null);
+  check(next?.index === 11 && next.start === 66, `Next step goes on with step 11 (${JSON.stringify(next)})`);
+});
+
 labTest("info: the help says what taps and drags do in each mode, and Copy debug info puts an edit back", async ({ page, check, probe, play, settle, gesture }) => {
   const help = async () => {
     if (await page.$eval("#info-pop", (p) => p.hidden)) await page.click("#info-btn");
@@ -1611,6 +1871,7 @@ labTest("info: the help says what taps and drags do in each mode, and Copy debug
   await settle();
   const solve = await help();
   await page.click("#guide-stop");
+  await page.click("#confirm-yes");
   await page.click(`[data-tab="start"]`);
   await page.click("#edit-start");
   const paint = await help();
@@ -1620,6 +1881,7 @@ labTest("info: the help says what taps and drags do in each mode, and Copy debug
     /Swipe on the puzzle to turn a layer/.test(plain) && !/During a solve step/.test(plain) && /During a solve step/.test(solve) && /Editing the puzzle\. Tap a sticker to give it the picked color/.test(paint) && !/Swipe on the puzzle/.test(paint) && /Tap a piece to remove it, or tap a gray box to add one/.test(shape),
     `the help follows the mode (${[plain, solve, paint, shape].map((t) => t.slice(0, 40)).join(" | ")})`,
   );
+  check(/circled has a purple ring around it/.test(paint) && !/white ring/.test(paint), "the editing help gives the circling ring's color, purple");
   // An edit whose shape isn't valid, copied and put back.
   const at = await probe("sticker", "Fx.U", "F");
   await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
@@ -1823,6 +2085,29 @@ labTest("color editing: a hint circles the sticker it means when its color can't
   await settle();
   const hidden = await probe("marks");
   check(hidden.list.length === 0 && hidden.px === 0, `Hide takes the ring away with the halo (${JSON.stringify(hidden)})`);
+});
+
+// A play-tester's edit (the owner's): a core corner with one extension, its old sticker face
+// where the shape hint says to add the second one.
+const TWO_BARE_FACES = {"lab": "x-cube debug 1", "base": "ILTM DXAJ WSWD CZQG RYFO FCYC WCCH HOKS BJYM HRFZ KKUS", "turns": "", "cursor": 0, "current": "ILTM DXAJ WSWD CZQG RYFO FCYC WCCH HOKS BJYM HRFZ KKUS", "view": [0.29241, 0.06687, -0.0205, -0.95373], "solving": false, "order": "kinds", "steps": [], "lost": null, "edit": {"shape": "ILTM DXAJ WSWD CZQG RYFO FCYC WCCH HOKS BJYM HRFZ KKUS", "removed": ["Bx.UL", "Bx.UR", "Fx.L", "Fx.DL", "Fx.D", "Fx.DR", "Fx.R"], "added": ["Ux.L", "Ux.BL", "Ux.B", "Ux.BR", "Ux.F", "Dx.F", "Dx.FR"], "colors": ".G.W.R.G.W...G.WY..G...R.G.....G..W..GY..R.GG....GW.R....................G.W.R...W.....W.....W......O..GY..R................W.....O......R..Y.....Y.....W....GW.R...O.....G..............................W.R...W.....W.....WY.....O......R............BG.WO.BGO..R..Y.....Y.....Y.....B.R...O...........B.....................B..W.R...W.....W.....WY.....O.B.Y..R................W.....O......R..Y.....Y.....W...B.WWR...B...............B..W.RB..W..B..WY.B....RB.....B...W.B.B..RB.Y...B.W.R.", "tool": "Y", "selected": "", "hidden": null}};
+
+labTest("shape editing: a core corner with two bare faces takes a color on the face the shape hint leaves bare", async ({ page, check, probe, settle, gesture }) => {
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify(TWO_BARE_FACES));
+  await settle();
+  // The face that was plastic, with no sticker to color.
+  const at = await probe("sticker", "DFL", "F", true);
+  const faces = { F: await probe("editFace", "DFL", "F"), D: await probe("editFace", "DFL", "D") };
+  // The face it had its sticker on before is drawn as plastic, not with that sticker.
+  const old = await probe("sticker", "DFL", "D", true);
+  const oldDrawn = await probe("at3d", old.x, old.y);
+  check(oldDrawn?.slot === "DFL" && oldDrawn.plastic, `the face the hint covers is drawn as plastic (${JSON.stringify(oldDrawn)})`);
+  const drawn = await probe("at3d", at.x, at.y);
+  // The dashed outline of a sticker not colored yet is drawn over the plastic there.
+  check(faces.F === "unpainted" && faces.D === "plastic" && drawn?.slot === "editor", `the corner's front face has a sticker to color, and the face the hint covers is plastic (${JSON.stringify({ faces, drawn })})`);
+  await gesture([["pointerdown", at.x, at.y], ["pointerup", at.x, at.y]]);
+  await settle();
+  const painted = await probe("editFace", "DFL", "F");
+  check(painted === "Y", `a tap with yellow colors it (${painted})`);
 });
 
 labTest("shape editing: Show looks at a core edge and its spots at a slight angle", async ({ page, check, probe, settle }) => {
@@ -2133,9 +2418,13 @@ labTest("controls: the color rule: blue for a selected control, green for a good
       const good = resolve("color: var(--good)").color;
       const picks = [...document.querySelectorAll(".mods button")].map((b) => ({ sel: b.classList.contains("sel"), blue: getComputedStyle(b).backgroundColor === accent }));
       const chips = [document.getElementById("shape-chip"), ...document.querySelectorAll("#outer-grid .chip")].map((c) => ({ name: c.textContent, good: c.classList.contains("good") || c.classList.contains("on"), green: getComputedStyle(c).color === good }));
-      return { picks, chips };
+      const accentText = resolve("color: var(--accent)").color;
+      // The Start panel's buttons start things; none is selected, so none is blue.
+      const starts = ["edit-start", "shuffle", "reset", "clear"].map((id) => ({ id, blue: getComputedStyle(document.getElementById(id)).color === accentText }));
+      return { picks, chips, starts };
     });
   const solved = await colors();
+  check(solved.starts.every((b) => !b.blue), `Edit puzzle, Shuffle, Reset and Start from here aren't blue (${JSON.stringify(solved.starts)})`);
   check(solved.picks.length > 2 && solved.picks.some((p) => p.sel) && solved.picks.every((p) => p.sel === p.blue), `the selected turn amount and Order are blue, the others aren't (${JSON.stringify(solved.picks)})`);
   check(solved.chips.every((x) => x.good === x.green) && solved.chips[0].green && solved.chips.filter((x) => x.green).length === 5, `solved: the shape chip and the four outer turns that can turn are green, u and d aren't (${JSON.stringify(solved.chips)})`);
   await play("R");
@@ -2249,6 +2538,7 @@ labTest("guide: a Regrip step, a shape step, the count, the marked parts, Stop, 
   // back keeps the step.
   const before = await turnList();
   await page.click("#guide-stop");
+  await page.click("#confirm-yes");
   const stopped = { g: await probe("guide"), line: await line(), list: await turnList(), off: await page.$eval("#guide-stop", (b) => b.disabled) };
   await next();
   const again = await probe("guide");
@@ -2354,6 +2644,7 @@ labTest("guide: a path goes the short way around the puzzle, at an even speed", 
   // started: here a corner hops along the front face, and its front sticker is followed,
   // not the one on its side, whose path would have to turn back on itself.
   await page.click("#guide-stop");
+  await page.click("#confirm-yes");
   await setOrder(page, "kinds");
   for (let i = 0; i < 3; i++) {
     await page.click("#next-step");
@@ -2409,6 +2700,7 @@ labTest("guide: paths leave and arrive nearly straight out, never bow in, and co
   // One corner cycle from solved: a white X-face corner hops along the top, white up at
   // both ends, and its flying copy keeps white up all the way.
   await page.click("#guide-stop");
+  await page.click("#confirm-yes");
   await resetToSolved(page);
   await settle();
   await setOrder(page, "kinds");
@@ -2519,7 +2811,517 @@ labTest("guide: Full color grays nothing and gives every piece its glow back, an
   check(!(await page.$eval("#guide-colors", (b) => b.classList.contains("sel"))), "a second tap turns it off");
 });
 
-labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ page, check, settle, play, counter }) => {
+labTest("lost: the interview finds a slip from a few answers, and Yes loads a step that undoes it", async ({ page, check, probe, settle, play }) => {
+  await play("R U R' F");
+  await page.click(`[data-tab="solve"]`);
+  // Two steps, the second loaded and not played: as if followed on a puzzle in hand.
+  await page.click("#next-step");
+  await settle();
+  await page.click("#guide-start");
+  await page.waitForFunction(() => !document.getElementById("next-step").disabled, null, { timeout: 60000 });
+  await page.click("#next-step");
+  await settle();
+  const before = { guide: await probe("guide"), lostOn: await page.$eval("#lost", (b) => !b.disabled) };
+  check(before.lostOn && before.guide?.index === 2, `Lost? is there during a solve (step ${before.guide?.index})`);
+  await page.click("#lost");
+  await settle();
+  const last = await probe("lost");
+  const stepTurns = (await probe("guide")).turns;
+  if (stepTurns > 1) {
+    check(last.phase === "last" && last.answers.length === stepTurns + 1 && last.answers.at(-1) === "unknown" && last.gray > 0 && /Which turn of step 2 did you make last\?/.test(last.text), `it first asks which turn of the step was made last, one button a turn (${JSON.stringify(last)})`);
+    await page.click(`#lost-opts [data-lost="${last.answers[last.answers.length - 2]}"]`);
+    await settle();
+  } else check(last.phase === "up", `with a step of one turn, there is no asking which was last (${last.phase})`);
+  const up = await probe("lost");
+  check(up.phase === "up" && up.answers.length === 6 && up.gray > 0, `then which center is on top, with the puzzle shown gray (${JSON.stringify(up)})`);
+  const inert = await page.evaluate(() => ["dock", "tabs", "panel-start", "panel-turn", "panel-algs", "undo"].every((id) => document.getElementById(id).inert));
+  check(inert, "the turn list, the tabs, the other panels and Undo are set aside");
+  const turnedBefore = await probe("debugInfo");
+  // Inert stops a tap; a handler reached another way (a key, a script) must do nothing too.
+  await page.evaluate(() => document.getElementById("undo").click());
+  await settle();
+  check(JSON.parse(await probe("debugInfo")).current === JSON.parse(turnedBefore).current, "Undo doesn't turn the puzzle shown while Lost? asks");
+  // The person's puzzle: one of the slips (not the right result).
+  const slip = await probe("lostPick", Math.max(1, Math.floor(up.answers.length / 2)));
+  check(slip && slip !== "none", `a slipped puzzle is picked (${slip})`);
+  let asked = 0, slowest = Infinity;
+  for (let k = 0; k < 12; k++) {
+    const l = await probe("lost");
+    if (l.phase === "confirm") break;
+    if (l.phase === "ask") {
+      if (l.question.endsWith("?")) {
+        // The halo's outline, which the puzzle in front hides: around the piece there, or a glass box in an empty spot.
+        const o = await probe("outlineOver");
+        check(/is there a piece here\?/.test(l.text) && l.outlined && o.purple > 30, `a question about a spot asks about "here", outlined by the halo (${l.text}; ${o.purple} purple pixels)`);
+      }
+      check(/^Look at your puzzle, not the screen\. (Over on the right side|Over on the left side|Up on the top|Down on the bottom|On the side facing you|Around on the back), the one with a (white|yellow|green|blue|red|orange) center, (what color is the sticker shown in the ring|is there a piece here)\?$/.test(l.text), `the question says which side of the puzzle as held, by its center (${l.text})`);
+      asked++;
+      check(l.marked, `question ${asked} marks its spot (${l.question})`);
+    }
+    const a = await probe("lostAnswer");
+    await page.click(`#lost-opts [data-lost="${a}"]`);
+    const turn = await probe("viewTurn");
+    if (turn && turn.quarters > 0.1 && (await probe("lost"))?.phase === "ask") slowest = Math.min(slowest, turn.ms / turn.quarters);
+    await settle();
+  }
+  check(isFinite(slowest) && slowest >= 1500, `the view turns to each spot as slowly as the slowest turn (${Math.round(slowest)} ms a quarter turn)`);
+  const found = await probe("lost");
+  check(found.phase === "confirm" && found.gray === 0 && !found.marked && (await probe("lostAnswer")) === "yes", `after ${asked} questions it shows the puzzle found, in color (${JSON.stringify(found)})`);
+  await page.click(`#lost-opts [data-lost="yes"]`);
+  await settle();
+  const g = await probe("guide");
+  check(!(await probe("lost")) && g.stage === "recover" && g.turns > 0 && g.gray === 0, `Yes loads a step that undoes the turns made (${g.stage}, ${g.turns} turns, ${g.alg})`);
+  const notInert = await page.evaluate(() => !document.getElementById("dock").inert && !document.getElementById("tabs").inert);
+  check(notInert, "the turn list and the tabs are back");
+  await page.click("#guide-start");
+  await page.waitForFunction(() => !document.getElementById("next-step").disabled, null, { timeout: 60000 });
+  await page.click("#next-step");
+  await settle();
+  const again = await probe("guide");
+  check(again.index === 1 && again.stage !== "recover", `once undone, Next step gives the first step again (step ${again.index}, ${again.stage})`);
+  const fits = await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+  check(fits, "the page is no wider than the screen");
+});
+
+labTest("lost: giving up says so, and Edit puzzle opens Edit puzzle in full color with the solve kept", async ({ page, check, probe, settle }) => {
+  // A play-tester's solve, restored from debug info, then a sticker with a color no way gives.
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
+  await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 10, null, { timeout: 20000 });
+  await page.click(`[data-tab="solve"]`);
+  await settle();
+  await page.click("#lost");
+  await settle();
+  const first = await probe("lost");
+  check(first.phase === "last" && /Which turn of step 10 did you make last\?/.test(first.text) && first.answers.length === 13 && first.answers.at(-1) === "unknown", `it first asks which turn of step 10 was made last, or I don't know (${JSON.stringify(first)})`);
+  await probe("lostPick", 1);
+  for (let k = 0; k < 10 && !(await probe("lost")).answers.includes("none"); k++) {
+    await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
+    await settle();
+  }
+  const asking = await probe("lost");
+  const extension = /^[UDFBLR]x/.test(asking.question);
+  check(asking.phase === "ask" && asking.answers.includes("none") && asking.answers.includes("empty") === extension, `a color question offers None of these, and No piece here only at an extension spot, which can be empty (${asking.question}: ${asking.answers})`);
+  check(asking.known >= 2, `the two centers told, and the stickers answered, show in their colors (${asking.known} stickers known)`);
+  await page.click(`#lost-opts [data-lost="none"]`);
+  await settle();
+  const gave = await probe("lost");
+  check(gave.phase === "giveup" && /^I can't find how your puzzle got this way/.test(gave.text) && gave.answers.join() === "color", `it says plainly that it gave up, and offers Edit puzzle (${JSON.stringify(gave)})`);
+  await page.click(`#lost-opts [data-lost="color"]`);
+  await settle();
+  const confirm = !(await page.$eval("#confirm", (e) => e.hidden));
+  const gray = await page.evaluate(() => window.xcubeProbe.grayStickers());
+  const info = JSON.parse(await probe("debugInfo"));
+  const done = await page.$eval("#edit-done", (b) => b.textContent);
+  const cancelLabel = await page.$eval("#edit-cancel", (b) => b.textContent);
+  check(cancelLabel === "Cancel edit", `its Cancel reads Cancel edit (${cancelLabel})`);
+  check(!!(await probe("shapeEdit")) && gray === 0 && !confirm && info.solving && (await probe("lostEdit")) && done === "Continue search", `Edit puzzle opens in full color, without ending the solve, its Done reading Continue search (${JSON.stringify({ gray, confirm, solving: info.solving, done })})`);
+  await page.click("#edit-cancel");
+  await settle();
+  const back = JSON.parse(await probe("debugInfo"));
+  const label = await page.$eval("#edit-done", (b) => b.textContent);
+  check(back.solving && back.steps.length === 10 && back.cursor === 66 && !(await probe("lostEdit")) && label === "Done", `Cancel puts the solve back as it was (${back.steps.length} steps, at ${back.cursor}; the editor's button reads ${label} again)`);
+});
+
+labTest("lost: after Edit puzzle, Continue search finds the slip from the puzzle edited and carries on with the solve", async ({ page, check, probe, settle, play }) => {
+  await play("R U R' F");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  await page.click("#guide-start");
+  await page.waitForFunction(() => !document.getElementById("next-step").disabled, null, { timeout: 60000 });
+  await page.click("#next-step");
+  await settle();
+  await page.click("#lost");
+  await settle();
+  const slip = await probe("lostPick", 2);
+  // Answers that lead to the person's puzzle, then No: so Edit puzzle opens on it, as if edited to match.
+  for (let k = 0; k < 14; k++) {
+    const l = await probe("lost");
+    if (l.phase === "confirm") break;
+    await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
+    await settle();
+  }
+  await page.click(`#lost-opts [data-lost="no"]`);
+  await settle();
+  check((await probe("lost"))?.phase === "giveup", "No gives up, saying so");
+  await page.click(`#lost-opts [data-lost="color"]`);
+  await settle();
+  await page.click("#edit-done");
+  await settle();
+  const g = await probe("guide");
+  const info = JSON.parse(await probe("debugInfo"));
+  check(info.solving && !(await probe("lostEdit")) && g?.stage === "recover" && g.turns > 0, `Done finds the slip (${slip}) and loads a step back on track, in the same solve (${JSON.stringify({ stage: g?.stage, solving: info.solving, steps: info.steps.length })})`);
+});
+
+labTest("lost: Lost? asked while End the solve? waits takes that question away", async ({ page, check, probe, settle, play }) => {
+  // A question left open ("End the solve in progress?", here from Reset), then Lost?: the
+  // question goes, or answering it later would start something under the interview.
+  await play("R U");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  await page.evaluate(() => document.getElementById("reset").click());
+  const asked = !(await page.$eval("#confirm", (e) => e.hidden));
+  await page.click("#lost");
+  await settle();
+  const state = { confirm: !(await page.$eval("#confirm", (e) => e.hidden)), lost: !!(await probe("lost")) };
+  check(asked && !state.confirm && state.lost, `the old question goes away when Lost? starts (${JSON.stringify({ asked, ...state })})`);
+});
+
+labTest("lost: a puzzle stopped partway through a step, with no slip, carries on from the turn made last", async ({ page, check, probe, settle }) => {
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
+  await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 10, null, { timeout: 20000 });
+  await page.click(`[data-tab="solve"]`);
+  await settle();
+  await page.click("#lost");
+  await settle();
+  const turns = (await probe("lost")).answers;
+  // Step 10 starts at turn 54: the person made its first six turns.
+  await page.click(`#lost-opts [data-lost="${turns[5]}"]`);
+  await settle();
+  await probe("lostPick", 0);
+  for (let k = 0; k < 14 && (await probe("lost"))?.phase !== "confirm"; k++) {
+    await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
+    await settle();
+  }
+  const found = await probe("lost");
+  check(found?.phase === "confirm" && /turn 6 of step 10/.test(found.text), `it finds the puzzle where turn 6 of step 10 leaves it (${found?.text})`);
+  await page.click(`#lost-opts [data-lost="yes"]`);
+  await settle();
+  const info = JSON.parse(await probe("debugInfo"));
+  check(info.cursor === 60 && info.steps.length === 10 && info.solving, `Yes goes to that turn in the turn list, with the steps kept (${JSON.stringify({ cursor: info.cursor, steps: info.steps.length })})`);
+});
+
+labTest("lost: debug info saved during Lost? puts back the solve and the interview where they were", async ({ page, check, probe, settle }) => {
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
+  await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 10, null, { timeout: 20000 });
+  await page.click(`[data-tab="solve"]`);
+  await settle();
+  await page.click("#lost");
+  await settle();
+  await probe("lostPick", 3);
+  for (let k = 0; k < 5; k++) {
+    await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
+    await settle();
+  }
+  const before = await probe("lost");
+  const saved = await probe("debugInfo");
+  await page.click(`#lost-box [data-lost="cancel"]`);
+  await settle();
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), saved);
+  await page.waitForFunction(() => !!window.xcubeProbe.lost(), null, { timeout: 30000 });
+  await settle();
+  const after = await probe("lost");
+  const info = JSON.parse(await probe("debugInfo"));
+  check(after.phase === before.phase && after.question === before.question && after.cands === before.cands && after.known === before.known && after.text === before.text, `the interview is back at the same question, with what was told (${JSON.stringify({ before, after })})`);
+  check(info.solving && info.steps.length === 10 && info.lost.answers.length === 5, `the solve's 10 steps and the 5 answers are back (${info.steps.length} steps, ${info.lost?.answers.length} answers)`);
+
+  // Saved again from Lost?'s Edit puzzle: the editor, its changes and Continue search come back over the solve.
+  await page.click(`#lost-opts [data-lost="none"]`);
+  await settle();
+  await page.click(`#lost-opts [data-lost="color"]`);
+  await settle();
+  await page.click(`[data-paint="Y"]`);
+  const editSaved = await probe("debugInfo");
+  await page.click("#edit-cancel");
+  await settle();
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), editSaved);
+  await page.waitForFunction(() => window.xcubeProbe.lostEdit(), null, { timeout: 30000 });
+  await settle();
+  const e = { done: await page.$eval("#edit-done", (b) => b.textContent), cancel: await page.$eval("#edit-cancel", (b) => b.textContent), info: JSON.parse(await probe("debugInfo")) };
+  check(e.done === "Continue search" && e.cancel === "Cancel edit" && e.info.solving && e.info.steps.length === 10 && e.info.edit && e.info.edit.tool === JSON.parse(editSaved).edit.tool, `Edit puzzle from Lost? is back over the solve, with Continue search (${JSON.stringify({ done: e.done, cancel: e.cancel, solving: e.info.solving, steps: e.info.steps.length, tool: e.info.edit?.tool })})`);
+  await page.click("#edit-cancel");
+  await settle();
+  const back = JSON.parse(await probe("debugInfo"));
+  check(back.solving && back.steps.length === 10 && back.cursor === 66 && !back.lost, `Cancel edit then puts the solve back as it was before Lost? (${back.steps.length} steps, at ${back.cursor})`);
+});
+
+/** Lost? on a one-turn step from solved followed by r (the solve's first step is that r), as if its turn went as candidate i (0 no slip, 1 r2, 3 left out), then Yes. */
+async function lostOnOneTurn(page, probe, settle, play, i) {
+  await play("r");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  await page.click("#lost");
+  await settle();
+  const slip = await probe("lostPick", i);
+  for (let k = 0; k < 14 && (await probe("lost"))?.phase !== "confirm"; k++) {
+    await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
+    await settle();
+  }
+  await page.click(`#lost-opts [data-lost="yes"]`);
+  await settle();
+  return slip;
+}
+
+labTest("lost: a step left out entirely loads no empty Back on track step, and Next step gives it again", async ({ page, check, probe, settle, play }) => {
+  const slip = await lostOnOneTurn(page, probe, settle, play, 3);
+  const after = JSON.parse(await probe("debugInfo"));
+  check(slip === "skipped" && after.steps.every((s) => s.alg !== ""), `nothing to undo leaves no empty step (${slip}; ${JSON.stringify(after.steps)})`);
+  await guideHelpers(page, settle).next();
+  const alive = await Promise.race([page.evaluate(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length), new Promise((r) => setTimeout(() => r(-1), 10000))]);
+  check(alive >= 1, `Next step then gives the step again, and the page answers (${alive} steps)`);
+});
+
+labTest("lost: debug info saved during Lost? after a Back on track step puts the interview back", async ({ page, check, probe, settle, play }) => {
+  const slip = await lostOnOneTurn(page, probe, settle, play, 1);
+  const g = await probe("guide");
+  check(slip === "amount" && g?.stage === "recover", `the first Lost? loads a Back on track step (${slip}, ${g?.stage})`);
+  await page.click("#lost");
+  await settle();
+  const before = await probe("lost");
+  const saved = await probe("debugInfo");
+  await page.click(`#lost-box [data-lost="cancel"]`);
+  await settle();
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), saved);
+  const back = await page.waitForFunction(() => !!window.xcubeProbe.lost(), null, { timeout: 30000 }).then(() => true, () => false);
+  const after = await probe("lost");
+  check(back && after?.phase === before.phase && after?.cands === before.cands, `Lost? asked from the Back on track step comes back from debug info (${JSON.stringify({ before, after })})`);
+});
+
+labTest("lost: Undo can't turn the puzzle under Edit puzzle, the ordinary one or Lost?'s", async ({ page, check, probe, settle, play }) => {
+  await play("R");
+  const before = JSON.parse(await probe("debugInfo")).current;
+  await page.evaluate(() => document.getElementById("edit-start").click());
+  await settle();
+  const inert = await page.evaluate(() => document.getElementById("undo").inert);
+  await page.evaluate(() => document.getElementById("undo").click());
+  await settle();
+  const after = JSON.parse(await probe("debugInfo"));
+  check(inert && after.current === before && after.edit?.shape === before, `Undo is set aside and does nothing while editing (${JSON.stringify({ inert, same: after.current === before, shape: after.edit?.shape === before })})`);
+  await page.click("#edit-cancel");
+  await settle();
+  check(!(await page.evaluate(() => document.getElementById("undo").inert)), "Undo is back once the editor closes");
+});
+
+labTest("session: after a reload the Lab offers to pick up where it left off, solve and all", async ({ page, check, probe, settle, play }) => {
+  await play("R U R' F");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  const before = JSON.parse(await probe("debugInfo"));
+  // Saved a moment after things settle; time how long building and keeping the dump takes.
+  const ms = await page.evaluate(() => {
+    const t = performance.now();
+    for (let i = 0; i < 20; i++) window.xcubeProbe.saveSession();
+    return (performance.now() - t) / 20;
+  });
+  check(ms < 8, `saving the restart dump takes ${ms.toFixed(2)} ms`);
+  await page.waitForTimeout(1800);
+  await page.reload();
+  await page.waitForFunction(() => window.xcubeProbe?.idle(), null, { timeout: 60000 });
+  const offer = await page.evaluate(() => ({ shown: !document.getElementById("resume").hidden, what: document.getElementById("resume-what").textContent }));
+  check(offer.shown && /^Solving, step 1 · /.test(offer.what), `after the reload it offers to pick up (${JSON.stringify(offer)})`);
+  await page.click("#resume-yes");
+  await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 1, null, { timeout: 30000 });
+  await settle();
+  const after = JSON.parse(await probe("debugInfo"));
+  check(after.solving && after.turns === before.turns && after.cursor === before.cursor && JSON.stringify(after.steps) === JSON.stringify(before.steps), `Pick up puts back the turns and the solve (${after.steps.length} step, at ${after.cursor})`);
+  // Start fresh drops it: the next reload offers nothing until something worth keeping happens again.
+  await page.evaluate(() => document.getElementById("reset").click());
+  await page.evaluate(() => document.getElementById("confirm-yes")?.click());
+  await settle();
+  await page.waitForTimeout(1800);
+  await page.reload();
+  await page.waitForFunction(() => window.xcubeProbe?.idle(), null, { timeout: 60000 });
+  check(await page.$eval("#resume", (e) => e.hidden), "with nothing worth keeping (solved, no turns), a reload offers nothing");
+});
+
+labTest("session: an edit is kept on the device as it changes, not only when the page is hidden", async ({ page, check, play, settle }) => {
+  await play("R U");
+  await page.waitForTimeout(1800);
+  const saved = () => page.evaluate(() => { const item = JSON.parse(localStorage.getItem("xcube.session") ?? "null"); return item ? JSON.parse(item.json).edit : null; });
+  await page.click("#edit-start");
+  await settle();
+  await page.waitForTimeout(1800);
+  const opened = await saved();
+  await page.click('[data-paint="shape"]');
+  await page.evaluate(() => document.querySelector('[data-paint="Y"]').click());
+  await page.waitForTimeout(1800);
+  const tool = (await saved())?.tool;
+  check(!!opened && tool === "Y", `opening Edit puzzle and picking a color are each saved a moment later (${JSON.stringify({ opened: !!opened, tool })})`);
+});
+
+labTest("lost: a slip, then two more while putting it right, is still found (two stacked mistakes)", async ({ page, check, probe, settle }) => {
+  // A play-tester's solve: a slip in step 10, found; then, following the Back on track step, two more.
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
+  await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 10, null, { timeout: 20000 });
+  await page.click(`[data-tab="solve"]`);
+  await settle();
+  const answerAll = async () => {
+    for (let k = 0; k < 20 && (await probe("lost"))?.phase !== "confirm"; k++) {
+      await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
+      await settle();
+    }
+  };
+  await page.click("#lost");
+  await settle();
+  await probe("lostPick", 5);
+  await answerAll();
+  await page.click(`#lost-opts [data-lost="yes"]`);
+  await settle();
+  const back = await probe("guide");
+  check(back?.stage === "recover" && back.turns >= 4, `the first slip is found, and a Back on track step loaded (${back?.stage}, ${back?.turns} turns)`);
+  await page.click("#lost");
+  await settle();
+  // Back on track's fifth turn from the end made the other way, and its third from the end left out.
+  const n = back.turns;
+  await page.click(`#lost-opts [data-lost="${(await probe("lost")).answers.at(-2)}"]`);
+  await settle();
+  await probe("lostTruthTwo", n - 5, n - 3);
+  await answerAll();
+  const found = await probe("lost");
+  check(found?.phase === "confirm" && new RegExp(`^Two turns went another way: turn ${n - 4} of step \\d+, .*, and turn ${n - 2}, `).test(found.text), `both are found and named (${found?.text})`);
+  await page.click(`#lost-opts [data-lost="yes"]`);
+  await settle();
+  const again = await probe("guide");
+  check(again?.stage === "recover" && again.turns > 0, `Yes loads a Back on track step for them (${again?.stage}, ${again?.turns} turns)`);
+});
+
+labTest("lost: I don't know the last turn: any turn of the step may have been, and the puzzle is still found", async ({ page, check, probe, settle }) => {
+  await page.evaluate((j) => window.xcubeProbe.restoreDebug(j), JSON.stringify({"lab":"x-cube debug 1","base":"ZWWP GERE AWYC PYYQ PAJE XPAA NMEY ZLPZ PRKV ICYH NWOJ","turns":"U' D R U2 F L B R U' L2 U2 L2 U R2 U x2 l U l' F R F' l F R' F' U' l' y r' U' F' L' F r F' L F r' U r x2 r' U' F' L' F r F' L F r' U r l U l' F R F' l F R' F' U' l'","cursor":66,"current":"RGDF GHXZ IFKR BYGR HSGS CZWX UPAH UNSQ ZCXN SOYI NNXI","view":[0.23561,-0.29558,-0.07547,0.92273],"solving":true,"order":"kinds","steps":[{"index":1,"stage":"shape","start":0,"alg":"U' D R U2 F L B R","shown":false},{"index":2,"stage":"core","start":8,"alg":"U' L2 U2 L2 U R2","shown":false},{"index":3,"stage":"parity","start":14,"alg":"U","shown":false},{"index":4,"stage":"regrip","start":15,"alg":"x2","shown":false},{"index":5,"stage":"corners","start":16,"alg":"[l U: l' (F R F') l (F R' F')]","shown":false},{"index":6,"stage":"regrip","start":28,"alg":"y","shown":false},{"index":7,"stage":"corners","start":29,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":8,"stage":"regrip","start":41,"alg":"x2","shown":false},{"index":9,"stage":"corners","start":42,"alg":"[r' U': (F' L' F) r (F' L F) r']","shown":false},{"index":10,"stage":"corners","start":54,"alg":"[l U: l' (F R F') l (F R' F')]","shown":true}],"edit":null}));
+  await page.waitForFunction(() => JSON.parse(window.xcubeProbe.debugInfo()).steps.length === 10, null, { timeout: 20000 });
+  await page.click(`[data-tab="solve"]`);
+  await settle();
+  await page.click("#lost");
+  await settle();
+  const named = (await probe("lost")).cands;
+  await page.click(`#lost-opts [data-lost="unknown"]`);
+  await settle();
+  const unknown = await probe("lost");
+  check(unknown.phase === "up" && unknown.cands > named, `"I don't know" goes on to the centers, with more ways to look among (${named} then ${unknown.cands})`);
+  await probe("lostPick", 40);
+  for (let k = 0; k < 20 && (await probe("lost"))?.phase !== "confirm"; k++) {
+    await page.click(`#lost-opts [data-lost="${await probe("lostAnswer")}"]`);
+    await settle();
+  }
+  check((await probe("lost"))?.phase === "confirm", `the puzzle is found (${(await probe("lost"))?.text})`);
+});
+
+labTest("lost: Cancel puts the turn list and the step back as they were", async ({ page, check, probe, settle, play, counter }) => {
+  await play("R U");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  const before = { counter: await counter(), guide: (await probe("guide")).alg };
+  await page.click("#lost");
+  await settle();
+  await page.click(`#lost-box [data-lost="cancel"]`);
+  await settle();
+  const after = { counter: await counter(), guide: (await probe("guide"))?.alg, lost: await probe("lost"), gray: (await probe("guide"))?.gray };
+  check(after.counter === before.counter && after.guide === before.guide && !after.lost, `Cancel restores the turn list and the step (${JSON.stringify(before)} then ${JSON.stringify(after)})`);
+});
+
+labTest("guide: a tap on the 3D view pauses the turns playing at once, another goes on; during a step a swipe tumbles", async ({ page, check, probe, settle, play, swipe, counter }) => {
+  await play("R U R' F");
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  await page.$eval("#speed", (el) => {
+    el.value = "0"; // 5 s a turn
+    el.dispatchEvent(new Event("input"));
+  });
+  await page.click("#guide-start"); // Play step
+  await page.waitForTimeout(800);
+  const box = await page.locator("#scene").boundingBox();
+  const corner = { x: box.x + 30, y: box.y + box.height - 30 }; // background, clear of the puzzle
+  // A tap, sent from inside the page (the gesture helper waits for the Lab to be idle, which it isn't while paused).
+  const tapScene = () =>
+    page.evaluate(([x, y]) => {
+      const c = document.getElementById("scene");
+      for (const type of ["pointerdown", "pointerup"]) c.dispatchEvent(new PointerEvent(type, { pointerId: 7, pointerType: "touch", isPrimary: true, clientX: x, clientY: y, buttons: type === "pointerup" ? 0 : 1, bubbles: true, cancelable: true }));
+    }, [corner.x, corner.y]);
+  await tapScene();
+  const paused = await probe("turning");
+  await page.waitForTimeout(1200);
+  const still = await probe("turning");
+  const pill = await page.$eval("#paused", (e) => !e.hidden);
+  check(paused.paused && paused.done > 0 && paused.done < 1 && still.done === paused.done && pill, `a tap pauses the turn part-way, and it stays there (${JSON.stringify({ paused, still, pill })})`);
+  await tapScene();
+  const going = await probe("turning");
+  await page.waitForTimeout(600);
+  const later = await probe("turning");
+  check(!going.paused && later.done > going.done && (await page.$eval("#paused", (e) => e.hidden)), `another tap goes on from there (${going.done.toFixed(2)} then ${later.done?.toFixed(2)})`);
+  // Fast again, and back to the step's start: a swipe on the puzzle tumbles the view, turning nothing.
+  await page.$eval("#speed", (el) => {
+    el.value = "100";
+    el.dispatchEvent(new Event("input"));
+  });
+  await settle();
+  await page.click("#guide-start"); // Step start
+  await settle();
+  const before = { counter: await counter(), view: await probe("view") };
+  const at = await probe("sticker", "Fx", "F");
+  await swipe(at, 0, -70);
+  await settle();
+  const after = { counter: await counter(), view: await probe("view") };
+  check(after.counter === before.counter && JSON.stringify(after.view) !== JSON.stringify(before.view), `during the step a swipe on the puzzle tumbles the view and turns nothing (${before.counter} then ${after.counter})`);
+});
+
+labTest("guide: during a solve, big buttons make the next turn, written on it, or back one up; pause while playing; load the next step", async ({ page, check, probe, settle, play, counter }) => {
+  await play("R U R' F");
+  const before = await page.$eval("#solve-bar", (e) => e.hidden);
+  await page.click(`[data-tab="solve"]`);
+  await page.click("#next-step");
+  await settle();
+  const big = () => page.$eval("#big-next", (b) => ({ kind: b.dataset.kind, text: b.textContent.trim(), disabled: b.disabled }));
+  const next = (await probe("debugInfo")) && JSON.parse(await probe("debugInfo"));
+  const want = next.turns.split(" ")[next.cursor];
+  const first = await big();
+  const c0 = await counter();
+  check(before && first.kind === "turn" && first.text.endsWith(want) && !first.disabled, `the big button shows the next turn, ${want} (${JSON.stringify(first)}; hidden before solving: ${before})`);
+  await page.click("#big-next");
+  await settle();
+  const c1 = await counter();
+  await page.click("#big-back");
+  await settle();
+  const c2 = await counter();
+  check(c1 !== c0 && c2 === c0, `a tap makes that turn, and ◀₁ backs it up (${c0}, ${c1}, ${c2})`);
+  // Playing the step: it pauses, and goes on.
+  await page.$eval("#speed", (el) => {
+    el.value = "0";
+    el.dispatchEvent(new Event("input"));
+  });
+  await page.click("#guide-start"); // Play step
+  await page.waitForTimeout(300);
+  const playingNow = await big();
+  await page.click("#big-next");
+  const pausedNow = { big: await big(), turning: await probe("turning") };
+  await page.click("#big-next");
+  const going = await big();
+  check(playingNow.kind === "pause" && pausedNow.big.kind === "resume" && pausedNow.turning.paused && going.kind === "pause", `while the step plays it pauses, then goes on (${playingNow.text}, ${pausedNow.big.text}, ${going.text})`);
+  await page.$eval("#speed", (el) => {
+    el.value = "100";
+    el.dispatchEvent(new Event("input"));
+  });
+  await settle();
+  const end = await big();
+  await page.click("#big-next");
+  await settle();
+  const g = await probe("guide");
+  check(end.kind === "step" && /Next step/.test(end.text) && g?.index === 2, `once the turns have played it loads the next step (${JSON.stringify(end)}, step ${g?.index})`);
+  const size = await page.evaluate(() => ({ w: [document.documentElement.scrollWidth, document.documentElement.clientWidth], h: [document.documentElement.scrollHeight, innerHeight] }));
+  check(size.w[0] <= size.w[1] && size.h[0] <= size.h[1], `with the row of big buttons the page is still one screen, and doesn't scroll sideways (${JSON.stringify(size)})`);
+});
+
+labTest("guide: on a wide screen the big buttons sit straight under the 3D view, larger", async ({ page, check, settle, play }) => {
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await play("R U R' F");
+  await page.click("#next-step");
+  await settle();
+  const m = await page.evaluate(() => {
+    const stage = document.querySelector(".stage").getBoundingClientRect(), bar = document.getElementById("solve-bar").getBoundingClientRect();
+    return { gap: Math.round(bar.top - stage.bottom), height: Math.round(bar.height), left: Math.round(bar.left - stage.left), right: Math.round(stage.right - bar.right) };
+  });
+  check(m.gap >= 0 && m.gap <= 16 && m.height >= 60 && Math.abs(m.left) <= 1 && Math.abs(m.right) <= 1, `the big buttons sit straight under the 3D view, as wide, and larger (${JSON.stringify(m)})`);
+  // Back to a phone's width, they go back under the playback strip.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  const inDock = await page.evaluate(() => document.getElementById("solve-bar").parentElement.id);
+  check(inDock === "dock", `on a phone they are under the playback strip (${inDock})`);
+});
+
+labTest("guide: the order is chosen between solves; once a step has played, Next step takes ▶'s place in the strip", async ({ probe, page, check, settle, play, counter }) => {
   await play("R U");
   await page.click(`[data-tab="solve"]`);
   const idle = await page.evaluate(() => ({ order: !!document.querySelector(".guide-modes").getClientRects().length, btn: document.getElementById("next-step").textContent, stop: !!document.getElementById("guide-stop").getClientRects().length }));
@@ -2537,7 +3339,14 @@ labTest("guide: the order is chosen between solves; once a step has played, Next
   await settle();
   const next = { g: await page.evaluate(() => window.xcubeProbe.guide()?.index), counter: await counter(), play: !(await page.$eval("#last", (b) => b.hidden)) };
   check(played.play && next.g === 2 && next.counter !== played.counter && next.play, `the step played through (${before} to ${played.counter}), Next step took ▶'s place and loaded step 2 (${next.counter}), and ▶ is back`);
+  // Stop solving asks first; Keep solving keeps the solve.
   await page.click("#guide-stop");
+  const asked = { shown: !(await page.$eval("#confirm", (e) => e.hidden)), text: await page.$eval("#confirm-text", (e) => e.textContent), solving: JSON.parse(await probe("debugInfo")).solving };
+  await page.click("#confirm-no");
+  const kept = JSON.parse(await probe("debugInfo")).solving;
+  check(asked.shown && asked.text === "End the solve in progress?" && asked.solving && kept, `Stop solving asks first, and Keep solving keeps the solve (${JSON.stringify({ ...asked, kept })})`);
+  await page.click("#guide-stop");
+  await page.click("#confirm-yes");
   const stopped = await page.evaluate(() => ({ order: !!document.querySelector(".guide-modes").getClientRects().length, btn: document.getElementById("next-step").textContent, next: !document.getElementById("strip-next").hidden }));
   check(stopped.order && stopped.btn === "Start solving" && !stopped.next, `Stop ends the solve: the order and Start solving are back (${JSON.stringify(stopped)})`);
 });
@@ -2672,6 +3481,7 @@ labTest("guide: dropping a step frees its paths' graphics memory", async ({ page
     await page.waitForTimeout(200); // a few frames, so the paths are drawn and their geometry uploaded
     const shown = await probe("geometries");
     await page.click("#guide-stop");
+    await page.click("#confirm-yes");
     await settle();
     counts.push([shown, await probe("geometries")]);
   }
