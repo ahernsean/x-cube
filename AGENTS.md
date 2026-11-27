@@ -1,8 +1,9 @@
 # X-Cube project: orientation for agents
 
-Read this before working in this repository. It defines the vocabulary the owner and
-previous agents use, the notation, and how the code is organized. `README.md` covers
-commands. When a term here conflicts with your general Rubik's-cube knowledge, this file
+Read this, and `README.md`, before working in this repository. `README.md` is for anyone
+using the puzzle: how to hold it, the notation, slot names, where the Lab runs and the
+commands. This file adds what working on the code needs: the vocabulary the owner and
+previous agents use, the model, and how the code is organized. When a term here conflicts with your general Rubik's-cube knowledge, this file
 wins for this project.
 
 ## The puzzle
@@ -12,8 +13,7 @@ of its six faces. Solved, it is an **X shape**: 3 layers tall, and seen from abo
 grid without its corners (21 cells). Turning layers moves extension pieces onto other
 faces, so the puzzle changes shape.
 
-- **Hold:** white up, green front. Red is right, orange left, blue back, yellow down.
-  Colors are set in `FACE_COLOR` in `src/core/puzzle.ts`.
+- **Hold:** white up, green front (`README.md`, "Holding the puzzle").
 - **X-faces:** the white (up) and yellow (down) faces, each shaped like a 5x5 grid minus corners.
 - **Side faces:** front, back, left and right, each 5 wide and 3 tall when solved. A side
   color covers its extension's outer face and the matching sides of the two neighboring extensions.
@@ -28,11 +28,8 @@ faces, so the puzzle changes shape.
 - Right-handed, same as three.js: **+x = R**, **+y = U**, **+z = F**. Integer coordinates -2..2.
 - **Slot:** a place a piece can be. There are 80: every lattice point with at most one
   coordinate equal to +/-2, minus the solid center (0,0,0).
-- **Slot names** (`slotName` in `src/core/puzzle.ts`):
-  - core slots use standard cubie names: `UFR`, `UF`, `U`;
-  - extension slots are `<face>x.<position>`: `Fx.UR` is the up-right piece of the
-    front extension, `Fx` its center, `Ux.F` the front spot of the (normally empty) up extension.
-- In cycle output, `A -> B` means the piece that was in slot A is now in slot B.
+- **Slot names** (`slotName` in `src/core/puzzle.ts`) and how to read cycle output:
+  `README.md`, "Slot names".
 
 ## Pieces
 
@@ -61,41 +58,22 @@ colors are **not** interchangeable, because of the outward-color rule below.
 
 ## Moves and notation
 
-| Notation | Meaning |
-|---|---|
-| `R L U D F B` | **Inner turn**: the 3x3x3 layer plus everything beyond it, including that side's extension (for R: every slot with x >= 1). Clockwise as seen looking at that face. Always allowed. |
-| `r l f b` (`u d`) | **Outer turn**: the extension layer alone (for r: x == 2). Allowed only when all 9 of its slots are filled ("complete"). An outer turn that isn't allowed is **blocked** or **refused** (UI wording: "f refused: extension has 6/9 pieces"). |
-| `H` | The horizontal middle slice, turned like U (the owner's name). `E` is accepted as `H'`. |
-| `M` | The slice between L and R, turned like L. |
-| `S` | The slice between F and B, turned like F. |
-| `x y z` | **Rotation** of the whole puzzle, turned like R, U, F. |
-| `'` and `2` | Counterclockwise and half turn. `2'` is accepted. |
-| `(A)5`, `(A)x5`, `(A)*5`, `(A) x 5` | Repeat a group. |
-| `(A)'` | Inverse of a group: reversed order, each turn inverted. |
-| `[A, B]` | **Commutator**: `A B A' B'`. |
-| `[A: B]` | **Conjugate**: `A B A'` (set up, do, undo the setup). |
+The notation, which of it is the WCA's standard, and Baum's grip are in `README.md`,
+"Notation". What working on the code adds:
 
-Commas and periods outside brackets are treated as spaces. `′` and `’` are read as `'`.
-Parser: `src/core/notation.ts`.
-
-**Standard notation is honored.** Where the WCA Regulations (Article 12, "Notation"; read
-in the version of April 1, 2026) define a turn, the Lab writes it their way: face turns
-`R L U D F B` (12a1), outer block turns `Rw` (12a2; `2Rw` is the same turn on a 3x3x3,
-12a2+), rotations `x y z` (12a4: `x` turns like `R`, or `L'`), `'` and `2`. The rest is
-outside that standard, and the Lab's help says so: `M`, `E` and `S` are common but not the
-WCA's; `H` is the owner's; the X-Cube's outer turns `r l u d f b` have no standard. On the
-3x3x3, wide turns `Rw` and `2Rw` (the face and the inner slice next to it: `Rw` is `R M'`,
-or `L x`; `2Rw` is the same turn with its two layers counted, 12a2+) are read when typed,
-so standard algorithms paste as written, but the Lab never offers them (`typedOnly`): no
-turn button, help line, shuffle or solver step uses them. The WCA defines no lowercase wide
-turns (it reads a lowercase `r` as `R`, E2c6+), so the 3x3x3 refuses lowercase letters.
-Each puzzle has its own move names (`PuzzleDef.moves`); `notationHelp` gives the ones it
-offers in words for the Turn panel's ⓘ.
-
-**Dave Baum's page** (a common online source) holds the X-faces at front and back, so his
-letters differ. Translated to our grip: his `F U B D` are our `U B D F`; `L R` unchanged;
-his `u` is our `b`; his `H` is our `S'`. His edge 3-cycle is `R' S' R b R' S R b'` and his
-corner 3-cycle is `R' F' R b R' F R b'` (both verified by tests).
+- **Inner turn** `R L U D F B`: the 3x3x3 layer plus everything beyond it (for R: every
+  slot with x >= 1). **Outer turn** `r l u d f b`: the extension layer alone (for r:
+  x == 2), allowed only when all 9 of its slots are filled ("complete"). One that isn't
+  allowed is **blocked** or **refused** (UI wording: "f refused: extension has 6/9 pieces").
+- Each puzzle has its own move names (`PuzzleDef.moves`), and the parser
+  (`src/core/notation.ts`) takes the puzzle. Names are matched longest first and may start
+  with a digit (`2Rw`); a count is read only right after a turn, so `R2Rw` is `R2 Rw`.
+- **Typed only** (`typedOnly`): the 3x3x3's wide turns are read when typed but never
+  offered: no turn button, help line, shuffle or solver step uses them.
+- `notationHelp` gives the turns a puzzle offers in words, for the Turn panel's ⓘ, with
+  which of them are the WCA's (Regulations 12a1 face turns, 12a2 and 12a2+ outer block
+  turns, 12a4 rotations; E2c6+ reads a lowercase `r` as `R`).
+- Baum's edge and corner 3-cycles, translated to our grip, are verified by tests.
 
 ## Facts the engine relies on (all tested in `test/puzzle.test.ts`)
 
@@ -255,7 +233,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   `XCUBE` and `CUBE3`, a traditional 3x3x3 on the X-Cube's core grid (the first step of the
   "One Lab, many puzzles" design). Every `State` carries its `puzzle`, so code that has a
   state reads the slots, pieces and moves from it; notation takes the puzzle too (on the
-  3x3x3 a typed wide turn is `Rw` and there is no `r`; see "Standard notation is honored"). The module's `PIECES`, `SLOT_POS`,
+  3x3x3 a typed wide turn is `Rw` and there is no `r`; see "Moves and notation"). The module's `PIECES`, `SLOT_POS`,
   `MOVE_DEFS` and the like are the X-Cube's, for the code that is the X-Cube's alone: its
   state codes (`serialize.ts`), editor (`edit.ts`) and solver (`solve.ts`). The Lab reads
   the puzzle it shows from `P` in `main.ts` (always the X-Cube so far); its drawing still
@@ -272,7 +250,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
 - `src/web/planner.ts`, `src/web/plan-worker.ts`: the step guide's plan of the whole solve, made
   in a Web Worker.
 - `src/core/lost.ts`: Lost? in the Lab: the positions one slip in followed turns gives, and the questions that tell them apart.
-- `src/cli/xc.ts`: command-line driver (see `README.md`).
+- `src/cli/xc.ts`: command-line driver (see `README.md`, "Commands").
 - `src/web/`: **X-Cube Lab**, the browser viewer, built by `scripts/build-web.ts` into
   `dist/x-cube-lab.html` (published as a claude.ai artifact, which supplies the document
   skeleton) and `dist/index.html` (a complete page, published to GitHub Pages at
