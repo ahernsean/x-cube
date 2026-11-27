@@ -1,58 +1,39 @@
 // Analysis: shape tests, solved test, effect of an algorithm, text views.
 
 import { DIRS, FACE_NAMES, NUM_ROT, ROT_DIR, ROT_INV, ROT_MUL, ROTATIONS, matVec, type Vec3 } from "./geometry.ts";
-import {
-  PIECES,
-  NUM_SLOTS,
-  SLOT_NEIGHBOR,
-  SLOT_POS,
-  State,
-  inHomeX,
-  slotAt,
-  slotName,
-  type Color,
-} from "./puzzle.ts";
+import { State, type Color } from "./puzzle.ts";
 
 // ---------------------------------------------------------------- shape
 
-/** The three X shapes the lattice can hold, by which axis is the 3-thick ("X-face") axis. */
-const X_MASKS: readonly string[] = [0, 1, 2].map((axis) => {
-  let k = "";
-  for (let s = 0; s < NUM_SLOTS; s++) {
-    const p = SLOT_POS[s];
-    // Rotate coordinates so that `axis` plays the role of y.
-    const q: Vec3 = axis === 1 ? p : axis === 0 ? [p[1], p[0], p[2]] : [p[0], p[2], p[1]];
-    k += inHomeX(q) ? "1" : "0";
-  }
-  return k;
-});
-
-/** True when the puzzle is in the home X shape (X-faces up and down). */
-export function isHomeX(st: State): boolean {
-  return st.shapeKey() === X_MASKS[1];
+/** True when the puzzle is in its solved shape held the solved way (on the X-Cube: the X shape, X-faces up and down). */
+export function isHomeShape(st: State): boolean {
+  return st.shapeKey() === st.puzzle.homeShapes[0];
 }
 
-/** True when the puzzle is an X in any orientation. */
-export function isXShape(st: State): boolean {
-  const k = st.shapeKey();
-  return X_MASKS.includes(k);
+/** True when the puzzle is in its solved shape, held any way (on the X-Cube: an X in any orientation). */
+export function isInShape(st: State): boolean {
+  return st.puzzle.homeShapes.includes(st.shapeKey());
 }
+
+/** The X-Cube's names: the X shape, held X-faces up and down, and in any orientation. */
+export const isHomeX = isHomeShape;
+export const isXShape = isInShape;
 
 /** Exposed faces: a face is visible when the neighboring slot is empty or outside the lattice. */
 export function isExposed(st: State, s: number, d: number): boolean {
-  const n = SLOT_NEIGHBOR[s * 6 + d];
+  const n = st.puzzle.slotNeighbor[s * 6 + d];
   if (n === -2) return false; // the solid center of the puzzle
   return n === -1 || st.occ[n] < 0;
 }
 
 /**
- * Solved = X shape, and in each of the six directions every exposed face is
+ * Solved = in shape (the X shape, on the X-Cube), and in each of the six directions every exposed face is
  * stickered and all of them are the same color.
  */
 export function isSolved(st: State): boolean {
-  if (!isXShape(st)) return false;
+  if (!isInShape(st)) return false;
   const color: (Color | null | undefined)[] = new Array(6).fill(undefined);
-  for (let s = 0; s < NUM_SLOTS; s++) {
+  for (let s = 0; s < st.puzzle.numSlots; s++) {
     if (st.occ[s] < 0) continue;
     for (let d = 0; d < 6; d++) {
       if (!isExposed(st, s, d)) continue;
@@ -89,24 +70,26 @@ export interface Effect {
 }
 
 /** True if piece `id` shows any sticker facing a different direction under orientation oa vs ob. */
-function stickerDirsDiffer(id: number, oa: number, ob: number): boolean {
-  const st = PIECES[id].stickers;
+function stickerDirsDiffer(stickers: readonly (Color | null)[], oa: number, ob: number): boolean {
+  const st = stickers;
   for (let d = 0; d < 6; d++) if (st[d] !== null && ROT_DIR[oa * 6 + d] !== ROT_DIR[ob * 6 + d]) return true;
   return false;
 }
 
 /** Describe how state `b` differs from state `a`, in terms of piece movements. */
 export function effect(a: State, b: State): Effect {
-  const slotOfA = new Int16Array(PIECES.length).fill(-1);
-  const slotOfB = new Int16Array(PIECES.length).fill(-1);
-  for (let s = 0; s < NUM_SLOTS; s++) {
+  const P = a.puzzle;
+  const slotName = P.slotName;
+  const slotOfA = new Int16Array(P.numPieces).fill(-1);
+  const slotOfB = new Int16Array(P.numPieces).fill(-1);
+  for (let s = 0; s < P.numSlots; s++) {
     if (a.occ[s] >= 0) slotOfA[a.occ[s]] = s;
     if (b.occ[s] >= 0) slotOfB[b.occ[s]] = s;
   }
   const moved: PieceMove[] = [];
   const twisted: string[] = [];
   const next = new Map<number, number>();
-  for (const c of PIECES) {
+  for (const c of P.pieces) {
     const sa = slotOfA[c.id];
     const sb = slotOfB[c.id];
     // relative rotation from a to b
@@ -114,7 +97,7 @@ export function effect(a: State, b: State): Effect {
     if (sa !== sb) {
       next.set(sa, sb);
       moved.push({ id: c.id, name: c.name, kind: c.kind, from: slotName(sa), to: slotName(sb), rotated: rel !== 0 });
-    } else if (stickerDirsDiffer(c.id, a.ori[sa], b.ori[sb])) {
+    } else if (stickerDirsDiffer(c.stickers, a.ori[sa], b.ori[sb])) {
       twisted.push(slotName(sa));
     }
   }
@@ -136,7 +119,7 @@ export function effect(a: State, b: State): Effect {
     cycles.push(path.map(slotName).join(" -> ") + (closed ? " -> (back)" : ""));
   }
   let visibleChanges = 0;
-  for (let s = 0; s < NUM_SLOTS; s++)
+  for (let s = 0; s < P.numSlots; s++)
     for (let d = 0; d < 6; d++) {
       const ea = a.occ[s] >= 0 && isExposed(a, s, d);
       const eb = b.occ[s] >= 0 && isExposed(b, s, d);
@@ -164,21 +147,26 @@ const VIEW_FRAMES: Record<string, [Vec3, Vec3, Vec3]> = {
   L: [[0, -1, 0], [0, 0, 1], [-1, 0, 0]],
 };
 
-/** Slot of the first piece seen along each line of sight (5x5, row-major), or -1. */
+/** The number of slots across the puzzle's grid (5 on the X-Cube, 3 on a 3x3x3). */
+export const gridWidth = (st: State) => (2 * st.puzzle.range) / st.puzzle.step + 1;
+
+/** Slot of the first piece seen along each line of sight (gridWidth squared, row-major), or -1. */
 function frontSlots(st: State, face: number): Int16Array {
   const [rowV, colV, view] = VIEW_FRAMES[FACE_NAMES[face]];
-  const out = new Int16Array(25).fill(-1);
-  for (let r = -2; r <= 2; r++)
-    for (let c = -2; c <= 2; c++)
-      for (let depth = 2; depth >= -2; depth--) {
+  const { range: R, step } = st.puzzle;
+  const n = gridWidth(st);
+  const out = new Int16Array(n * n).fill(-1);
+  for (let r = -R; r <= R; r += step)
+    for (let c = -R; c <= R; c += step)
+      for (let depth = R; depth >= -R; depth -= step) {
         const p: Vec3 = [
           rowV[0] * r + colV[0] * c + view[0] * depth,
           rowV[1] * r + colV[1] * c + view[1] * depth,
           rowV[2] * r + colV[2] * c + view[2] * depth,
         ];
-        const s = slotAt(p);
+        const s = st.puzzle.slotAt(p);
         if (s >= 0 && st.occ[s] >= 0) {
-          out[(r + 2) * 5 + (c + 2)] = s;
+          out[((r + R) / step) * n + (c + R) / step] = s;
           break;
         }
       }
@@ -194,11 +182,12 @@ function frontSlots(st: State, face: number): Int16Array {
  */
 export function faceView(st: State, face: number): string[] {
   const slots = frontSlots(st, face);
+  const n = gridWidth(st);
   const rows: string[] = [];
-  for (let r = 0; r < 5; r++) {
+  for (let r = 0; r < n; r++) {
     let line = "";
-    for (let c = 0; c < 5; c++) {
-      const s = slots[r * 5 + c];
+    for (let c = 0; c < n; c++) {
+      const s = slots[r * n + c];
       line += s < 0 ? "." : (st.colorAt(s, face) ?? "#");
     }
     rows.push(line);
@@ -231,13 +220,14 @@ export interface RimCell {
 export function faceRimView(st: State, face: number): RimCell[][] {
   const [rowV, colV] = VIEW_FRAMES[FACE_NAMES[face]];
   const slots = frontSlots(st, face);
-  const at = (r: number, c: number) => (r < 0 || r > 4 || c < 0 || c > 4 ? -1 : slots[r * 5 + c]);
+  const n = gridWidth(st);
+  const at = (r: number, c: number) => (r < 0 || r >= n || c < 0 || c >= n ? -1 : slots[r * n + c]);
   const side = (s: number, v: Vec3): RimColor => st.colorAt(s, dirIndexOf(v)) ?? "#";
   const neg = (v: Vec3): Vec3 => [-v[0], -v[1], -v[2]];
   const grid: RimCell[][] = [];
-  for (let R = 0; R < 7; R++) {
+  for (let R = 0; R < n + 2; R++) {
     const row: RimCell[] = [];
-    for (let C = 0; C < 7; C++) {
+    for (let C = 0; C < n + 2; C++) {
       const r = R - 1, c = C - 1;
       const s = at(r, c);
       if (s >= 0) {
@@ -270,13 +260,16 @@ function dirIndexOf(v: Vec3): number {
 export function netView(st: State): string {
   const v = (f: string) => faceView(st, FACE_NAMES.indexOf(f as never)).map((r) => r.split("").join(" "));
   const U = v("U"), D = v("D"), F = v("F"), R = v("R"), B = v("B"), L = v("L");
-  const pad = " ".repeat(11);
+  const n = U.length;
+  const w = 2 * n - 1; // a row's width, its letters spaced
+  const pad = " ".repeat(w + 2);
+  const label = (f: string) => " ".repeat(n - 1) + f + " ".repeat(n - 1);
   const lines: string[] = [];
-  lines.push(pad + "    U");
+  lines.push(pad + label("U").trimEnd());
   for (const r of U) lines.push(pad + r);
-  lines.push("    L          F          R          B");
-  for (let i = 0; i < 5; i++) lines.push([L[i], F[i], R[i], B[i]].join("  "));
-  lines.push(pad + "    D");
+  lines.push(["L", "F", "R", "B"].map(label).join("  ").trimEnd());
+  for (let i = 0; i < n; i++) lines.push([L[i], F[i], R[i], B[i]].join("  "));
+  lines.push(pad + label("D").trimEnd());
   for (const r of D) lines.push(pad + r);
   return lines.join("\n");
 }
@@ -284,30 +277,17 @@ export function netView(st: State): string {
 /** Status line: shape, solved, which outer turns are currently allowed. */
 export function statusLine(st: State): string {
   const parts: string[] = [];
-  parts.push(isHomeX(st) ? "X shape" : isXShape(st) ? "X shape (rotated)" : "not X shape");
+  if (st.puzzle.homeShapes[0].includes("0")) parts.push(isHomeX(st) ? "X shape" : isXShape(st) ? "X shape (rotated)" : "not X shape");
   if (isSolved(st)) parts.push("SOLVED");
+  if (!st.puzzle.moves.some((d) => d.needsFull)) return parts.join(" | ") || "not solved";
   const free = outerAvailability(st);
   parts.push("outer turns: " + free.map(([n, c]) => (c === 9 ? n : `${n}(${c}/9)`)).join(" "));
   return parts.join(" | ");
 }
 
-/** For each extension layer, how many of its 9 slots are filled. */
+/** For each turn that needs its layer full (the X-Cube's extension layers), how many of the layer's slots are filled (of 9 on the X-Cube). */
 export function outerAvailability(st: State): [string, number][] {
-  const out: [string, number][] = [];
-  const names: [string, number, number][] = [
-    ["r", 0, 2],
-    ["l", 0, -2],
-    ["u", 1, 2],
-    ["d", 1, -2],
-    ["f", 2, 2],
-    ["b", 2, -2],
-  ];
-  for (const [n, axis, v] of names) {
-    let c = 0;
-    for (let s = 0; s < NUM_SLOTS; s++) if (SLOT_POS[s][axis] === v && st.occ[s] >= 0) c++;
-    out.push([n, c]);
-  }
-  return out;
+  return st.puzzle.moves.filter((d) => d.needsFull).map((d) => [d.name, d.slots.filter((s) => st.occ[s] >= 0).length]);
 }
 
 export { DIRS, ROTATIONS, matVec };

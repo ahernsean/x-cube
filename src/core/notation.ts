@@ -9,8 +9,11 @@
 //   [A, B]            commutator  = A B A' B'
 //   [A: B]            conjugate   = A B A'
 // Commas and periods outside brackets are treated as spaces.
+//
+// Move names are each puzzle's own (PuzzleDef.moves): on the X-Cube r is an outer turn, on
+// the 3x3x3 a wide turn. A name is matched longest first, so a 3x3x3 reads Rw as one turn.
 
-import { MOVE_BY_NAME, invertTurns, turnName, type Turn } from "./puzzle.ts";
+import { XCUBE, invertTurns, turnName, type PuzzleDef, type Turn } from "./puzzle.ts";
 
 export class ParseError extends Error {
   pos: number;
@@ -20,7 +23,18 @@ export class ParseError extends Error {
   }
 }
 
-export function parseAlg(src: string): Turn[] {
+/** Move names longest first, per puzzle, for matching. */
+const NAMES_BY_LENGTH = new WeakMap<PuzzleDef, string[]>();
+function namesByLength(puzzle: PuzzleDef): string[] {
+  let names = NAMES_BY_LENGTH.get(puzzle);
+  if (!names) {
+    names = [...puzzle.moveByName.keys()].sort((a, b) => b.length - a.length);
+    NAMES_BY_LENGTH.set(puzzle, names);
+  }
+  return names;
+}
+
+export function parseAlg(src: string, puzzle: PuzzleDef = XCUBE): Turn[] {
   let i = 0;
   const peek = () => src[i];
   const skipWs = (allowSeparators: boolean) => {
@@ -102,12 +116,11 @@ export function parseAlg(src: string): Turn[] {
         const expanded = sep === "," ? [...a, ...b, ...ai, ...invertTurns(b)] : [...a, ...b, ...ai];
         out.push(...groupSuffix(expanded));
       } else {
-        const m = /^[A-Za-z]/.exec(src.slice(i));
-        if (!m) throw new ParseError(`unexpected character '${c}'`, i);
-        const name = m[0];
-        const def = MOVE_BY_NAME.get(name);
-        if (def === undefined) throw new ParseError(`unknown move '${name}'`, i);
-        i += 1;
+        if (!/[A-Za-z]/.test(c)) throw new ParseError(`unexpected character '${c}'`, i);
+        const name = namesByLength(puzzle).find((n) => src.startsWith(n, i));
+        if (name === undefined) throw new ParseError(`unknown move '${c}'`, i);
+        const def = puzzle.moveByName.get(name)!;
+        i += name.length;
         const n = readAmount();
         const amount = (((n % 4) + 4) % 4) as 0 | 1 | 2 | 3;
         if (amount !== 0) out.push({ def, amount });
@@ -120,8 +133,8 @@ export function parseAlg(src: string): Turn[] {
   return result;
 }
 
-export function formatAlg(turns: readonly Turn[]): string {
-  return turns.map(turnName).join(" ");
+export function formatAlg(turns: readonly Turn[], puzzle: PuzzleDef = XCUBE): string {
+  return turns.map((t) => turnName(t, puzzle)).join(" ");
 }
 
 /** Merge adjacent turns of the same move and drop the ones that cancel. */

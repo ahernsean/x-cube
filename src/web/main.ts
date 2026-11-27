@@ -5251,7 +5251,7 @@ function renderLost() {
   } else if (l.phase === "ask") {
     const q = l.question!;
     text = lostQuestionWords(l, q);
-    answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? [...(canBeEmpty(q.slot) ? ["empty"] : []), "none"] : [])];
+    answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? [...(canBeEmpty(P, q.slot) ? ["empty"] : []), "none"] : [])];
   } else if (l.phase === "giveup") {
     text = `I can't find how your puzzle got this way. ${l.why} Edit the puzzle on this screen to match yours, then tap Continue search, and I'll look again from there.`;
     answers = ["color"];

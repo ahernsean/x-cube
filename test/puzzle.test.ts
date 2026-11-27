@@ -275,8 +275,8 @@ test("search: with restricted turn amounts, repeated turns of one move are still
   const target = State.solved();
   applyTurns(target, parseAlg("R2"));
   const r = search(State.solved(), looksLike(target), { moves: ["R"], amounts: [1], maxDepth: 2 });
-  assert.deepEqual(r.solutions.map(formatAlg), ["R R"]);
+  assert.deepEqual(r.solutions.map((t) => formatAlg(t)), ["R R"]);
   // With all amounts allowed, the same goal is found as a single half turn.
   const all = search(State.solved(), looksLike(target), { moves: ["R"], maxDepth: 2 });
-  assert.deepEqual(all.solutions.map(formatAlg), ["R2"]);
+  assert.deepEqual(all.solutions.map((t) => formatAlg(t)), ["R2"]);
 });
