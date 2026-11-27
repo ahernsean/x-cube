@@ -252,7 +252,7 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H
   `XCUBE` and `CUBE3`, a traditional 3x3x3 on the X-Cube's core grid (the first step of the
   "One Lab, many puzzles" design). Every `State` carries its `puzzle`, so code that has a
   state reads the slots, pieces and moves from it; notation takes the puzzle too (on the
-  3x3x3, `r` and `Rw` are wide turns, not outer turns). The module's `PIECES`, `SLOT_POS`,
+  3x3x3 a wide turn is `Rw` and there is no `r`; see "Standard notation is honored"). The module's `PIECES`, `SLOT_POS`,
   `MOVE_DEFS` and the like are the X-Cube's, for the code that is the X-Cube's alone: its
   state codes (`serialize.ts`), editor (`edit.ts`) and solver (`solve.ts`). The Lab reads
   the puzzle it shows from `P` in `main.ts` (always the X-Cube so far); its drawing still
