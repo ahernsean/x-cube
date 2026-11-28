@@ -972,6 +972,20 @@ labTest(
       );
     }
     check(marks.join() === "x:across/across,y:updown/updown,z:ring/ring,M:across/across,E:updown/updown,S:ring/ring", `rotations and slices carry the mark of the axis they turn about, on the key and its tip (${marks.join(" ")})`);
+    // A refused key (an outer turn on an extension without all 9 pieces: u, on the empty up
+    // extension) shows nothing while pressed: no highlight, no tip and no flip.
+    const refused = await page.evaluate(async () => {
+      const b = document.querySelector('[data-move="u"]'), r = b.getBoundingClientRect();
+      const at = { bubbles: true, pointerId: 9, pointerType: "touch", clientX: r.left + 5, clientY: r.top + 5 };
+      const blocked = b.classList.contains("blocked");
+      b.dispatchEvent(new PointerEvent("pointerdown", at));
+      await new Promise((res) => setTimeout(res, 700));
+      const t = document.getElementById("press-tip");
+      const seen = { blocked, tip: !t.hidden, lit: b.classList.contains("pressed"), flipped: b.classList.contains("inverted"), text: b.textContent };
+      b.dispatchEvent(new PointerEvent("pointerup", at));
+      return seen;
+    });
+    check(refused.blocked && !refused.tip && !refused.lit && !refused.flipped && refused.text === "u", `a refused key shows no highlight, tip or flip while held (${JSON.stringify(refused)})`);
     // A mouse doesn't hide the button, so a mouse press shows no tip.
     const ub = await page.locator('[data-move="U"]').boundingBox();
     await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2);

@@ -446,7 +446,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `E
   once flipped (`pressTip`), as a phone keyboard shows the key under the thumb (the owner
   couldn't see the flip on a phone). As on that keyboard, the key itself is highlighted
   (`pressed`, darker) for the whole time the finger is on it, until it lifts or slides off;
-  once flipped it is in the highlight blue. A rotation's tip carries its key's axis mark,
+  once flipped it is in the highlight blue. A refused key (an outer turn on an
+  incomplete extension) shows none of this: no highlight, no tip, no flip. A rotation's tip carries its key's axis mark,
   through the letter rather than its ′ or 2. The rotations show their axes faintly behind the letter: a line
   across x, a line up and down y, and a ring around z (its axis points at you). The slices
   show the axis they turn about the same way: M x's line, E y's, S z's ring (the mark is the

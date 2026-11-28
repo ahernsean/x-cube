@@ -3107,13 +3107,15 @@ function bindMoveButtons() {
     let downAt = 0; // event timestamp of the press
     let long = false;
     let touch = false; // a finger, which hides the button: the press tip shows the turn instead
+    let refused = false; // the turn can't be made now (an outer turn on an incomplete extension): a press shows nothing
     const show = (inverted: boolean) => {
+      if (refused) inverted = false;
       const amount = inverted ? invertAmount(app.modifier) : app.modifier;
       b.textContent = name + suffixFor(amount);
       b.classList.toggle("inverted", inverted);
       // Under a finger the key is highlighted the whole time it is touched, as a phone keyboard's is.
-      b.classList.toggle("pressed", touch && active !== null);
-      if (touch && active !== null) pressTip(b, b.textContent, inverted);
+      b.classList.toggle("pressed", touch && active !== null && !refused);
+      if (touch && active !== null && !refused) pressTip(b, b.textContent, inverted);
     };
     const reset = () => {
       clearTimeout(timer);
@@ -3131,6 +3133,7 @@ function bindMoveButtons() {
       downAt = e.timeStamp;
       long = false;
       touch = e.pointerType !== "mouse";
+      refused = b.classList.contains("blocked");
       show(false);
       timer = setTimeout(() => {
         long = true;
