@@ -21,7 +21,7 @@ Since the puzzle may be held either way up, a stage of a solve is named by color
 ("Yellow core edges"), not by place.
 
 A **layer** is a slab of pieces that turns together: one side's 3x3x3 layer with
-everything beyond it (`R`), a middle slice (`M`, `H`, `S`), or an extension by itself
+everything beyond it (`R`), a middle slice (`M`, `E`, `S`), or an extension by itself
 (`r`, an outer layer).
 
 ## Turns, orientation and the view

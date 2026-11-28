@@ -116,7 +116,7 @@ test("owner-confirmed: after F, f and b turn freely; l and r refuse", () => {
 test("owner-confirmed: U and R2 keep the X shape", () => {
   assert.ok(isHomeX(run("U").st));
   assert.ok(isHomeX(run("R2").st));
-  assert.ok(isHomeX(run("U R2 D' F2 H").st));
+  assert.ok(isHomeX(run("U R2 D' F2 E'").st));
   assert.ok(!isHomeX(run("R").st));
 });
 
@@ -193,21 +193,22 @@ test("algorithms: Baum's 3-cycles, translated to the white-up grip, keep the X s
     assert.equal(e.moved.length, 3, alg);
     assert.equal(e.cycles.length, 1, alg);
   }
-  // Taken literally in a white-up grip (his H as our horizontal slice), it jams.
-  assert.equal(run("R' H R u R' H' R u'").r.ok, false);
+  // Taken literally in a white-up grip (his H as our horizontal slice, turned like U: E'), it jams.
+  assert.equal(run("R' E' R u R' E R u'").r.ok, false);
 });
 
 test("notation: commutators, conjugates, repeats, inverses", () => {
   const f = (s: string) => formatAlg(parseAlg(s));
-  assert.equal(f("[R' H R, u]"), "R' H R u R' H' R u'");
+  assert.equal(f("[R' E R, u]"), "R' E R u R' E' R u'");
   assert.equal(f("[R: U]"), "R U R'");
   assert.equal(f("(R U2)3"), "R U2 R U2 R U2");
   assert.equal(f("(R U2) x 2"), "R U2 R U2");
   assert.equal(f("(R U2)*2"), "R U2 R U2");
   assert.equal(f("(R U)'"), "U' R'");
   assert.equal(f("R2' x y' z2"), "R2 x y' z2");
-  assert.equal(f("R' H R, u, R' H' R, u'"), "R' H R u R' H' R u'");
+  assert.equal(f("R' E R, u, R' E' R, u'"), "R' E R u R' E' R u'");
   assert.throws(() => parseAlg("Q"));
+  assert.throws(() => parseAlg("H"), /unknown move 'H'/, "the horizontal middle slice is E, the standard name");
 });
 
 test("state codes: a state code round-trips", () => {
@@ -275,8 +276,8 @@ test("search: with restricted turn amounts, repeated turns of one move are still
   const target = State.solved();
   applyTurns(target, parseAlg("R2"));
   const r = search(State.solved(), looksLike(target), { moves: ["R"], amounts: [1], maxDepth: 2 });
-  assert.deepEqual(r.solutions.map(formatAlg), ["R R"]);
+  assert.deepEqual(r.solutions.map((t) => formatAlg(t)), ["R R"]);
   // With all amounts allowed, the same goal is found as a single half turn.
   const all = search(State.solved(), looksLike(target), { moves: ["R"], maxDepth: 2 });
-  assert.deepEqual(all.solutions.map(formatAlg), ["R2"]);
+  assert.deepEqual(all.solutions.map((t) => formatAlg(t)), ["R2"]);
 });

@@ -3,28 +3,8 @@
 
 import { isHomeX, isSolved, isXShape, isExposed, outerAvailability } from "../core/analyze.ts";
 import { DIRS, axisRotation, ROT_DIR, ROT_INV, ROTATIONS, dirIndex, matVec, type Vec3 } from "../core/geometry.ts";
-import { formatAlg, parseAlg, ParseError } from "../core/notation.ts";
-import {
-  COLOR_NAME,
-  PIECES,
-  FACE_COLOR,
-  MOVE_BY_NAME,
-  MOVE_DEFS,
-  NUM_SLOTS,
-  SLOT_POS,
-  State,
-  applyTurn,
-  blockedReason,
-  slotAt,
-  slotAtXYZ,
-  slotName,
-  turnName,
-  type Color,
-  type Turn,
-  applyTurns,
-  invertTurns,
-  SLOT_NEIGHBOR,
-} from "../core/puzzle.ts";
+import { formatAlg as formatAlgOf, notationHelp, parseAlg as parseAlgOf, ParseError } from "../core/notation.ts";
+import { COLOR_NAME, XCUBE, State, applyTurn, blockedReason, turnName as turnNameOf, type Color, type PuzzleDef, type Turn, applyTurns, invertTurns } from "../core/puzzle.ts";
 import { decodeState, encodeState, unreachableReason } from "../core/serialize.ts";
 import { UNPAINTED, draftColors, draftFilled, draftProblems, draftSpots, draftTap, fitColors, repaint, stickerChoice, visibleColors, type FaceColors, type Fit } from "../core/edit.ts";
 import { KNOWN_ALGORITHMS } from "../core/algorithms.ts";
@@ -34,14 +14,21 @@ import { answerOf, answersTo, bestQuestion, canBeEmpty, centerColor, endCandidat
 
 declare const THREE: any;
 
+/** The puzzle the Lab shows. Its tables (slots, pieces, moves) are read from here. */
+let P: PuzzleDef = XCUBE;
+/** Notation in the shown puzzle's own names. */
+const parseAlg = (src: string) => parseAlgOf(src, P);
+const formatAlg = (turns: readonly Turn[]) => formatAlgOf(turns, P);
+const turnName = (t: Turn) => turnNameOf(t, P);
+
 // ------------------------------------------------------------------ model
 
 const app = {
-  base: State.solved(),
+  base: State.solved(P),
   baseLabel: "Solved",
   history: [] as Turn[],
   cursor: 0, // number of history turns applied
-  current: State.solved(),
+  current: State.solved(P),
   modifier: 1 as 1 | 2 | 3,
   message: "",
   messageKind: "info" as "info" | "error" | "ok",
@@ -443,7 +430,7 @@ function initScene(canvas: HTMLCanvasElement) {
     const r = (v: any): Vec3 => [Math.round(v.x), Math.round(v.y), Math.round(v.z)];
     FACE_AXES[d] = { ux: r(new THREE.Vector3(1, 0, 0).applyEuler(e)), uy: r(new THREE.Vector3(0, 1, 0).applyEuler(e)) };
   }
-  for (const c of PIECES) {
+  for (const c of P.pieces) {
     const g = new THREE.Group();
     const bodyMesh = new THREE.Mesh(withAoColors(body), bodyMat);
     bodyMesh.castShadow = true;
@@ -538,7 +525,7 @@ function initScene(canvas: HTMLCanvasElement) {
 }
 
 function placeMesh(g: any, slot: number, ori: number) {
-  const p = SLOT_POS[slot];
+  const p = P.slotPos[slot];
   g.position.set(p[0], p[1], p[2]);
   const m = ROTATIONS[ori];
   const mat = new THREE.Matrix4().set(m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, 0, 0, 0, 1);
@@ -547,7 +534,7 @@ function placeMesh(g: any, slot: number, ori: number) {
 
 function syncMeshes(st: State) {
   requestDraw();
-  for (let s = 0; s < NUM_SLOTS; s++) {
+  for (let s = 0; s < P.numSlots; s++) {
     const id = st.occ[s];
     if (id < 0) continue;
     placeMesh(meshes[id], s, st.ori[s]);
@@ -627,7 +614,7 @@ function flatNeighbors(fill: (x: number, y: number, z: number) => number, f: rea
 /** The front spot and in-plane axes of face d of the piece in `slot`, at rest. */
 function restFrame(slot: number, ori: number, d: number) {
   const R = ROTATIONS[ori];
-  const p = SLOT_POS[slot];
+  const p = P.slotPos[slot];
   const n = matVec(R, DIRS[d]);
   return { front: [p[0] + n[0], p[1] + n[1], p[2] + n[2]], ux: matVec(R, FACE_AXES[d].ux), uy: matVec(R, FACE_AXES[d].uy) };
 }
@@ -830,7 +817,7 @@ function aoFace(mesh: any, d: number, view: "3d" | "flat"): AoFace {
 
 function filledAt(st: State, p: Vec3): boolean {
   if (p[0] === 0 && p[1] === 0 && p[2] === 0) return true; // the solid center
-  const s = slotAt(p);
+  const s = P.slotAt(p);
   return s >= 0 && st.occ[s] >= 0;
 }
 
@@ -967,16 +954,16 @@ function rotAxis(axis: number, c: number, s: number, v: number[]): number[] {
 /** Recompute shading for the faces near a turning layer, from where pieces actually are. */
 function shadeDuringTurn(pose: TurnPose) {
   if (!aoOn["3d"] && !aoOn.flat) return;
-  const d = MOVE_DEFS[pose.def];
+  const d = P.moves[pose.def];
   const axis = d.axis;
   const c = Math.cos(pose.angle), sn = Math.sin(pose.angle);
   const st = pose.before;
   // Which pieces turn, and where their centers are right now.
-  const isMovingId = new Uint8Array(PIECES.length);
+  const isMovingId = new Uint8Array(P.pieces.length);
   const mx: number[] = [], my: number[] = [], mz: number[] = [];
   let lo = 9, hi = -9;
   for (const sl of d.slots) {
-    const pp = SLOT_POS[sl];
+    const pp = P.slotPos[sl];
     lo = Math.min(lo, pp[axis] - 1);
     hi = Math.max(hi, pp[axis] + 1);
     const id = st.occ[sl];
@@ -991,7 +978,7 @@ function shadeDuringTurn(pose: TurnPose) {
   const REACH2 = 0.75 * 0.75 * 3; // beyond this squared distance a piece can't fill the spot
   const staticAt = (x: number, y: number, z: number) => {
     if (x === 0 && y === 0 && z === 0) return true;
-    const slot = slotAtXYZ(x, y, z);
+    const slot = P.slotAtXYZ(x, y, z);
     return slot >= 0 && st.occ[slot] >= 0 && !isMovingId[st.occ[slot]];
   };
   // Neighboring faces check many of the same spots: remember each spot's value this frame.
@@ -1032,10 +1019,10 @@ function shadeDuringTurn(pose: TurnPose) {
     return best;
   };
   const corner = [1, 1, 1, 1];
-  for (let slot = 0; slot < NUM_SLOTS; slot++) {
+  for (let slot = 0; slot < P.numSlots; slot++) {
     const id = st.occ[slot];
     if (id < 0) continue;
-    const p = SLOT_POS[slot];
+    const p = P.slotPos[slot];
     if (p[axis] < lo || p[axis] > hi) continue;
     const moving = isMovingId[id] === 1;
     const R = ROTATIONS[st.ori[slot]];
@@ -1072,24 +1059,24 @@ const GLOW_COVER = 0.1;
  * pieces are right now. At angle 0 this matches the glow at rest.
  */
 function glowDuringTurn(pose: TurnPose) {
-  const d = MOVE_DEFS[pose.def];
+  const d = P.moves[pose.def];
   const axis = d.axis;
   const c = Math.cos(pose.angle), sn = Math.sin(pose.angle);
   const st = pose.before;
-  const turning = new Uint8Array(NUM_SLOTS);
+  const turning = new Uint8Array(P.numSlots);
   for (const sl of d.slots) turning[sl] = 1;
   // Is a piece of the group (turning or not) at p, given in that group's own frame?
   const groupHas = (p: number[], group: number) => {
     const x = Math.round(p[0]), y = Math.round(p[1]), z = Math.round(p[2]);
     if (Math.hypot(p[0] - x, p[1] - y, p[2] - z) > GLOW_COVER) return false;
     if (x === 0 && y === 0 && z === 0) return true; // the solid center
-    const slot = slotAtXYZ(x, y, z);
+    const slot = P.slotAtXYZ(x, y, z);
     return slot >= 0 && st.occ[slot] >= 0 && turning[slot] === group;
   };
-  for (let slot = 0; slot < NUM_SLOTS; slot++) {
+  for (let slot = 0; slot < P.numSlots; slot++) {
     const id = st.occ[slot];
     if (id < 0) continue;
-    const p = SLOT_POS[slot];
+    const p = P.slotPos[slot];
     const mine = turning[slot];
     const exposed: boolean[] = [];
     for (let fd = 0; fd < 6; fd++) {
@@ -1114,8 +1101,8 @@ function glowRestError() {
   const bands = () => glows.flatMap((list) => (list ?? []).map((g) => `${g.mesh.visible}${g.corner.visible}${g.mesh.material.uuid}`));
   const rest = bands();
   let wrong = 0;
-  for (let def = 0; def < MOVE_DEFS.length; def++) {
-    if (MOVE_DEFS[def].kind === "rotation") continue;
+  for (let def = 0; def < P.moves.length; def++) {
+    if (P.moves[def].kind === "rotation") continue;
     glowDuringTurn({ def, angle: 0, before: app.current });
     wrong += bands().filter((b, i) => b !== rest[i]).length;
     syncMeshes(app.current);
@@ -1126,8 +1113,8 @@ function glowRestError() {
 /** Largest change live shading makes to a puzzle at rest, over every turnable layer (should be ~0). */
 function shadeRestError() {
   let worst = 0;
-  for (let def = 0; def < MOVE_DEFS.length; def++) {
-    if (MOVE_DEFS[def].kind === "rotation") continue;
+  for (let def = 0; def < P.moves.length; def++) {
+    if (P.moves[def].kind === "rotation") continue;
     const before = new Map<AoFace, number[]>();
     for (const list of aoFaces) for (const f of list ?? []) if (f.cur) before.set(f, f.cur.slice());
     shadeDuringTurn({ def, angle: 0, before: app.current });
@@ -1524,7 +1511,7 @@ function updateCompass() {
 /** Color of the center sticker currently showing on puzzle face d (outermost center along that axis). */
 function faceCenterColor(st: State, d: number): Color | null {
   for (const k of [2, 1]) {
-    const s = slotAt([DIRS[d][0] * k, DIRS[d][1] * k, DIRS[d][2] * k]);
+    const s = P.slotAt([DIRS[d][0] * k, DIRS[d][1] * k, DIRS[d][2] * k]);
     if (s >= 0 && st.occ[s] >= 0) return st.colorAt(s, d);
   }
   return null;
@@ -1632,7 +1619,7 @@ const SWIPE_PX = 10;
 const HOLD_TO_TUMBLE_MS = 350;
 const LAYER_MOVE: Record<number, Record<number, string>> = {
   0: { 2: "r", 1: "R", 0: "M", [-1]: "L", [-2]: "l" },
-  1: { 2: "u", 1: "U", 0: "H", [-1]: "D", [-2]: "d" },
+  1: { 2: "u", 1: "U", 0: "E", [-1]: "D", [-2]: "d" },
   2: { 2: "f", 1: "F", 0: "S", [-1]: "B", [-2]: "b" },
 };
 
@@ -1723,16 +1710,16 @@ function beginLiveTurn(el: HTMLElement, hit: CubeHit, x0: number, y0: number, dx
   const n = hit.normal, m = best.m;
   const r: Vec3 = [n[1] * m[2] - n[2] * m[1], n[2] * m[0] - n[0] * m[2], n[0] * m[1] - n[1] * m[0]];
   const axis = r.findIndex((v) => v !== 0);
-  const def = MOVE_BY_NAME.get(LAYER_MOVE[axis][hit.cell[axis]])!;
+  const def = P.moveByName.get(LAYER_MOVE[axis][hit.cell[axis]])!;
   const why = blockedReason(app.current, { def, amount: 1 });
   if (why) {
-    setMessage(`${MOVE_DEFS[def].name} refused: ${why.replace(/^\w+ blocked: /, "")}`, "error");
+    setMessage(`${P.moves[def].name} refused: ${why.replace(/^\w+ blocked: /, "")}`, "error");
     render();
     return null;
   }
   const group = new THREE.Group();
   pivot.add(group);
-  for (const s of MOVE_DEFS[def].slots) {
+  for (const s of P.moves[def].slots) {
     const id = app.current.occ[s];
     if (id >= 0) group.attach(meshes[id]);
   }
@@ -1789,7 +1776,7 @@ function finishLiveTurn(l: Live, q: number) {
   for (const child of [...l.group.children]) pivot.attach(child);
   pivot.remove(l.group);
   if (live === l) live = null;
-  const amount = ((((q * MOVE_DEFS[l.def].ccw) % 4) + 4) % 4) as 0 | 1 | 2 | 3;
+  const amount = ((((q * P.moves[l.def].ccw) % 4) + 4) % 4) as 0 | 1 | 2 | 3;
   if (amount) {
     app.history = app.history.slice(0, app.cursor);
     app.history.push({ def: l.def, amount });
@@ -1829,13 +1816,13 @@ let shuffleAlg = "";
  */
 function shuffle() {
   flushAnimations();
-  const names = ["R", "L", "U", "D", "F", "B", "r", "l", "u", "d", "f", "b", "M", "H", "S"];
+  const names = ["R", "L", "U", "D", "F", "B", "r", "l", "u", "d", "f", "b", "M", "E", "S"];
   const st = app.current.clone();
   const turns: Turn[] = [];
   let prevDef = -1;
   let guard = 0;
   while (turns.length < SHUFFLE_TURNS && guard++ < 10000) {
-    const def = MOVE_BY_NAME.get(names[Math.floor(Math.random() * names.length)])!;
+    const def = P.moveByName.get(names[Math.floor(Math.random() * names.length)])!;
     if (def === prevDef) continue;
     const t: Turn = { def, amount: (1 + Math.floor(Math.random() * 3)) as 1 | 2 | 3 };
     if (blockedReason(st, t)) continue;
@@ -2032,7 +2019,7 @@ function bindOrbit(el: HTMLElement) {
       else if (isTap && edit) {
         const h = pickCube(el, e.clientX, e.clientY);
         if (edit.paint === "shape") tapShape(el, e.clientX, e.clientY, h);
-        else if (!shapeFirst(el, e.clientX, e.clientY, h) && h) paintSticker(slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
+        else if (!shapeFirst(el, e.clientX, e.clientY, h) && h) paintSticker(P.slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]), dirIndex(h.normal));
       } else if (isTap && !lost && (pausedAt !== null || ((anim || queue.length) && !shuffling))) {
         // A tap while turns play pauses them, at once; a tap while paused goes on.
         if (pausedAt !== null) resumePlayback();
@@ -2148,7 +2135,7 @@ function startNext() {
     recompute();
   }
   const after = app.current;
-  const d = MOVE_DEFS[turn.def];
+  const d = P.moves[turn.def];
   const amount = forward ? turn.amount : 4 - turn.amount;
   const duration = reduceMotion ? 0 : (shuffling ? SHUFFLE_MS : speedMs) * (amount === 2 ? 1.4 : 1);
   const group = new THREE.Group();
@@ -2885,7 +2872,7 @@ function render() {
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-mod]")) b.classList.toggle("sel", Number(b.dataset.mod) === app.modifier);
   // outer move buttons: show disabled when blocked
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-move]")) {
-    const def = MOVE_BY_NAME.get(b.dataset.move!)!;
+    const def = P.moveByName.get(b.dataset.move!)!;
     const blocked = blockedReason(st, { def, amount: 1 });
     b.classList.toggle("blocked", !!blocked);
     const held = b.classList.contains("inverted");
@@ -3067,7 +3054,7 @@ const invertAmount = (a: 1 | 2 | 3) => (4 - a) as 1 | 2 | 3;
 
 function pressMove(name: string, inverted: boolean) {
   const amount = inverted ? invertAmount(app.modifier) : app.modifier;
-  doTurn({ def: MOVE_BY_NAME.get(name)!, amount });
+  doTurn({ def: P.moveByName.get(name)!, amount });
   if (app.modifier !== 1 && !($("sticky-mod") as HTMLInputElement).checked) app.modifier = 1;
   render();
 }
@@ -3078,6 +3065,40 @@ function pressMove(name: string, inverted: boolean) {
  * Sliding off the button before releasing does nothing.
  */
 const LONG_PRESS_MS = 450;
+/** Space between the press tip and the top of the button under the finger. */
+const PRESS_TIP_GAP = 14;
+
+/**
+ * While a finger holds a turn button, the turn a release will make, shown above it (a finger
+ * hides the button itself, and so the flip to the inverse); null hides it.
+ */
+function pressTip(b: HTMLElement | null, text = "", inverted = false) {
+  const tip = $("press-tip");
+  if (!b) {
+    tip.hidden = true;
+    return;
+  }
+  const name = b.dataset.move ?? "";
+  const key = document.createElement("span");
+  key.className = "tip-key";
+  key.textContent = text.startsWith(name) ? name : text;
+  const amount = document.createElement("span");
+  amount.className = "tip-amount";
+  amount.textContent = text.startsWith(name) ? text.slice(name.length) : "";
+  tip.replaceChildren(key, amount);
+  tip.classList.toggle("inverted", inverted);
+  tip.dataset.turn = name;
+  tip.hidden = false;
+  // A lowercase letter's ink sits low in its line, so its tip is padded to center the ink on the axis mark.
+  const low = inkDrop(tip, b.dataset.move ?? "");
+  tip.style.setProperty("--pt", `${6 + Math.max(0, -2 * low)}px`);
+  tip.style.setProperty("--pb", `${6 + Math.max(0, 2 * low)}px`);
+  const r = b.getBoundingClientRect();
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), innerWidth - w - 8);
+  tip.style.left = `${left}px`;
+  tip.style.top = `${Math.max(8, r.top - h - PRESS_TIP_GAP)}px`;
+}
 function bindMoveButtons() {
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-move]")) {
     const name = b.dataset.move!;
@@ -3085,16 +3106,24 @@ function bindMoveButtons() {
     let active: number | null = null;
     let downAt = 0; // event timestamp of the press
     let long = false;
+    let touch = false; // a finger, which hides the button: the press tip shows the turn instead
+    let refused = false; // the turn can't be made now (an outer turn on an incomplete extension): a press shows nothing
     const show = (inverted: boolean) => {
+      if (refused) inverted = false;
       const amount = inverted ? invertAmount(app.modifier) : app.modifier;
       b.textContent = name + suffixFor(amount);
       b.classList.toggle("inverted", inverted);
+      // Under a finger the key is highlighted the whole time it is touched, as a phone keyboard's is.
+      b.classList.toggle("pressed", touch && active !== null && !refused);
+      if (touch && active !== null && !refused) pressTip(b, b.textContent, inverted);
     };
     const reset = () => {
       clearTimeout(timer);
       active = null;
       long = false;
       show(false);
+      if (touch) pressTip(null);
+      touch = false;
     };
     b.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -3103,6 +3132,9 @@ function bindMoveButtons() {
       active = e.pointerId;
       downAt = e.timeStamp;
       long = false;
+      touch = e.pointerType !== "mouse";
+      refused = b.classList.contains("blocked");
+      show(false);
       timer = setTimeout(() => {
         long = true;
         show(true);
@@ -3126,6 +3158,14 @@ function bindMoveButtons() {
       if (e.detail === 0) pressMove(name, false);
     });
   }
+}
+
+/** Runs `act` when a finger, pen or the main mouse button goes down on `b`: a picker answers on touch, not on lift. */
+function onPress(b: HTMLElement, act: () => void) {
+  b.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    act();
+  });
 }
 
 /** Each section's heading collapses and expands it; the choice is remembered on this device. */
@@ -3324,7 +3364,7 @@ function renderInfo() {
  */
 function debugInfo(): string {
   const q = pivot.quaternion;
-  const name = (s: number) => slotName(s);
+  const name = (s: number) => P.slotName(s);
   return JSON.stringify(
     {
       lab: "x-cube debug 1",
@@ -3638,7 +3678,7 @@ async function pasteDebug() {
 }
 
 function slotByName(name: string): number {
-  for (let s = 0; s < NUM_SLOTS; s++) if (slotName(s) === name) return s;
+  for (let s = 0; s < P.numSlots; s++) if (P.slotName(s) === name) return s;
   throw new Error(`no slot named ${name}`);
 }
 
@@ -3784,13 +3824,25 @@ function restoreNext() {
   r.then?.();
 }
 
-/** The ⓘ and Display buttons beside the 3D and flat views' headings each open a small panel over the view. */
+/** The Turn panel's ⓘ: how turns are written on the puzzle shown, and which notation is the WCA's. */
+function fillNotationHelp() {
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const { rows, note } = notationHelp(P);
+  $("turn-info-pop").innerHTML =
+    `<p class="hint">How turns are written in the turn list, the turn field and algorithms.</p>` +
+    `<dl>${rows.map((r) => `<dt>${esc(r.notation)}</dt><dd>${esc(r.meaning)}</dd>`).join("")}</dl>` +
+    `<p class="hint">${esc(note)}</p>`;
+}
+
+/** The ⓘ and Display buttons beside the 3D and flat views' headings, and the Turn panel's ⓘ, each open a small panel. */
 function bindViewTools() {
   const pairs: [string, string][] = [
     ["info-btn", "info-pop"],
     ["render-btn", "render-pop"],
     ["flat-info-btn", "flat-info-pop"],
+    ["turn-info-btn", "turn-info-pop"],
   ];
+  fillNotationHelp();
   const close = (except?: string) => {
     for (const [b, p] of pairs)
       if (p !== except) {
@@ -3878,15 +3930,25 @@ function bindUI() {
     renderEdit();
     if (act === "show" && edit.highlight) showHighlighted();
   });
+  // A color or the Shape tool is picked the moment a finger touches it (a click, for the keyboard, picks it too).
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) {
     if (b.dataset.paint !== "shape") b.style.background = NET_COLOR[b.dataset.paint!];
-    b.addEventListener("click", () => {
-      if (!edit) return;
+    const pick = () => {
+      if (!edit || edit.paint === b.dataset.paint) return;
       edit.paint = b.dataset.paint as Color | "shape";
       if (edit.paint === "shape") stopShapeFlash();
       renderEdit();
-    });
+    };
+    onPress(b, pick);
+    b.addEventListener("click", pick);
   }
+  // The turn amount, likewise, is picked on touch.
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-mod]"))
+    onPress(b, () => {
+      if (app.modifier === Number(b.dataset.mod)) return;
+      app.modifier = Number(b.dataset.mod) as 1 | 2 | 3;
+      render();
+    });
   setupCollapsibles();
   setupTabs();
   document.addEventListener("click", async (e) => {
@@ -3946,7 +4008,7 @@ function bindUI() {
   $("shuffle").addEventListener("click", () => endingSolve(() => shuffle()));
   $("reset").addEventListener("click", () =>
     endingSolve(() => {
-      setBase(State.solved(), "Solved");
+      setBase(State.solved(P), "Solved");
       setMessage("Reset to solved", "ok");
       render();
     }),
@@ -4198,11 +4260,11 @@ function refitEdit() {
     return;
   }
   const fit = fitColors(edit.shape, edit.view);
-  const blank = [...Array(NUM_SLOTS).keys()].filter((t) => [0, 1, 2, 3, 4, 5].some((d) => edit!.view[t * 6 + d] === UNPAINTED));
+  const blank = [...Array(P.numSlots).keys()].filter((t) => [0, 1, 2, 3, 4, 5].some((d) => edit!.view[t * 6 + d] === UNPAINTED));
   if (blank.length) {
     const n = edit.view.filter((c) => c === UNPAINTED).length;
     // Until every center is painted, how the centers are arranged isn't known.
-    const centers = blank.some((t) => SLOT_POS[t].filter((c) => c !== 0).length === 1);
+    const centers = blank.some((t) => P.slotPos[t].filter((c) => c !== 0).length === 1);
     const problems = fit.level === "reachable" || (fit.level === "possible" && centers) ? [] : fit.problems;
     problems.push({ text: n === 1 ? "One sticker has no color yet" : `${n} stickers have no color yet`, slots: blank });
     edit.fit = { level: fit.level === "reachable" ? "possible" : fit.level, state: fit.state, problems };
@@ -4230,7 +4292,7 @@ function placeMarkers(pool: any[], slots: number[], make: () => any) {
   slots.forEach((t, n) => {
     if (n === pool.length) pool.push(make());
     const g = pool[n];
-    g.position.set(SLOT_POS[t][0], SLOT_POS[t][1], SLOT_POS[t][2]);
+    g.position.set(P.slotPos[t][0], P.slotPos[t][1], P.slotPos[t][2]);
     g.userData.slot = t;
     g.userData.fit?.(t);
     pivot.add(g);
@@ -4330,7 +4392,7 @@ function placeOverlays(list: [number, number, Color | typeof UNPAINTED][]) {
     g.userData.slot = t;
     const [sticker, outline, tile, flatOutline] = g.children;
     const painted = color !== UNPAINTED;
-    g.position.set(SLOT_POS[t][0], SLOT_POS[t][1], SLOT_POS[t][2]);
+    g.position.set(P.slotPos[t][0], P.slotPos[t][1], P.slotPos[t][2]);
     sticker.visible = painted;
     outline.visible = flatOutline.visible = !painted;
     if (painted) sticker.material = paintMaterial!.sticker(color);
@@ -4372,7 +4434,7 @@ function shapeFirst(el: HTMLElement, clientX: number, clientY: number, h: CubeHi
   if (!edit?.highlight) return false;
   const taps = edit.fit.problems[shownProblem().i]?.taps;
   if (!taps?.length) return false;
-  const slot = pickMarker(el, clientX, clientY, h, hintGhosts) ?? (h ? slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]) : -1);
+  const slot = pickMarker(el, clientX, clientY, h, hintGhosts) ?? (h ? P.slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]) : -1);
   if (!taps.includes(slot)) return false;
   setMessage("To add or remove an extension, pick Shape first", "info", ["Shape"]);
   render();
@@ -4391,7 +4453,7 @@ function tapShape(el: HTMLElement, clientX: number, clientY: number, h: CubeHit 
     endShapeAnim();
     h = pickCube(el, clientX, clientY);
   }
-  const slot = pickMarker(el, clientX, clientY, h) ?? (h ? slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]) : -1);
+  const slot = pickMarker(el, clientX, clientY, h) ?? (h ? P.slotAtXYZ(h.cell[0], h.cell[1], h.cell[2]) : -1);
   const tap = draftTap(edit, slot);
   if (!tap) return;
   edit.colors = repaint(edit.colors, tap);
@@ -4423,7 +4485,7 @@ function rotationQuat(r: number) {
 
 function animateShape(carries: { from: number; to: number; rot: number }[]) {
   if (!edit || reduceMotionView()) return;
-  const core = (s: number) => SLOT_POS[s].every((c) => Math.abs(c) < 2);
+  const core = (s: number) => P.slotPos[s].every((c) => Math.abs(c) < 2);
   // A core piece that stays in its slot and turns, with the pieces on it.
   const hub = carries.find((c) => c.from === c.to && core(c.from));
   // A piece from a core double edge: only it is seen to move (the two core edges behind trade places unseen).
@@ -4435,7 +4497,7 @@ function animateShape(carries: { from: number; to: number; rot: number }[]) {
     items: moved.map((c) => {
       const turn = rotationQuat(c.rot);
       const mesh = meshes[edit!.shown.occ[c.to]];
-      return { mesh, p0: new THREE.Vector3(...SLOT_POS[c.from]), q0: turn.clone().invert().multiply(mesh.quaternion), turn };
+      return { mesh, p0: new THREE.Vector3(...P.slotPos[c.from]), q0: turn.clone().invert().multiply(mesh.quaternion), turn };
     }),
   };
   stepShapeAnim();
@@ -4504,7 +4566,7 @@ function drawEdit() {
       continue;
     }
     if (want === UNPAINTED) over.push([s, dir, want]);
-    if (PIECES[id].stickers[local] === want) continue;
+    if (P.pieces[id].stickers[local] === want) continue;
     for (const [mesh, mat] of [[stickerMesh3d[id * 6 + local], look.sticker], [tileMesh[id * 6 + local], look.tile]]) {
       if (!mesh) continue;
       mesh.userData.ownMaterial ??= mesh.material;
@@ -4948,7 +5010,7 @@ const LOST_SIDES = ["Over on the right side", "Over on the left side", "Up on th
  * ring?"). The centers' colors are the same in every candidate held that way.
  */
 function lostQuestionWords(l: Lost, q: Question): string {
-  const p = SLOT_POS[q.slot];
+  const p = P.slotPos[q.slot];
   const d = q.kind === "color" ? q.dir : DIRS.findIndex((v) => v.every((c, i) => c === (Math.abs(p[i]) === 2 ? Math.sign(p[i]) : 0)));
   const c = d >= 0 ? centerColor(l.expected.state, d) : null;
   const ask = q.kind === "color" ? "what color is the sticker shown in the ring?" : "is there a piece here?";
@@ -5174,7 +5236,7 @@ function lostEditCancel(l: Lost) {
 
 /** Turns the 3D view so the spot asked about faces the viewer, tipped a little toward the top and the right. */
 function lookAtSpot(q: Question) {
-  const p = SLOT_POS[q.slot];
+  const p = P.slotPos[q.slot];
   const out: readonly number[] = q.kind === "color" ? DIRS[q.dir] : p.map((c) => (Math.abs(c) === 2 ? Math.sign(c) : 0));
   const v = new THREE.Vector3(...out).multiplyScalar(2).add(new THREE.Vector3(0.35, 0.45, 0.35));
   if (Math.abs(out[1]) === 1) v.set(out[0] * 2 + 0.3, out[1] * 2, out[2] * 2 + 0.6);
@@ -5200,7 +5262,7 @@ function placeLostMarker() {
   if (!q) return;
   const group = new THREE.Group();
   const mat = (color: number) => new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true });
-  const p = new THREE.Vector3(...SLOT_POS[q.slot]);
+  const p = new THREE.Vector3(...P.slotPos[q.slot]);
   if (q.kind === "color") {
     const n = new THREE.Vector3(...DIRS[q.dir]);
     for (const [r, w, c] of [[0.42, 0.075, 0x111111], [0.42, 0.045, 0xffffff]] as const) {
@@ -5251,7 +5313,7 @@ function renderLost() {
   } else if (l.phase === "ask") {
     const q = l.question!;
     text = lostQuestionWords(l, q);
-    answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? [...(canBeEmpty(q.slot) ? ["empty"] : []), "none"] : [])];
+    answers = [...answersTo(l.cands, q), ...(q.kind === "color" ? [...(canBeEmpty(P, q.slot) ? ["empty"] : []), "none"] : [])];
   } else if (l.phase === "giveup") {
     text = `I can't find how your puzzle got this way. ${l.why} Edit the puzzle on this screen to match yours, then tap Continue search, and I'll look again from there.`;
     answers = ["color"];
@@ -5293,7 +5355,7 @@ function stepColors(st: State, step: SolveStep): { focus: Set<number>; free: Set
   applyTurns(after, invertTurns(parseAlg(step.regrip)));
   const changed = (s: number) => st.occ[s] >= 0 && (after.occ[s] !== st.occ[s] || after.ori[s] !== st.ori[s]);
   const focus = new Set(step.moved.filter(([from]) => changed(from)).flatMap(([from]) => [from, ...attached(st, from)]).map((s) => st.occ[s]));
-  const free = new Set([...Array(NUM_SLOTS).keys()].filter(changed).map((s) => st.occ[s]).filter((id) => !focus.has(id)));
+  const free = new Set([...Array(P.numSlots).keys()].filter(changed).map((s) => st.occ[s]).filter((id) => !focus.has(id)));
   return { focus, free };
 }
 
@@ -5376,6 +5438,18 @@ function showStepIdle(): boolean {
  * its line box's middle by an amount that depends on the font, so it is measured from the
  * font the button is drawn in.
  */
+/** How far below the middle of its line box a letter's ink's middle is, in el's font (0 where the font's metrics aren't known). */
+function inkDrop(el: HTMLElement, letter: string): number {
+  if (!letter) return 0;
+  const g = document.createElement("canvas").getContext("2d");
+  if (!g) return 0;
+  const cs = getComputedStyle(el);
+  g.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const t = g.measureText(letter);
+  if (!t.fontBoundingBoxAscent) return 0;
+  return (t.fontBoundingBoxAscent - t.fontBoundingBoxDescent) / 2 - (t.actualBoundingBoxAscent - t.actualBoundingBoxDescent) / 2;
+}
+
 function centerAxisLetters() {
   const g = document.createElement("canvas").getContext("2d");
   if (!g) return;
@@ -5587,13 +5661,13 @@ function lostKnown(): Map<number, Color> {
     const id = st.occ[slot];
     if (id < 0) return;
     const local = ROT_DIR[ROT_INV[st.ori[slot]] * 6 + dir];
-    if (PIECES[id].stickers[local]) out.set(id * 6 + local, color);
+    if (P.pieces[id].stickers[local]) out.set(id * 6 + local, color);
   };
   for (const [dir, color] of [[2, l.up], [4, l.front]] as const) {
     if (!color) continue;
     const v = DIRS[dir];
     for (const k of [2, 1]) {
-      const s = slotAt([v[0] * k, v[1] * k, v[2] * k]);
+      const s = P.slotAt([v[0] * k, v[1] * k, v[2] * k]);
       if (s >= 0 && st.occ[s] >= 0 && isExposed(st, s, dir)) {
         put(s, dir, color);
         break;
@@ -5627,7 +5701,7 @@ function drawGuide() {
     guideArrows = null;
   }
   if (within || grayAll) {
-    for (const c of PIECES) {
+    for (const c of P.pieces) {
       if (within && (guideFullColor || g!.focus.has(c.id))) continue;
       const level = within && g!.free.has(c.id) ? 2 : 1;
       c.stickers.forEach((color, d) => {
@@ -5777,7 +5851,7 @@ function makeArrows(paths: StickerPath[]) {
     };
     const one = (to: any, piece: number) => {
       twice(to, withAoColors(look.body), look.bodyMat);
-      PIECES[piece].stickers.forEach((color, d) => {
+      P.pieces[piece].stickers.forEach((color, d) => {
         if (color) twice(to, withAoColors(look.plane), look.sticker(color), (m) => look.place(m, d));
       });
     };
@@ -5922,7 +5996,7 @@ function makeArrows(paths: StickerPath[]) {
     }
     if (reduceMotion) return;
     const copy = unitCopy(p);
-    const home = new THREE.Vector3(...SLOT_POS[p.from]);
+    const home = new THREE.Vector3(...P.slotPos[p.from]);
     // Just past the disc: far enough out that none of the unit's copy is behind it.
     const above = center.clone().addScaledVector(axis, 0.55);
     const from = oriQuaternion(p.fromOri);
@@ -5932,7 +6006,7 @@ function makeArrows(paths: StickerPath[]) {
     const turned = (t: number) => ease((t - OUT - GAP) / (BACK - OUT - 2 * GAP));
     const turns = Array.from({ length: RUNNER_STEPS + 1 }, (_, k) => new THREE.Quaternion().setFromAxisAngle(axis, angle * turned(k / RUNNER_STEPS)).multiply(from));
     const place = (t: number) => home.clone().lerp(above, t < OUT ? ease(t / OUT) : t > BACK ? ease((1 - t) / (1 - BACK)) : 1);
-    const followed = Math.max(0, PIECES[p.piece].stickers.findIndex((c) => !!c));
+    const followed = Math.max(0, P.pieces[p.piece].stickers.findIndex((c) => !!c));
     group.userData.runners.push({ copy, curve: p.curve, followed, turns, place, raw: true, twist: { axis, angle, home } });
   }
   return group;
@@ -6018,8 +6092,8 @@ function oriQuaternion(ori: number) {
  */
 function route(st: State, from: number, fromDir: number, to: number, toDir: number) {
   const n0 = new THREE.Vector3(...DIRS[fromDir]), n1 = new THREE.Vector3(...DIRS[toDir]);
-  const a = new THREE.Vector3(...SLOT_POS[from]).addScaledVector(n0, 0.52);
-  const b = new THREE.Vector3(...SLOT_POS[to]).addScaledVector(n1, 0.52);
+  const a = new THREE.Vector3(...P.slotPos[from]).addScaledVector(n0, 0.52);
+  const b = new THREE.Vector3(...P.slotPos[to]).addScaledVector(n1, 0.52);
   // The 3D view shows about this far from the puzzle's center in every direction, however
   // the view is turned (a portrait phone is the tightest); a route that goes farther is cut
   // off at the edge of the view.
@@ -6034,12 +6108,12 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
   // What is in the way: every piece and the puzzle's solid center, as boxes. No sticker
   // is ever covered, so the way out of the sticker is clear. The spot the new face looks
   // into may be filled now by a piece the step takes away, so that one doesn't count.
-  const p1 = SLOT_POS[to];
-  const beyond = slotAtXYZ(p1[0] + DIRS[toDir][0], p1[1] + DIRS[toDir][1], p1[2] + DIRS[toDir][2]);
+  const p1 = P.slotPos[to];
+  const beyond = P.slotAtXYZ(p1[0] + DIRS[toDir][0], p1[1] + DIRS[toDir][1], p1[2] + DIRS[toDir][2]);
   // Filled lattice spots, as a 5x5x5 grid from -2 to 2 (the center is filled).
   const solid = new Uint8Array(125);
   solid[62] = 1;
-  st.occ.forEach((id, s) => id >= 0 && s !== beyond && (solid[(SLOT_POS[s][0] + 2) * 25 + (SLOT_POS[s][1] + 2) * 5 + SLOT_POS[s][2] + 2] = 1));
+  st.occ.forEach((id, s) => id >= 0 && s !== beyond && (solid[(P.slotPos[s][0] + 2) * 25 + (P.slotPos[s][1] + 2) * 5 + P.slotPos[s][2] + 2] = 1));
   /**
    * How far p is from the nearest box (0 inside one), up to FAR; `away` is set to the
    * direction out of it. Only the 27 spots around p are looked at: a box farther than
@@ -6212,9 +6286,9 @@ function route(st: State, from: number, fromDir: number, to: number, toDir: numb
  * piece and these as one unit: they keep their colors, and they fly together.
  */
 function attached(st: State, s: number): number[] {
-  if (st.occ[s] < 0 || !["coreCorner", "singleEdge", "doubleEdge"].includes(PIECES[st.occ[s]].kind)) return [];
-  const p = SLOT_POS[s];
-  return DIRS.map((d) => slotAtXYZ(p[0] + d[0], p[1] + d[1], p[2] + d[2])).filter((n) => n >= 0 && st.occ[n] >= 0 && SLOT_POS[n].some((v) => Math.abs(v) === 2));
+  if (st.occ[s] < 0 || !["coreCorner", "singleEdge", "doubleEdge"].includes(P.pieces[st.occ[s]].kind)) return [];
+  const p = P.slotPos[s];
+  return DIRS.map((d) => P.slotAtXYZ(p[0] + d[0], p[1] + d[1], p[2] + d[2])).filter((n) => n >= 0 && st.occ[n] >= 0 && P.slotPos[n].some((v) => Math.abs(v) === 2));
 }
 
 /**
@@ -6224,16 +6298,16 @@ function attached(st: State, s: number): number[] {
  * puzzle.
  */
 function layerArrow(st: State, turn: Turn): StickerPath[] {
-  const def = MOVE_DEFS[turn.def];
+  const def = P.moves[turn.def];
   const filled = def.slots.filter((s) => st.occ[s] >= 0);
-  const side = def.slots.reduce((sum, s) => sum + SLOT_POS[s][def.axis], 0);
+  const side = def.slots.reduce((sum, s) => sum + P.slotPos[s][def.axis], 0);
   if (!side || !filled.length) return [];
   const out = Math.sign(side);
   const [u, v] = [0, 1, 2].filter((k) => k !== def.axis);
   // The arc is level with the layer's pieces nearest the middle of the puzzle (an inner
   // turn's layer also holds the extension beyond it) and just outside the farthest of them.
-  const level = Math.min(...filled.map((s) => SLOT_POS[s][def.axis] * out)) * out;
-  const rim = Math.max(...filled.filter((s) => SLOT_POS[s][def.axis] === level).map((s) => Math.hypot(Math.abs(SLOT_POS[s][u]) + 0.5, Math.abs(SLOT_POS[s][v]) + 0.5)));
+  const level = Math.min(...filled.map((s) => P.slotPos[s][def.axis] * out)) * out;
+  const rim = Math.max(...filled.filter((s) => P.slotPos[s][def.axis] === level).map((s) => Math.hypot(Math.abs(P.slotPos[s][u]) + 0.5, Math.abs(P.slotPos[s][v]) + 0.5)));
   const axis = new THREE.Vector3().setComponent(def.axis, out);
   const quarters = def.ccw * (turn.amount === 3 ? -1 : turn.amount);
   const whole = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3().setComponent(def.axis, 1), (quarters * Math.PI) / 2);
@@ -6241,7 +6315,7 @@ function layerArrow(st: State, turn: Turn): StickerPath[] {
   const start = toward.applyQuaternion(new THREE.Quaternion().slerp(whole, 0.5).invert());
   const curve = new THREE.CatmullRomCurve3(Array.from({ length: 17 }, (_, k) => start.clone().applyQuaternion(new THREE.Quaternion().slerp(whole, k / 16)).addScaledVector(axis, level * out)), false, "centripetal");
   // Show turns the view by the path's ends: here the layer's middle, seen from outside.
-  const center = filled.find((s) => SLOT_POS[s][u] === 0 && SLOT_POS[s][v] === 0) ?? filled[0];
+  const center = filled.find((s) => P.slotPos[s][u] === 0 && P.slotPos[s][v] === 0) ?? filled[0];
   const d = dirIndex(axis.toArray() as Vec3);
   return [{ from: center, fromDir: d, to: center, toDir: d, color: null, lands: false, dashed: false, layer: true, piece: -1, fromOri: 0, toOri: 0, curve, hits: 0, out: 0, turning: 0, bend: 0 }];
 }
@@ -6254,7 +6328,7 @@ function layerArrow(st: State, turn: Turn): StickerPath[] {
  * is always clear. It follows the piece's own sticker, or none (a core double edge).
  */
 function twistPath(st: State, s: number, ori: number, unit: { piece: number; ori: number; offset: Vec3 }[], dashed: boolean, lands: boolean): StickerPath {
-  const pos = SLOT_POS[s];
+  const pos = P.slotPos[s];
   const axis = new THREE.Vector3(...pos).normalize();
   // The turn, as the piece sees it from outside: about the axis out through it. It never
   // moves its spot, so it is about that axis; a half turn is shown counterclockwise.
@@ -6262,7 +6336,7 @@ function twistPath(st: State, s: number, ori: number, unit: { piece: number; ori
   let angle = 2 * Math.atan2(new THREE.Vector3(q.x, q.y, q.z).dot(axis), q.w);
   if (angle > Math.PI + 1e-6) angle -= 2 * Math.PI;
   if (angle < -Math.PI + 1e-6) angle += 2 * Math.PI;
-  const c = PIECES[st.occ[s]];
+  const c = P.pieces[st.occ[s]];
   const d = c.stickers.findIndex((color) => !!color);
   const fromDir = d >= 0 ? ROT_DIR[st.ori[s] * 6 + d] : dirIndex(pos.map((v, k) => (k === pos.findIndex((x) => x !== 0) ? Math.sign(v) : 0)) as unknown as Vec3);
   const toDir = d >= 0 ? ROT_DIR[ori * 6 + d] : fromDir;
@@ -6288,9 +6362,9 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
   for (const [from, named] of step.moved) {
     const to = cycle ? named : after.occ.indexOf(st.occ[from]);
     if (to === from && after.ori[to] === st.ori[from]) continue;
-    const c = PIECES[st.occ[from]];
+    const c = P.pieces[st.occ[from]];
     const unit = attached(st, from);
-    const offsets = (around: number, xs: number[]) => xs.map((x) => ({ piece: st.occ[x], ori: st.ori[x], offset: [SLOT_POS[x][0] - SLOT_POS[around][0], SLOT_POS[x][1] - SLOT_POS[around][1], SLOT_POS[x][2] - SLOT_POS[around][2]] as Vec3 }));
+    const offsets = (around: number, xs: number[]) => xs.map((x) => ({ piece: st.occ[x], ori: st.ori[x], offset: [P.slotPos[x][0] - P.slotPos[around][0], P.slotPos[x][1] - P.slotPos[around][1], P.slotPos[x][2] - P.slotPos[around][2]] as Vec3 }));
     if (to === from) {
       out.push(twistPath(st, from, after.ori[to], offsets(from, unit), cycle && !step.lands.includes(from), step.lands.includes(from)));
       continue;
@@ -6307,7 +6381,7 @@ function stickerPaths(st: State, step: SolveStep): StickerPath[] {
     // A core double edge has no sticker: its unit's path follows the outward sticker of
     // one of the extension pieces against it, in a neutral color.
     if (c.kind === "doubleEdge") for (const u of unit) {
-      const pu = SLOT_POS[u], pf = SLOT_POS[from];
+      const pu = P.slotPos[u], pf = P.slotPos[from];
       const fromDir = dirIndex([pu[0] - pf[0], pu[1] - pf[1], pu[2] - pf[2]]);
       const local = [0, 1, 2, 3, 4, 5].find((d) => ROT_DIR[st.ori[u] * 6 + d] === fromDir)!;
       const toU = after.occ.indexOf(st.occ[u]), toDir = ROT_DIR[after.ori[toU] * 6 + local];
@@ -6582,10 +6656,10 @@ function haloSlots(): number[] {
   const e = edit;
   const out = new Set<number>();
   for (const s of e.highlight!) {
-    const near = [0, 1, 2, 3, 4, 5].map((d) => SLOT_NEIGHBOR[s * 6 + d]);
+    const near = [0, 1, 2, 3, 4, 5].map((d) => P.slotNeighbor[s * 6 + d]);
     const enclosed = draftFilled(e, s) && near.every((n) => n === -2 || (n >= 0 && draftFilled(e, n)));
     if (!enclosed) out.add(s);
-    else for (const n of near) if (n >= 0 && SLOT_POS[n].some((c) => Math.abs(c) === 2)) out.add(n);
+    else for (const n of near) if (n >= 0 && P.slotPos[n].some((c) => Math.abs(c) === 2)) out.add(n);
   }
   return [...out];
 }
@@ -6637,7 +6711,7 @@ function placeHaloArrow() {
   const eye = pivot.worldToLocal(camera.position.clone()).normalize();
   // One piece at a time, the one nearest to coming into view: an arrow aimed between
   // several points at none of them. Once it is in view, the arrow goes on to the next.
-  const nearest = [...hidden].sort((a, b) => new THREE.Vector3(...SLOT_POS[b]).normalize().dot(eye) - new THREE.Vector3(...SLOT_POS[a]).normalize().dot(eye))[0];
+  const nearest = [...hidden].sort((a, b) => new THREE.Vector3(...P.slotPos[b]).normalize().dot(eye) - new THREE.Vector3(...P.slotPos[a]).normalize().dot(eye))[0];
   const aim: number[] = nearest !== undefined ? [nearest] : (haloArrow?.userData.slots ?? []);
   if (!aim.length) return;
   const key = `${aim.join()}|${eye.toArray().map((v: number) => v.toFixed(2)).join()}`;
@@ -6672,7 +6746,7 @@ function buildHaloArrow(eye: any, slots: number[]) {
   }
   // Where the head points: at the middle of the pieces, coming straight in from outside.
   const center = new THREE.Vector3();
-  for (const t of slots) center.add(new THREE.Vector3(...SLOT_POS[t]));
+  for (const t of slots) center.add(new THREE.Vector3(...P.slotPos[t]));
   center.multiplyScalar(1 / slots.length);
   const out = center.lengthSq() > 1e-6 ? center.clone().normalize() : new THREE.Vector3(0, 1, 0);
   const tip = center.clone().add(out.clone().multiplyScalar(HALO_ARROW.gap + (center.length() > 0 ? 0.25 : 0.5)));
@@ -6804,7 +6878,7 @@ function placeHidePill() {
   if (!edit?.highlight || pill.hidden) return;
   const el = renderer.domElement as HTMLElement;
   const at = (v: any) => toScreen(el, v);
-  const pts = haloSlots().map((t) => at(new THREE.Vector3(...SLOT_POS[t])));
+  const pts = haloSlots().map((t) => at(new THREE.Vector3(...P.slotPos[t])));
   const mid = [0, 1].map((k) => pts.reduce((a, q) => a + q[k], 0) / pts.length);
   const center = at(new THREE.Vector3());
   // How big a piece is on screen, from a step across the view at the puzzle's center.
@@ -6818,7 +6892,7 @@ function placeHidePill() {
   // Clear of the whole puzzle as drawn, out past its edge on the haloed pieces' side: the
   // halo and the arrow mark the pieces, so the pill needn't sit beside them.
   const drawn: [number, number][] = [];
-  for (let s = 0; s < NUM_SLOTS; s++) if (draftFilled(edit, s)) drawn.push(at(new THREE.Vector3(...SLOT_POS[s])));
+  for (let s = 0; s < P.numSlots; s++) if (draftFilled(edit, s)) drawn.push(at(new THREE.Vector3(...P.slotPos[s])));
   const edge = (cx: number, cy: number) => Math.max(...drawn.map(([px, py]) => (px - center[0]) * cx + (py - center[1]) * cy)) + unit * 0.75;
   // Off the halo's arrow: the first of the ways round (straight out, then turning further each try) that clears it.
   const arrowPts: [number, number][] = haloArrow?.visible && haloArrowFade.value > 0 ? haloArrow.userData.screen : [];
@@ -6878,7 +6952,7 @@ function insetRadius(slot: number): number {
     const v = pivot.localToWorld(new THREE.Vector3(p[0], p[1], p[2])).project(camera);
     return [(v.x * w) / 2, (v.y * h) / 2];
   };
-  const c = SLOT_POS[slot], a = 0.985 / 2;
+  const c = P.slotPos[slot], a = 0.985 / 2;
   const pts = [-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => px([c[0] + x * a, c[1] + y * a, c[2] + z * a])))).sort((p, q) => p[0] - q[0] || p[1] - q[1]);
   // Andrew's monotone chain.
   const cross = (o: number[], p: number[], q: number[]) => (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
@@ -6932,7 +7006,7 @@ function placeHalos() {
   marked.filter((t) => !draftFilled(edit!, t) && !ghosts.some((g) => g.parent && g.userData.slot === t)).forEach((t, i) => {
     const g = (hintGhosts[i] ??= ghostBox());
     g.userData.slot = t;
-    g.position.set(...SLOT_POS[t]);
+    g.position.set(...P.slotPos[t]);
     pivot.add(g);
   });
   edit.marks.forEach((m, i) => {
@@ -6942,7 +7016,7 @@ function placeHalos() {
     while (r.flats.length < faces.length) r.flats.push(markRing());
     const place = (g: any, layer: number, face: number) => {
       const n = new THREE.Vector3(...DIRS[face]);
-      g.position.set(...SLOT_POS[m.slot]).addScaledVector(n, 0.53);
+      g.position.set(...P.slotPos[m.slot]).addScaledVector(n, 0.53);
       g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
       g.scale.setScalar(1);
       g.traverse((o: any) => o.layers.set(layer));
@@ -6951,7 +7025,7 @@ function placeHalos() {
     faces.forEach((f, k) => place(r.flats[k], FLAT_HALO_LAYER + f, f));
     if (m.face >= 0) place(r.view, HALO_LAYER, m.face);
     else {
-      r.view.position.set(...SLOT_POS[m.slot]);
+      r.view.position.set(...P.slotPos[m.slot]);
       r.view.traverse((o: any) => o.layers.set(HALO_LAYER));
       pivot.add(r.view);
     }
@@ -6994,7 +7068,7 @@ function placeHalos() {
 /** Whether face d of slot s is bare: by the shape being edited while editing, else by st. */
 function bareFace(st: State, s: number, d: number): boolean {
   if (!edit) return isExposed(st, s, d);
-  const n = SLOT_NEIGHBOR[s * 6 + d];
+  const n = P.slotNeighbor[s * 6 + d];
   return (draftFilled(edit, s) || hintGhostAt(s)) && n !== -2 && !(n >= 0 && draftFilled(edit, n));
 }
 
@@ -7004,10 +7078,10 @@ function faceView(st: State, s: number, d: number, minCos = 0.2): number {
   // not, and one put in is (as a blank).
   // A glass box stands for what is in its own spot; it doesn't cover the face behind it.
   const there = (t: number) => (edit ? draftFilled(edit, t) || (t === s && hintGhostAt(t)) : st.occ[t] >= 0);
-  const n = SLOT_NEIGHBOR[s * 6 + d];
+  const n = P.slotNeighbor[s * 6 + d];
   if (!drawn || !there(s) || n === -2 || (n >= 0 && there(n))) return -1;
   pivot.updateMatrixWorld(true);
-  const p = SLOT_POS[s], v = DIRS[d];
+  const p = P.slotPos[s], v = DIRS[d];
   // A glass box is smaller than a piece: look at its own face.
   const out = drawn.geometry?.parameters?.width === GHOST_SIZE ? GHOST_SIZE / 2 - 0.02 : 0.45;
   const target = pivot.localToWorld(new THREE.Vector3(p[0] + v[0] * out, p[1] + v[1] * out, p[2] + v[2] * out));
@@ -7064,7 +7138,7 @@ function highlightView(): any {
   // angle, not one straight at the core piece's own sticker.
   const shape = edit.removed.size > 0 || edit.added.size > 0;
   // A problem about one core piece: a view of it at the angle that suits it.
-  const cores = edit.highlight.filter((s) => SLOT_POS[s].every((c) => Math.abs(c) <= 1) && SLOT_POS[s].filter((c) => c !== 0).length >= 2);
+  const cores = edit.highlight.filter((s) => P.slotPos[s].every((c) => Math.abs(c) <= 1) && P.slotPos[s].filter((c) => c !== 0).length >= 2);
   if (shape && cores.length === 1) return lookFrom(coreView(st, cores[0], slots));
   // The stickers the hint circles are the ones it is about.
   for (const m of edit.marks) for (let d = 0; d < 6; d++) if ((m.face < 0 || d === m.face) && bareFace(st, m.slot, d)) faces.push([m.slot, d]);
@@ -7097,7 +7171,7 @@ function haloShare(st: State, slots: number[], v: any): number {
     const r = h * 2 * 0.42 * (h === PIECE_HALF ? 0.9 / 0.98 : 1);
     for (const o of [...[-1, 1].flatMap((x) => [-1, 1].flatMap((y) => [-1, 1].map((z) => [x, y, z]))), ...DIRS]) {
       n++;
-      const first = firstBox(eye, [SLOT_POS[s][0] + o[0] * r, SLOT_POS[s][1] + o[1] * r, SLOT_POS[s][2] + o[2] * r], boxes);
+      const first = firstBox(eye, [P.slotPos[s][0] + o[0] * r, P.slotPos[s][1] + o[1] * r, P.slotPos[s][2] + o[2] * r], boxes);
       if (first < 0 || lit.has(first)) seen++;
     }
   }
@@ -7119,7 +7193,7 @@ function eyeFrom(v: any): number[] {
 function sceneBoxes(st: State): { slot: number; half: number }[] {
   const ghostAt = new Set([...ghosts, ...hintGhosts].filter((g) => g.parent).map((g) => g.userData.slot as number));
   const boxes: { slot: number; half: number }[] = [];
-  for (let t = 0; t < NUM_SLOTS; t++) {
+  for (let t = 0; t < P.numSlots; t++) {
     if (edit ? draftFilled(edit, t) : st.occ[t] >= 0) boxes.push({ slot: t, half: PIECE_HALF });
     else if (ghostAt.has(t)) boxes.push({ slot: t, half: GHOST_SIZE / 2 });
   }
@@ -7131,7 +7205,7 @@ function firstBox(eye: number[], p: readonly number[], boxes: { slot: number; ha
   const d = [p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]];
   let first = -1, nearest = 1 - 1e-4;
   for (const b of boxes) {
-    const c = SLOT_POS[b.slot];
+    const c = P.slotPos[b.slot];
     let t0 = 0, t1 = nearest;
     for (let a = 0; a < 3 && t0 <= t1; a++) {
       if (Math.abs(d[a]) < 1e-9) {
@@ -7157,7 +7231,7 @@ function boxFaceView(st: State, eye: number[], boxes: { slot: number; half: numb
   const h = half.get(s);
   if (h === undefined || !bareFace(st, s, d)) return -1;
   const v = DIRS[d], out = h - 0.02;
-  const p = [SLOT_POS[s][0] + v[0] * out, SLOT_POS[s][1] + v[1] * out, SLOT_POS[s][2] + v[2] * out];
+  const p = [P.slotPos[s][0] + v[0] * out, P.slotPos[s][1] + v[1] * out, P.slotPos[s][2] + v[2] * out];
   const to = [eye[0] - p[0], eye[1] - p[1], eye[2] - p[2]], len = Math.hypot(to[0], to[1], to[2]);
   const cos = (to[0] * v[0] + to[1] * v[1] + to[2] * v[2]) / len;
   if (cos < 0.2) return -1;
@@ -7176,7 +7250,7 @@ const EDGE_TILT = 20;
  * away from the aim costing 1% of it; then from above, then nearest the view now.
  */
 function coreView(st: State, core: number, slots: number[]): any {
-  const aim = SLOT_POS[core].includes(0) ? EDGE_TILT : 0;
+  const aim = P.slotPos[core].includes(0) ? EDGE_TILT : 0;
   const now = new THREE.Vector3(0, 0, 1).applyQuaternion(pivot.quaternion.clone().invert());
   let best: any = null, bestScore = -Infinity;
   for (const { v, tilt } of coreViews(core)) {
@@ -7192,7 +7266,7 @@ function coreView(st: State, core: number, slots: number[]): any {
  * toward and away from each of a corner's sides.
  */
 function coreViews(core: number): { v: any; tilt: number }[] {
-  const p = SLOT_POS[core], c = new THREE.Vector3(...p).normalize();
+  const p = P.slotPos[core], c = new THREE.Vector3(...p).normalize();
   const axes = p.some((x) => x === 0) ? [0, 1, 2].filter((a) => p[a] === 0).flatMap((a) => [1, -1].map((g) => DIRS[2 * a].map((x) => x * g))) : DIRS;
   const out = [{ v: c.clone(), tilt: 0 }];
   for (const e of axes) {
@@ -7471,8 +7545,8 @@ function probeDecode(ids: Uint8Array, colors: Uint8Array, w: number, h: number, 
   // Where it was drawn: from the mesh's own transform in the puzzle frame, not from the
   // model, so a piece drawn in the wrong place or turned the wrong way shows up.
   const g = meshes[piece];
-  const slot = slotAtXYZ(Math.round(g.position.x), Math.round(g.position.y), Math.round(g.position.z));
-  if (d === 6) return { plastic: true, slot: slot < 0 ? "?" : slotName(slot), piece };
+  const slot = P.slotAtXYZ(Math.round(g.position.x), Math.round(g.position.y), Math.round(g.position.z));
+  if (d === 6) return { plastic: true, slot: slot < 0 ? "?" : P.slotName(slot), piece };
   const n = new THREE.Vector3(DIRS[d][0], DIRS[d][1], DIRS[d][2]).applyQuaternion(g.quaternion);
   const dir = dirIndex([Math.round(n.x), Math.round(n.y), Math.round(n.z)]);
   const face = dir < 0 ? "?" : COMPASS_FACES[dir];
@@ -7483,7 +7557,7 @@ function probeDecode(ids: Uint8Array, colors: Uint8Array, w: number, h: number, 
     if (dist < best) [best, color] = [dist, name];
   }
   if (best > 12) color = "?";
-  return { slot: slot < 0 ? "?" : slotName(slot), face, color, piece, modelPiece: slot < 0 ? -1 : app.current.occ[slot] };
+  return { slot: slot < 0 ? "?" : P.slotName(slot), face, color, piece, modelPiece: slot < 0 ? -1 : app.current.occ[slot] };
 }
 
 /** Both passes of the 3D view, with a lookup by client coordinates. */
@@ -7522,7 +7596,7 @@ function installProbe() {
     geometries: () => renderer.info.memory.geometries,
     guide: () => {
       if (!guide) return null;
-      const grays = [1, 2].map((level) => guideDimmed.filter((m) => stickerMesh3d.includes(m) && PIECES.some((c) => c.stickers.some((col) => col && grayMaterial!(col, level as 1 | 2).sticker === m.material))).length);
+      const grays = [1, 2].map((level) => guideDimmed.filter((m) => stickerMesh3d.includes(m) && P.pieces.some((c) => c.stickers.some((col) => col && grayMaterial!(col, level as 1 | 2).sticker === m.material))).length);
       return {
         stage: guide.step.stage,
         alg: guide.step.alg,
@@ -7530,12 +7604,12 @@ function installProbe() {
         after: guideRest(guide)?.after ?? null,
         index: guide.index,
         start: guide.start,
-        focus: [...guide.focus].map((id) => slotName(app.current.occ.indexOf(id))).sort(),
+        focus: [...guide.focus].map((id) => P.slotName(app.current.occ.indexOf(id))).sort(),
         gray: grays[0],
         darkGray: grays[1],
         arrows: guideArrows?.visible ? guideArrows.userData.count : 0,
         /** Each path: the sticker it follows, from where and facing which way, to where and facing which way. */
-        paths: guide.arrows.map((p) => `${p.color} ${slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " lands" : ""}${p.dashed ? " dashed" : ""}${p.twist ? " twist" : ""}`),
+        paths: guide.arrows.map((p) => `${p.color} ${P.slotName(p.from)}/${COMPASS_FACES[p.fromDir]} > ${P.slotName(p.to)}/${COMPASS_FACES[p.toDir]}${p.lands ? " lands" : ""}${p.dashed ? " dashed" : ""}${p.twist ? " twist" : ""}`),
         /** How many pieces fly together on each path (a core piece with the extension pieces against it is three, two or three). */
         units: guide.arrows.filter((p) => !p.layer).map((p) => 1 + (p.unit?.length ?? 0)),
         /**
@@ -7549,7 +7623,7 @@ function installProbe() {
               const q = r.turns[RUNNER_STEPS / 2].clone().multiply(r.turns[0].clone().invert());
               const half = 2 * Math.atan2(new THREE.Vector3(q.x, q.y, q.z).dot(r.twist.axis), q.w);
               return {
-                slot: slotName(app.current.occ.indexOf(r.copy.userData.piece)),
+                slot: P.slotName(app.current.occ.indexOf(r.copy.userData.piece)),
                 angle: Math.round((r.twist.angle * 180) / Math.PI),
                 half: Math.round((half * 180) / Math.PI),
                 lift: Array.from({ length: 25 }, (_, k) => Math.round(r.place(k / 24).sub(r.twist.home).dot(r.twist.axis) * 1000) / 1000),
@@ -7568,8 +7642,8 @@ function installProbe() {
         fullColor: guideFullColor,
         runners: guideArrows?.visible ? guideArrows.userData.runners.length : 0,
         /** Glow bands of the pieces the step doesn't apply to that are drawn, and that are not; and of those it does apply to that are drawn. */
-        otherGlow: PIECES.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 0 : 1), 0),
-        otherNoGlow: PIECES.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 1 : 0), 0),
+        otherGlow: P.pieces.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 0 : 1), 0),
+        otherNoGlow: P.pieces.filter((c) => !guide!.focus.has(c.id)).flatMap((c) => glows[c.id] ?? []).reduce((n, gl) => n + (gl.paint && gl.paint === noGlow ? 1 : 0), 0),
         focusGlow: [...guide.focus].flatMap((id) => glows[id] ?? []).reduce((n, gl) => n + (gl.paint ? 0 : 1), 0),
         /** How many meshes the paths are drawn with (a shaft, a start and a head, each cased; and a ring for a piece reaching home). */
         pathMeshes: guideArrows?.visible ? guideArrows.userData.drawn : 0,
@@ -7631,9 +7705,9 @@ function installProbe() {
     // how much halo a view draws. A flat-view face letter: the glow alone (its pixels'
     // summed opacity, in whole pixels). "3d": how many pixels of the puzzle as drawn the
     // rims change, so a rim hidden behind the puzzle counts nothing.
-    highlighted: () => (edit?.highlight ?? []).map(slotName),
+    highlighted: () => (edit?.highlight ?? []).map(P.slotName),
     /** The pieces the halo marks: those named, or for one nothing shows, those around it. */
-    haloed: () => haloSlots().map(slotName).sort(),
+    haloed: () => haloSlots().map(P.slotName).sort(),
     /**
      * The pixels of the 3D view the halo's outline changes ("changed"), how many of them
      * it turns the halo's own purple ("purple"), and how many are on each sticker
@@ -7643,7 +7717,7 @@ function installProbe() {
       const w = 192, h = 192;
       const [plain, ringed] = outlineImages(w, h);
       const ids = probeImage(camera, 0, w, h, "id"), colors = probeImage(camera, 0, w, h, "color");
-      const marked = new Set(haloSlots().map(slotName));
+      const marked = new Set(haloSlots().map(P.slotName));
       const over: Record<string, number> = {};
       const c = new THREE.Color(HALO.color);
       const [pr, pg, pb] = [c.r, c.g, c.b].map((v) => v * 255);
@@ -7662,7 +7736,7 @@ function installProbe() {
     },
     /** The stickers the shown problem's hint circles, and how many pixels of the 3D view their rings cover. */
     marks: () => {
-      const list = (edit?.marks ?? []).map((m) => ({ slot: slotName(m.slot), face: m.face < 0 ? "piece" : COMPASS_FACES[m.face] }));
+      const list = (edit?.marks ?? []).map((m) => ({ slot: P.slotName(m.slot), face: m.face < 0 ? "piece" : COMPASS_FACES[m.face] }));
       const plain = probeImage(camera, 0, 192, 192, "drawn"), framed = probeImage(camera, 0, 192, 192, "drawn", HALO_LAYER);
       let px = 0;
       for (let i = 0; i < plain.length; i += 4) if (Math.abs(plain[i] - framed[i]) + Math.abs(plain[i + 1] - framed[i + 1]) + Math.abs(plain[i + 2] - framed[i + 2]) > 24) px++;
@@ -7671,9 +7745,9 @@ function installProbe() {
     /** The glass boxes a shape hint draws itself (none while the Shape tool's own boxes show). */
     hintBoxes: () => hintGhosts.filter((g) => g.parent).length,
     /** The Shape tool's glass boxes now: each one's spot (slot name) and whether it is drawn fainter. */
-    ghostBoxes: () => ghosts.filter((g) => g.parent).map((g) => ({ slot: slotName(g.userData.slot), dim: g.material === ghostDimMaterial })),
+    ghostBoxes: () => ghosts.filter((g) => g.parent).map((g) => ({ slot: P.slotName(g.userData.slot), dim: g.material === ghostDimMaterial })),
     /** The slots whose drawn piece (or blank) the 3D view outlines now. */
-    outlined: () => (edit?.highlight ? haloSlots().filter((s) => drawnAt(edit!.shown, s)).map(slotName).sort() : []),
+    outlined: () => (edit?.highlight ? haloSlots().filter((s) => drawnAt(edit!.shown, s)).map(P.slotName).sort() : []),
     facesSeen: (slot: string) => facesSeen(edit?.shown ?? app.current, slotByName(slot)),
     // `hiding` false draws them as if no haloed piece hid the halos behind it, to compare.
     haloPixels: (view: string, hiding = true) => {
@@ -7702,7 +7776,7 @@ function installProbe() {
         const [x, y] = toScreen(el, p);
         return { x: r.left + x, y: r.top + y };
       };
-      return { behind: hiddenHalos().map(slotName).sort(), opacity: Math.round(haloArrowFade.value * 100) / 100, at: shown ? scr(haloArrow.userData.start) : null, mid: shown ? scr(haloArrow.userData.mid) : null };
+      return { behind: hiddenHalos().map(P.slotName).sort(), opacity: Math.round(haloArrowFade.value * 100) / 100, at: shown ? scr(haloArrow.userData.start) : null, mid: shown ? scr(haloArrow.userData.mid) : null };
     },
     /**
      * Lost?: its phase, the candidates left, the question (its spot) and the answers
@@ -7727,7 +7801,7 @@ function installProbe() {
       lost && {
         phase: lost.phase,
         cands: lost.cands.length,
-        question: lost.question && (lost.question.kind === "color" ? `${slotName(lost.question.slot)}/${COMPASS_FACES[lost.question.dir]}` : `${slotName(lost.question.slot)}?`),
+        question: lost.question && (lost.question.kind === "color" ? `${P.slotName(lost.question.slot)}/${COMPASS_FACES[lost.question.dir]}` : `${P.slotName(lost.question.slot)}?`),
         answers: [...document.querySelectorAll<HTMLElement>("#lost-opts [data-lost]")].map((b) => b.dataset.lost),
         marked: !!lostMarker,
         outlined: !!lostOutlined(),
@@ -7768,9 +7842,9 @@ function installProbe() {
       const pill = $("halo-hide");
       const r = pill.getBoundingClientRect();
       return {
-        removed: [...edit.removed].map(slotName).sort(),
-        added: [...edit.added].map(slotName).sort(),
-        spots: ghosts.filter((g) => g.parent).map((g) => slotName(g.userData.slot)).sort(),
+        removed: [...edit.removed].map(P.slotName).sort(),
+        added: [...edit.added].map(P.slotName).sort(),
+        spots: ghosts.filter((g) => g.parent).map((g) => P.slotName(g.userData.slot)).sort(),
         unpainted: edit.view.filter((c) => c === UNPAINTED).length,
         outlines: overlays.filter((g) => g.parent && g.children[1].visible).length,
         pill: pill.hidden ? null : { x: r.left + r.width / 2, y: r.top + r.height / 2 },
@@ -7780,7 +7854,7 @@ function installProbe() {
     filled: (slot: string) => (edit ? draftFilled(edit, slotByName(slot)) : app.current.occ[slotByName(slot)] >= 0),
     /** Where the middle of a slot appears on screen (client coordinates), filled or not. */
     spot(slot: string) {
-      const p = SLOT_POS[slotByName(slot)];
+      const p = P.slotPos[slotByName(slot)];
       const v = pivot.localToWorld(new THREE.Vector3(p[0], p[1], p[2])).project(camera);
       const r = canvas().getBoundingClientRect();
       return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
@@ -7816,7 +7890,7 @@ function installProbe() {
       }
       cam.updateMatrixWorld();
       return points.map((offs) => {
-        const local = new THREE.Vector3(...SLOT_POS[s]);
+        const local = new THREE.Vector3(...P.slotPos[s]);
         for (const [f, k] of offs) local.add(new THREE.Vector3(...DIRS[COMPASS_FACES.indexOf(f)]).multiplyScalar(k));
         const p = pivot.localToWorld(local).project(cam);
         const px = Math.min(n - 1, Math.max(0, Math.floor(((p.x + 1) / 2) * n)));
@@ -7882,7 +7956,7 @@ function installProbe() {
       if (id < 0 || dir < 0) return null;
       const o = drawn.ori[s];
       const d = [0, 1, 2, 3, 4, 5].find((k) => ROT_DIR[o * 6 + k] === dir)!;
-      if (!PIECES[id].stickers[d] && !anyFace) return null;
+      if (!P.pieces[id].stickers[d] && !anyFace) return null;
       const p = meshes[id].localToWorld(new THREE.Vector3(DIRS[d][0] * 0.4945, DIRS[d][1] * 0.4945, DIRS[d][2] * 0.4945)).project(camera);
       const r = canvas().getBoundingClientRect();
       return { x: r.left + ((p.x + 1) / 2) * r.width, y: r.top + ((1 - p.y) / 2) * r.height };
@@ -7908,20 +7982,20 @@ function installProbe() {
       const { r, at } = probe3d();
       const st = app.current;
       const out: string[] = [];
-      for (let s = 0; s < NUM_SLOTS; s++) {
+      for (let s = 0; s < P.numSlots; s++) {
         const id = st.occ[s];
         if (id < 0) continue;
         for (let dir = 0; dir < 6; dir++) {
           if (!st.colorAt(s, dir) || !isExposed(st, s, dir)) continue;
-          const local = new THREE.Vector3(...SLOT_POS[s]).add(new THREE.Vector3(...DIRS[dir]).multiplyScalar(0.4945));
+          const local = new THREE.Vector3(...P.slotPos[s]).add(new THREE.Vector3(...DIRS[dir]).multiplyScalar(0.4945));
           const world = pivot.localToWorld(local.clone());
           const normal = new THREE.Vector3(...DIRS[dir]).applyQuaternion(pivot.quaternion);
           if (normal.dot(camera.position.clone().sub(world)) <= 0) continue; // faces away
           const p = world.project(camera);
           const h = at(r.left + ((p.x + 1) / 2) * r.width, r.top + ((1 - p.y) / 2) * r.height);
-          const name = `${slotName(s)}/${COMPASS_FACES[dir]}`;
+          const name = `${P.slotName(s)}/${COMPASS_FACES[dir]}`;
           if (!h) out.push(`${name}: nothing drawn`);
-          else if (h.slot !== slotName(s)) continue; // hidden behind another piece
+          else if (h.slot !== P.slotName(s)) continue; // hidden behind another piece
           else if ("plastic" in h) out.push(`${name}: piece ${h.piece} drawn without it`);
           else if (h.face !== COMPASS_FACES[dir] || h.piece !== id) out.push(`${name}: ${h.slot}/${h.face} of piece ${h.piece} drawn there`);
         }
@@ -8066,5 +8140,5 @@ function hotBoot() {
   else start(hot?.data ?? {});
 }
 
-void FACE_COLOR;
+void P.faceColor;
 hotBoot();

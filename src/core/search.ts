@@ -7,10 +7,10 @@
 // - optional pruning by a lower-bound function (admissible heuristic);
 // - a goal predicate, so sub-problems can be posed with "don't care" parts.
 
-import { MOVE_DEFS, State, applyTurn, blockedReason, type Turn } from "./puzzle.ts";
+import { State, applyTurn, blockedReason, type Turn } from "./puzzle.ts";
 
 export interface SearchOptions {
-  /** Which moves to use (names like "R", "r", "H"). Default: all inner, outer and H/M/S slices. */
+  /** Which moves to use (names like "R", "r", "E"). Default: DEFAULT_SEARCH_MOVES on the X-Cube. */
   moves?: string[];
   /** Amounts to allow per move (1 = clockwise, 2 = half, 3 = counterclockwise). */
   amounts?: (1 | 2 | 3)[];
@@ -33,10 +33,12 @@ export interface SearchResult {
   complete: boolean; // false if stopped by nodeLimit
 }
 
-export const DEFAULT_SEARCH_MOVES = ["R", "L", "U", "D", "F", "B", "r", "l", "f", "b", "u", "d", "M", "H", "S"];
+/** The X-Cube's default: every inner, outer and slice turn. Other puzzles default to their face turns and slices. */
+export const DEFAULT_SEARCH_MOVES = ["R", "L", "U", "D", "F", "B", "r", "l", "f", "b", "u", "d", "M", "E", "S"];
 
 export function search(start: State, goal: (st: State) => boolean, opts: SearchOptions): SearchResult {
-  const names = opts.moves ?? DEFAULT_SEARCH_MOVES;
+  const MOVE_DEFS = start.puzzle.moves;
+  const names = opts.moves ?? (start.puzzle.id === "xcube" ? DEFAULT_SEARCH_MOVES : MOVE_DEFS.filter((d) => d.kind === "inner" || d.kind === "slice").map((d) => d.name));
   const amounts = opts.amounts ?? [1, 2, 3];
   const turns: Turn[] = [];
   for (const n of names) {

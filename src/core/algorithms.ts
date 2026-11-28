@@ -50,8 +50,8 @@ export const KNOWN_ALGORITHMS: readonly KnownAlgorithm[] = [
     id: "flip-df-white-top",
     name: "Flipped bottom edge, white top solved",
     situation:
-      "The white top is solved and one core edge at bottom front (DF) is flipped: its yellow faces you. Keeps the white top. Hold as the hold line says, and don't regrip by a center mid-way: the H turns move the side centers.",
-    alg: "R F H2 F2 H F R'",
+      "The white top is solved and one core edge at bottom front (DF) is flipped: its yellow faces you. Keeps the white top. Hold as the hold line says, and don't regrip by a center mid-way: the E turns move the side centers.",
+    alg: "R F E2 F2 E' F R'",
     // The owner's saved position "Confusing edge", reached on the real cube.
     start: () => decodeState("DSJA IIRV YOOL JKWR JHSF JKCF UPIK VOSU AIVY ZFOB UFZC"),
     result: "x-shape, white top kept",

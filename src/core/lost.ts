@@ -18,7 +18,7 @@
 import { DIRS } from "./geometry.ts";
 import { parseAlg, simplify } from "./notation.ts";
 import { isExposed } from "./analyze.ts";
-import { MOVE_BY_NAME, MOVE_DEFS, NUM_SLOTS, SLOT_POS, State, applyTurn, slotAt, type Color, type Turn } from "./puzzle.ts";
+import { State, applyTurn, type Color, type PuzzleDef, type Turn } from "./puzzle.ts";
 
 /** One way the turns may have gone. */
 export interface Candidate {
@@ -52,19 +52,19 @@ const run = (start: State, turns: readonly Turn[]): State => {
   return st;
 };
 
-/** The same layer's inner turn for an outer one, and the reverse (r for R); null for slices and rotations. */
-function otherLayer(t: Turn): Turn | null {
-  const d = MOVE_DEFS[t.def];
-  if (d.kind !== "inner" && d.kind !== "outer") return null;
+/** The same face's turn by the other letter case (r for R, R for r: an outer or wide turn for an inner one, and the reverse); null for slices and rotations. */
+function otherLayer(P: PuzzleDef, t: Turn): Turn | null {
+  const d = P.moves[t.def];
+  if (d.kind !== "inner" && d.kind !== "outer" && d.kind !== "wide") return null;
   const name = d.kind === "inner" ? d.name.toLowerCase() : d.name.toUpperCase();
-  const def = MOVE_BY_NAME.get(name);
+  const def = P.moveByName.get(name);
   return def === undefined ? null : { def, amount: t.amount };
 }
 
 /** The other faces' inner turns, by the same amount (F for R): a turn made on the wrong face. Empty for any other kind of turn. */
-function otherFaces(t: Turn): Turn[] {
-  if (MOVE_DEFS[t.def].kind !== "inner") return [];
-  return MOVE_DEFS.flatMap((d, def) => (d.kind === "inner" && def !== t.def ? [{ def, amount: t.amount }] : []));
+function otherFaces(P: PuzzleDef, t: Turn): Turn[] {
+  if (P.moves[t.def].kind !== "inner") return [];
+  return P.moves.flatMap((d, def) => (d.kind === "inner" && def !== t.def ? [{ def, amount: t.amount }] : []));
 }
 
 /**
@@ -72,14 +72,14 @@ function otherFaces(t: Turn): Turn[] {
  * right one first. Slips are looked for in the turns from index `from` on.
  */
 /** Every way turn t can slip: what it is made as instead (nothing for left out). */
-function slipsOf(t: Turn): { slip: Exclude<Candidate["slip"], "none">; as: Turn[] }[] {
+function slipsOf(P: PuzzleDef, t: Turn): { slip: Exclude<Candidate["slip"], "none">; as: Turn[] }[] {
   const out: { slip: Exclude<Candidate["slip"], "none">; as: Turn[] }[] = [];
   for (const a of [1, 2, 3] as const) if (a !== t.amount) out.push({ slip: "amount", as: [{ def: t.def, amount: a }] });
   out.push({ slip: "skipped", as: [] });
   out.push({ slip: "twice", as: [t, t] });
-  const o = otherLayer(t);
+  const o = otherLayer(P, t);
   if (o) out.push({ slip: "layer", as: [o] });
-  for (const f of otherFaces(t)) out.push({ slip: "face", as: [f] });
+  for (const f of otherFaces(P, t)) out.push({ slip: "face", as: [f] });
   return out;
 }
 
@@ -96,7 +96,7 @@ export function slipCandidates(start: State, turns: readonly Turn[], from = 0, s
   add([...turns], -1, "none", []);
   turns.forEach((t, i) => {
     if (i < from) return;
-    for (const v of slipsOf(t)) add([...turns.slice(0, i), ...v.as, ...turns.slice(i + 1)], i, v.slip, v.as);
+    for (const v of slipsOf(start.puzzle, t)) add([...turns.slice(0, i), ...v.as, ...turns.slice(i + 1)], i, v.slip, v.as);
   });
   return out;
 }
@@ -122,9 +122,9 @@ export function* twoSlips(start: State, turns: readonly Turn[], from = 0, seen: 
     for (const t of turns.slice(0, i)) applyTurn(before, t);
     // The stops this first slip is within `window` turns of.
     const far = Math.min(last, i + window - 1);
-    for (const a of slipsOf(turns[i])) {
+    for (const a of slipsOf(start.puzzle, turns[i])) {
       for (let j = i + 1; j <= far; j++) {
-        for (const b of slipsOf(turns[j])) {
+        for (const b of slipsOf(start.puzzle, turns[j])) {
           // Turn by turn after the second slip, a candidate at each stop it may have been.
           const state = before.clone();
           const made = [...turns.slice(0, i), ...[...a.as, ...turns.slice(i + 1, j), ...b.as].filter((t) => applyTurn(state, t))];
@@ -152,7 +152,7 @@ export function* twoSlips(start: State, turns: readonly Turn[], from = 0, seen: 
 export function findAsHeld(cands: Iterable<Candidate>, target: State): Candidate | undefined {
   const up = centerColor(target, UP), front = centerColor(target, FRONT);
   if (!up || !front) return undefined;
-  const held = HOLDS.map((h) => run(target, h));
+  const held = holds(target.puzzle).map((h) => run(target, h));
   // A cheap first look (the colors facing away on the extension spots) before the full one.
   const prints = new Set(held.map(outerPrint));
   const keys = new Set(held.map((st) => st.appearanceKey()));
@@ -161,16 +161,31 @@ export function findAsHeld(cands: Iterable<Candidate>, target: State): Candidate
   return undefined;
 }
 
-/** Each extension spot and the direction its face away from the core points. */
-const OUTER_FACES: [number, number][] = [...Array(NUM_SLOTS).keys()].flatMap((s) => {
-  const p = SLOT_POS[s];
-  const axis = p.findIndex((c) => Math.abs(c) === 2);
-  return axis < 0 ? [] : [[s, axis * 2 + (p[axis] < 0 ? 1 : 0)] as [number, number]];
-});
+/** Per puzzle, kept once made. */
+function perPuzzle<T>(make: (P: PuzzleDef) => T): (P: PuzzleDef) => T {
+  const made = new WeakMap<PuzzleDef, T>();
+  return (P) => {
+    if (!made.has(P)) made.set(P, make(P));
+    return made.get(P)!;
+  };
+}
+
+/** Whether the puzzle's spots can be empty (it changes shape, as the X-Cube does). */
+const changesShape = (P: PuzzleDef) => P.homeShapes[0].includes("0");
+
+/** Each spot that can be empty and the direction its face away from the core points: on the X-Cube, the extension spots. */
+const outerFaces = perPuzzle((P): [number, number][] =>
+  !changesShape(P)
+    ? []
+    : P.slotPos.flatMap((p, s) => {
+        const axis = p.findIndex((c) => Math.abs(c) === P.range);
+        return axis < 0 ? [] : [[s, axis * 2 + (p[axis] < 0 ? 1 : 0)] as [number, number]];
+      }),
+);
 /** What the extension spots show facing away from the core: equal for positions that look alike. */
 function outerPrint(st: State): string {
   let k = "";
-  for (const [s, d] of OUTER_FACES) k += st.occ[s] < 0 ? "_" : (st.colorAt(s, d) ?? "-");
+  for (const [s, d] of outerFaces(st.puzzle)) k += st.occ[s] < 0 ? "_" : (st.colorAt(s, d) ?? "-");
   return k;
 }
 
@@ -195,8 +210,8 @@ export function endCandidates(start: State, turns: readonly Turn[], ends: readon
 /** The color of the center facing direction d (the core center's sticker, or its extension center's). */
 export function centerColor(st: State, d: number): Color | null {
   const v = DIRS[d];
-  for (const k of [2, 1]) {
-    const s = slotAt([v[0] * k, v[1] * k, v[2] * k]);
+  for (let k = st.puzzle.range; k >= 1; k -= st.puzzle.step) {
+    const s = st.puzzle.slotAt([v[0] * k, v[1] * k, v[2] * k]);
     if (s >= 0 && st.occ[s] >= 0 && isExposed(st, s, d)) return st.colorAt(s, d);
   }
   return null;
@@ -204,7 +219,7 @@ export function centerColor(st: State, d: number): Color | null {
 
 const UP = 2, FRONT = 4;
 /** The 24 ways to hold the puzzle, as whole-puzzle turns from the way it is held now. */
-const HOLDS: Turn[][] = ["", "x", "x2", "x'", "z", "z'"].flatMap((a) => ["", "y", "y2", "y'"].map((b) => parseAlg(`${a} ${b}`)));
+const holds = perPuzzle((P): Turn[][] => ["", "x", "x2", "x'", "z", "z'"].flatMap((a) => ["", "y", "y2", "y'"].map((b) => parseAlg(`${a} ${b}`, P))));
 
 /** Turns each candidate whole so the given center colors are up and in front, as the person holds it. */
 export function holdAs(cands: Candidate[], up: Color, front: Color): Candidate[] {
@@ -212,7 +227,7 @@ export function holdAs(cands: Candidate[], up: Color, front: Color): Candidate[]
   const seen = new Set<string>();
   for (const c of cands) {
     const from = c.grip.length ? run(c.state, invert(c.grip)) : c.state;
-    for (const h of HOLDS) {
+    for (const h of holds(c.state.puzzle)) {
       const st = run(from, h);
       if (centerColor(st, UP) === up && centerColor(st, FRONT) === front) {
         // Held alike, two candidates that differ only in how the puzzle was turned whole look the same.
@@ -235,18 +250,17 @@ export function answerOf(st: State, q: Question): Answer | null {
   return st.colorAt(q.slot, q.dir) ?? "black";
 }
 
-const outerSlot = (s: number) => SLOT_POS[s].some((c) => Math.abs(c) === 2);
-/** Whether a spot can be empty in some shape: an extension spot can, a core spot never. */
-export const canBeEmpty = outerSlot;
+/** Whether a spot can be empty in some shape: on the X-Cube an extension spot can, a core spot never; on a puzzle that keeps its shape, none can. */
+export const canBeEmpty = (P: PuzzleDef, s: number) => changesShape(P) && P.slotPos[s].some((c) => Math.abs(c) === P.range);
 
 /**
  * How easy a spot is to look at, held as the person holds it: the top, the front and the
  * right are easiest, the bottom and the back hardest. Smaller is easier.
  */
-function spotCost(q: Question): number {
-  const p = SLOT_POS[q.slot];
+function spotCost(P: PuzzleDef, q: Question): number {
+  const p = P.slotPos[q.slot];
   // The way the spot is looked at: the face's direction, or straight in at an extension spot.
-  const v = q.kind === "color" ? DIRS[q.dir] : p.map((c) => (Math.abs(c) === 2 ? Math.sign(c) : 0));
+  const v = q.kind === "color" ? DIRS[q.dir] : p.map((c) => (Math.abs(c) === P.range ? Math.sign(c) : 0));
   let cost = 0;
   if (v[1] < 0 || p[1] < 0) cost += 2; // the bottom
   if (v[2] < 0 || p[2] < 0) cost += 1; // the back
@@ -258,9 +272,10 @@ function spotCost(q: Question): number {
 /** Every question worth asking: color spots every candidate shows, and extension spots some fill and some don't. */
 function questions(cands: Candidate[]): Question[] {
   const out: Question[] = [];
-  for (let s = 0; s < NUM_SLOTS; s++) {
+  const P = cands[0].state.puzzle;
+  for (let s = 0; s < P.numSlots; s++) {
     for (let d = 0; d < 6; d++) out.push({ kind: "color", slot: s, dir: d });
-    if (outerSlot(s)) out.push({ kind: "filled", slot: s });
+    if (canBeEmpty(P, s)) out.push({ kind: "filled", slot: s });
   }
   return out.filter((q) => cands.every((c) => answerOf(c.state, q) !== null));
 }
@@ -280,7 +295,7 @@ export function bestQuestion(cands: Candidate[]): Question | null {
     }
     if (groups.size < 2) continue;
     const worst = Math.max(...groups.values());
-    const cost = spotCost(q);
+    const cost = spotCost(cands[0].state.puzzle, q);
     if (worst < bestWorst || (worst === bestWorst && cost < bestCost)) (best = q), (bestWorst = worst), (bestCost = cost);
   }
   return best;

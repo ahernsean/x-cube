@@ -1,16 +1,20 @@
 // Move notation parser.
 //
-//   R U R' U2         face turns; ' = counterclockwise, 2 = half turn (2' is accepted too)
+//   R U R' U2         face turns; ' = counterclockwise (’ and ′ too), 2 = half turn (2' is accepted too)
 //   r l f b (u d)     outer turns of an extension alone
-//   M S H E           slices (H turns like U, E turns like D)
+//   M E S             slices, turned like L, D and F
 //   x y z             whole-puzzle rotations
 //   (R U2)5           repeat a group: also (R U2)x5, (R U2)*5, (R U2) x 5
 //   (R U)'            inverse of a group
 //   [A, B]            commutator  = A B A' B'
 //   [A: B]            conjugate   = A B A'
 // Commas and periods outside brackets are treated as spaces.
+//
+// Move names are each puzzle's own (PuzzleDef.moves): on the X-Cube r is an outer turn; the
+// 3x3x3 has no r, and writes a wide turn Rw or 2Rw. A name is matched longest first, so Rw
+// is one turn. A name may start with a digit (2Rw): a count is read only right after a turn.
 
-import { MOVE_BY_NAME, invertTurns, turnName, type Turn } from "./puzzle.ts";
+import { XCUBE, invertTurns, turnName, type PuzzleDef, type Turn } from "./puzzle.ts";
 
 export class ParseError extends Error {
   pos: number;
@@ -20,7 +24,18 @@ export class ParseError extends Error {
   }
 }
 
-export function parseAlg(src: string): Turn[] {
+/** Move names longest first, per puzzle, for matching. */
+const NAMES_BY_LENGTH = new WeakMap<PuzzleDef, string[]>();
+function namesByLength(puzzle: PuzzleDef): string[] {
+  let names = NAMES_BY_LENGTH.get(puzzle);
+  if (!names) {
+    names = [...puzzle.moveByName.keys()].sort((a, b) => b.length - a.length);
+    NAMES_BY_LENGTH.set(puzzle, names);
+  }
+  return names;
+}
+
+export function parseAlg(src: string, puzzle: PuzzleDef = XCUBE): Turn[] {
   let i = 0;
   const peek = () => src[i];
   const skipWs = (allowSeparators: boolean) => {
@@ -39,7 +54,7 @@ export function parseAlg(src: string): Turn[] {
     let n = 1;
     const c = readCount();
     if (c !== null) n = c;
-    if (peek() === "'" || peek() === "’") {
+    if (peek() === "'" || peek() === "’" || peek() === "′") {
       i++;
       n = -n;
     }
@@ -49,7 +64,7 @@ export function parseAlg(src: string): Turn[] {
   // Suffix after a group: optional prime, optional repeat count.
   const groupSuffix = (seq: Turn[]): Turn[] => {
     let out = seq;
-    if (peek() === "'" || peek() === "’") {
+    if (peek() === "'" || peek() === "’" || peek() === "′") {
       i++;
       out = invertTurns(out);
     }
@@ -102,12 +117,10 @@ export function parseAlg(src: string): Turn[] {
         const expanded = sep === "," ? [...a, ...b, ...ai, ...invertTurns(b)] : [...a, ...b, ...ai];
         out.push(...groupSuffix(expanded));
       } else {
-        const m = /^[A-Za-z]/.exec(src.slice(i));
-        if (!m) throw new ParseError(`unexpected character '${c}'`, i);
-        const name = m[0];
-        const def = MOVE_BY_NAME.get(name);
-        if (def === undefined) throw new ParseError(`unknown move '${name}'`, i);
-        i += 1;
+        const name = namesByLength(puzzle).find((n) => src.startsWith(n, i));
+        if (name === undefined) throw new ParseError(/[A-Za-z]/.test(c) ? `unknown move '${c}'` : `unexpected character '${c}'`, i);
+        const def = puzzle.moveByName.get(name)!;
+        i += name.length;
         const n = readAmount();
         const amount = (((n % 4) + 4) % 4) as 0 | 1 | 2 | 3;
         if (amount !== 0) out.push({ def, amount });
@@ -120,8 +133,8 @@ export function parseAlg(src: string): Turn[] {
   return result;
 }
 
-export function formatAlg(turns: readonly Turn[]): string {
-  return turns.map(turnName).join(" ");
+export function formatAlg(turns: readonly Turn[], puzzle: PuzzleDef = XCUBE): string {
+  return turns.map((t) => turnName(t, puzzle)).join(" ");
 }
 
 /** Merge adjacent turns of the same move and drop the ones that cancel. */
@@ -136,4 +149,38 @@ export function simplify(turns: readonly Turn[]): Turn[] {
     } else out.push({ ...t });
   }
   return out;
+}
+
+/** One line of a puzzle's notation help: how it is written, and what it does. */
+export interface NotationRow {
+  notation: string;
+  meaning: string;
+}
+
+/**
+ * The notation a puzzle offers, for the Lab's help (moves read only when typed, as the
+ * 3x3x3's wide turns, are left out) (user-facing wording, WORDING.md), and a
+ * note on which of it is the WCA's standard (WCA Regulations, Article 12) and which isn't.
+ */
+export function notationHelp(puzzle: PuzzleDef): { rows: NotationRow[]; note: string } {
+  const has = (n: string) => puzzle.moveByName.has(n);
+  const rows: NotationRow[] = [];
+  if (has("r") && puzzle.moves[puzzle.moveByName.get("r")!].kind === "outer") {
+    rows.push({ notation: "R L U D F B", meaning: "A side's layer of the 3x3x3 inside, with everything beyond it on that side. Clockwise, looking at that side." });
+    rows.push({ notation: "r l u d f b", meaning: "An extension alone. Only when it has all 9 pieces." });
+  } else {
+    rows.push({ notation: "R L U D F B", meaning: "One side's layer, clockwise, looking at that side." });
+  }
+  if (has("E")) rows.push({ notation: "E", meaning: "The horizontal middle slice, turned like D." });
+  if (has("M")) rows.push({ notation: "M", meaning: "The middle slice between L and R, turned like L." });
+  if (has("S")) rows.push({ notation: "S", meaning: "The middle slice between F and B, turned like F." });
+  rows.push({ notation: "x y z", meaning: "The whole puzzle, rotated like R, U and F." });
+  rows.push({ notation: "R′  R2", meaning: "′ is counterclockwise, 2 a half turn." });
+  rows.push({ notation: "(R U)3  (R U)′", meaning: "A group repeated, or undone: its turns in reverse order, each the other way." });
+  rows.push({ notation: "[A, B]  [A: B]", meaning: "A B A′ B′, and A B A′." });
+  const outer = puzzle.moves.some((m) => m.needsFull);
+  const wca =
+    "R L U D F B, x y z, ′ and 2 are the WCA's notation (WCA Regulations, Article 12). M, E and S are not in the Regulations; they are the usual names for the middle slices." +
+    (outer ? " No standard covers the X-Cube's extensions, so r l u d f b are the Lab's own." : "");
+  return { rows, note: wca };
 }

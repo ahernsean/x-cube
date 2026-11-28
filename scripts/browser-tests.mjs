@@ -449,9 +449,9 @@ labTest(
     const infoLook = await page.$$eval(".tool-btn.info", (els) =>
       els.map((e) => { const cs = getComputedStyle(e); return [cs.borderTopColor, cs.backgroundColor].join("/"); }),
     );
-    check(infoLook.length === 4 && infoLook.every((v) => v === "rgba(0, 0, 0, 0)/rgba(0, 0, 0, 0)"), "the ⓘ, Display and Undo buttons show just their icons, with no button edge or fill");
+    check(infoLook.length === 5 && infoLook.every((v) => v === "rgba(0, 0, 0, 0)/rgba(0, 0, 0, 0)"), "the ⓘ buttons (3D view, flat view, Turn panel), Display and Undo show just their icons, with no button edge or fill");
     check(unitsWhole, "the notes break lines only between units like \"M like L,\", never inside one");
-    check(notes.every(Boolean) && (await page.$$eval("[data-sec=turn] .legend", (els) => els.length)) === 0, `the H/M/S and x/y/z notes sit beside their buttons (${notes})`);
+    check(notes.every(Boolean) && (await page.$$eval("[data-sec=turn] .legend", (els) => els.length)) === 0, `the M/E/S and x/y/z notes sit beside their buttons (${notes})`);
     // The turn field's example text fits inside it at phone width.
     const hintFit = await page.evaluate(() => {
       const el = document.getElementById("alg");
@@ -576,6 +576,37 @@ labTest(
       };
     });
     check(flat.whole && flat.infoInside && flat.clear, `the flat view shows whole, with its ⓘ inside it and clear of the faces (${JSON.stringify(flat)})`);
+  },
+  { expand: false, context: { viewport: { width: 390, height: 844 } } },
+);
+
+labTest(
+  "turn buttons: the Turn panel's ⓘ explains the notation, with what is the WCA's, and fits a phone",
+  async ({ page, check }) => {
+    await page.click(`[data-tab="turn"]`);
+    await page.waitForTimeout(800);
+    const before = await page.$$eval(".mv", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)).join());
+    await page.click("#turn-info-btn");
+    const pop = await page.evaluate(() => {
+      const p = document.getElementById("turn-info-pop");
+      const r = p.getBoundingClientRect();
+      return {
+        shown: !p.hidden && r.height > 0,
+        rows: [...p.querySelectorAll("dt")].map((e) => e.textContent),
+        text: p.textContent,
+        inside: r.left >= 0 && r.right <= innerWidth,
+        scroll: document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        expanded: document.getElementById("turn-info-btn").getAttribute("aria-expanded"),
+      };
+    });
+    check(pop.shown && pop.expanded === "true", "a tap on the Turn panel's ⓘ opens the notation help");
+    check(["R L U D F B", "r l u d f b", "E", "M", "S", "x y z"].every((n) => pop.rows.includes(n)) && !pop.rows.includes("H"), `it lists the X-Cube's turns (${pop.rows.join(" | ")})`);
+    check(/WCA/.test(pop.text) && /r l u d f b are the Lab's own/.test(pop.text), "it says which notation is the WCA's standard and which isn't");
+    check(pop.inside && pop.scroll, "it fits the phone's width, with no sideways scrolling");
+    const after = await page.$$eval(".mv", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)).join());
+    check(after === before, "the ⓘ's panel opens over the turn buttons without moving them");
+    await page.mouse.click(5, 5);
+    check(await page.$eval("#turn-info-pop", (e) => e.hidden), "a tap elsewhere closes it");
   },
   { expand: false, context: { viewport: { width: 390, height: 844 } } },
 );
@@ -839,7 +870,7 @@ labTest("gestures: swipes turn the layer under the finger, and a double tap undo
   await swipe(await probe("sticker", "Fx.UL", "F"), 70, 0);
   check((await probe("turns")) === "U'", `swiping right on the front face's top row turns U' (got "${await probe("turns")}")`);
   await swipe(await probe("sticker", "Fx", "F"), -70, 0);
-  check((await probe("turns")) === "U' H", `swiping left on the front face's middle row turns the slice H (got "${await probe("turns")}")`);
+  check((await probe("turns")) === "U' E'", `swiping left on the front face's middle row turns the slice E' (got "${await probe("turns")}")`);
 
   const tapAt = await probe("sticker", "Fx", "F");
   const tap = [["pointerdown", tapAt.x, tapAt.y], ["pointerup", tapAt.x, tapAt.y]];
@@ -882,6 +913,115 @@ labTest("turn buttons: a tap turns, a long press turns the inverse", async ({ pa
   await settle();
   check((await probe("turns")) === "U U'", `tap on U turns U, a long press turns U' (turns "${await probe("turns")}")`);
 });
+
+labTest(
+  "turn buttons: a finger's press shows the turn above it, and the inverse once held",
+  async ({ page, check, probe, settle }) => {
+    await page.click(`[data-tab="turn"]`);
+    await page.waitForTimeout(800);
+    // A finger on U: pointer events as a touch screen sends them.
+    const press = (type) =>
+      page.evaluate((type) => {
+        const b = document.querySelector('[data-move="U"]');
+        const r = b.getBoundingClientRect();
+        b.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 7, pointerType: "touch", isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+      }, type);
+    const tip = () =>
+      page.evaluate(() => {
+        const t = document.getElementById("press-tip"), r = t.getBoundingClientRect();
+        const b = document.querySelector('[data-move="U"]').getBoundingClientRect();
+        const key = document.querySelector('[data-move="U"]');
+        return { shown: !t.hidden, text: t.textContent, inverted: t.classList.contains("inverted"), above: r.bottom <= b.top, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0, centered: Math.abs((r.left + r.right) / 2 - (b.left + b.right) / 2) < 2, keyLit: key.classList.contains("pressed"), keyBg: getComputedStyle(key).backgroundColor };
+      });
+    const restBg = (await tip()).keyBg;
+    await press("pointerdown");
+    const first = await tip();
+    check(first.keyLit && first.keyBg !== restBg, `the key itself is highlighted from the moment the finger touches it (${restBg} → ${first.keyBg})`);
+    check(first.shown && first.text === "U" && !first.inverted && first.above && first.inside && first.centered, `a finger on U shows U above the button (${JSON.stringify(first)})`);
+    await page.waitForTimeout(700);
+    const held = await tip();
+    check(held.shown && held.text === "U'" && held.inverted, `held, it shows U' in the highlight (${JSON.stringify(held)})`);
+    await press("pointerup");
+    const after = await tip();
+    await settle(); // the turn plays before it is in the turn list
+    check(!after.shown && !after.keyLit && after.keyBg === restBg && (await probe("turns")) === "U'", `letting go turns U', hides the tip and unlights the key (turns "${await probe("turns")}")`);
+    // Sliding off the key ends the press the same way, and makes no turn.
+    await press("pointerdown");
+    await page.waitForTimeout(700);
+    const sliding = await tip();
+    await press("pointerleave");
+    const slid = await tip();
+    check(sliding.keyLit && !slid.shown && !slid.keyLit && slid.keyBg === restBg && (await probe("turns")) === "U'", `sliding off unlights the key and hides the tip, with no turn (turns "${await probe("turns")}")`);
+    // A rotation's tip carries its key's axis mark: a line across for x, up and down for y, a ring for z;
+    // a slice has the mark of the axis it turns about (M x's, E y's, S z's), on its key and its tip.
+    const marks = [];
+    for (const m of ["x", "y", "z", "M", "E", "S"]) {
+      marks.push(
+        await page.evaluate((m) => {
+          const b = document.querySelector(`[data-move="${m}"]`), r = b.getBoundingClientRect();
+          const at = { bubbles: true, pointerId: 8, pointerType: "touch", clientX: r.left + 5, clientY: r.top + 5 };
+          b.dispatchEvent(new PointerEvent("pointerdown", at));
+          const t = document.getElementById("press-tip"), k = t.querySelector(".tip-key");
+          const across = m === "x" || m === "M";
+          const tipMark = across ? getComputedStyle(t).backgroundImage : getComputedStyle(k).backgroundImage;
+          const keySize = getComputedStyle(b).backgroundSize, tipSize = across ? getComputedStyle(t).backgroundSize : getComputedStyle(k).backgroundSize;
+          const name = (img, size) => (/radial/.test(img) ? "ring" : !/linear/.test(img) ? "none" : size.startsWith("100%") ? "across" : "updown");
+          b.dispatchEvent(new PointerEvent("pointerleave", at));
+          return `${m}:${name(getComputedStyle(b).backgroundImage, keySize)}/${name(tipMark, tipSize)}`;
+        }, m),
+      );
+    }
+    check(marks.join() === "x:across/across,y:updown/updown,z:ring/ring,M:across/across,E:updown/updown,S:ring/ring", `rotations and slices carry the mark of the axis they turn about, on the key and its tip (${marks.join(" ")})`);
+    // A refused key (an outer turn on an extension without all 9 pieces: u, on the empty up
+    // extension) shows nothing while pressed: no highlight, no tip and no flip.
+    const refused = await page.evaluate(async () => {
+      const b = document.querySelector('[data-move="u"]'), r = b.getBoundingClientRect();
+      const at = { bubbles: true, pointerId: 9, pointerType: "touch", clientX: r.left + 5, clientY: r.top + 5 };
+      const blocked = b.classList.contains("blocked");
+      b.dispatchEvent(new PointerEvent("pointerdown", at));
+      await new Promise((res) => setTimeout(res, 700));
+      const t = document.getElementById("press-tip");
+      const seen = { blocked, tip: !t.hidden, lit: b.classList.contains("pressed"), flipped: b.classList.contains("inverted"), text: b.textContent, tapFlash: getComputedStyle(b).webkitTapHighlightColor ?? "rgba(0, 0, 0, 0)" };
+      b.dispatchEvent(new PointerEvent("pointerup", at));
+      return seen;
+    });
+    check(refused.blocked && !refused.tip && !refused.lit && !refused.flipped && refused.text === "u" && /rgba\(0, 0, 0, 0\)|transparent/.test(refused.tapFlash), `a refused key shows no highlight, tip or flip while held (${JSON.stringify(refused)})`);
+    // A mouse doesn't hide the button, so a mouse press shows no tip.
+    const ub = await page.locator('[data-move="U"]').boundingBox();
+    await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2);
+    await page.mouse.down();
+    const mouse = await tip();
+    await page.mouse.up();
+    check(!mouse.shown, "a mouse press shows no tip");
+  },
+  { expand: false, context: { viewport: { width: 390, height: 844 } } },
+);
+
+labTest(
+  "controls: the turn amount and a color are picked as a finger touches them, without the browser's tap flash",
+  async ({ page, check }) => {
+    const down = (sel) =>
+      page.evaluate((sel) => {
+        const b = document.querySelector(sel), r = b.getBoundingClientRect();
+        b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 11, pointerType: "touch", isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+      }, sel);
+    const noFlash = (sel) => page.$$eval(sel, (els) => els.length > 0 && els.every((e) => /rgba\(0, 0, 0, 0\)|transparent/.test(getComputedStyle(e).webkitTapHighlightColor ?? "rgba(0, 0, 0, 0)")));
+    await page.click(`[data-tab="turn"]`);
+    await page.waitForTimeout(800);
+    await down('[data-mod="2"]');
+    const amount = await page.$eval('[data-mod="2"]', (e) => e.classList.contains("sel"));
+    check(amount, "a finger's touch on 2 picks it before the finger lifts");
+    await page.click(`[data-tab="start"]`);
+    await page.waitForTimeout(800);
+    await page.click("#edit-start");
+    await page.waitForTimeout(500);
+    await down('[data-paint="G"]');
+    const color = await page.$eval('[data-paint="G"]', (e) => e.getAttribute("aria-checked"));
+    check(color === "true", `a finger's touch on green picks it before the finger lifts (aria-checked ${color})`);
+    check((await noFlash(".tabs button")) && (await noFlash(".mods button")) && (await noFlash(".swatch")), "the tabs, the turn amount and the swatches have no browser tap flash");
+  },
+  { expand: false, context: { viewport: { width: 390, height: 844 } } },
+);
 
 labTest("edge labels: each arrow, in its center's color, points out along its face's axis; head-on, a dot or a cross", async ({ page, check, probe, settle }) => {
   await page.waitForTimeout(200);
@@ -1234,11 +1374,11 @@ labTest("playback: ◀ plays the turns backward to the start and keeps them list
 });
 
 labTest("hold line: names the centers up, toward you and on your right, as they are now", async ({ check, hold, play }) => {
-  // The H slice carries the side centers around.
+  // The E slice carries the side centers around.
   const holdSolved = await hold();
-  await play("H");
+  await play("E'");
   const holdAfterH = await hold();
-  check(holdSolved === "Hold: white up, green front, red right" && holdAfterH === "Hold: white up, red front, blue right", `the hold line follows the centers ("${holdSolved}", then after H "${holdAfterH}")`);
+  check(holdSolved === "Hold: white up, green front, red right" && holdAfterH === "Hold: white up, red front, blue right", `the hold line follows the centers ("${holdSolved}", then after E' "${holdAfterH}")`);
 });
 
 // ---- Algorithms, the turn field, Clear and state codes.
@@ -1255,7 +1395,7 @@ labTest("algorithms: a known algorithm loads its position and turns, and playing
   // This one ends back in shape with the white top kept.
   const played = { shape: await status(), top: (await page.evaluate(() => window.xcubeProbe.flatFace("U").flat().filter((h) => h && h.color === "W").length)) };
   check(
-    known.base === "Flipped bottom edge, white top solved" && known.alg === "R F H2 F2 H F R'" && known.field === "" && known.counter === "0/7" && known.hold === "Hold: white up, blue front, orange right" && /Out of shape/.test(known.shape) && /X shape/.test(played.shape) && played.top === 21,
+    known.base === "Flipped bottom edge, white top solved" && known.alg === "R F E2 F2 E' F R'" && known.field === "" && known.counter === "0/7" && known.hold === "Hold: white up, blue front, orange right" && /Out of shape/.test(known.shape) && /X shape/.test(played.shape) && played.top === 21,
     `a known algorithm loads its position and turns, and playing them works (start "${known.base}", ${known.hold}; then ${played.top} white on top)`,
   );
 });
@@ -1490,7 +1630,7 @@ labTest("shading: the flat view's bands come from nearer neighbors, and live sha
   // and gone past the ramp. Checked in a scrambled position, which has recesses between
   // two walls: those show two bands with a clean middle, and no overlap (an inner corner)
   // is darker than one band.
-  await play("R U' F2 D B' L2 R' H S' M");
+  await play("R U' F2 D B' L2 R' E' S' M");
   const prof = await probe("flatShadeProfile");
   check(prof.shaded > 0 && prof.channels > 0 && prof.edgeErr < 1e-6 && prof.middle > 1 - 1e-6 && prof.darkest >= prof.oneBand - 1e-6, `flat view shading is bands from nearer neighbors (${prof.shaded} shaded tiles, ${prof.channels} between two walls; edge error ${prof.edgeErr}; lightest-middle check ${prof.middle.toFixed(6)}; darkest ${prof.darkest.toFixed(3)}, one band ${prof.oneBand.toFixed(3)})`);
   // The squares are two triangles each, so the bands are drawn pixel by pixel by their

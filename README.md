@@ -1,7 +1,9 @@
 # X-Cube simulator
 
-**New here (person or agent)? Start with [AGENTS.md](AGENTS.md)** for the terminology,
-notation, piece names and code map. Solving algorithms are in [ALGORITHMS.md](ALGORITHMS.md).
+This file is for anyone using the puzzle, the Lab or the command line: how to hold the
+puzzle, the notation, slot names, where the Lab runs and the commands. **Agents (and
+anyone changing the code) also read [AGENTS.md](AGENTS.md)** for the vocabulary, the model,
+the piece kinds and the code map. Solving algorithms are in [ALGORITHMS.md](ALGORITHMS.md).
 
 A simulator and algorithm-search toolkit for the X-Cube (Moving Parts, 2013): a 3x3x3
 with 3x3 extensions on four sides that turn on their own only when complete.
@@ -11,11 +13,11 @@ with 3x3 extensions on four sides that turn on their own only when complete.
 - `src/web/` is the browser viewer ("X-Cube Lab"). It is built into one HTML file.
 - `test/` holds the tests. They encode the behavior confirmed on the physical puzzle.
 
-## Orientation and colors
+## Holding the puzzle
 
 Hold the puzzle with the X-faces up and down: white up, green front. That leaves
 red right, orange left and blue back. The colors are set in `FACE_COLOR` in
-`src/core/puzzle.ts`, so change them there if your cube differs.
+`src/core/puzzle.ts`, so change them there if your puzzle differs.
 
 ## Notation
 
@@ -23,15 +25,28 @@ red right, orange left and blue back. The colors are set in `FACE_COLOR` in
 |---|---|
 | `R L U D F B` | Inner turns: the 3x3x3 layer plus everything beyond it, including the extension. Clockwise looking at that face. Always allowed. |
 | `r l f b` (`u d`) | Outer turns: the extension alone. Allowed only when all 9 of its pieces are present. |
-| `H` | The horizontal middle layer, turned like `U`. `E` is accepted as `H'`. |
+| `E` | The horizontal middle layer, turned like `D`. |
 | `M` | The middle layer between L and R, turned like `L`. |
 | `S` | The middle layer between F and B, turned like `F`. |
 | `x y z` | The whole puzzle, turned like `R`, `U` and `F`. |
-| `'` and `2` | Counterclockwise and half turn. |
-| `(A)5`, `(A)x5`, `(A)*5` | Repeat a group. |
-| `(A)'` | Inverse of a group. |
+| `'` and `2` | Counterclockwise and half turn. `2'` is read as `2`; `′` and `’` as `'`. |
+| `(A)5`, `(A)x5`, `(A)*5`, `(A) x 5` | Repeat a group. |
+| `(A)'` | Inverse of a group: its turns in reverse order, each the other way. |
 | `[A, B]` | Commutator: `A B A' B'`. |
-| `[A: B]` | Conjugate: `A B A'`. |
+| `[A: B]` | Conjugate: `A B A'` (set up, do, undo the setup). |
+
+Commas and periods outside brackets are read as spaces.
+
+**Standard notation.** `R L U D F B`, `x y z`, `'` and `2` are the WCA's notation (WCA
+Regulations, Article 12, version of April 1, 2026); `x` turns like `R`. `M`, `E` and `S` are
+not in the Regulations; they are the usual names for the middle slices. No standard covers the X-Cube's
+extensions, so `r l u d f b` are this project's own.
+
+On the 3x3x3 (`--puzzle cube3`), lowercase letters are refused. The WCA has no
+lowercase wide turns (it reads `r` as `R`, Regulation E2c6+), and on the X-Cube `r` is an
+outer turn. The WCA's wide turns `Rw` (`R M'`, or `L x`) and `2Rw` (the same turn on a
+3x3x3, Regulation 12a2+) are accepted when typed, so standard algorithms paste as written;
+the Lab never offers them.
 
 **Grip difference from Dave Baum's page.** Baum holds the X-faces front and back, so his
 letters name different layers. Translated to the white-up grip:
@@ -42,20 +57,12 @@ letters name different layers. Translated to the white-up grip:
 His edge 3-cycle becomes `R' S' R b R' S R b'`, and his corner 3-cycle becomes
 `R' F' R b R' F R b'`. Both are verified in the tests.
 
-## Model
+## Slot names
 
-- **Slots.** There are 80 slots: every lattice point in -2..2 with at most one coordinate equal to ±2, minus the solid center.
-- **Pieces.** There are 62:
-  - 8 core corners and 8 core single edges, each with one white or yellow sticker;
-  - 4 core double edges, with no stickers;
-  - 16 outer corners and 16 outer edges;
-  - 6 core centers and 4 extension centers. Each extension center is fused to the core center behind it.
-- **Solved.** The puzzle is in an X shape, and every exposed face in each direction shows one color.
-
-The tests check these invariants:
-- An outer piece's outward color never changes. That's why two outer pieces with the same three colors are not interchangeable.
-- Outer turns never change the shape.
-- Fused centers never separate.
+A slot is a place a piece can be. Core slots use standard names: `UFR`, `UF`, `U`.
+Extension slots are named `<face>x.<position>`: `Fx.UR` is the up-right piece of the front
+extension, `Fx` its center, and `Ux.F` the front spot of the (normally empty) up extension.
+In cycle output, `A -> B` means the piece that was in slot A is now in slot B.
 
 ## Where to run it
 
@@ -174,14 +181,13 @@ node src/cli/xc.ts solve  "R U F' l"              # steps from that position to 
 node src/cli/xc.ts solve  "R U F' l" --mode layers   # ... solving the outer pieces top to bottom
 node src/cli/xc.ts show "U" --from "R"            # start from solved + setup
 node src/cli/xc.ts show "U" --state "VLTM DWOP ..."        # start from a saved state code
+node src/cli/xc.ts show "R U M'" --puzzle cube3             # a traditional 3x3x3 (turning only, so far)
 node scripts/build-web.ts                         # build dist/index.html and dist/x-cube-lab.html
 node --test scripts/browser-tests.mjs             # browser tests of the built Lab (needs Playwright;
                                                   # BROWSER=webkit for WebKit)
 ```
 
-In cycle output, `A -> B` means the piece that was in slot A is now in slot B. Slot names:
-- Core slots use standard names: `UFR`, `UF`, `U`.
-- Extension slots are named `<face>x.<position>`. For example, `Fx.UR` is the up-right piece of the front extension, and `Ux.F` is the front spot of the (normally empty) top extension.
+The notation and slot names are under [Notation](#notation) and [Slot names](#slot-names).
 
 ## Search
 
