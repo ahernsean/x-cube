@@ -297,7 +297,7 @@ input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); 
 .mv { font: 600 16px var(--f-mono); min-height: 42px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; padding: 0; }
 .mv:active { transform: translateY(1px); }
 /* Only the Lab highlights a key (pressed, inverted): no browser tap flash, and a refused key doesn't move. */
-.mv { -webkit-tap-highlight-color: transparent; }
+.mv, .tabs button, .mods button, .swatch { -webkit-tap-highlight-color: transparent; }
 .mv.blocked:active { transform: none; }
 .mv.outer { border-style: dashed; }
 .mv.blocked { opacity: 0.38; }

@@ -455,6 +455,12 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `E
   letters are moved so their ink sits at the button's middle (`centerAxisLetters`): a
   lowercase letter's ink sits below its line box's middle by an amount that depends on
   the font, so it is measured, by canvas text metrics, from the font the button draws with.
+- **Pickers answer on touch:** the turn amount and Edit puzzle's colors and Shape tool are
+  picked the moment a finger touches them (`onPress`), not when it lifts, as picking changes
+  nothing until a turn or a tap on a sticker. The turn buttons, the tabs, the turn amount and
+  the swatches have no browser tap flash (`-webkit-tap-highlight-color`): they show their
+  own state, and Safari's gray, drawn as the finger lifts, read as a second press. Other
+  buttons keep it, as the only sign a tap registered.
 - **Flat view:** the six faces as seen straight on, drawn from the same scene by
   orthographic cameras, so it animates, centered in its panel. Its ⓘ button explains how to read it.
   It is drawn only while some of it is on screen (`netOnScreen`, an IntersectionObserver):

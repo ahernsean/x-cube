@@ -3160,6 +3160,14 @@ function bindMoveButtons() {
   }
 }
 
+/** Runs `act` when a finger, pen or the main mouse button goes down on `b`: a picker answers on touch, not on lift. */
+function onPress(b: HTMLElement, act: () => void) {
+  b.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    act();
+  });
+}
+
 /** Each section's heading collapses and expands it; the choice is remembered on this device. */
 // Panel tabs (phones). The panels sit side by side in a sideways-scrolling row that snaps to
 // one panel; a tab scrolls to its panel, and scrolling (a swipe) selects the tab of the panel
@@ -3922,15 +3930,25 @@ function bindUI() {
     renderEdit();
     if (act === "show" && edit.highlight) showHighlighted();
   });
+  // A color or the Shape tool is picked the moment a finger touches it (a click, for the keyboard, picks it too).
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-paint]")) {
     if (b.dataset.paint !== "shape") b.style.background = NET_COLOR[b.dataset.paint!];
-    b.addEventListener("click", () => {
-      if (!edit) return;
+    const pick = () => {
+      if (!edit || edit.paint === b.dataset.paint) return;
       edit.paint = b.dataset.paint as Color | "shape";
       if (edit.paint === "shape") stopShapeFlash();
       renderEdit();
-    });
+    };
+    onPress(b, pick);
+    b.addEventListener("click", pick);
   }
+  // The turn amount, likewise, is picked on touch.
+  for (const b of document.querySelectorAll<HTMLButtonElement>("[data-mod]"))
+    onPress(b, () => {
+      if (app.modifier === Number(b.dataset.mod)) return;
+      app.modifier = Number(b.dataset.mod) as 1 | 2 | 3;
+      render();
+    });
   setupCollapsibles();
   setupTabs();
   document.addEventListener("click", async (e) => {

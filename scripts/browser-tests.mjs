@@ -997,6 +997,32 @@ labTest(
   { expand: false, context: { viewport: { width: 390, height: 844 } } },
 );
 
+labTest(
+  "controls: the turn amount and a color are picked as a finger touches them, without the browser's tap flash",
+  async ({ page, check }) => {
+    const down = (sel) =>
+      page.evaluate((sel) => {
+        const b = document.querySelector(sel), r = b.getBoundingClientRect();
+        b.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 11, pointerType: "touch", isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+      }, sel);
+    const noFlash = (sel) => page.$$eval(sel, (els) => els.length > 0 && els.every((e) => /rgba\(0, 0, 0, 0\)|transparent/.test(getComputedStyle(e).webkitTapHighlightColor ?? "rgba(0, 0, 0, 0)")));
+    await page.click(`[data-tab="turn"]`);
+    await page.waitForTimeout(800);
+    await down('[data-mod="2"]');
+    const amount = await page.$eval('[data-mod="2"]', (e) => e.classList.contains("sel"));
+    check(amount, "a finger's touch on 2 picks it before the finger lifts");
+    await page.click(`[data-tab="start"]`);
+    await page.waitForTimeout(800);
+    await page.click("#edit-start");
+    await page.waitForTimeout(500);
+    await down('[data-paint="G"]');
+    const color = await page.$eval('[data-paint="G"]', (e) => e.getAttribute("aria-checked"));
+    check(color === "true", `a finger's touch on green picks it before the finger lifts (aria-checked ${color})`);
+    check((await noFlash(".tabs button")) && (await noFlash(".mods button")) && (await noFlash(".swatch")), "the tabs, the turn amount and the swatches have no browser tap flash");
+  },
+  { expand: false, context: { viewport: { width: 390, height: 844 } } },
+);
+
 labTest("edge labels: each arrow, in its center's color, points out along its face's axis; head-on, a dot or a cross", async ({ page, check, probe, settle }) => {
   await page.waitForTimeout(200);
   // From Home, every label's arrow points from the middle of the view toward the label (the
