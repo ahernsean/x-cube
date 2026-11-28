@@ -601,7 +601,7 @@ labTest(
     });
     check(pop.shown && pop.expanded === "true", "a tap on the Turn panel's ⓘ opens the notation help");
     check(["R L U D F B", "r l u d f b", "H", "E", "M", "S", "x y z"].every((n) => pop.rows.includes(n)), `it lists the X-Cube's turns (${pop.rows.join(" | ")})`);
-    check(/WCA/.test(pop.text) && /H is this Lab's own/.test(pop.text), "it says which notation is the WCA's standard and which isn't");
+    check(/WCA/.test(pop.text) && /H is not standard notation/.test(pop.text), "it says which notation is the WCA's standard and which isn't");
     check(pop.inside && pop.scroll, "it fits the phone's width, with no sideways scrolling");
     const after = await page.$$eval(".mv", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)).join());
     check(after === before, "the ⓘ's panel opens over the turn buttons without moving them");

@@ -171,16 +171,18 @@ export function notationHelp(puzzle: PuzzleDef): { rows: NotationRow[]; note: st
   } else {
     rows.push({ notation: "R L U D F B", meaning: "One side's layer, clockwise, looking at that side." });
   }
-  if (has("H")) rows.push({ notation: "H", meaning: "The horizontal middle slice, turned like U." });
-  if (has("E")) rows.push({ notation: "E", meaning: has("H") ? "The same slice turned like D: E is H′." : "The horizontal middle slice, turned like D." });
+  if (has("H")) rows.push({ notation: "H", meaning: "The horizontal middle slice, turned like U. H is E′." });
+  if (has("E")) rows.push({ notation: "E", meaning: "The horizontal middle slice, turned like D." });
   if (has("M")) rows.push({ notation: "M", meaning: "The middle slice between L and R, turned like L." });
   if (has("S")) rows.push({ notation: "S", meaning: "The middle slice between F and B, turned like F." });
   rows.push({ notation: "x y z", meaning: "The whole puzzle, rotated like R, U and F." });
   rows.push({ notation: "R′  R2", meaning: "′ is counterclockwise, 2 a half turn." });
   rows.push({ notation: "(R U)3  (R U)′", meaning: "A group repeated, or undone: its turns in reverse order, each the other way." });
   rows.push({ notation: "[A, B]  [A: B]", meaning: "A B A′ B′, and A B A′." });
-  const wca = !has("H")
-    ? "Face turns, rotations, ′ and 2 are the WCA's standard notation. M, E and S are common, but not the WCA's."
-    : "R L U D F B, x y z, ′ and 2 come from the WCA's standard notation for a 3x3x3. M, E and S are common, but not the WCA's; H is this Lab's own. Lowercase letters here are the X-Cube's extensions, not two layers as some write them on a 3x3x3.";
+  const outer = puzzle.moves.some((m) => m.needsFull);
+  const wca =
+    "R L U D F B, x y z, ′ and 2 are the WCA's notation (WCA Regulations, Article 12). M, E and S are not in the Regulations; they are the usual names for the middle slices." +
+    (has("H") ? " H is not standard notation: the standard name for that turn is E′." : "") +
+    (outer ? " No standard covers the X-Cube's extensions, so r l u d f b are the Lab's own." : "");
   return { rows, note: wca };
 }

@@ -68,6 +68,7 @@ The notation, which of it is the WCA's standard, and Baum's grip are in `README.
 - Each puzzle has its own move names (`PuzzleDef.moves`), and the parser
   (`src/core/notation.ts`) takes the puzzle. Names are matched longest first and may start
   with a digit (`2Rw`); a count is read only right after a turn, so `R2Rw` is `R2 Rw`.
+- `H` is the owner's name for `E'`, and only the X-Cube has it; the 3x3x3 writes `E'`.
 - **Typed only** (`typedOnly`): the 3x3x3's wide turns are read when typed but never
   offered: no turn button, help line, shuffle or solver step uses them.
 - `notationHelp` gives the turns a puzzle offers in words, for the Turn panel's ⓘ, with
