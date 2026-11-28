@@ -981,11 +981,11 @@ labTest(
       b.dispatchEvent(new PointerEvent("pointerdown", at));
       await new Promise((res) => setTimeout(res, 700));
       const t = document.getElementById("press-tip");
-      const seen = { blocked, tip: !t.hidden, lit: b.classList.contains("pressed"), flipped: b.classList.contains("inverted"), text: b.textContent };
+      const seen = { blocked, tip: !t.hidden, lit: b.classList.contains("pressed"), flipped: b.classList.contains("inverted"), text: b.textContent, tapFlash: getComputedStyle(b).webkitTapHighlightColor ?? "rgba(0, 0, 0, 0)" };
       b.dispatchEvent(new PointerEvent("pointerup", at));
       return seen;
     });
-    check(refused.blocked && !refused.tip && !refused.lit && !refused.flipped && refused.text === "u", `a refused key shows no highlight, tip or flip while held (${JSON.stringify(refused)})`);
+    check(refused.blocked && !refused.tip && !refused.lit && !refused.flipped && refused.text === "u" && /rgba\(0, 0, 0, 0\)|transparent/.test(refused.tapFlash), `a refused key shows no highlight, tip or flip while held (${JSON.stringify(refused)})`);
     // A mouse doesn't hide the button, so a mouse press shows no tip.
     const ub = await page.locator('[data-move="U"]').boundingBox();
     await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2);
