@@ -916,7 +916,7 @@ labTest("turn buttons: a tap turns, a long press turns the inverse", async ({ pa
 
 labTest(
   "turn buttons: a finger's press shows the turn above it, and the inverse once held",
-  async ({ page, check, probe }) => {
+  async ({ page, check, probe, settle }) => {
     await page.click(`[data-tab="turn"]`);
     await page.waitForTimeout(800);
     // A finger on U: pointer events as a touch screen sends them.
@@ -943,6 +943,7 @@ labTest(
     check(held.shown && held.text === "U'" && held.inverted, `held, it shows U' in the highlight (${JSON.stringify(held)})`);
     await press("pointerup");
     const after = await tip();
+    await settle(); // the turn plays before it is in the turn list
     check(!after.shown && !after.keyLit && after.keyBg === restBg && (await probe("turns")) === "U'", `letting go turns U', hides the tip and unlights the key (turns "${await probe("turns")}")`);
     // Sliding off the key ends the press the same way, and makes no turn.
     await press("pointerdown");
