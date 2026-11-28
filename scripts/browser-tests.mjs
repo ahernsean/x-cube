@@ -914,6 +914,44 @@ labTest("turn buttons: a tap turns, a long press turns the inverse", async ({ pa
   check((await probe("turns")) === "U U'", `tap on U turns U, a long press turns U' (turns "${await probe("turns")}")`);
 });
 
+labTest(
+  "turn buttons: a finger's press shows the turn above it, and the inverse once held",
+  async ({ page, check, probe }) => {
+    await page.click(`[data-tab="turn"]`);
+    await page.waitForTimeout(800);
+    // A finger on U: pointer events as a touch screen sends them.
+    const press = (type) =>
+      page.evaluate((type) => {
+        const b = document.querySelector('[data-move="U"]');
+        const r = b.getBoundingClientRect();
+        b.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 7, pointerType: "touch", isPrimary: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+      }, type);
+    const tip = () =>
+      page.evaluate(() => {
+        const t = document.getElementById("press-tip"), r = t.getBoundingClientRect();
+        const b = document.querySelector('[data-move="U"]').getBoundingClientRect();
+        return { shown: !t.hidden, text: t.textContent, inverted: t.classList.contains("inverted"), above: r.bottom <= b.top, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0, centered: Math.abs((r.left + r.right) / 2 - (b.left + b.right) / 2) < 2 };
+      });
+    await press("pointerdown");
+    const first = await tip();
+    check(first.shown && first.text === "U" && !first.inverted && first.above && first.inside && first.centered, `a finger on U shows U above the button (${JSON.stringify(first)})`);
+    await page.waitForTimeout(700);
+    const held = await tip();
+    check(held.shown && held.text === "U'" && held.inverted, `held, it shows U' in the highlight (${JSON.stringify(held)})`);
+    await press("pointerup");
+    const after = await tip();
+    check(!after.shown && (await probe("turns")) === "U'", `letting go turns U' and hides it (turns "${await probe("turns")}")`);
+    // A mouse doesn't hide the button, so a mouse press shows no tip.
+    const ub = await page.locator('[data-move="U"]').boundingBox();
+    await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2);
+    await page.mouse.down();
+    const mouse = await tip();
+    await page.mouse.up();
+    check(!mouse.shown, "a mouse press shows no tip");
+  },
+  { expand: false, context: { viewport: { width: 390, height: 844 } } },
+);
+
 labTest("edge labels: each arrow, in its center's color, points out along its face's axis; head-on, a dot or a cross", async ({ page, check, probe, settle }) => {
   await page.waitForTimeout(200);
   // From Home, every label's arrow points from the middle of the view toward the label (the

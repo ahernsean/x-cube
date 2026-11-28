@@ -421,6 +421,11 @@ details[open] summary { margin-bottom: 8px; }
 /* Over the slider's thumb while it moves: how long a turn takes. */
 .speed-tip { position: absolute; bottom: calc(100% + 4px); transform: translateX(-50%); padding: 3px 8px; border-radius: 6px; background: var(--ink); color: var(--panel); font-size: 12px; font-weight: 600; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.4s ease; z-index: 5; }
 .speed-tip.on { opacity: 1; transition: opacity 0.1s ease; }
+/* Over a turn button a finger holds, which the finger hides: the turn a release will make
+   (pressTip), as a phone keyboard shows the key under the thumb. */
+.press-tip { position: fixed; z-index: 50; left: 0; top: 0; min-width: 56px; padding: 6px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 700 30px var(--f-mono); text-align: center; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); pointer-events: none; }
+.press-tip.inverted { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.press-tip[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .mv:active { transform: none; } }
 /* Wide screens: the 3D view and the playback strip on the left, the panels stacked in a
    column on the right, each collapsing from its heading. */
@@ -571,6 +576,7 @@ details[open] summary { margin-bottom: 8px; }
       <label class="speed" for="speed">Speed <input type="range" id="speed" min="0" max="100" value="63"><output class="speed-tip" id="speed-tip" for="speed" aria-live="polite"></output></label>
     </div>
     <p class="message" id="message" hidden></p>
+    <div class="press-tip" id="press-tip" hidden aria-hidden="true"></div>
     <div class="confirm resume" id="resume" role="dialog" aria-labelledby="resume-text" hidden><p id="resume-text">Pick up where you left off?</p><span class="resume-what" id="resume-what"></span><div class="row"><button class="btn small primary" id="resume-yes">Pick up</button><button class="btn small" id="resume-no">Start fresh</button></div></div>
     <div class="confirm" id="confirm" role="alertdialog" aria-labelledby="confirm-text" hidden><p id="confirm-text">End the solve in progress?</p><div class="row"><button class="btn small primary" id="confirm-yes">End solve</button><button class="btn small" id="confirm-no">Keep solving</button></div></div>
   </div>

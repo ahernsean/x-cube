@@ -3065,6 +3065,28 @@ function pressMove(name: string, inverted: boolean) {
  * Sliding off the button before releasing does nothing.
  */
 const LONG_PRESS_MS = 450;
+/** Space between the press tip and the top of the button under the finger. */
+const PRESS_TIP_GAP = 14;
+
+/**
+ * While a finger holds a turn button, the turn a release will make, shown above it (a finger
+ * hides the button itself, and so the flip to the inverse); null hides it.
+ */
+function pressTip(b: HTMLElement | null, text = "", inverted = false) {
+  const tip = $("press-tip");
+  if (!b) {
+    tip.hidden = true;
+    return;
+  }
+  tip.textContent = text;
+  tip.classList.toggle("inverted", inverted);
+  tip.hidden = false;
+  const r = b.getBoundingClientRect();
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), innerWidth - w - 8);
+  tip.style.left = `${left}px`;
+  tip.style.top = `${Math.max(8, r.top - h - PRESS_TIP_GAP)}px`;
+}
 function bindMoveButtons() {
   for (const b of document.querySelectorAll<HTMLButtonElement>("[data-move]")) {
     const name = b.dataset.move!;
@@ -3072,16 +3094,20 @@ function bindMoveButtons() {
     let active: number | null = null;
     let downAt = 0; // event timestamp of the press
     let long = false;
+    let touch = false; // a finger, which hides the button: the press tip shows the turn instead
     const show = (inverted: boolean) => {
       const amount = inverted ? invertAmount(app.modifier) : app.modifier;
       b.textContent = name + suffixFor(amount);
       b.classList.toggle("inverted", inverted);
+      if (touch && active !== null) pressTip(b, b.textContent, inverted);
     };
     const reset = () => {
       clearTimeout(timer);
       active = null;
       long = false;
       show(false);
+      if (touch) pressTip(null);
+      touch = false;
     };
     b.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -3090,6 +3116,8 @@ function bindMoveButtons() {
       active = e.pointerId;
       downAt = e.timeStamp;
       long = false;
+      touch = e.pointerType !== "mouse";
+      show(false);
       timer = setTimeout(() => {
         long = true;
         show(true);

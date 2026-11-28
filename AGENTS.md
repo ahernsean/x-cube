@@ -441,7 +441,10 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `E
   list says "Shuffling…" while they play), which would give the way back away (the probe's
   `shuffleTurns` has them for the tests).
 - **Turn buttons:** tap for the shown turn; long press flips it to the inverse (U to U');
-  slide off to cancel. The rotations show their axes faintly behind the letter: a line
+  slide off to cancel. A finger hides the button it holds, so while a finger (not a mouse)
+  holds one, a **press tip** above it shows the turn a release will make, in the highlight
+  once flipped (`pressTip`), as a phone keyboard shows the key under the thumb (the owner
+  couldn't see the flip on a phone). The rotations show their axes faintly behind the letter: a line
   across x, a line up and down y, and a ring around z (its axis points at you). The x and z
   letters are moved so their ink sits at the button's middle (`centerAxisLetters`): a
   lowercase letter's ink sits below its line box's middle by an amount that depends on
