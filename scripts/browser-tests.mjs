@@ -952,6 +952,22 @@ labTest(
     await press("pointerleave");
     const slid = await tip();
     check(sliding.keyLit && !slid.shown && !slid.keyLit && slid.keyBg === restBg && (await probe("turns")) === "U'", `sliding off unlights the key and hides the tip, with no turn (turns "${await probe("turns")}")`);
+    // A rotation's tip carries its key's axis mark: a line across for x, up and down for y, a ring for z.
+    const marks = [];
+    for (const m of ["x", "y", "z"]) {
+      marks.push(
+        await page.evaluate((m) => {
+          const b = document.querySelector(`[data-move="${m}"]`), r = b.getBoundingClientRect();
+          const at = { bubbles: true, pointerId: 8, pointerType: "touch", clientX: r.left + 5, clientY: r.top + 5 };
+          b.dispatchEvent(new PointerEvent("pointerdown", at));
+          const t = document.getElementById("press-tip"), k = t.querySelector(".tip-key");
+          const mark = m === "x" ? getComputedStyle(t).backgroundImage : getComputedStyle(k).backgroundImage;
+          b.dispatchEvent(new PointerEvent("pointerleave", at));
+          return `${m}:${k.textContent}:${/radial/.test(mark) ? "ring" : /linear/.test(mark) ? "line" : "none"}`;
+        }, m),
+      );
+    }
+    check(marks.join() === "x:x:line,y:y:line,z:z:ring", `the rotations' tips carry their axis marks (${marks.join(" ")})`);
     // A mouse doesn't hide the button, so a mouse press shows no tip.
     const ub = await page.locator('[data-move="U"]').boundingBox();
     await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2);

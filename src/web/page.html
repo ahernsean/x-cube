@@ -426,7 +426,17 @@ details[open] summary { margin-bottom: 8px; }
 /* Over a turn button a finger holds, which the finger hides: the turn a release will make
    (pressTip), as a phone keyboard shows the key under the thumb. */
 .press-tip { position: fixed; z-index: 50; left: 0; top: 0; min-width: 56px; padding: 6px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 700 30px var(--f-mono); text-align: center; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); pointer-events: none; }
-.press-tip.inverted { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.press-tip.inverted { background-color: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+/* A rotation's tip carries its key's axis mark at the tip's size: x's line runs across the
+   whole tip, y's line top to bottom and z's ring around the letter, both through the letter
+   (not its ′ or 2). The key spans the tip's full height, its ink centered by --pt and --pb. */
+.press-tip { display: flex; justify-content: center; align-items: stretch; --pt: 6px; --pb: 6px; padding: var(--pt) 14px var(--pb); --axis: color-mix(in srgb, var(--muted) 70%, transparent); background-repeat: no-repeat; background-position: center; }
+.press-tip.inverted { --axis: color-mix(in srgb, var(--accent-ink) 55%, transparent); }
+.press-tip .tip-key { display: flex; align-items: center; padding: var(--pt) 12px var(--pb); margin: calc(-1 * var(--pt)) -12px calc(-1 * var(--pb)); background-repeat: no-repeat; background-position: center; }
+.press-tip .tip-amount { display: flex; align-items: center; }
+.press-tip[data-turn="x"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 100% 2px; }
+.press-tip[data-turn="y"] .tip-key { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 2px 100%; }
+.press-tip[data-turn="z"] .tip-key { background-image: radial-gradient(circle, transparent 13px, var(--axis) 13.6px, var(--axis) 15.6px, transparent 16.2px); }
 .press-tip[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .mv:active { transform: none; } }
 /* Wide screens: the 3D view and the playback strip on the left, the panels stacked in a

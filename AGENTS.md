@@ -446,7 +446,8 @@ tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `E
   once flipped (`pressTip`), as a phone keyboard shows the key under the thumb (the owner
   couldn't see the flip on a phone). As on that keyboard, the key itself is highlighted
   (`pressed`, darker) for the whole time the finger is on it, until it lifts or slides off;
-  once flipped it is in the highlight blue. The rotations show their axes faintly behind the letter: a line
+  once flipped it is in the highlight blue. A rotation's tip carries its key's axis mark,
+  through the letter rather than its ′ or 2. The rotations show their axes faintly behind the letter: a line
   across x, a line up and down y, and a ring around z (its axis points at you). The x and z
   letters are moved so their ink sits at the button's middle (`centerAxisLetters`): a
   lowercase letter's ink sits below its line box's middle by an amount that depends on

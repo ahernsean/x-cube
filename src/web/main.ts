@@ -3078,9 +3078,21 @@ function pressTip(b: HTMLElement | null, text = "", inverted = false) {
     tip.hidden = true;
     return;
   }
-  tip.textContent = text;
+  const name = b.dataset.move ?? "";
+  const key = document.createElement("span");
+  key.className = "tip-key";
+  key.textContent = text.startsWith(name) ? name : text;
+  const amount = document.createElement("span");
+  amount.className = "tip-amount";
+  amount.textContent = text.startsWith(name) ? text.slice(name.length) : "";
+  tip.replaceChildren(key, amount);
   tip.classList.toggle("inverted", inverted);
+  tip.dataset.turn = name;
   tip.hidden = false;
+  // A lowercase letter's ink sits low in its line, so its tip is padded to center the ink on the axis mark.
+  const low = inkDrop(tip, b.dataset.move ?? "");
+  tip.style.setProperty("--pt", `${6 + Math.max(0, -2 * low)}px`);
+  tip.style.setProperty("--pb", `${6 + Math.max(0, 2 * low)}px`);
   const r = b.getBoundingClientRect();
   const w = tip.offsetWidth, h = tip.offsetHeight;
   const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), innerWidth - w - 8);
@@ -5405,6 +5417,18 @@ function showStepIdle(): boolean {
  * its line box's middle by an amount that depends on the font, so it is measured from the
  * font the button is drawn in.
  */
+/** How far below the middle of its line box a letter's ink's middle is, in el's font (0 where the font's metrics aren't known). */
+function inkDrop(el: HTMLElement, letter: string): number {
+  if (!letter) return 0;
+  const g = document.createElement("canvas").getContext("2d");
+  if (!g) return 0;
+  const cs = getComputedStyle(el);
+  g.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const t = g.measureText(letter);
+  if (!t.fontBoundingBoxAscent) return 0;
+  return (t.fontBoundingBoxAscent - t.fontBoundingBoxDescent) / 2 - (t.actualBoundingBoxAscent - t.actualBoundingBoxDescent) / 2;
+}
+
 function centerAxisLetters() {
   const g = document.createElement("canvas").getContext("2d");
   if (!g) return;
