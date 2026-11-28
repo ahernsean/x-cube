@@ -338,7 +338,7 @@ test("edit: center colors arranged as no turns arrange them can't be reached", (
   assert.equal(fit.problems[0].text, "Opposite centers must be red and orange, green and blue, or white and yellow. The green and red centers should probably trade places");
   assert.deepEqual([...fit.problems[0].slots].sort(), [fx, rx].sort());
   // Slices move the centers, and that arrangement is fine.
-  const sliced = after("M S' H2 R");
+  const sliced = after("M S' E2 R");
   assert.equal(fitColors(sliced, visibleColors(sliced)).level, "reachable");
   // Out of shape, a center without an extension shows its own color.
   const turned = after("M");

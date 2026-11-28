@@ -75,15 +75,15 @@ test("cube3: the notation help says what is the WCA's and what isn't, and offers
   assert.ok(!cube.rows.some((r) => /w/.test(r.notation)) && !/Rw/.test(cube.note));
   assert.ok(!cube.rows.some((r) => r.notation.startsWith("r ")));
   assert.equal(cube.note, "R L U D F B, x y z, ′ and 2 are the WCA's notation (WCA Regulations, Article 12). M, E and S are not in the Regulations; they are the usual names for the middle slices.");
-  assert.ok(!cube.rows.some((r) => r.notation === "H"), "the 3x3x3 writes E′, not H");
+  assert.ok(!cube.rows.some((r) => r.notation === "H") && cube.rows.some((r) => r.notation === "E"));
   assert.deepEqual(CUBE3.moves.filter((m) => m.typedOnly).map((m) => m.name).sort(), ["2Bw", "2Dw", "2Fw", "2Lw", "2Rw", "2Uw", "Bw", "Dw", "Fw", "Lw", "Rw", "Uw"]);
   assert.ok(!XCUBE.moves.some((m) => m.typedOnly));
   assert.ok(x.rows.some((r) => r.notation === "r l u d f b"));
-  assert.ok(x.rows.some((r) => r.notation === "H"));
+  assert.ok(!x.rows.some((r) => r.notation === "H") && x.rows.some((r) => r.notation === "E"));
   assert.ok(!x.rows.some((r) => r.notation.startsWith("Rw")));
-  assert.match(x.note, /H is not standard notation: the standard name for that turn is E′/);
   assert.match(x.note, /r l u d f b are the Lab's own/);
   assert.throws(() => parseAlg("H", CUBE3), /unknown move/);
+  assert.throws(() => parseAlg("H", XCUBE), /unknown move/);
   assert.ok(after("E'").equals(after("E E E")));
   // What the help shows parses: ′ is read as '.
   assert.ok(after("R′ U2").equals(after("R' U2")));

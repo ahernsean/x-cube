@@ -26,7 +26,6 @@ red right, orange left and blue back. The colors are set in `FACE_COLOR` in
 | `R L U D F B` | Inner turns: the 3x3x3 layer plus everything beyond it, including the extension. Clockwise looking at that face. Always allowed. |
 | `r l f b` (`u d`) | Outer turns: the extension alone. Allowed only when all 9 of its pieces are present. |
 | `E` | The horizontal middle layer, turned like `D`. |
-| `H` | The X-Cube's name for `E'`: the horizontal middle layer, turned like `U`. |
 | `M` | The middle layer between L and R, turned like `L`. |
 | `S` | The middle layer between F and B, turned like `F`. |
 | `x y z` | The whole puzzle, turned like `R`, `U` and `F`. |
@@ -40,11 +39,10 @@ Commas and periods outside brackets are read as spaces.
 
 **Standard notation.** `R L U D F B`, `x y z`, `'` and `2` are the WCA's notation (WCA
 Regulations, Article 12, version of April 1, 2026); `x` turns like `R`. `M`, `E` and `S` are
-not in the Regulations; they are the usual names for the middle slices. `H` is not
-standard: the standard name for that turn is `E'`. No standard covers the X-Cube's
+not in the Regulations; they are the usual names for the middle slices. No standard covers the X-Cube's
 extensions, so `r l u d f b` are this project's own.
 
-On the 3x3x3 (`--puzzle cube3`), `H` and lowercase letters are refused. The WCA has no
+On the 3x3x3 (`--puzzle cube3`), lowercase letters are refused. The WCA has no
 lowercase wide turns (it reads `r` as `R`, Regulation E2c6+), and on the X-Cube `r` is an
 outer turn. The WCA's wide turns `Rw` (`R M'`, or `L x`) and `2Rw` (the same turn on a
 3x3x3, Regulation 12a2+) are accepted when typed, so standard algorithms paste as written;

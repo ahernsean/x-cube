@@ -16,7 +16,7 @@
 // pieces they name.
 //
 // Ease. Turns are chosen for a person's hands, not for their number (EASE): the back
-// face and back extension are the hardest to turn, then the bottom, then the H and S
+// face and back extension are the hardest to turn, then the bottom, then the E and S
 // slices; M is fine. A step may begin with a regrip, a turn of the whole puzzle about its
 // vertical axis, when that makes the rest easier; a regrip is never in the middle of a
 // step. A cycle step or a layer core step may also flip the puzzle over (x2) first, when
@@ -103,7 +103,7 @@ function slotPerm(t: Turn): Int16Array {
  * would rather regrip and turn R than turn F several times. L is a little harder than R
  * (the owner is right-handed). Whole numbers, since the tables below sort by them.
  */
-const EASE: Record<string, number> = { U: 4, R: 4, L: 5, F: 7, r: 4, l: 5, f: 7, M: 4, D: 8, d: 8, u: 8, H: 12, S: 12, E: 12, B: 16, b: 16, x: 8, y: 8, z: 8 };
+const EASE: Record<string, number> = { U: 4, R: 4, L: 5, F: 7, r: 4, l: 5, f: 7, M: 4, D: 8, d: 8, u: 8, S: 12, E: 12, B: 16, b: 16, x: 8, y: 8, z: 8 };
 const ease = (turns: readonly Turn[]) => turns.reduce((sum, t) => sum + EASE[MOVE_DEFS[t.def].name], 0);
 const ALL_TURNS: Turn[] = MOVE_DEFS.flatMap((_, def) => ([1, 2, 3] as const).map((amount) => ({ def, amount })));
 

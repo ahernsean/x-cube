@@ -275,11 +275,10 @@ const FACE_AXES: [string, 0 | 1 | 2, 1 | -1][] = [
 /** Clockwise looking at the face = -90 degrees about its outward normal. */
 const faceCcw = (sgn: 1 | -1) => (sgn > 0 ? -1 : 1) as 1 | -1;
 
-/** The slices and rotations of a 3-layer puzzle (the 3x3x3 leaves out H, the X-Cube's name for E'). */
+/** The slices and rotations every 3-layer puzzle here has. */
 const MIDDLE_AND_ROTATIONS: MoveSpec[] = [
   { name: "M", kind: "slice", axis: 0, ccw: 1, layer: (c) => c === 0, layerOrder: 2, description: "middle slice between L and R, turned like L" },
-  { name: "H", kind: "slice", axis: 1, ccw: -1, layer: (c) => c === 0, layerOrder: 2, description: "horizontal middle slice, turned like U (viewed from above)" },
-  { name: "E", kind: "slice", axis: 1, ccw: 1, layer: (c) => c === 0, layerOrder: 2, description: "horizontal middle slice, turned like D (E = H')" },
+  { name: "E", kind: "slice", axis: 1, ccw: 1, layer: (c) => c === 0, layerOrder: 2, description: "horizontal middle slice, turned like D" },
   { name: "S", kind: "slice", axis: 2, ccw: -1, layer: (c) => c === 0, layerOrder: 2, description: "middle slice between F and B, turned like F" },
   { name: "x", kind: "rotation", axis: 0, ccw: -1, layer: () => true, layerOrder: 5, description: "whole puzzle, turned like R" },
   { name: "y", kind: "rotation", axis: 1, ccw: -1, layer: () => true, layerOrder: 5, description: "whole puzzle, turned like U" },
@@ -297,7 +296,7 @@ const MIDDLE_AND_ROTATIONS: MoveSpec[] = [
 //   (for R: every slot with x >= 1, including the R extension). Always allowed.
 // - Outer turns (r l u d f b) turn only the extension layer (for r: x == 2).
 //   Allowed only when all 9 of that layer's slots are filled.
-// - Slices (M, S, H, E) turn a middle layer. Always allowed.
+// - Slices (M, E, S) turn a middle layer. Always allowed.
 // - Each extension center is fused to the core face center behind it. No move
 //   ever separates them (verified in tests), so the model needs no special case.
 
@@ -385,8 +384,7 @@ export const CUBE3: PuzzleDef<CubeKind> = buildPuzzle<CubeKind>({
       { name: `${n}w`, kind: "wide", axis, ccw: faceCcw(sgn), layer: (c) => c * sgn >= 0, layerOrder: sgn > 0 ? 1 : 3, description: `${n} face layer and the middle slice with it (wide turn)`, typedOnly: true },
       { name: `2${n}w`, kind: "wide", axis, ccw: faceCcw(sgn), layer: (c) => c * sgn >= 0, layerOrder: sgn > 0 ? 1 : 3, description: `${n}w by its other name: two layers, the face and the middle slice`, typedOnly: true },
     ]),
-    // H is the X-Cube's name for E'; a 3x3x3 writes it E'.
-    ...MIDDLE_AND_ROTATIONS.filter((m) => m.name !== "H"),
+    ...MIDDLE_AND_ROTATIONS,
   ],
 });
 

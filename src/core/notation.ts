@@ -2,7 +2,7 @@
 //
 //   R U R' U2         face turns; ' = counterclockwise (’ and ′ too), 2 = half turn (2' is accepted too)
 //   r l f b (u d)     outer turns of an extension alone
-//   M S H E           slices (H turns like U, E turns like D)
+//   M E S             slices, turned like L, D and F
 //   x y z             whole-puzzle rotations
 //   (R U2)5           repeat a group: also (R U2)x5, (R U2)*5, (R U2) x 5
 //   (R U)'            inverse of a group
@@ -171,7 +171,6 @@ export function notationHelp(puzzle: PuzzleDef): { rows: NotationRow[]; note: st
   } else {
     rows.push({ notation: "R L U D F B", meaning: "One side's layer, clockwise, looking at that side." });
   }
-  if (has("H")) rows.push({ notation: "H", meaning: "The horizontal middle slice, turned like U. H is E′." });
   if (has("E")) rows.push({ notation: "E", meaning: "The horizontal middle slice, turned like D." });
   if (has("M")) rows.push({ notation: "M", meaning: "The middle slice between L and R, turned like L." });
   if (has("S")) rows.push({ notation: "S", meaning: "The middle slice between F and B, turned like F." });
@@ -182,7 +181,6 @@ export function notationHelp(puzzle: PuzzleDef): { rows: NotationRow[]; note: st
   const outer = puzzle.moves.some((m) => m.needsFull);
   const wca =
     "R L U D F B, x y z, ′ and 2 are the WCA's notation (WCA Regulations, Article 12). M, E and S are not in the Regulations; they are the usual names for the middle slices." +
-    (has("H") ? " H is not standard notation: the standard name for that turn is E′." : "") +
     (outer ? " No standard covers the X-Cube's extensions, so r l u d f b are the Lab's own." : "");
   return { rows, note: wca };
 }

@@ -1619,7 +1619,7 @@ const SWIPE_PX = 10;
 const HOLD_TO_TUMBLE_MS = 350;
 const LAYER_MOVE: Record<number, Record<number, string>> = {
   0: { 2: "r", 1: "R", 0: "M", [-1]: "L", [-2]: "l" },
-  1: { 2: "u", 1: "U", 0: "H", [-1]: "D", [-2]: "d" },
+  1: { 2: "u", 1: "U", 0: "E", [-1]: "D", [-2]: "d" },
   2: { 2: "f", 1: "F", 0: "S", [-1]: "B", [-2]: "b" },
 };
 
@@ -1816,7 +1816,7 @@ let shuffleAlg = "";
  */
 function shuffle() {
   flushAnimations();
-  const names = ["R", "L", "U", "D", "F", "B", "r", "l", "u", "d", "f", "b", "M", "H", "S"];
+  const names = ["R", "L", "U", "D", "F", "B", "r", "l", "u", "d", "f", "b", "M", "E", "S"];
   const st = app.current.clone();
   const turns: Turn[] = [];
   let prevDef = -1;

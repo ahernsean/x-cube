@@ -451,7 +451,7 @@ labTest(
     );
     check(infoLook.length === 5 && infoLook.every((v) => v === "rgba(0, 0, 0, 0)/rgba(0, 0, 0, 0)"), "the ⓘ buttons (3D view, flat view, Turn panel), Display and Undo show just their icons, with no button edge or fill");
     check(unitsWhole, "the notes break lines only between units like \"M like L,\", never inside one");
-    check(notes.every(Boolean) && (await page.$$eval("[data-sec=turn] .legend", (els) => els.length)) === 0, `the H/M/S and x/y/z notes sit beside their buttons (${notes})`);
+    check(notes.every(Boolean) && (await page.$$eval("[data-sec=turn] .legend", (els) => els.length)) === 0, `the M/E/S and x/y/z notes sit beside their buttons (${notes})`);
     // The turn field's example text fits inside it at phone width.
     const hintFit = await page.evaluate(() => {
       const el = document.getElementById("alg");
@@ -600,8 +600,8 @@ labTest(
       };
     });
     check(pop.shown && pop.expanded === "true", "a tap on the Turn panel's ⓘ opens the notation help");
-    check(["R L U D F B", "r l u d f b", "H", "E", "M", "S", "x y z"].every((n) => pop.rows.includes(n)), `it lists the X-Cube's turns (${pop.rows.join(" | ")})`);
-    check(/WCA/.test(pop.text) && /H is not standard notation/.test(pop.text), "it says which notation is the WCA's standard and which isn't");
+    check(["R L U D F B", "r l u d f b", "E", "M", "S", "x y z"].every((n) => pop.rows.includes(n)) && !pop.rows.includes("H"), `it lists the X-Cube's turns (${pop.rows.join(" | ")})`);
+    check(/WCA/.test(pop.text) && /r l u d f b are the Lab's own/.test(pop.text), "it says which notation is the WCA's standard and which isn't");
     check(pop.inside && pop.scroll, "it fits the phone's width, with no sideways scrolling");
     const after = await page.$$eval(".mv", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)).join());
     check(after === before, "the ⓘ's panel opens over the turn buttons without moving them");
@@ -870,7 +870,7 @@ labTest("gestures: swipes turn the layer under the finger, and a double tap undo
   await swipe(await probe("sticker", "Fx.UL", "F"), 70, 0);
   check((await probe("turns")) === "U'", `swiping right on the front face's top row turns U' (got "${await probe("turns")}")`);
   await swipe(await probe("sticker", "Fx", "F"), -70, 0);
-  check((await probe("turns")) === "U' H", `swiping left on the front face's middle row turns the slice H (got "${await probe("turns")}")`);
+  check((await probe("turns")) === "U' E'", `swiping left on the front face's middle row turns the slice E' (got "${await probe("turns")}")`);
 
   const tapAt = await probe("sticker", "Fx", "F");
   const tap = [["pointerdown", tapAt.x, tapAt.y], ["pointerup", tapAt.x, tapAt.y]];
@@ -1265,11 +1265,11 @@ labTest("playback: ◀ plays the turns backward to the start and keeps them list
 });
 
 labTest("hold line: names the centers up, toward you and on your right, as they are now", async ({ check, hold, play }) => {
-  // The H slice carries the side centers around.
+  // The E slice carries the side centers around.
   const holdSolved = await hold();
-  await play("H");
+  await play("E'");
   const holdAfterH = await hold();
-  check(holdSolved === "Hold: white up, green front, red right" && holdAfterH === "Hold: white up, red front, blue right", `the hold line follows the centers ("${holdSolved}", then after H "${holdAfterH}")`);
+  check(holdSolved === "Hold: white up, green front, red right" && holdAfterH === "Hold: white up, red front, blue right", `the hold line follows the centers ("${holdSolved}", then after E' "${holdAfterH}")`);
 });
 
 // ---- Algorithms, the turn field, Clear and state codes.
@@ -1286,7 +1286,7 @@ labTest("algorithms: a known algorithm loads its position and turns, and playing
   // This one ends back in shape with the white top kept.
   const played = { shape: await status(), top: (await page.evaluate(() => window.xcubeProbe.flatFace("U").flat().filter((h) => h && h.color === "W").length)) };
   check(
-    known.base === "Flipped bottom edge, white top solved" && known.alg === "R F H2 F2 H F R'" && known.field === "" && known.counter === "0/7" && known.hold === "Hold: white up, blue front, orange right" && /Out of shape/.test(known.shape) && /X shape/.test(played.shape) && played.top === 21,
+    known.base === "Flipped bottom edge, white top solved" && known.alg === "R F E2 F2 E' F R'" && known.field === "" && known.counter === "0/7" && known.hold === "Hold: white up, blue front, orange right" && /Out of shape/.test(known.shape) && /X shape/.test(played.shape) && played.top === 21,
     `a known algorithm loads its position and turns, and playing them works (start "${known.base}", ${known.hold}; then ${played.top} white on top)`,
   );
 });
@@ -1521,7 +1521,7 @@ labTest("shading: the flat view's bands come from nearer neighbors, and live sha
   // and gone past the ramp. Checked in a scrambled position, which has recesses between
   // two walls: those show two bands with a clean middle, and no overlap (an inner corner)
   // is darker than one band.
-  await play("R U' F2 D B' L2 R' H S' M");
+  await play("R U' F2 D B' L2 R' E' S' M");
   const prof = await probe("flatShadeProfile");
   check(prof.shaded > 0 && prof.channels > 0 && prof.edgeErr < 1e-6 && prof.middle > 1 - 1e-6 && prof.darkest >= prof.oneBand - 1e-6, `flat view shading is bands from nearer neighbors (${prof.shaded} shaded tiles, ${prof.channels} between two walls; edge error ${prof.edgeErr}; lightest-middle check ${prof.middle.toFixed(6)}; darkest ${prof.darkest.toFixed(3)}, one band ${prof.oneBand.toFixed(3)})`);
   // The squares are two triangles each, so the bands are drawn pixel by pixel by their

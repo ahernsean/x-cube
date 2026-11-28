@@ -68,7 +68,9 @@ The notation, which of it is the WCA's standard, and Baum's grip are in `README.
 - Each puzzle has its own move names (`PuzzleDef.moves`), and the parser
   (`src/core/notation.ts`) takes the puzzle. Names are matched longest first and may start
   with a digit (`2Rw`); a count is read only right after a turn, so `R2Rw` is `R2 Rw`.
-- `H` is the owner's name for `E'`, and only the X-Cube has it; the 3x3x3 writes `E'`.
+- **Standard notation wherever it exists:** the Lab writes no name of its own for a turn
+  the standard names. The horizontal middle slice is `E` (turned like `D`); the Lab has
+  no `H`.
 - **Typed only** (`typedOnly`): the 3x3x3's wide turns are read when typed but never
   offered: no turn button, help line, shuffle or solver step uses them.
 - `notationHelp` gives the turns a puzzle offers in words, for the Turn panel's ⓘ, with
@@ -164,17 +166,17 @@ unsolved one. A step's `lands` says which of the three end up solved (in place a
 positions, the two modes come out about the same length (177 and 180 turns on average).
 
 **Ease, the owner's priorities for turns** (`EASE` in `solve.ts`), most important first:
-avoid the back (`B`, `b`); then the bottom (`D`); then `H` and `S`; `M` is fine (a person
+avoid the back (`B`, `b`); then the bottom (`D`); then `E` and `S`; `M` is fine (a person
 does it as `L' R x'`); `R` is preferred to `F` (F costs 7 to R's 4, so `y' R U R' U R U2 R'`
 beats `F U F' U F U2 F'`); the owner is right-handed, so `L` is a little harder than `R`;
 an outer turn is as hard as its face's inner turn (`r` like `R`, `f` like `F`); and
 regular, repeating patterns are easier to memorize. The weights are whole numbers (the
-tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `H S` 12,
+tables sort by them): `U R M r` 4, `L l` 5, `F f` 7, `D d u` 8, a rotation 8, `E S` 12,
 `B b` 16. So:
 
 - Turns are chosen by ease, not by number: setups and the core stage take the easiest
   way, and the shape stage weighs every way with the fewest turns, and with one more.
-  In 200 sampled solves `B` was 0.1% of turns and `D` 1.1%, with no `b`, `S` or `H`.
+  In 200 sampled solves `B` was 0.1% of turns and `D` 1.1%, with no `b`, `S` or `E`.
 - **Regrips.** A step may begin with a turn of the whole puzzle about its vertical axis
   (`y`, `y'`, `y2`) when that makes the rest easier; a regrip is never in the middle of a
   step. A cycle step or a layer core step (`layers`) may also begin by flipping the puzzle
