@@ -304,10 +304,12 @@ input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); 
 .mv.inverted { background-color: var(--accent); color: var(--accent-ink); border-color: var(--accent); opacity: 1; }
 /* The rotations' axes, drawn behind their letters: x across (like R), y up and down (like U),
    z end-on, a ring around the letter (the axis points at you). */
-.mv[data-move="x"], .mv[data-move="y"], .mv[data-move="z"] { --axis: color-mix(in srgb, var(--muted) 70%, transparent); background-repeat: no-repeat; background-position: center; }
-.mv[data-move="x"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 100% 1.5px; }
-.mv[data-move="y"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 1.5px 100%; }
+/* The slices turn about the same axes: M about x's, E about y's, S about z's, so each has its rotation's mark. */
+.mv:is([data-move="x"], [data-move="y"], [data-move="z"], [data-move="M"], [data-move="E"], [data-move="S"]) { --axis: color-mix(in srgb, var(--muted) 70%, transparent); background-repeat: no-repeat; background-position: center; }
+.mv:is([data-move="x"], [data-move="M"]) { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 100% 1.5px; }
+.mv:is([data-move="y"], [data-move="E"]) { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 1.5px 100%; }
 .mv[data-move="z"] { background-image: radial-gradient(circle, transparent 6.9px, var(--axis) 7.4px, var(--axis) 8.6px, transparent 9.1px); }
+.mv[data-move="S"] { background-image: radial-gradient(circle, transparent 8.9px, var(--axis) 9.4px, var(--axis) 10.6px, transparent 11.1px); }
 /* A button that doesn't apply right now is grayed out. */
 .btn:disabled, .btn:disabled:hover { opacity: 0.4; cursor: not-allowed; border-color: var(--line); }
 .tp-group > .btn.tp:disabled { opacity: 1; color: color-mix(in srgb, var(--muted) 45%, transparent); }
@@ -427,16 +429,16 @@ details[open] summary { margin-bottom: 8px; }
    (pressTip), as a phone keyboard shows the key under the thumb. */
 .press-tip { position: fixed; z-index: 50; left: 0; top: 0; min-width: 56px; padding: 6px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: 700 30px var(--f-mono); text-align: center; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25); pointer-events: none; }
 .press-tip.inverted { background-color: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-/* A rotation's tip carries its key's axis mark at the tip's size: x's line runs across the
+/* A rotation's or slice's tip carries its key's axis mark at the tip's size: x's line runs across the
    whole tip, y's line top to bottom and z's ring around the letter, both through the letter
    (not its ′ or 2). The key spans the tip's full height, its ink centered by --pt and --pb. */
 .press-tip { display: flex; justify-content: center; align-items: stretch; --pt: 6px; --pb: 6px; padding: var(--pt) 14px var(--pb); --axis: color-mix(in srgb, var(--muted) 70%, transparent); background-repeat: no-repeat; background-position: center; }
 .press-tip.inverted { --axis: color-mix(in srgb, var(--accent-ink) 55%, transparent); }
 .press-tip .tip-key { display: flex; align-items: center; padding: var(--pt) 12px var(--pb); margin: calc(-1 * var(--pt)) -12px calc(-1 * var(--pb)); background-repeat: no-repeat; background-position: center; }
 .press-tip .tip-amount { display: flex; align-items: center; }
-.press-tip[data-turn="x"] { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 100% 2px; }
-.press-tip[data-turn="y"] .tip-key { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 2px 100%; }
-.press-tip[data-turn="z"] .tip-key { background-image: radial-gradient(circle, transparent 13px, var(--axis) 13.6px, var(--axis) 15.6px, transparent 16.2px); }
+.press-tip:is([data-turn="x"], [data-turn="M"]) { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 100% 2px; }
+.press-tip:is([data-turn="y"], [data-turn="E"]) .tip-key { background-image: linear-gradient(var(--axis), var(--axis)); background-size: 2px 100%; }
+.press-tip:is([data-turn="z"], [data-turn="S"]) .tip-key { background-image: radial-gradient(circle, transparent 13px, var(--axis) 13.6px, var(--axis) 15.6px, transparent 16.2px); }
 .press-tip[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .mv:active { transform: none; } }
 /* Wide screens: the 3D view and the playback strip on the left, the panels stacked in a
