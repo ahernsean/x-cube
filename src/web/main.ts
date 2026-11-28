@@ -3099,6 +3099,8 @@ function bindMoveButtons() {
       const amount = inverted ? invertAmount(app.modifier) : app.modifier;
       b.textContent = name + suffixFor(amount);
       b.classList.toggle("inverted", inverted);
+      // Under a finger the key is highlighted the whole time it is touched, as a phone keyboard's is.
+      b.classList.toggle("pressed", touch && active !== null);
       if (touch && active !== null) pressTip(b, b.textContent, inverted);
     };
     const reset = () => {

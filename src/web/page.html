@@ -299,6 +299,8 @@ input[type="text"], textarea { font: 16px var(--f-mono); background: var(--bg); 
 .mv.outer { border-style: dashed; }
 .mv.blocked { opacity: 0.38; }
 .mv { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+/* Touched by a finger: darker for as long as the finger is on it (a phone keyboard's key). */
+.mv.pressed { background-color: color-mix(in srgb, var(--ink) 22%, var(--bg)); border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
 .mv.inverted { background-color: var(--accent); color: var(--accent-ink); border-color: var(--accent); opacity: 1; }
 /* The rotations' axes, drawn behind their letters: x across (like R), y up and down (like U),
    z end-on, a ring around the letter (the axis points at you). */

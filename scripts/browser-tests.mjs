@@ -930,17 +930,27 @@ labTest(
       page.evaluate(() => {
         const t = document.getElementById("press-tip"), r = t.getBoundingClientRect();
         const b = document.querySelector('[data-move="U"]').getBoundingClientRect();
-        return { shown: !t.hidden, text: t.textContent, inverted: t.classList.contains("inverted"), above: r.bottom <= b.top, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0, centered: Math.abs((r.left + r.right) / 2 - (b.left + b.right) / 2) < 2 };
+        const key = document.querySelector('[data-move="U"]');
+        return { shown: !t.hidden, text: t.textContent, inverted: t.classList.contains("inverted"), above: r.bottom <= b.top, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0, centered: Math.abs((r.left + r.right) / 2 - (b.left + b.right) / 2) < 2, keyLit: key.classList.contains("pressed"), keyBg: getComputedStyle(key).backgroundColor };
       });
+    const restBg = (await tip()).keyBg;
     await press("pointerdown");
     const first = await tip();
+    check(first.keyLit && first.keyBg !== restBg, `the key itself is highlighted from the moment the finger touches it (${restBg} → ${first.keyBg})`);
     check(first.shown && first.text === "U" && !first.inverted && first.above && first.inside && first.centered, `a finger on U shows U above the button (${JSON.stringify(first)})`);
     await page.waitForTimeout(700);
     const held = await tip();
     check(held.shown && held.text === "U'" && held.inverted, `held, it shows U' in the highlight (${JSON.stringify(held)})`);
     await press("pointerup");
     const after = await tip();
-    check(!after.shown && (await probe("turns")) === "U'", `letting go turns U' and hides it (turns "${await probe("turns")}")`);
+    check(!after.shown && !after.keyLit && after.keyBg === restBg && (await probe("turns")) === "U'", `letting go turns U', hides the tip and unlights the key (turns "${await probe("turns")}")`);
+    // Sliding off the key ends the press the same way, and makes no turn.
+    await press("pointerdown");
+    await page.waitForTimeout(700);
+    const sliding = await tip();
+    await press("pointerleave");
+    const slid = await tip();
+    check(sliding.keyLit && !slid.shown && !slid.keyLit && slid.keyBg === restBg && (await probe("turns")) === "U'", `sliding off unlights the key and hides the tip, with no turn (turns "${await probe("turns")}")`);
     // A mouse doesn't hide the button, so a mouse press shows no tip.
     const ub = await page.locator('[data-move="U"]').boundingBox();
     await page.mouse.move(ub.x + ub.width / 2, ub.y + ub.height / 2);
